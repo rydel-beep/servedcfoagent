@@ -37,7 +37,7 @@ def _fetch_tab() -> tuple[list[str], list[list[str]]]:
         f"/gviz/tq?tqx=out:csv&sheet={requests.utils.quote(tab)}"
     )
     try:
-        resp = requests.get(url, timeout=HTTP_TIMEOUT)
+        resp = requests.get(url, timeout=(5, HTTP_TIMEOUT))
         if resp.status_code != 200:
             logger.error("Sheet fetch failed (status %d)", resp.status_code)
             return [], []

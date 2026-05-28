@@ -21,7 +21,7 @@ def _call_tool(tool: str, arguments: dict | None = None) -> dict | None:
         resp = requests.post(
             f"{STRIPE_MCP_BASE}/call",
             json={"tool": tool, "arguments": arguments or {}},
-            timeout=HTTP_TIMEOUT,
+            timeout=(5, HTTP_TIMEOUT),  # (connect, read)
         )
         if resp.status_code != 200:
             logger.error("Stripe MCP %s returned %d: %s", tool, resp.status_code, resp.text[:200])

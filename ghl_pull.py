@@ -33,7 +33,7 @@ def _fetch_pipeline_stages() -> dict[str, str]:
             f"{GHL_BASE}/opportunities/pipelines",
             headers=_ghl_headers(),
             params={"locationId": GHL_LOCATION_ID},
-            timeout=HTTP_TIMEOUT,
+            timeout=(5, HTTP_TIMEOUT),
         )
         if resp.status_code != 200:
             logger.error("GHL pipelines API %d: %s", resp.status_code, resp.text[:200])
@@ -61,7 +61,7 @@ def _fetch_all_opportunities() -> list[dict]:
                 f"{GHL_BASE}/opportunities/search",
                 headers=_ghl_headers(),
                 params=params,
-                timeout=HTTP_TIMEOUT,
+                timeout=(5, HTTP_TIMEOUT),
             )
             if resp.status_code != 200:
                 logger.error("GHL opps search %d: %s", resp.status_code, resp.text[:200])
