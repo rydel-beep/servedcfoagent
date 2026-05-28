@@ -112,9 +112,12 @@ def _fetch_all_opportunities() -> dict:
                 logger.info("GHL fetched %d unique opps — reached total_reported %d", len(opps), total_reported)
                 break
 
+            # Read both cursor fields (GHL requires both to advance properly)
+            start_after = meta.get("startAfter")
+            start_after_id = meta.get("startAfterId")
+
             # Stop if cursor exhausted or batch was short
-            next_after = meta.get("nextAfterId") or meta.get("startAfterId")
-            if not next_after or len(batch) < 100:
+            if not start_after or len(batch) < 100:
                 break
 
             # Stop if an entire page was duplicates (cursor is looping)
@@ -122,7 +125,8 @@ def _fetch_all_opportunities() -> dict:
                 logger.warning("GHL page %d returned 0 new opps (all duplicates) — stopping", page)
                 break
 
-            params["startAfterId"] = next_after
+            params["startAfter"] = start_after
+            params["startAfterId"] = start_after_id
             page += 1
         except requests.RequestException as e:
             logger.error("GHL opps request failed (page %d): %s", page, e)
