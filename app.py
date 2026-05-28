@@ -72,7 +72,7 @@ def refresh_snapshot():
     return jsonify({"status": "refreshed", "ok": snap.get("ok"), "degraded_count": len(snap.get("degraded", []))})
 
 
-XERO_SCOPES = "offline_access accounting.reports.profitandloss.read accounting.settings.read accounting.transactions.read"
+XERO_SCOPES = "offline_access accounting.reports.profitandloss.read accounting.settings.read"
 
 
 @app.route("/xero/connect", methods=["GET"])
