@@ -231,6 +231,48 @@ def debug_sources():
     return jsonify(results)
 
 
+@app.route("/debug/xero-raw", methods=["GET"])
+def debug_xero_raw():
+    """Dump raw Xero P&L response structure for diagnosis. Remove after debugging."""
+    from datetime import timedelta
+    from xero_pull import _load_tokens, _refresh_access_token, XERO_API_BASE
+    from config import XERO_TOKEN_FILE, WINDOW_CURRENT
+    from helpers import today_sydney
+
+    stored = _load_tokens()
+    if not stored or not stored.get("refresh_token"):
+        return jsonify({"error": "No Xero tokens found"}), 404
+
+    tokens = _refresh_access_token(stored)
+    if not tokens:
+        return jsonify({"error": "Token refresh failed"}), 502
+
+    today = today_sydney()
+    start = today - timedelta(days=WINDOW_CURRENT)
+
+    try:
+        resp = http_requests.get(
+            f"{XERO_API_BASE}/api.xro/2.0/Reports/ProfitAndLoss",
+            headers={
+                "Authorization": f"Bearer {tokens['access_token']}",
+                "Xero-Tenant-Id": tokens["tenant_id"],
+                "Accept": "application/json",
+            },
+            params={"fromDate": str(start), "toDate": str(today)},
+            timeout=(5, 15),
+        )
+        raw = resp.json() if resp.status_code == 200 else {"http_error": resp.status_code, "body": resp.text[:500]}
+    except Exception as e:
+        raw = {"error": str(e)}
+
+    # Build a structural summary
+    summary = {
+        "date_range": {"fromDate": str(start), "toDate": str(today), "window_days": WINDOW_CURRENT},
+        "raw_report": raw,
+    }
+    return jsonify(summary)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=True)
