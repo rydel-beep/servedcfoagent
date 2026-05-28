@@ -53,8 +53,11 @@ def _fetch_pipeline_stages() -> dict[str, str]:
 def _fetch_all_opportunities() -> dict:
     """
     Paginate all opportunities in the sales pipeline until the cursor is exhausted.
+    Deduplicates by opportunity ID (GHL can return duplicates across pages).
+    Stops early when fetched unique count reaches total_reported (if available).
     Returns {opps, complete, total_reported, reason}.
     """
+    seen_ids: set[str] = set()
     opps: list[dict] = []
     total_reported: int | None = None
     params = {
@@ -81,7 +84,6 @@ def _fetch_all_opportunities() -> dict:
                 break
             data = resp.json()
             batch = data.get("opportunities", [])
-            opps.extend(batch)
 
             meta = data.get("meta", {})
 
@@ -94,11 +96,32 @@ def _fetch_all_opportunities() -> dict:
                     except (ValueError, TypeError):
                         pass
 
-            # Check cursor for next page
+            # Deduplicate by opportunity ID
+            new_in_batch = 0
+            for opp in batch:
+                opp_id = opp.get("id")
+                if opp_id and opp_id in seen_ids:
+                    continue
+                if opp_id:
+                    seen_ids.add(opp_id)
+                opps.append(opp)
+                new_in_batch += 1
+
+            # Stop if we've reached total_reported (all records fetched)
+            if total_reported is not None and len(opps) >= total_reported:
+                logger.info("GHL fetched %d unique opps — reached total_reported %d", len(opps), total_reported)
+                break
+
+            # Stop if cursor exhausted or batch was short
             next_after = meta.get("nextAfterId") or meta.get("startAfterId")
             if not next_after or len(batch) < 100:
-                # Cursor exhausted — natural completion
                 break
+
+            # Stop if an entire page was duplicates (cursor is looping)
+            if new_in_batch == 0:
+                logger.warning("GHL page %d returned 0 new opps (all duplicates) — stopping", page)
+                break
+
             params["startAfterId"] = next_after
             page += 1
         except requests.RequestException as e:
@@ -110,7 +133,7 @@ def _fetch_all_opportunities() -> dict:
     # If we exited because page > MAX_PAGES, flag it
     if page > MAX_PAGES:
         complete = False
-        reason = f"pagination safety cap hit at {len(opps)} opps (MAX_PAGES={MAX_PAGES})"
+        reason = f"pagination safety cap hit at {len(opps)} unique opps (MAX_PAGES={MAX_PAGES})"
         logger.warning("GHL %s", reason)
 
     return {
