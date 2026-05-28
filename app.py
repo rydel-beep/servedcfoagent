@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 
+import requests as http_requests
 from flask import Flask, jsonify, request
 
-from config import CFO_REFRESH_KEY
+from config import CFO_REFRESH_KEY, STRIPE_MCP_BASE
 from snapshot import build_snapshot, load_persisted
 
 logging.basicConfig(
@@ -65,6 +67,38 @@ def refresh_snapshot():
     snap = build_snapshot()
     _current_snapshot = snap
     return jsonify({"status": "refreshed", "ok": snap.get("ok"), "degraded_count": len(snap.get("degraded", []))})
+
+
+@app.route("/debug/stripe-ping", methods=["GET"])
+def debug_stripe_ping():
+    """Test single Stripe MCP call with timing. Remove after debugging."""
+    t0 = time.time()
+    try:
+        resp = http_requests.get(f"{STRIPE_MCP_BASE}/health", timeout=(5, 10))
+        health_ms = round((time.time() - t0) * 1000)
+        health_status = resp.status_code
+    except Exception as e:
+        health_ms = round((time.time() - t0) * 1000)
+        health_status = str(e)
+
+    t1 = time.time()
+    try:
+        resp = http_requests.post(
+            f"{STRIPE_MCP_BASE}/call",
+            json={"tool": "get_stripe_mrr", "arguments": {}},
+            timeout=(5, 15),
+        )
+        mrr_ms = round((time.time() - t1) * 1000)
+        mrr_result = resp.json() if resp.status_code == 200 else {"error": resp.status_code}
+    except Exception as e:
+        mrr_ms = round((time.time() - t1) * 1000)
+        mrr_result = {"error": str(e)}
+
+    return jsonify({
+        "stripe_mcp_base": STRIPE_MCP_BASE,
+        "health": {"status": health_status, "ms": health_ms},
+        "mrr_call": {"result": mrr_result, "ms": mrr_ms},
+    })
 
 
 if __name__ == "__main__":
