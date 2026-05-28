@@ -6,13 +6,13 @@ Pull sales pipeline metrics from GHL for the Served Marketing location.
 from __future__ import annotations
 
 import logging
-import time
 from datetime import timedelta
 
 import requests
 
-MAX_PAGES = 20  # safety cap: 20 pages × 100 = 2000 opps max
-MAX_PULL_SECONDS = 30  # total time budget for all GHL calls
+# Runaway-loop guard only. Pagination should stop when the cursor is exhausted.
+# If this cap is hit, the pull is flagged incomplete — never silently truncated.
+MAX_PAGES = 100  # 100 × 100 = 10,000 opps
 
 from config import (
     GHL_BASE, GHL_API_KEY, GHL_LOCATION_ID,
@@ -50,20 +50,23 @@ def _fetch_pipeline_stages() -> dict[str, str]:
     return {}
 
 
-def _fetch_all_opportunities() -> list[dict]:
-    """Paginate all opportunities in the sales pipeline (capped)."""
+def _fetch_all_opportunities() -> dict:
+    """
+    Paginate all opportunities in the sales pipeline until the cursor is exhausted.
+    Returns {opps, complete, total_reported, reason}.
+    """
     opps: list[dict] = []
+    total_reported: int | None = None
     params = {
         "pipeline_id": GHL_SALES_PIPELINE_ID,
         "location_id": GHL_LOCATION_ID,
         "limit": 100,
     }
     page = 1
-    t0 = time.time()
+    complete = True
+    reason = None
+
     while page <= MAX_PAGES:
-        if time.time() - t0 > MAX_PULL_SECONDS:
-            logger.warning("GHL opps pull hit %ds time cap at page %d (%d opps)", MAX_PULL_SECONDS, page, len(opps))
-            break
         try:
             resp = requests.get(
                 f"{GHL_BASE}/opportunities/search",
@@ -73,20 +76,49 @@ def _fetch_all_opportunities() -> list[dict]:
             )
             if resp.status_code != 200:
                 logger.error("GHL opps search %d: %s", resp.status_code, resp.text[:200])
+                complete = False
+                reason = f"HTTP {resp.status_code} on page {page}"
                 break
             data = resp.json()
             batch = data.get("opportunities", [])
             opps.extend(batch)
+
             meta = data.get("meta", {})
+
+            # Capture total from first response if available
+            if total_reported is None:
+                raw_total = meta.get("total")
+                if raw_total is not None:
+                    try:
+                        total_reported = int(raw_total)
+                    except (ValueError, TypeError):
+                        pass
+
+            # Check cursor for next page
             next_after = meta.get("nextAfterId") or meta.get("startAfterId")
             if not next_after or len(batch) < 100:
+                # Cursor exhausted — natural completion
                 break
             params["startAfterId"] = next_after
             page += 1
         except requests.RequestException as e:
             logger.error("GHL opps request failed (page %d): %s", page, e)
+            complete = False
+            reason = f"request failed on page {page}: {e}"
             break
-    return opps
+
+    # If we exited because page > MAX_PAGES, flag it
+    if page > MAX_PAGES:
+        complete = False
+        reason = f"pagination safety cap hit at {len(opps)} opps (MAX_PAGES={MAX_PAGES})"
+        logger.warning("GHL %s", reason)
+
+    return {
+        "opps": opps,
+        "complete": complete,
+        "total_reported": total_reported,
+        "reason": reason,
+    }
 
 
 def pull_ghl() -> dict:
@@ -109,12 +141,23 @@ def pull_ghl() -> dict:
             "reason": "Failed to fetch pipeline stages from GHL",
         })
 
-    opps = _fetch_all_opportunities()
-    if opps is None:
-        opps = []
+    fetch_result = _fetch_all_opportunities()
+    opps = fetch_result["opps"]
+    complete = fetch_result["complete"]
+    total_reported = fetch_result["total_reported"]
+    fetch_reason = fetch_result["reason"]
+
+    if not complete:
         degraded.append({
             "metric": "ghl_opportunities",
-            "reason": "Failed to fetch opportunities from GHL",
+            "reason": f"GHL pagination incomplete — {fetch_reason or 'unknown'} — data may be incomplete",
+        })
+
+    # Cross-check fetched vs reported total
+    if total_reported is not None and len(opps) < total_reported:
+        degraded.append({
+            "metric": "ghl_count_mismatch",
+            "reason": f"Fetched {len(opps)} opps but GHL reports {total_reported} total — pipeline metrics may be understated",
         })
 
     today = today_sydney()
@@ -166,6 +209,8 @@ def pull_ghl() -> dict:
         "ghl": {
             "pipeline_id": GHL_SALES_PIPELINE_ID,
             "total_opportunities": total_opps,
+            "total_reported": total_reported,
+            "complete": complete,
             "total_pipeline_value": total_value,
             "new_in_trailing_window": new_in_window,
             "status": status_counts,
