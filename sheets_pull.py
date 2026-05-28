@@ -1,8 +1,9 @@
 """
 sheets_pull.py
 --------------
-Pull financial data from the Google Sheets payout tracker.
+Pull financial data from the Lead-to-Cash Tracker Google Sheet.
 Sheet ID, tab name, and column mapping are all configurable via SHEET_CONFIG.
+Commission values come from the actual sheet columns, never computed from offer type.
 """
 from __future__ import annotations
 
@@ -18,11 +19,16 @@ from helpers import today_sydney
 
 logger = logging.getLogger(__name__)
 
+# Column index for the closer's "Call Outcome" (second occurrence of that header).
+# The sheet has two "Call Outcome" columns: index 16 (setter) and index 23 (closer).
+CLOSER_OUTCOME_IDX = SHEET_CONFIG["columns"].get("closer_outcome_idx", 23)
 
-def _fetch_tab() -> tuple[list[str], list[dict]]:
+
+def _fetch_tab() -> tuple[list[str], list[list[str]]]:
     """
-    Fetch the configured sheet tab as (headers, rows).
-    Returns ([], []) on failure.
+    Fetch the configured sheet tab as (headers, raw_rows).
+    Returns raw row lists (not dicts) so callers can use column index for
+    duplicate header names.
     """
     sid = SHEET_CONFIG["sheet_id"]
     tab = SHEET_CONFIG["tab_name"]
@@ -35,28 +41,43 @@ def _fetch_tab() -> tuple[list[str], list[dict]]:
         if resp.status_code != 200:
             logger.error("Sheet fetch failed (status %d)", resp.status_code)
             return [], []
-        rows = list(csv.reader(io.StringIO(resp.text)))
-        if len(rows) < 2:
+        all_rows = list(csv.reader(io.StringIO(resp.text)))
+        if len(all_rows) < 2:
             return [], []
-        headers = rows[0]
-        data = []
-        for row in rows[1:]:
-            if any(cell.strip() for cell in row):
-                data.append({headers[i]: row[i] if i < len(row) else "" for i in range(len(headers))})
+        headers = all_rows[0]
+        data = [r for r in all_rows[1:] if any(cell.strip() for cell in r)]
         return headers, data
     except requests.RequestException as e:
         logger.error("Sheet request failed: %s", e)
         return [], []
 
 
+def _col_index(headers: list[str], col_key: str) -> int | None:
+    """Find column index by header name from SHEET_CONFIG. Returns None if missing."""
+    col_name = SHEET_CONFIG["columns"].get(col_key, "")
+    if not col_name or col_name not in headers:
+        return None
+    return headers.index(col_name)
+
+
 def _validate_columns(headers: list[str]) -> list[str]:
-    """Check that all required columns exist. Return list of missing column names."""
-    required = SHEET_CONFIG["columns"]
-    return [key for key, col_name in required.items() if col_name not in headers]
+    """Check required columns exist. Return list of missing config keys."""
+    required_keys = [
+        "close_date", "cash_collected", "contract_value",
+        "commission_setter", "commission_closer", "offer_sold",
+    ]
+    missing = []
+    for key in required_keys:
+        col_name = SHEET_CONFIG["columns"].get(key, "")
+        if not col_name or col_name not in headers:
+            missing.append(key)
+    if len(headers) <= CLOSER_OUTCOME_IDX:
+        missing.append("closer_outcome (index out of range)")
+    return missing
 
 
 def _parse_money(val: str) -> float | None:
-    """Parse a money string like '12500' or '$1,650.00' to float. Returns None if empty/invalid."""
+    """Parse a money string like '$14,500' or '12500' to float. Returns None if empty/invalid."""
     val = val.strip().replace("$", "").replace(",", "")
     if not val:
         return None
@@ -66,25 +87,27 @@ def _parse_money(val: str) -> float | None:
         return None
 
 
-def _parse_date_mdy(val: str) -> date | None:
-    """Parse M/D/YYYY format. Returns None on failure."""
+def _parse_date(val: str) -> date | None:
+    """Parse date from multiple formats seen in the sheet. Returns None on failure."""
     val = val.strip()
     if not val:
         return None
-    try:
-        parts = val.split("/")
-        if len(parts) == 3:
-            return date(int(parts[2]), int(parts[0]), int(parts[1]))
-    except (ValueError, IndexError):
-        pass
-    return None
-
-
-def _parse_date_dmy(val: str) -> date | None:
-    """Parse D-Mon-YYYY format (e.g. '9-Apr-2026'). Returns None on failure."""
-    val = val.strip()
-    if not val:
-        return None
+    # Try YYYY-MM-DD
+    if len(val) >= 10 and val[4] == "-":
+        try:
+            parts = val[:10].split("-")
+            return date(int(parts[0]), int(parts[1]), int(parts[2]))
+        except (ValueError, IndexError):
+            pass
+    # Try M/D/YYYY
+    if "/" in val:
+        try:
+            parts = val.split("/")
+            if len(parts) == 3:
+                return date(int(parts[2]), int(parts[0]), int(parts[1]))
+        except (ValueError, IndexError):
+            pass
+    # Try D-Mon-YYYY
     try:
         from datetime import datetime as dt
         return dt.strptime(val, "%d-%b-%Y").date()
@@ -93,36 +116,21 @@ def _parse_date_dmy(val: str) -> date | None:
     return None
 
 
-def _parse_close_date(val: str) -> date | None:
-    """Try multiple date formats for Close date column."""
-    result = _parse_date_mdy(val)
-    if result:
-        return result
-    return _parse_date_dmy(val)
-
-
-def _identify_setter(notes: str) -> str:
-    """Identify setter from Notes (Manual) field."""
-    n = notes.lower().strip()
-    words = n.split()
-    if not words or words[0] != "set":
-        return "None"
-    if " mm" in n or n.endswith("mm") or "maran" in n:
-        return "Maran"
-    if "coby" in n:
-        return "Coby"
-    return "Unattributed"
+def _cell(row: list[str], idx: int | None) -> str:
+    """Safe cell access by index."""
+    if idx is None or idx >= len(row):
+        return ""
+    return row[idx]
 
 
 def pull_sheets() -> dict:
     """
-    Pull and aggregate financial data from the configured Google Sheet.
-    Commission values come from the actual sheet columns (Commission Closer #20,
-    Commission Setter #19), never computed from offer type.
+    Pull and aggregate financial data from the Lead-to-Cash Tracker.
+    Commission values come from the actual sheet columns (Commission Closer,
+    Commission Setter), never computed from offer type.
     Returns dict ready to merge into snapshot. No PII is included.
     """
     degraded = []
-    cols = SHEET_CONFIG["columns"]
 
     headers, rows = _fetch_tab()
     if not headers:
@@ -137,35 +145,45 @@ def pull_sheets() -> dict:
         })
         return {"sheets": None, "degraded": degraded}
 
+    # Resolve column indices
+    idx_close_date = _col_index(headers, "close_date")
+    idx_input_date = _col_index(headers, "input_date")
+    idx_cash = _col_index(headers, "cash_collected")
+    idx_contract = _col_index(headers, "contract_value")
+    idx_net_cash = _col_index(headers, "net_cash")
+    idx_comm_closer = _col_index(headers, "commission_closer")
+    idx_comm_setter = _col_index(headers, "commission_setter")
+    idx_offer_sold = _col_index(headers, "offer_sold")
+    idx_setter_name = _col_index(headers, "setter_name")
+
     today = today_sydney()
     cutoff = today - timedelta(days=WINDOW_CURRENT)
 
     # Aggregates
     cash_collected_total = 0.0
     contract_value_total = 0.0
+    net_cash_total = 0.0
     setter_commission_total = 0.0
     closer_commission_total = 0.0
     deals_won = 0
     deals_won_in_window = 0
-    commission_paid_count = 0
-    commission_tbp_count = 0
     setter_breakdown: dict[str, float] = {}
     blank_closer_commission_count = 0
     blank_setter_commission_count = 0
     unparseable_cells: list[str] = []
+    offer_breakdown: dict[str, int] = {}
 
     for row in rows:
-        stage = row.get(cols["funnel_stage"], "").strip().lower()
-        if stage != "won":
+        # Filter: closer Call Outcome (index 23) must be "Won"
+        closer_outcome = _cell(row, CLOSER_OUTCOME_IDX).strip().lower()
+        if closer_outcome != "won":
             continue
 
         deals_won += 1
 
-        # Use close_date for financial window filtering; fall back to input_date
-        close_raw = row.get(cols["close_date"], "").strip()
-        input_raw = row.get(cols["input_date"], "").strip()
-        close_dt = _parse_close_date(close_raw)
-        input_dt = _parse_date_mdy(input_raw)
+        # Date filtering: close_date primary, input_date fallback
+        close_dt = _parse_date(_cell(row, idx_close_date))
+        input_dt = _parse_date(_cell(row, idx_input_date))
         effective_date = close_dt or input_dt
 
         in_window = effective_date is not None and effective_date >= cutoff
@@ -174,16 +192,24 @@ def pull_sheets() -> dict:
 
         deals_won_in_window += 1
 
-        # Cash & contract
-        cash = _parse_money(row.get(cols["cash_collected"], ""))
-        contract = _parse_money(row.get(cols["contract_value"], ""))
+        # Offer sold
+        offer = _cell(row, idx_offer_sold).strip()
+        if offer:
+            offer_breakdown[offer] = offer_breakdown.get(offer, 0) + 1
+
+        # Cash, contract, net cash
+        cash = _parse_money(_cell(row, idx_cash))
+        contract = _parse_money(_cell(row, idx_contract))
+        net_cash = _parse_money(_cell(row, idx_net_cash))
         if cash is not None:
             cash_collected_total += cash
         if contract is not None:
             contract_value_total += contract
+        if net_cash is not None:
+            net_cash_total += net_cash
 
         # Closer commission — actual from sheet
-        closer_raw = row.get(cols["commission_closer"], "").strip()
+        closer_raw = _cell(row, idx_comm_closer).strip()
         closer_comm = _parse_money(closer_raw)
         if closer_raw and closer_comm is None:
             unparseable_cells.append(f"Commission Closer: {closer_raw!r}")
@@ -193,7 +219,7 @@ def pull_sheets() -> dict:
             blank_closer_commission_count += 1
 
         # Setter commission — actual from sheet
-        setter_raw = row.get(cols["commission_setter"], "").strip()
+        setter_raw = _cell(row, idx_comm_setter).strip()
         setter_comm = _parse_money(setter_raw)
         if setter_raw and setter_comm is None:
             unparseable_cells.append(f"Commission Setter: {setter_raw!r}")
@@ -202,20 +228,12 @@ def pull_sheets() -> dict:
         else:
             blank_setter_commission_count += 1
 
-        # Commission remarks
-        remarks = row.get(cols["commission_remarks"], "").strip().lower()
-        if remarks == "paid":
-            commission_paid_count += 1
-        elif remarks == "tbp":
-            commission_tbp_count += 1
-
-        # Setter breakdown by person
-        notes = row.get(cols["notes_manual"], "")
-        setter = _identify_setter(notes)
+        # Setter breakdown by name (from the Setter column, not Notes)
+        setter_name = _cell(row, idx_setter_name).strip() or "Unattributed"
         if setter_comm is not None:
-            setter_breakdown[setter] = setter_breakdown.get(setter, 0.0) + setter_comm
+            setter_breakdown[setter_name] = setter_breakdown.get(setter_name, 0.0) + setter_comm
 
-    # Surface blank-commission Won deals as degraded so they get verified
+    # Surface blank-commission Won deals as degraded
     if blank_closer_commission_count > 0:
         degraded.append({
             "metric": "closer_commission",
@@ -238,13 +256,11 @@ def pull_sheets() -> dict:
             "deals_won_in_window": deals_won_in_window,
             "cash_collected": cash_collected_total,
             "contract_value": contract_value_total,
+            "net_cash": net_cash_total,
             "closer_commission_total": closer_commission_total,
             "setter_commission_total": setter_commission_total,
             "setter_breakdown": setter_breakdown if setter_breakdown else None,
-            "commission_remarks": {
-                "paid_count": commission_paid_count,
-                "tbp_count": commission_tbp_count,
-            },
+            "offer_breakdown": offer_breakdown if offer_breakdown else None,
             "data_quality": {
                 "blank_closer_commission": blank_closer_commission_count,
                 "blank_setter_commission": blank_setter_commission_count,

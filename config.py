@@ -23,18 +23,23 @@ GHL_SALES_PIPELINE_ID = os.getenv("GHL_SALES_PIPELINE_ID", "JJQLCr1fl7OHyrpRwSJp
 # ── Google Sheets ────────────────────────────────────────────────────────────
 # Swappable config: change sheet ID, tab, or column names without touching code.
 SHEET_CONFIG = {
-    "sheet_id": os.getenv("SHEETS_ID", "1vFRjlKdpqfa4veDWW2BdpI3TQA9v7tUf9l2EBWNr4E0"),
-    "tab_name": os.getenv("SHEETS_TAB", "RAW DATA SHEET"),
+    "sheet_id": os.getenv("SHEETS_ID", "1BrL-xhKSm1rW9RwwkWneqcrvGKQp5D-AfAkKeRUreDY"),
+    "tab_name": os.getenv("SHEETS_TAB", "Lead-to-Cash Tracker"),
     "columns": {
-        "input_date":         os.getenv("SHEETS_COL_INPUT_DATE", "Input date"),
-        "close_date":         os.getenv("SHEETS_COL_CLOSE_DATE", "Close date"),
-        "funnel_stage":       os.getenv("SHEETS_COL_FUNNEL_STAGE", "Funnel Stage"),
+        "input_date":         os.getenv("SHEETS_COL_INPUT_DATE", "Input Date"),
+        "close_date":         os.getenv("SHEETS_COL_CLOSE_DATE", "Close Date"),
+        "closer_outcome":     os.getenv("SHEETS_COL_CLOSER_OUTCOME", "Call Outcome"),
+        "closer_outcome_idx": 23,  # second "Call Outcome" column (closer block)
+        "offer_sold":         os.getenv("SHEETS_COL_OFFER_SOLD", "Offer Sold"),
         "cash_collected":     os.getenv("SHEETS_COL_CASH_COLLECTED", "Cash Collected"),
-        "contract_value":     os.getenv("SHEETS_COL_CONTRACT_VALUE", "Contract Value"),
-        "commission_setter":  os.getenv("SHEETS_COL_COMMISSION_SETTER", "Commission Setter"),
+        "contract_value":     os.getenv("SHEETS_COL_CONTRACT_VALUE",
+                                        "4 \u00b7 MONEY (update from Stripe) Contract Value"),
+        "net_cash":           os.getenv("SHEETS_COL_NET_CASH", "Net Cash"),
+        "commission_setter":  os.getenv("SHEETS_COL_COMMISSION_SETTER",
+                                        "5 \u00b7 COMMISSIONS Commission Setter"),
         "commission_closer":  os.getenv("SHEETS_COL_COMMISSION_CLOSER", "Commission Closer"),
-        "commission_remarks": os.getenv("SHEETS_COL_COMMISSION_REMARKS", "Commission Remarks"),
-        "notes_manual":       os.getenv("SHEETS_COL_NOTES_MANUAL", "Notes (Manual)"),
+        "setter_name":        os.getenv("SHEETS_COL_SETTER_NAME",
+                                        "2 \u00b7 SETTER FUNNEL Setter"),
         "lead_source":        os.getenv("SHEETS_COL_LEAD_SOURCE", "Lead Source"),
     },
 }
