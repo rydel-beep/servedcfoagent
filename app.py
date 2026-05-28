@@ -18,8 +18,8 @@ import requests as http_requests
 from flask import Flask, jsonify, redirect, request
 
 from config import (
-    CFO_REFRESH_KEY, STRIPE_MCP_BASE,
-    XERO_CLIENT_ID, XERO_CLIENT_SECRET, XERO_REDIRECT_URI, XERO_TOKEN_FILE,
+    CFO_REFRESH_KEY, STRIPE_MCP_BASE, XERO_TOKEN_FILE,
+    XERO_CLIENT_ID, XERO_CLIENT_SECRET, XERO_REDIRECT_URI,
 )
 from snapshot import build_snapshot, load_persisted
 
@@ -93,8 +93,7 @@ def xero_connect():
 @app.route("/xero/callback", methods=["GET"])
 def xero_callback():
     """Handle Xero OAuth2 callback — exchange code for tokens, save tenant ID."""
-    import json as _json
-    import os as _os
+    from xero_pull import _save_tokens
 
     code = request.args.get("code")
     if not code:
@@ -141,20 +140,19 @@ def xero_callback():
     except http_requests.RequestException as e:
         logger.warning("Failed to fetch Xero connections: %s", e)
 
-    # Persist tokens (persist-first)
+    # Persist tokens via shared helper (uses XERO_TOKEN_FILE, creates dirs)
     tokens = {
         "access_token": access_token,
         "refresh_token": refresh_token,
         "tenant_id": tenant_id,
     }
-    _os.makedirs(_os.path.dirname(XERO_TOKEN_FILE) or ".", exist_ok=True)
-    with open(XERO_TOKEN_FILE, "w") as f:
-        _json.dump(tokens, f, indent=2)
+    _save_tokens(tokens)
     logger.info("Xero tokens saved via OAuth callback (tenant_id=%s)", tenant_id)
 
     return jsonify({
         "status": "connected",
         "tenant_id": tenant_id,
+        "token_file": XERO_TOKEN_FILE,
         "message": "Xero OAuth complete. Refresh /cfo/snapshot to include Xero data.",
     })
 
@@ -233,7 +231,11 @@ def debug_sources():
 
 @app.route("/debug/xero-raw", methods=["GET"])
 def debug_xero_raw():
-    """Dump raw Xero P&L response structure for diagnosis. Remove after debugging."""
+    """Dump raw Xero P&L response structure for diagnosis. Auth-protected."""
+    key = request.headers.get("X-CFO-KEY", "")
+    if not CFO_REFRESH_KEY or key != CFO_REFRESH_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+
     from datetime import timedelta
     from xero_pull import _load_tokens, _refresh_access_token, XERO_API_BASE
     from config import XERO_TOKEN_FILE, WINDOW_CURRENT
@@ -241,7 +243,7 @@ def debug_xero_raw():
 
     stored = _load_tokens()
     if not stored or not stored.get("refresh_token"):
-        return jsonify({"error": "No Xero tokens found"}), 404
+        return jsonify({"error": "No Xero tokens found", "token_file": XERO_TOKEN_FILE}), 404
 
     tokens = _refresh_access_token(stored)
     if not tokens:
@@ -265,9 +267,9 @@ def debug_xero_raw():
     except Exception as e:
         raw = {"error": str(e)}
 
-    # Build a structural summary
     summary = {
         "date_range": {"fromDate": str(start), "toDate": str(today), "window_days": WINDOW_CURRENT},
+        "token_file": XERO_TOKEN_FILE,
         "raw_report": raw,
     }
     return jsonify(summary)

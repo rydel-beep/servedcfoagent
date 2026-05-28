@@ -65,7 +65,16 @@ CLOSER_MAY_OVERRIDE_ACTIVE = True   # set False from June 2026 onward
 XERO_CLIENT_ID = os.getenv("XERO_CLIENT_ID", "")
 XERO_CLIENT_SECRET = os.getenv("XERO_CLIENT_SECRET", "")
 XERO_REDIRECT_URI = os.getenv("XERO_REDIRECT_URI", "")
-XERO_TOKEN_FILE = os.getenv("XERO_TOKEN_FILE", "state/xero_tokens.json")
+
+# Token file: default to /data/ (Railway Volume mount). Falls back to ./state/
+# for local dev if /data/ doesn't exist.
+_xero_token_env = os.getenv("XERO_TOKEN_FILE", "")
+if _xero_token_env:
+    XERO_TOKEN_FILE = _xero_token_env
+elif os.path.isdir("/data"):
+    XERO_TOKEN_FILE = "/data/xero_tokens.json"
+else:
+    XERO_TOKEN_FILE = "state/xero_tokens.json"
 
 # ── Snapshot ─────────────────────────────────────────────────────────────────
 SNAPSHOT_FILE = os.getenv("SNAPSHOT_FILE", "snapshot_state.json")
