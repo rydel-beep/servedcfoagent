@@ -3,10 +3,14 @@ stripe_pull.py
 --------------
 Pull metrics from the Stripe MCP service (read-only).
 POST /call  {"tool": "<name>", "arguments": {...}}
+All tool calls fire in parallel to avoid sequential timeout stacking.
 """
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import timedelta
+
 import requests
 
 from config import STRIPE_MCP_BASE, HTTP_TIMEOUT, WINDOW_CURRENT, WINDOW_PREVIOUS
@@ -36,16 +40,47 @@ def _call_tool(tool: str, arguments: dict | None = None) -> dict | None:
         return None
 
 
+def _fetch_all_tools() -> dict[str, dict | None]:
+    """Fire all Stripe MCP calls in parallel. Returns {key: result_or_None}."""
+    calls = {
+        "mrr":          ("get_stripe_mrr", {}),
+        "rev_current":  ("get_stripe_revenue", {"days": WINDOW_CURRENT}),
+        "rev_combined": ("get_stripe_revenue", {"days": WINDOW_PREVIOUS}),
+        "subs":         ("get_stripe_subscriptions", {}),
+        "customers":    ("get_stripe_customer_count", {"days": WINDOW_CURRENT}),
+        "failed":       ("get_stripe_failed_charges", {"days": WINDOW_CURRENT}),
+        "payouts":      ("get_stripe_payouts", {"days": WINDOW_CURRENT}),
+    }
+    results: dict[str, dict | None] = {}
+
+    with ThreadPoolExecutor(max_workers=7) as pool:
+        futures = {
+            pool.submit(_call_tool, tool, args): key
+            for key, (tool, args) in calls.items()
+        }
+        for future in as_completed(futures):
+            key = futures[future]
+            try:
+                results[key] = future.result()
+            except Exception as e:
+                logger.error("Stripe MCP parallel call %s raised: %s", key, e)
+                results[key] = None
+
+    return results
+
+
 def pull_stripe() -> dict:
     """
-    Pull all Stripe metrics. Returns a dict ready to merge into the snapshot.
+    Pull all Stripe metrics in parallel.
     Any failed source sets the value to None and adds a degraded entry.
     """
     degraded = []
     today = today_sydney()
 
+    r = _fetch_all_tools()
+
     # ── MRR ──────────────────────────────────────────────────────────────
-    mrr_data = _call_tool("get_stripe_mrr")
+    mrr_data = r.get("mrr")
     if mrr_data and mrr_data.get("mrr") is not None:
         mrr = mrr_data["mrr"]
     else:
@@ -53,8 +88,8 @@ def pull_stripe() -> dict:
         degraded.append({"metric": "mrr", "reason": "Stripe MCP get_stripe_mrr failed or returned null"})
 
     # ── Revenue (current window) ─────────────────────────────────────────
-    rev_current = _call_tool("get_stripe_revenue", {"days": WINDOW_CURRENT})
-    rev_combined = _call_tool("get_stripe_revenue", {"days": WINDOW_PREVIOUS})
+    rev_current = r.get("rev_current")
+    rev_combined = r.get("rev_combined")
 
     if rev_current and rev_current.get("total_aud") is not None:
         revenue_current = rev_current["total_aud"]
@@ -77,7 +112,7 @@ def pull_stripe() -> dict:
             degraded.append({"metric": "revenue_previous", "reason": "Stripe MCP 60-day revenue call failed"})
 
     # ── Subscriptions ────────────────────────────────────────────────────
-    subs_data = _call_tool("get_stripe_subscriptions")
+    subs_data = r.get("subs")
     if subs_data:
         subscriptions = {
             "active": subs_data.get("active"),
@@ -90,7 +125,7 @@ def pull_stripe() -> dict:
         degraded.append({"metric": "subscriptions", "reason": "Stripe MCP get_stripe_subscriptions failed"})
 
     # ── Customer count (known degraded — proxy only) ─────────────────────
-    cust_data = _call_tool("get_stripe_customer_count", {"days": WINDOW_CURRENT})
+    cust_data = r.get("customers")
     cust_total = None
     cust_new = None
     if cust_data:
@@ -114,7 +149,7 @@ def pull_stripe() -> dict:
         degraded.append({"metric": "customer_count", "reason": "Stripe MCP returns 'unknown' — using active subscriptions as proxy"})
 
     # ── Failed charges ───────────────────────────────────────────────────
-    fail_data = _call_tool("get_stripe_failed_charges", {"days": WINDOW_CURRENT})
+    fail_data = r.get("failed")
     if fail_data and fail_data.get("failed_count") is not None:
         failed_charges_count = fail_data["failed_count"]
     else:
@@ -122,7 +157,7 @@ def pull_stripe() -> dict:
         degraded.append({"metric": "failed_charges", "reason": "Stripe MCP get_stripe_failed_charges failed"})
 
     # ── Payouts ──────────────────────────────────────────────────────────
-    payout_data = _call_tool("get_stripe_payouts", {"days": WINDOW_CURRENT})
+    payout_data = r.get("payouts")
     if payout_data and payout_data.get("total_paid_out") is not None:
         payouts = {
             "total_paid_out": payout_data["total_paid_out"],
@@ -133,7 +168,6 @@ def pull_stripe() -> dict:
         degraded.append({"metric": "payouts", "reason": "Stripe MCP get_stripe_payouts failed"})
 
     # ── Compute period labels ────────────────────────────────────────────
-    from datetime import timedelta
     current_start = today - timedelta(days=WINDOW_CURRENT)
     previous_start = today - timedelta(days=WINDOW_PREVIOUS)
 

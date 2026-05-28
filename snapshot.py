@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 from config import SNAPSHOT_FILE
 from helpers import now_sydney
@@ -20,12 +21,17 @@ logger = logging.getLogger(__name__)
 
 
 def build_snapshot() -> dict:
-    """Pull all sources and assemble a single snapshot dict."""
+    """Pull all sources in parallel and assemble a single snapshot dict."""
     ts = now_sydney()
 
-    stripe_result = pull_stripe()
-    ghl_result = pull_ghl()
-    sheets_result = pull_sheets()
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        f_stripe = pool.submit(pull_stripe)
+        f_ghl = pool.submit(pull_ghl)
+        f_sheets = pool.submit(pull_sheets)
+
+    stripe_result = f_stripe.result()
+    ghl_result = f_ghl.result()
+    sheets_result = f_sheets.result()
 
     # Merge degraded lists
     degraded = (
