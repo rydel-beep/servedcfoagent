@@ -6,9 +6,13 @@ Pull sales pipeline metrics from GHL for the Served Marketing location.
 from __future__ import annotations
 
 import logging
+import time
 from datetime import timedelta
 
 import requests
+
+MAX_PAGES = 20  # safety cap: 20 pages × 100 = 2000 opps max
+MAX_PULL_SECONDS = 30  # total time budget for all GHL calls
 
 from config import (
     GHL_BASE, GHL_API_KEY, GHL_LOCATION_ID,
@@ -47,7 +51,7 @@ def _fetch_pipeline_stages() -> dict[str, str]:
 
 
 def _fetch_all_opportunities() -> list[dict]:
-    """Paginate all opportunities in the sales pipeline."""
+    """Paginate all opportunities in the sales pipeline (capped)."""
     opps: list[dict] = []
     params = {
         "pipeline_id": GHL_SALES_PIPELINE_ID,
@@ -55,7 +59,11 @@ def _fetch_all_opportunities() -> list[dict]:
         "limit": 100,
     }
     page = 1
-    while True:
+    t0 = time.time()
+    while page <= MAX_PAGES:
+        if time.time() - t0 > MAX_PULL_SECONDS:
+            logger.warning("GHL opps pull hit %ds time cap at page %d (%d opps)", MAX_PULL_SECONDS, page, len(opps))
+            break
         try:
             resp = requests.get(
                 f"{GHL_BASE}/opportunities/search",

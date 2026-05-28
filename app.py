@@ -101,6 +101,38 @@ def debug_stripe_ping():
     })
 
 
+@app.route("/debug/sources", methods=["GET"])
+def debug_sources():
+    """Test each source individually with timing. Remove after debugging."""
+    results = {}
+
+    t0 = time.time()
+    try:
+        from stripe_pull import pull_stripe
+        r = pull_stripe()
+        results["stripe"] = {"ms": round((time.time() - t0) * 1000), "ok": True, "degraded": len(r.get("degraded", []))}
+    except Exception as e:
+        results["stripe"] = {"ms": round((time.time() - t0) * 1000), "error": str(e)}
+
+    t0 = time.time()
+    try:
+        from ghl_pull import pull_ghl
+        r = pull_ghl()
+        results["ghl"] = {"ms": round((time.time() - t0) * 1000), "ok": True, "degraded": len(r.get("degraded", []))}
+    except Exception as e:
+        results["ghl"] = {"ms": round((time.time() - t0) * 1000), "error": str(e)}
+
+    t0 = time.time()
+    try:
+        from sheets_pull import pull_sheets
+        r = pull_sheets()
+        results["sheets"] = {"ms": round((time.time() - t0) * 1000), "ok": True, "degraded": len(r.get("degraded", []))}
+    except Exception as e:
+        results["sheets"] = {"ms": round((time.time() - t0) * 1000), "error": str(e)}
+
+    return jsonify(results)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=True)
