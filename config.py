@@ -44,6 +44,16 @@ SHEET_CONFIG = {
     },
 }
 
+# ── Finance Sheet (Salary + Recognized Revenue) ────────────────────────────
+FINANCE_SHEET_CONFIG = {
+    "sheet_id": os.getenv("FINANCE_SHEET_ID", "1n7OcGrOsdWb6OgFqZHzOYCcgUG8U4P3qWwy89w00CTg"),
+    "salary_tab": os.getenv("FINANCE_SALARY_TAB", "SALARY"),
+    "recognized_tab": os.getenv("FINANCE_RECOGNIZED_TAB", "RECOGNIZED"),
+    "salary_aud_col": os.getenv("FINANCE_SALARY_AUD_COL", "SALARY (AUD)"),
+    "salary_total_label": "TOTAL SALARY (AUD)",
+    "payroll_variance_threshold": 1.5,  # flag when xero wages > N × baseline
+}
+
 # ── Closer Commission (Kalin) — Layer 1 per-deal, REFERENCE ONLY ────────────
 # Source: Closer Comp Plan v3.2, May 2026. Layer 1 (per-deal) ONLY.
 # KPI bonus / milestones / cash-bonus tiers are NOT modelled here (mix-dependent).

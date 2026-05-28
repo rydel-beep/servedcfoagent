@@ -152,6 +152,33 @@ def _extract_section_total(report_rows: list[dict], section_title: str) -> float
     return None
 
 
+def _extract_wages(report_rows: list[dict]) -> float | None:
+    """Sum wages + superannuation lines from the Operating Expenses section."""
+    wage_keywords = {"wages and salaries", "superannuation"}
+    total = 0.0
+    found = False
+    for section in report_rows:
+        if section.get("RowType") != "Section":
+            continue
+        title = section.get("Title", "").strip().lower()
+        if "operating expenses" not in title and "expense" not in title:
+            continue
+        for row in section.get("Rows", []):
+            if row.get("RowType") != "Row":
+                continue
+            cells = row.get("Cells", [])
+            if len(cells) < 2:
+                continue
+            label = cells[0].get("Value", "").strip().lower()
+            if label in wage_keywords:
+                try:
+                    total += float(cells[1].get("Value", 0))
+                    found = True
+                except (ValueError, TypeError):
+                    pass
+    return total if found else None
+
+
 def _parse_pnl(data: dict) -> dict:
     """Parse Xero P&L response into structured profit data."""
     reports = data.get("Reports", [])
@@ -163,7 +190,11 @@ def _parse_pnl(data: dict) -> dict:
 
     revenue = _extract_section_total(rows, "Income") or _extract_section_total(rows, "Revenue")
     cogs = _extract_section_total(rows, "Cost of Sales") or _extract_section_total(rows, "Direct Costs")
+    other_income = _extract_section_total(rows, "Other Income")
     operating_expenses = _extract_section_total(rows, "Operating Expenses") or _extract_section_total(rows, "Expense")
+
+    # Extract Xero wages line items for payroll cross-check
+    xero_wages = _extract_wages(rows)
 
     gross_profit = None
     if revenue is not None and cogs is not None:
@@ -175,19 +206,25 @@ def _parse_pnl(data: dict) -> dict:
     if gross_profit is not None and revenue and revenue != 0:
         gross_margin_pct = round(gross_profit / revenue * 100, 1)
 
+    # net_profit = gross_profit + other_income - operating_expenses
     net_profit = None
+    gp = gross_profit if gross_profit is not None else 0
+    oi = other_income if other_income is not None else 0
+    oe = abs(operating_expenses) if operating_expenses is not None else 0
     if gross_profit is not None and operating_expenses is not None:
-        net_profit = gross_profit - abs(operating_expenses)
+        net_profit = round(gp + oi - oe, 2)
     elif gross_profit is not None:
-        net_profit = gross_profit
+        net_profit = round(gp + oi, 2)
 
     return {
         "revenue": revenue,
         "cogs": abs(cogs) if cogs is not None else None,
         "gross_profit": gross_profit,
         "gross_margin_pct": gross_margin_pct,
+        "other_income": other_income,
         "operating_expenses": abs(operating_expenses) if operating_expenses is not None else None,
         "net_profit": net_profit,
+        "xero_wages": xero_wages,
     }
 
 

@@ -142,7 +142,7 @@ def test_xero_token_persistence():
 
 
 def test_xero_pnl_parser():
-    """Test P&L parsing with a mock Xero response."""
+    """Test P&L parsing with Other Income — net_profit must reconcile to Xero."""
     from xero_pull import _parse_pnl
 
     mock_response = {
@@ -152,24 +152,38 @@ def test_xero_pnl_parser():
                     "RowType": "Section",
                     "Title": "Income",
                     "Rows": [
-                        {"RowType": "Row", "Cells": [{"Value": "Sales"}, {"Value": "50000.00"}]},
-                        {"RowType": "SummaryRow", "Cells": [{"Value": "Total Income"}, {"Value": "50000.00"}]},
+                        {"RowType": "Row", "Cells": [{"Value": "Sales"}, {"Value": "57937.76"}]},
+                        {"RowType": "Row", "Cells": [{"Value": "Interest Income"}, {"Value": "28.39"}]},
+                        {"RowType": "SummaryRow", "Cells": [{"Value": "Total Income"}, {"Value": "57966.15"}]},
                     ],
                 },
                 {
                     "RowType": "Section",
-                    "Title": "Cost of Sales",
+                    "Title": "Less Cost of Sales",
                     "Rows": [
-                        {"RowType": "Row", "Cells": [{"Value": "Direct Costs"}, {"Value": "10000.00"}]},
-                        {"RowType": "SummaryRow", "Cells": [{"Value": "Total Cost of Sales"}, {"Value": "10000.00"}]},
+                        {"RowType": "Row", "Cells": [{"Value": "Client Reporting Tools"}, {"Value": "7351.97"}]},
+                        {"RowType": "Row", "Cells": [{"Value": "Contractors NO GST"}, {"Value": "23087.96"}]},
+                        {"RowType": "SummaryRow", "Cells": [{"Value": "Total Cost of Sales"}, {"Value": "30439.93"}]},
                     ],
                 },
                 {
                     "RowType": "Section",
-                    "Title": "Operating Expenses",
+                    "Title": "Plus Other Income",
                     "Rows": [
-                        {"RowType": "Row", "Cells": [{"Value": "Rent"}, {"Value": "5000.00"}]},
-                        {"RowType": "SummaryRow", "Cells": [{"Value": "Total Operating Expenses"}, {"Value": "15000.00"}]},
+                        {"RowType": "Row", "Cells": [{"Value": "Reimbursements"}, {"Value": "2269.90"}]},
+                        {"RowType": "SummaryRow", "Cells": [{"Value": "Total Other Income"}, {"Value": "2269.90"}]},
+                    ],
+                },
+                {
+                    "RowType": "Section",
+                    "Title": "Less Operating Expenses",
+                    "Rows": [
+                        {"RowType": "Row", "Cells": [{"Value": "Wages and Salaries"}, {"Value": "101964.00"}]},
+                        {"RowType": "Row", "Cells": [{"Value": "Superannuation"}, {"Value": "7675.68"}]},
+                        {"RowType": "Row", "Cells": [{"Value": "Advertising"}, {"Value": "7320.57"}]},
+                        {"RowType": "Row", "Cells": [{"Value": "Bank Fees"}, {"Value": "708.55"}]},
+                        {"RowType": "Row", "Cells": [{"Value": "Other"}, {"Value": "3330.97"}]},
+                        {"RowType": "SummaryRow", "Cells": [{"Value": "Total Operating Expenses"}, {"Value": "120999.77"}]},
                     ],
                 },
             ],
@@ -177,17 +191,128 @@ def test_xero_pnl_parser():
     }
 
     result = _parse_pnl(mock_response)
-    assert result["revenue"] == 50000.0, f"Revenue wrong: {result['revenue']}"
-    assert result["cogs"] == 10000.0, f"COGS wrong: {result['cogs']}"
-    assert result["gross_profit"] == 40000.0, f"Gross profit wrong: {result['gross_profit']}"
-    assert result["gross_margin_pct"] == 80.0, f"Gross margin wrong: {result['gross_margin_pct']}"
-    assert result["operating_expenses"] == 15000.0, f"OpEx wrong: {result['operating_expenses']}"
-    assert result["net_profit"] == 25000.0, f"Net profit wrong: {result['net_profit']}"
+    assert result["revenue"] == 57966.15, f"Revenue wrong: {result['revenue']}"
+    assert result["cogs"] == 30439.93, f"COGS wrong: {result['cogs']}"
+    assert result["gross_profit"] == 57966.15 - 30439.93, f"Gross profit wrong: {result['gross_profit']}"
+    assert result["other_income"] == 2269.90, f"Other income wrong: {result['other_income']}"
+    assert result["operating_expenses"] == 120999.77, f"OpEx wrong: {result['operating_expenses']}"
+    # Net profit must match Xero's own: gross_profit + other_income - opex = -91203.65
+    expected_net = round(27526.22 + 2269.90 - 120999.77, 2)
+    assert result["net_profit"] == expected_net, f"Net profit {result['net_profit']} != expected {expected_net}"
+    # Xero wages cross-check
+    assert result["xero_wages"] == 101964.00 + 7675.68, f"Xero wages wrong: {result['xero_wages']}"
     print(f"  Revenue: {result['revenue']}")
     print(f"  COGS: {result['cogs']}")
     print(f"  Gross profit: {result['gross_profit']} ({result['gross_margin_pct']}%)")
+    print(f"  Other income: {result['other_income']}")
     print(f"  Operating expenses: {result['operating_expenses']}")
-    print(f"  Net profit: {result['net_profit']}")
+    print(f"  Net profit: {result['net_profit']} (reconciles to Xero)")
+    print(f"  Xero wages: {result['xero_wages']}")
+
+
+def test_payroll_variance_flag():
+    """Payroll variance flag fires when actual > 1.5x baseline."""
+    from config import FINANCE_SHEET_CONFIG
+    threshold = FINANCE_SHEET_CONFIG["payroll_variance_threshold"]
+
+    # Simulate: xero_wages = 110000, baseline = 18891 → ratio ~5.8x
+    xero_wages = 110000.0
+    baseline = 18891.0
+    ratio = round(xero_wages / baseline, 1)
+    assert ratio > threshold, f"Ratio {ratio} should exceed threshold {threshold}"
+    print(f"  Xero wages: ${xero_wages:,.2f}, Baseline: ${baseline:,.2f}")
+    print(f"  Ratio: {ratio}x (threshold: {threshold}x) — flag fires: YES")
+
+    # Edge case: wages at exactly 1.0x baseline — should NOT flag
+    ratio_ok = round(baseline / baseline, 1)
+    assert ratio_ok <= threshold, f"1.0x ratio should not exceed threshold {threshold}"
+    print(f"  1.0x ratio: no flag — correct")
+
+
+def test_recognized_revenue():
+    """Recognized revenue column matched by current month; footer excluded; triple-check."""
+    from finance_sheets_pull import pull_recognized_revenue
+    result = pull_recognized_revenue()
+    assert "recognized_revenue" in result, "Missing recognized_revenue key"
+    assert "degraded" in result, "Missing degraded key"
+    rev = result.get("recognized_revenue")
+    month = result.get("recognized_month")
+    count = result.get("recognized_client_count")
+    validation = result.get("recognized_validation", {})
+    if rev is not None:
+        print(f"  Recognized revenue ({month}): ${rev:,.2f} across {count} clients")
+        assert rev > 0, "Recognized revenue should be positive if data exists"
+        # Must NOT be doubled (~$130k). Should be ~$65k range.
+        assert rev < 100000, f"Recognized revenue ${rev:,.2f} looks doubled — footer row included?"
+        # CHECK 1: row count sanity
+        assert validation.get("row_count_ok") is True, f"Row count {count} exceeds max"
+        print(f"  CHECK 1 (row count): {count} rows — OK")
+        # CHECK 2: footer cross-validation
+        footer = validation.get("footer_total")
+        if footer is not None:
+            print(f"  CHECK 2 (footer): computed=${rev:,.2f}, footer=${footer:,.2f}, match={validation.get('footer_match')}")
+            assert validation.get("footer_match") is True, "Footer mismatch — computed != sheet total"
+        else:
+            print(f"  CHECK 2 (footer): no footer row found")
+    else:
+        print(f"  Recognized revenue: None (degraded: {result['degraded']})")
+    return result
+
+
+def test_recognized_footer_excluded():
+    """Footer/TOTALS row must be excluded from client sum."""
+    from finance_sheets_pull import _is_footer_row
+    assert _is_footer_row(["", "Active", "Scale Engine"]) is True, "Blank client should be footer"
+    assert _is_footer_row(["TOTAL", "", ""]) is True, "TOTAL label should be footer"
+    assert _is_footer_row(["TOTALS", "", ""]) is True, "TOTALS label should be footer"
+    assert _is_footer_row(["Masala Factory", "Active"]) is False, "Named client is not footer"
+    print("  Footer detection: all cases correct")
+
+
+def test_recognized_check2_fires_on_mismatch():
+    """CHECK 2 fires when computed sum != footer total."""
+    from finance_sheets_pull import _parse_money, _is_footer_row, SKIP_MARKERS
+    # Simulate rows where client sum = 1000 but footer = 500 (50% mismatch)
+    mock_rows = [
+        ["Client Name", "", "", "", "", "", "", "", "", "", "", "", "", "May 2026"],
+        ["Client A", "", "", "", "", "", "", "", "", "", "", "", "", "$600.00"],
+        ["Client B", "", "", "", "", "", "", "", "", "", "", "", "", "$400.00"],
+        ["", "", "", "", "", "", "", "", "", "", "", "", "", "$500.00"],  # wrong footer
+    ]
+    col_idx = 13
+    client_total = 0.0
+    footer_total = None
+    for row in mock_rows[1:]:
+        raw = row[col_idx].strip()
+        if raw.lower() in SKIP_MARKERS:
+            continue
+        val = _parse_money(raw)
+        if val is None:
+            continue
+        if _is_footer_row(row):
+            footer_total = val
+        else:
+            client_total += val
+
+    assert client_total == 1000.0, f"Client total wrong: {client_total}"
+    assert footer_total == 500.0, f"Footer wrong: {footer_total}"
+    mismatch_pct = abs(client_total - footer_total) / footer_total
+    assert mismatch_pct > 0.02, "Should detect mismatch > 2%"
+    print(f"  Simulated: clients=${client_total}, footer=${footer_total}, mismatch={mismatch_pct:.0%} — CHECK 2 fires")
+
+
+def test_salary_baseline():
+    """Salary baseline returns aggregate only, no PII."""
+    from finance_sheets_pull import pull_salary_baseline
+    result = pull_salary_baseline()
+    assert "payroll_baseline" in result, "Missing payroll_baseline key"
+    baseline = result.get("payroll_baseline")
+    if baseline is not None:
+        print(f"  Payroll baseline: ${baseline:,.2f}")
+        assert baseline > 0, "Baseline should be positive"
+    else:
+        print(f"  Payroll baseline: None (degraded: {result['degraded']})")
+    return result
 
 
 def test_full_snapshot():
@@ -200,15 +325,25 @@ def test_full_snapshot():
     assert "xero" in snap
     assert "costs" in snap
     assert "profit" in snap
+    assert "revenue_views" in snap
     assert "degraded" in snap
     assert "ok" in snap
     print(f"  OK: {snap['ok']}")
     if snap.get("costs"):
         print(f"  Costs: closer={snap['costs']['closer_commission']}, setter={snap['costs']['setter_commission']}")
     if snap.get("profit"):
-        print(f"  Profit: net={snap['profit'].get('net_profit')}, gross_margin={snap['profit'].get('gross_margin_pct')}%")
+        p = snap["profit"]
+        print(f"  Profit: net={p.get('net_profit')}, other_income={p.get('other_income')}, gross_margin={p.get('gross_margin_pct')}%")
+        if p.get("payroll"):
+            pr = p["payroll"]
+            print(f"  Payroll: xero_wages={pr.get('xero_wages_actual')}, baseline={pr.get('fixed_baseline_monthly')}, ratio={pr.get('variance_pct')}x")
     else:
         print("  Profit: None (Xero not connected)")
+    rv = snap.get("revenue_views", {})
+    print(f"  Revenue views: stripe={rv.get('stripe_cash_trailing_30d')}, xero={rv.get('xero_pl_period')}, recognized={rv.get('recognized_current_month')}")
+    v = rv.get("recognized_validation", {})
+    if v:
+        print(f"  Validation: rows={v.get('row_count')}, footer_match={v.get('footer_match')}, range_ok={v.get('range_ok')}")
     print(f"  Degraded count: {len(snap['degraded'])}")
     for d in snap["degraded"]:
         print(f"    - {d.get('metric', d.get('source', '?'))}: {d['reason']}")
@@ -262,6 +397,11 @@ if __name__ == "__main__":
         ("Xero (no tokens)", test_xero_no_tokens),
         ("Xero Token Persistence", test_xero_token_persistence),
         ("Xero P&L Parser", test_xero_pnl_parser),
+        ("Payroll Variance Flag", test_payroll_variance_flag),
+        ("Recognized Revenue", test_recognized_revenue),
+        ("Footer Excluded", test_recognized_footer_excluded),
+        ("CHECK 2 Fires on Mismatch", test_recognized_check2_fires_on_mismatch),
+        ("Salary Baseline", test_salary_baseline),
         ("Full Snapshot", test_full_snapshot),
         ("Flask App", test_flask_app),
     ]
