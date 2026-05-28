@@ -15,9 +15,12 @@ import os
 import time
 
 import requests as http_requests
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, redirect, request
 
-from config import CFO_REFRESH_KEY, STRIPE_MCP_BASE
+from config import (
+    CFO_REFRESH_KEY, STRIPE_MCP_BASE,
+    XERO_CLIENT_ID, XERO_CLIENT_SECRET, XERO_REDIRECT_URI, XERO_TOKEN_FILE,
+)
 from snapshot import build_snapshot, load_persisted
 
 logging.basicConfig(
@@ -67,6 +70,93 @@ def refresh_snapshot():
     snap = build_snapshot()
     _current_snapshot = snap
     return jsonify({"status": "refreshed", "ok": snap.get("ok"), "degraded_count": len(snap.get("degraded", []))})
+
+
+XERO_SCOPES = "offline_access accounting.reports.read accounting.transactions.read accounting.settings.read"
+
+
+@app.route("/xero/connect", methods=["GET"])
+def xero_connect():
+    """Start Xero OAuth2 flow — redirects browser to Xero consent page."""
+    if not XERO_CLIENT_ID or not XERO_REDIRECT_URI:
+        return jsonify({"error": "XERO_CLIENT_ID or XERO_REDIRECT_URI not configured"}), 500
+    auth_url = (
+        "https://login.xero.com/identity/connect/authorize"
+        f"?response_type=code"
+        f"&client_id={XERO_CLIENT_ID}"
+        f"&redirect_uri={XERO_REDIRECT_URI}"
+        f"&scope={XERO_SCOPES.replace(' ', '+')}"
+    )
+    return redirect(auth_url)
+
+
+@app.route("/xero/callback", methods=["GET"])
+def xero_callback():
+    """Handle Xero OAuth2 callback — exchange code for tokens, save tenant ID."""
+    import json as _json
+    import os as _os
+
+    code = request.args.get("code")
+    if not code:
+        return jsonify({"error": "Missing authorization code"}), 400
+
+    # Exchange code for tokens
+    try:
+        token_resp = http_requests.post(
+            "https://identity.xero.com/connect/token",
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": XERO_REDIRECT_URI,
+                "client_id": XERO_CLIENT_ID,
+                "client_secret": XERO_CLIENT_SECRET,
+            },
+            timeout=(5, 15),
+        )
+        if token_resp.status_code != 200:
+            logger.error("Xero token exchange failed %d: %s", token_resp.status_code, token_resp.text[:300])
+            return jsonify({"error": "Token exchange failed", "detail": token_resp.text[:300]}), 502
+        token_data = token_resp.json()
+    except http_requests.RequestException as e:
+        logger.error("Xero token exchange request failed: %s", e)
+        return jsonify({"error": f"Token exchange request failed: {e}"}), 502
+
+    access_token = token_data.get("access_token")
+    refresh_token = token_data.get("refresh_token")
+    if not access_token or not refresh_token:
+        return jsonify({"error": "Missing tokens in Xero response"}), 502
+
+    # Fetch tenant ID from connections endpoint
+    tenant_id = None
+    try:
+        conn_resp = http_requests.get(
+            "https://api.xero.com/connections",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=(5, 10),
+        )
+        if conn_resp.status_code == 200:
+            connections = conn_resp.json()
+            if connections:
+                tenant_id = connections[0].get("tenantId")
+    except http_requests.RequestException as e:
+        logger.warning("Failed to fetch Xero connections: %s", e)
+
+    # Persist tokens (persist-first)
+    tokens = {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "tenant_id": tenant_id,
+    }
+    _os.makedirs(_os.path.dirname(XERO_TOKEN_FILE) or ".", exist_ok=True)
+    with open(XERO_TOKEN_FILE, "w") as f:
+        _json.dump(tokens, f, indent=2)
+    logger.info("Xero tokens saved via OAuth callback (tenant_id=%s)", tenant_id)
+
+    return jsonify({
+        "status": "connected",
+        "tenant_id": tenant_id,
+        "message": "Xero OAuth complete. Refresh /cfo/snapshot to include Xero data.",
+    })
 
 
 @app.route("/debug/stripe-ping", methods=["GET"])
@@ -129,6 +219,14 @@ def debug_sources():
         results["sheets"] = {"ms": round((time.time() - t0) * 1000), "ok": True, "degraded": len(r.get("degraded", []))}
     except Exception as e:
         results["sheets"] = {"ms": round((time.time() - t0) * 1000), "error": str(e)}
+
+    t0 = time.time()
+    try:
+        from xero_pull import pull_xero
+        r = pull_xero()
+        results["xero"] = {"ms": round((time.time() - t0) * 1000), "ok": r.get("xero") is not None, "degraded": len(r.get("degraded", []))}
+    except Exception as e:
+        results["xero"] = {"ms": round((time.time() - t0) * 1000), "error": str(e)}
 
     return jsonify(results)
 

@@ -82,6 +82,114 @@ def test_ghl():
     return result
 
 
+def test_xero_no_tokens():
+    """Xero pull without tokens should degrade gracefully, not crash."""
+    from xero_pull import pull_xero
+    result = pull_xero()
+    assert "xero" in result, "Missing 'xero' key"
+    assert "degraded" in result, "Missing 'degraded' key"
+    # Without tokens configured, xero should be None with a degraded entry
+    if result["xero"] is None:
+        assert len(result["degraded"]) > 0, "Should have degraded entry when xero is None"
+        print(f"  Xero correctly degraded: {result['degraded'][0]['reason']}")
+    else:
+        print(f"  Xero returned data (tokens found): revenue={result['xero'].get('revenue')}")
+    return result
+
+
+def test_xero_token_persistence():
+    """Test that token save/load round-trips correctly."""
+    import tempfile
+    import json
+    from xero_pull import _save_tokens, _load_tokens
+    import xero_pull
+
+    # Use a temp file
+    original = xero_pull.XERO_TOKEN_FILE
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        tmp_path = f.name
+
+    try:
+        # Monkey-patch the token file path
+        import config
+        old_config = config.XERO_TOKEN_FILE
+        config.XERO_TOKEN_FILE = tmp_path
+        # Also patch the module-level reference
+        xero_pull_module = sys.modules["xero_pull"]
+        xero_pull_module.XERO_TOKEN_FILE = tmp_path
+
+        test_tokens = {
+            "access_token": "test_access_123",
+            "refresh_token": "test_refresh_456",
+            "tenant_id": "test_tenant_789",
+        }
+        _save_tokens(test_tokens)
+        loaded = _load_tokens()
+        assert loaded is not None, "Failed to load saved tokens"
+        assert loaded["refresh_token"] == "test_refresh_456", "Refresh token mismatch"
+        assert loaded["tenant_id"] == "test_tenant_789", "Tenant ID mismatch"
+        print("  Token round-trip: OK")
+
+        # Verify file contents
+        with open(tmp_path) as f:
+            raw = json.load(f)
+        assert raw["refresh_token"] == "test_refresh_456"
+        print("  Token file contents verified")
+    finally:
+        config.XERO_TOKEN_FILE = old_config
+        xero_pull_module.XERO_TOKEN_FILE = original
+        os.unlink(tmp_path)
+
+
+def test_xero_pnl_parser():
+    """Test P&L parsing with a mock Xero response."""
+    from xero_pull import _parse_pnl
+
+    mock_response = {
+        "Reports": [{
+            "Rows": [
+                {
+                    "RowType": "Section",
+                    "Title": "Income",
+                    "Rows": [
+                        {"RowType": "Row", "Cells": [{"Value": "Sales"}, {"Value": "50000.00"}]},
+                        {"RowType": "SummaryRow", "Cells": [{"Value": "Total Income"}, {"Value": "50000.00"}]},
+                    ],
+                },
+                {
+                    "RowType": "Section",
+                    "Title": "Cost of Sales",
+                    "Rows": [
+                        {"RowType": "Row", "Cells": [{"Value": "Direct Costs"}, {"Value": "10000.00"}]},
+                        {"RowType": "SummaryRow", "Cells": [{"Value": "Total Cost of Sales"}, {"Value": "10000.00"}]},
+                    ],
+                },
+                {
+                    "RowType": "Section",
+                    "Title": "Operating Expenses",
+                    "Rows": [
+                        {"RowType": "Row", "Cells": [{"Value": "Rent"}, {"Value": "5000.00"}]},
+                        {"RowType": "SummaryRow", "Cells": [{"Value": "Total Operating Expenses"}, {"Value": "15000.00"}]},
+                    ],
+                },
+            ],
+        }],
+    }
+
+    result = _parse_pnl(mock_response)
+    assert result["revenue"] == 50000.0, f"Revenue wrong: {result['revenue']}"
+    assert result["cogs"] == 10000.0, f"COGS wrong: {result['cogs']}"
+    assert result["gross_profit"] == 40000.0, f"Gross profit wrong: {result['gross_profit']}"
+    assert result["gross_margin_pct"] == 80.0, f"Gross margin wrong: {result['gross_margin_pct']}"
+    assert result["operating_expenses"] == 15000.0, f"OpEx wrong: {result['operating_expenses']}"
+    assert result["net_profit"] == 25000.0, f"Net profit wrong: {result['net_profit']}"
+    print(f"  Revenue: {result['revenue']}")
+    print(f"  COGS: {result['cogs']}")
+    print(f"  Gross profit: {result['gross_profit']} ({result['gross_margin_pct']}%)")
+    print(f"  Operating expenses: {result['operating_expenses']}")
+    print(f"  Net profit: {result['net_profit']}")
+
+
 def test_full_snapshot():
     from snapshot import build_snapshot
     snap = build_snapshot()
@@ -89,12 +197,18 @@ def test_full_snapshot():
     assert "stripe" in snap
     assert "ghl" in snap
     assert "sheets" in snap
+    assert "xero" in snap
     assert "costs" in snap
+    assert "profit" in snap
     assert "degraded" in snap
     assert "ok" in snap
     print(f"  OK: {snap['ok']}")
     if snap.get("costs"):
         print(f"  Costs: closer={snap['costs']['closer_commission']}, setter={snap['costs']['setter_commission']}")
+    if snap.get("profit"):
+        print(f"  Profit: net={snap['profit'].get('net_profit')}, gross_margin={snap['profit'].get('gross_margin_pct')}%")
+    else:
+        print("  Profit: None (Xero not connected)")
     print(f"  Degraded count: {len(snap['degraded'])}")
     for d in snap["degraded"]:
         print(f"    - {d.get('metric', d.get('source', '?'))}: {d['reason']}")
@@ -145,6 +259,9 @@ if __name__ == "__main__":
         ("Stripe Pull", test_stripe),
         ("Sheets Pull", test_sheets),
         ("GHL Pull", test_ghl),
+        ("Xero (no tokens)", test_xero_no_tokens),
+        ("Xero Token Persistence", test_xero_token_persistence),
+        ("Xero P&L Parser", test_xero_pnl_parser),
         ("Full Snapshot", test_full_snapshot),
         ("Flask App", test_flask_app),
     ]

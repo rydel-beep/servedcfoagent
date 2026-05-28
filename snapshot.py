@@ -16,6 +16,7 @@ from helpers import now_sydney
 from stripe_pull import pull_stripe
 from ghl_pull import pull_ghl
 from sheets_pull import pull_sheets
+from xero_pull import pull_xero
 
 logger = logging.getLogger(__name__)
 
@@ -24,20 +25,23 @@ def build_snapshot() -> dict:
     """Pull all sources in parallel and assemble a single snapshot dict."""
     ts = now_sydney()
 
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    with ThreadPoolExecutor(max_workers=4) as pool:
         f_stripe = pool.submit(pull_stripe)
         f_ghl = pool.submit(pull_ghl)
         f_sheets = pool.submit(pull_sheets)
+        f_xero = pool.submit(pull_xero)
 
     stripe_result = f_stripe.result()
     ghl_result = f_ghl.result()
     sheets_result = f_sheets.result()
+    xero_result = f_xero.result()
 
     # Merge degraded lists
     degraded = (
         stripe_result.get("degraded", [])
         + ghl_result.get("degraded", [])
         + sheets_result.get("degraded", [])
+        + xero_result.get("degraded", [])
     )
 
     # Build costs block from actual sheet commission values
@@ -50,6 +54,21 @@ def build_snapshot() -> dict:
             "source": "sheet actuals (Commission Closer #20, Commission Setter #19)",
         }
 
+    # Build profit block from Xero P&L data
+    xero_data = xero_result.get("xero")
+    profit = None
+    if xero_data:
+        profit = {
+            "revenue": xero_data.get("revenue"),
+            "cogs": xero_data.get("cogs"),
+            "gross_profit": xero_data.get("gross_profit"),
+            "gross_margin_pct": xero_data.get("gross_margin_pct"),
+            "operating_expenses": xero_data.get("operating_expenses"),
+            "net_profit": xero_data.get("net_profit"),
+            "period": xero_data.get("period"),
+            "source": "Xero P&L report",
+        }
+
     snapshot = {
         "generated_at": ts.isoformat(),
         "timezone": "Australia/Sydney",
@@ -57,7 +76,9 @@ def build_snapshot() -> dict:
         "stripe": stripe_result.get("stripe"),
         "ghl": ghl_result.get("ghl"),
         "sheets": sheets_data,
+        "xero": xero_data,
         "costs": costs,
+        "profit": profit,
         "degraded": degraded if degraded else [],
         "ok": len(degraded) == 0,
     }

@@ -61,6 +61,12 @@ CLOSER_COMMISSION_BY_OFFER = {
 CLOSER_GP_MAY_OVERRIDE_AUD = 900
 CLOSER_MAY_OVERRIDE_ACTIVE = True   # set False from June 2026 onward
 
+# ── Xero ───────────────────────────────────────────────────────────────────
+XERO_CLIENT_ID = os.getenv("XERO_CLIENT_ID", "")
+XERO_CLIENT_SECRET = os.getenv("XERO_CLIENT_SECRET", "")
+XERO_REDIRECT_URI = os.getenv("XERO_REDIRECT_URI", "")
+XERO_TOKEN_FILE = os.getenv("XERO_TOKEN_FILE", "state/xero_tokens.json")
+
 # ── Snapshot ─────────────────────────────────────────────────────────────────
 SNAPSHOT_FILE = os.getenv("SNAPSHOT_FILE", "snapshot_state.json")
 CFO_REFRESH_KEY = os.getenv("CFO_REFRESH_KEY", "")
