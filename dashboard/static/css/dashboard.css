@@ -395,6 +395,127 @@ body {
 }
 .data-table tbody tr:hover td { background: rgba(255,255,255,0.02); }
 
+/* ── Month Performance ─────────────────── */
+.month-perf-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 12px; margin-bottom: 16px;
+}
+.mp-card {
+  padding: 16px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.mp-card.healthy { border-color: rgba(34,197,94,0.25); }
+.mp-card.watch { border-color: rgba(245,158,11,0.25); }
+.mp-card.critical { border-color: rgba(239,68,68,0.25); }
+.mp-label {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.8px; color: var(--text-muted);
+}
+.mp-value {
+  font-size: 28px; font-weight: 700; letter-spacing: -0.5px;
+}
+.mp-value.healthy { color: var(--green); }
+.mp-value.watch { color: var(--amber); }
+.mp-value.critical { color: var(--red); }
+.mp-value.unknown { color: var(--text-muted); }
+.mp-benchmark {
+  font-size: 11px; color: var(--text-muted);
+}
+.mp-benchmark strong {
+  color: var(--text-secondary); font-weight: 600;
+}
+.month-perf-reads {
+  display: flex; flex-direction: column; gap: 6px;
+  padding-top: 12px; border-top: 1px solid var(--border);
+}
+.mp-read {
+  font-size: 12px; color: var(--text-secondary);
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.015);
+  border-radius: var(--radius-sm);
+  line-height: 1.5;
+}
+.mp-read .mp-read-label {
+  font-weight: 600; color: var(--text); margin-right: 6px;
+}
+.mp-read.healthy { border-left: 3px solid var(--green); }
+.mp-read.watch { border-left: 3px solid var(--amber); }
+.mp-read.critical { border-left: 3px solid var(--red); }
+.mp-read.unknown { border-left: 3px solid var(--text-muted); }
+
+@media (max-width: 960px) {
+  .month-perf-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .month-perf-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Performance Analysis ─────────────── */
+.window-tabs {
+  display: flex; gap: 4px;
+}
+.window-tab {
+  padding: 4px 10px; border-radius: 6px;
+  font-size: 11px; font-weight: 600;
+  color: var(--text-muted); background: transparent;
+  border: 1px solid var(--border);
+  cursor: pointer; transition: all 0.15s;
+}
+.window-tab:hover { color: var(--text-secondary); border-color: var(--border-hover); }
+.window-tab.active {
+  color: var(--accent); border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.perf-comparison {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px; margin-bottom: 16px;
+}
+.perf-metric {
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.perf-metric-label {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 4px;
+}
+.perf-metric-value {
+  font-size: 20px; font-weight: 700; color: var(--text);
+}
+.perf-metric-sub {
+  font-size: 11px; color: var(--text-muted); margin-top: 2px;
+}
+
+.perf-funnel-mini {
+  display: flex; gap: 16px; align-items: center;
+  padding: 12px 0; flex-wrap: wrap;
+}
+.perf-stage {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.perf-stage-count {
+  font-size: 18px; font-weight: 700; color: var(--text);
+}
+.perf-stage-label {
+  font-size: 10px; text-transform: uppercase; color: var(--text-muted);
+}
+.perf-arrow {
+  font-size: 11px; color: var(--text-muted); font-weight: 600;
+}
+
+.perf-summary-text {
+  font-size: 12px; color: var(--text-secondary); line-height: 1.6;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.015);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--accent);
+}
+
 /* ── Lead Source ROI ───────────────────── */
 .lead-roi-row {
   display: grid; grid-template-columns: 1fr 50px 50px 55px 70px 70px;

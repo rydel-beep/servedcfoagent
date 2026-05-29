@@ -78,6 +78,8 @@
 
     renderStatus(snap);
     renderKPIs(snap);
+    renderMonthPerformance(snap);
+    renderPerfAnalysis(snap);
     renderMRRTrend(snap);
     renderRevenueViews(snap);
     renderChurnRisk(snap);
@@ -162,6 +164,180 @@
     if (!el) return;
     el.textContent = text;
     el.className = 'kpi-value' + (cls ? ' ' + cls : '');
+  }
+
+  // ── Month Performance ────────────────────────────────────
+  function renderMonthPerformance(snap) {
+    const h = snap.hormozi || {};
+    const grid = $('#month-perf-grid');
+    const reads = $('#month-perf-reads');
+    const badge = $('#month-perf-badge');
+
+    const metrics = [
+      { key: 'ltgp_cac', label: 'LTGP:CAC', fmt: v => fmtX(v), bench: '3.0×' },
+      { key: 'cac_loaded', label: 'CAC (Loaded)', fmt: v => fmt$(v), bench: null },
+      { key: 'payback_days', label: 'Payback', fmt: v => fmtDays(v), bench: '30d' },
+      { key: 'gross_margin', label: 'Gross Margin', fmt: v => fmtPct(v), bench: '45%' },
+      { key: 'op_efficiency', label: 'Op Efficiency', fmt: v => fmtX(v), bench: '1.5×' },
+      { key: 'sales_velocity', label: 'Sales Velocity', fmt: v => v != null ? '$' + Math.round(v) + '/day' : '—', bench: null },
+    ];
+
+    let healthyCount = 0;
+    let totalWithStatus = 0;
+
+    let gridHtml = '';
+    let readsHtml = '';
+
+    metrics.forEach(m => {
+      const data = h[m.key] || {};
+      const status = data.status || 'unknown';
+      const value = data.value;
+      const benchmarkStr = m.bench ? `Benchmark: <strong>${m.bench}</strong>` : '';
+      const confidenceStr = data.confidence ? `Confidence: ${data.confidence}` : '';
+
+      if (status !== 'unknown') totalWithStatus++;
+      if (status === 'healthy') healthyCount++;
+
+      gridHtml += `
+        <div class="mp-card ${status}">
+          <div class="mp-label">${m.label}</div>
+          <div class="mp-value ${status}">${m.fmt(value)}</div>
+          <div class="mp-benchmark">${[benchmarkStr, confidenceStr].filter(Boolean).join(' · ')}</div>
+        </div>
+      `;
+
+      if (data.read) {
+        readsHtml += `
+          <div class="mp-read ${status}">
+            <span class="mp-read-label">${m.label}:</span>${esc(data.read)}
+          </div>
+        `;
+      }
+    });
+
+    grid.innerHTML = gridHtml;
+    reads.innerHTML = readsHtml;
+
+    // Badge
+    if (totalWithStatus === 0) {
+      badge.textContent = 'No data';
+      badge.style.background = 'rgba(255,255,255,0.05)';
+      badge.style.color = 'var(--text-muted)';
+    } else {
+      const score = Math.round((healthyCount / totalWithStatus) * 100);
+      badge.textContent = score + '% healthy';
+      if (score >= 80) {
+        badge.style.background = 'var(--green-dim)';
+        badge.style.color = 'var(--green)';
+      } else if (score >= 50) {
+        badge.style.background = 'var(--amber-dim)';
+        badge.style.color = 'var(--amber)';
+      } else {
+        badge.style.background = 'var(--red-dim)';
+        badge.style.color = 'var(--red)';
+      }
+    }
+  }
+
+  // ── Performance Analysis (multi-window) ─────────────────
+  let activeWindow = 30;
+
+  function renderPerfAnalysis(snap) {
+    const windows = get(snap, 'sales.windows') || [];
+    const tabsEl = $('#window-tabs');
+    const content = $('#perf-analysis-content');
+
+    if (windows.length === 0) {
+      tabsEl.innerHTML = '';
+      content.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">No window data available</div>';
+      return;
+    }
+
+    // Render tabs
+    tabsEl.innerHTML = windows.map(w => {
+      const label = w.window_days <= 14 ? w.window_days + 'd' : w.window_days + 'd';
+      const active = w.window_days === activeWindow ? ' active' : '';
+      return `<button class="window-tab${active}" data-window="${w.window_days}">${label}</button>`;
+    }).join('');
+
+    // Tab click handlers
+    tabsEl.querySelectorAll('.window-tab').forEach(btn => {
+      btn.addEventListener('click', function() {
+        activeWindow = parseInt(this.dataset.window);
+        renderPerfAnalysis(currentSnap);
+      });
+    });
+
+    // Find active window data
+    const w = windows.find(x => x.window_days === activeWindow) || windows[2] || windows[0];
+
+    // Funnel mini
+    const stages = [
+      { label: 'Leads', count: w.leads },
+      { label: 'Sets', count: w.sets, pct: w.lead_to_set_pct },
+      { label: 'Shows', count: w.shows, pct: w.set_to_show_pct },
+      { label: 'Closes', count: w.closes, pct: w.show_to_close_pct },
+    ];
+
+    let funnelHtml = '<div class="perf-funnel-mini">';
+    stages.forEach((s, i) => {
+      if (i > 0) funnelHtml += `<span class="perf-arrow">${s.pct != null ? s.pct + '%' : '—'} →</span>`;
+      funnelHtml += `
+        <div class="perf-stage">
+          <div class="perf-stage-count">${s.count ?? '—'}</div>
+          <div class="perf-stage-label">${s.label}</div>
+        </div>
+      `;
+    });
+    funnelHtml += '</div>';
+
+    // Metric cards
+    let metricsHtml = '<div class="perf-comparison">';
+    const cards = [
+      { label: 'Avg Contract', value: fmt$(w.avg_contract), sub: 'per won deal' },
+      { label: 'Avg Cash', value: fmt$(w.avg_cash), sub: 'collected per deal' },
+      { label: 'Total Cash', value: fmt$(w.total_cash), sub: `in ${w.window_days}d` },
+      { label: 'Commission', value: fmt$(w.total_commission), sub: w.commission_pct != null ? w.commission_pct + '% of cash' : '' },
+      { label: 'Lead→Close', value: w.lead_to_close_pct != null ? w.lead_to_close_pct + '%' : '—', sub: 'conversion rate' },
+      { label: 'Cycle Time', value: w.median_days_to_close != null ? Math.round(w.median_days_to_close) + ' days' : '—', sub: 'median lead to close' },
+      { label: 'DQ Rate', value: w.dq_rate_pct != null ? w.dq_rate_pct + '%' : '—', sub: w.dqs + ' disqualified' },
+    ];
+
+    cards.forEach(c => {
+      metricsHtml += `
+        <div class="perf-metric">
+          <div class="perf-metric-label">${c.label}</div>
+          <div class="perf-metric-value">${c.value}</div>
+          <div class="perf-metric-sub">${c.sub}</div>
+        </div>
+      `;
+    });
+    metricsHtml += '</div>';
+
+    // Summary text
+    let summaryParts = [];
+    if (w.leads > 0) summaryParts.push(`${w.leads} leads entered the funnel`);
+    if (w.closes > 0) summaryParts.push(`${w.closes} converted to paying clients`);
+    if (w.total_cash > 0) summaryParts.push(`${fmt$(w.total_cash)} cash collected`);
+    if (w.lead_to_close_pct != null) summaryParts.push(`${w.lead_to_close_pct}% overall close rate`);
+    if (w.dq_rate_pct != null && w.dq_rate_pct > 15) summaryParts.push(`High DQ rate (${w.dq_rate_pct}%) — check lead quality`);
+
+    // Window comparison hint
+    const w30 = windows.find(x => x.window_days === 30);
+    const w7 = windows.find(x => x.window_days === 7);
+    if (w30 && w7 && w30.lead_to_close_pct != null && w7.lead_to_close_pct != null) {
+      const delta = w7.lead_to_close_pct - w30.lead_to_close_pct;
+      if (Math.abs(delta) >= 2) {
+        const dir = delta > 0 ? 'improving' : 'declining';
+        summaryParts.push(`Close rate ${dir}: 7d (${w7.lead_to_close_pct}%) vs 30d (${w30.lead_to_close_pct}%)`);
+      }
+    }
+
+    let summaryHtml = summaryParts.length > 0
+      ? `<div class="perf-summary-text">${summaryParts.join('. ')}.</div>`
+      : '';
+
+    content.innerHTML = funnelHtml + metricsHtml + summaryHtml;
   }
 
   // ── MRR Trend Chart ──────────────────────────────────────

@@ -846,6 +846,103 @@ def _build_leak_flags(
     return flags
 
 
+# ── Multi-window analysis ──────────────────────────────────────────────────
+
+_WINDOWS = [7, 14, 30, 60, 90]
+
+
+def _compute_window_metrics(
+    ltc_rows: list[list[str]], today: date, window_days: int,
+) -> dict:
+    """Compute funnel + money metrics for a specific trailing window."""
+    cutoff = today - timedelta(days=window_days)
+
+    leads = 0
+    sets = 0
+    shows = 0
+    closes = 0
+    dqs = 0
+    contracts: list[float] = []
+    cashes: list[float] = []
+    setter_comms = 0.0
+    closer_comms = 0.0
+    deltas: list[int] = []
+
+    for row in ltc_rows[1:]:
+        input_dt = _parse_date(_cell(row, 1))
+        if not input_dt or input_dt < cutoff or input_dt > today:
+            continue
+
+        leads += 1
+        setter_outcome = _cell(row, 16).strip().upper()
+        show_status = _cell(row, 22).strip().lower()
+        closer_outcome = _cell(row, 23).strip().lower()
+
+        if setter_outcome == "SET":
+            sets += 1
+        if setter_outcome == "DQ":
+            dqs += 1
+        if show_status in ("showed", "show"):
+            shows += 1
+        if closer_outcome == "won":
+            closes += 1
+            contract = _parse_money(_cell(row, 28))
+            cash = _parse_money(_cell(row, 32))
+            if contract and contract > 0:
+                contracts.append(contract)
+            if cash and cash > 0:
+                cashes.append(cash)
+            sc = _parse_money(_cell(row, 39))
+            cc = _parse_money(_cell(row, 40))
+            if sc and sc > 0:
+                setter_comms += sc
+            if cc and cc > 0:
+                closer_comms += cc
+            close_dt = _parse_date(_cell(row, 27))
+            if close_dt and input_dt:
+                d = (close_dt - input_dt).days
+                if d >= 0:
+                    deltas.append(d)
+
+    lead_to_set = round(sets / leads * 100, 1) if leads > 0 else None
+    set_to_show = round(shows / sets * 100, 1) if sets > 0 else None
+    show_to_close = round(closes / shows * 100, 1) if shows > 0 else None
+    lead_to_close = round(closes / leads * 100, 1) if leads > 0 else None
+    avg_contract = round(sum(contracts) / len(contracts), 2) if contracts else None
+    avg_cash = round(sum(cashes) / len(cashes), 2) if cashes else None
+    total_cash = round(sum(cashes), 2)
+    total_commission = round(setter_comms + closer_comms, 2)
+    commission_pct = round(total_commission / total_cash * 100, 1) if total_cash > 0 else None
+    median_days = statistics.median(deltas) if deltas else None
+    dq_rate = round(dqs / leads * 100, 1) if leads > 0 else None
+
+    return {
+        "window_days": window_days,
+        "window_start": str(cutoff),
+        "leads": leads,
+        "sets": sets,
+        "shows": shows,
+        "closes": closes,
+        "dqs": dqs,
+        "lead_to_set_pct": lead_to_set,
+        "set_to_show_pct": set_to_show,
+        "show_to_close_pct": show_to_close,
+        "lead_to_close_pct": lead_to_close,
+        "dq_rate_pct": dq_rate,
+        "avg_contract": avg_contract,
+        "avg_cash": avg_cash,
+        "total_cash": total_cash,
+        "total_commission": total_commission,
+        "commission_pct": commission_pct,
+        "median_days_to_close": median_days,
+    }
+
+
+def _compute_multi_window(ltc_rows: list[list[str]], today: date) -> list[dict]:
+    """Compute metrics across all standard windows."""
+    return [_compute_window_metrics(ltc_rows, today, w) for w in _WINDOWS]
+
+
 # ── Main pull ──────────────────────────────────────────────────────────────
 
 def pull_sales_analytics() -> dict:
@@ -952,6 +1049,9 @@ def pull_sales_analytics() -> dict:
             "money": money,
         }
 
+    # ── Multi-window analysis ───────────────────────────────────────────
+    windows = _compute_multi_window(ltc_rows, today) if ltc_rows else []
+
     sales = {
         "window_days": 30,
         "window_start": str(cutoff),
@@ -965,6 +1065,7 @@ def pull_sales_analytics() -> dict:
         "payout": payout,
         "validation": validation,
         "deep": deep,
+        "windows": windows,
     }
 
     return {"sales": sales, "degraded": degraded}
