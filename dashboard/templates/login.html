@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Served CFO — Login</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #0a1628 0%, #1A3A5C 50%, #0d2137 100%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #EEF4FA;
+  }
+  .login-card {
+    background: rgba(30, 60, 90, 0.4);
+    border: 1px solid rgba(46, 110, 166, 0.3);
+    border-radius: 16px;
+    padding: 48px 40px;
+    width: 100%;
+    max-width: 400px;
+    backdrop-filter: blur(20px);
+  }
+  .logo {
+    font-size: 24px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #EEF4FA;
+  }
+  .logo span { color: #2E6EA6; }
+  .subtitle {
+    font-size: 13px;
+    color: rgba(238, 244, 250, 0.5);
+    margin-bottom: 32px;
+  }
+  input[type="password"] {
+    width: 100%;
+    padding: 14px 16px;
+    background: rgba(10, 22, 40, 0.6);
+    border: 1px solid rgba(46, 110, 166, 0.4);
+    border-radius: 8px;
+    color: #EEF4FA;
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  input[type="password"]:focus {
+    border-color: #2E6EA6;
+  }
+  input[type="password"]::placeholder {
+    color: rgba(238, 244, 250, 0.3);
+  }
+  button {
+    width: 100%;
+    margin-top: 16px;
+    padding: 14px;
+    background: #2E6EA6;
+    border: none;
+    border-radius: 8px;
+    color: #EEF4FA;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  button:hover { background: #3a82c4; }
+  .error {
+    margin-top: 16px;
+    padding: 10px 14px;
+    background: rgba(248, 113, 113, 0.15);
+    border: 1px solid rgba(248, 113, 113, 0.3);
+    border-radius: 8px;
+    color: #F87171;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<div class="login-card">
+  <div class="logo">Served <span>CFO</span></div>
+  <div class="subtitle">Private dashboard — token required</div>
+  <form method="POST" action="/dashboard/login">
+    <input type="password" name="token" placeholder="Enter dashboard token" autofocus>
+    <button type="submit">Access Dashboard</button>
+  </form>
+  {% if error %}
+  <div class="error">{{ error }}</div>
+  {% endif %}
+</div>
+</body>
+</html>

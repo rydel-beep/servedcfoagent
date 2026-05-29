@@ -30,6 +30,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "cfo-dashboard-dev-key-change-me")
+
+# Register dashboard blueprint
+from dashboard.routes import bp as dashboard_bp
+app.register_blueprint(dashboard_bp, url_prefix="/dashboard")
 
 # In-memory cache of the latest snapshot
 _current_snapshot: dict | None = None
