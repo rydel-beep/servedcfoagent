@@ -179,6 +179,27 @@ def _extract_wages(report_rows: list[dict]) -> float | None:
     return total if found else None
 
 
+def _extract_line_item(report_rows: list[dict], keyword: str) -> float | None:
+    """Find a single line item by keyword in any expense/income section."""
+    kw = keyword.lower()
+    for section in report_rows:
+        if section.get("RowType") != "Section":
+            continue
+        for row in section.get("Rows", []):
+            if row.get("RowType") != "Row":
+                continue
+            cells = row.get("Cells", [])
+            if len(cells) < 2:
+                continue
+            label = cells[0].get("Value", "").strip().lower()
+            if label == kw:
+                try:
+                    return float(cells[1].get("Value", 0))
+                except (ValueError, TypeError):
+                    return None
+    return None
+
+
 def _parse_pnl(data: dict) -> dict:
     """Parse Xero P&L response into structured profit data."""
     reports = data.get("Reports", [])
@@ -195,6 +216,9 @@ def _parse_pnl(data: dict) -> dict:
 
     # Extract Xero wages line items for payroll cross-check
     xero_wages = _extract_wages(rows)
+
+    # Extract advertising spend from Operating Expenses
+    xero_ad_spend = _extract_line_item(rows, "advertising")
 
     gross_profit = None
     if revenue is not None and cogs is not None:
@@ -225,6 +249,7 @@ def _parse_pnl(data: dict) -> dict:
         "operating_expenses": abs(operating_expenses) if operating_expenses is not None else None,
         "net_profit": net_profit,
         "xero_wages": xero_wages,
+        "xero_ad_spend": abs(xero_ad_spend) if xero_ad_spend is not None else None,
     }
 
 

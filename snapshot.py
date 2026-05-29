@@ -19,6 +19,15 @@ from sheets_pull import pull_sheets
 from xero_pull import pull_xero
 from finance_sheets_pull import pull_salary_baseline, pull_recognized_revenue
 from sales_analytics_pull import pull_sales_analytics
+from hormozi_metrics import compute_all as compute_hormozi
+from verdicts import build_verdicts
+from xero_wages_categoriser import (
+    compute_true_team_cost,
+    compute_owner_pay_breakdown,
+    categorise_contractors_account,
+    OWNER_RECURRING_GROSS_MONTHLY,
+)
+import history_store
 
 logger = logging.getLogger(__name__)
 
@@ -81,37 +90,34 @@ def build_snapshot() -> dict:
             "source": "Xero P&L report",
         }
 
-    # Build payroll cross-check
+    # Build categorised payroll block using true_team_cost
     payroll_baseline = salary_result.get("payroll_baseline")
-    payroll = None
-    if xero_data and xero_data.get("xero_wages") is not None:
-        xero_wages = xero_data["xero_wages"]
-        payroll = {
-            "xero_wages_actual": xero_wages,
-            "fixed_baseline_monthly": payroll_baseline,
-        }
-        if payroll_baseline and payroll_baseline > 0:
-            variance = round(xero_wages - payroll_baseline, 2)
-            variance_ratio = round(xero_wages / payroll_baseline, 1)
-            payroll["variance"] = variance
-            payroll["variance_pct"] = variance_ratio
-            threshold = FINANCE_SHEET_CONFIG["payroll_variance_threshold"]
-            if variance_ratio > threshold:
-                payroll["flag"] = (
-                    f"Xero wages ${xero_wages:,.2f} is {variance_ratio}x the "
-                    f"fixed-payroll baseline ${payroll_baseline:,.2f} — investigate "
-                    f"(possible multi-period posting, commissions miscoded to wages, "
-                    f"or catch-up batch)"
-                )
-                degraded.append({
-                    "metric": "payroll_variance",
-                    "reason": (
-                        f"Xero wages ${xero_wages:,.2f} vs baseline "
-                        f"${payroll_baseline:,.2f} ({variance_ratio}x) — verify in Xero ledger"
-                    ),
-                })
-        if profit:
-            profit["payroll"] = payroll
+    true_team = compute_true_team_cost(salary_tab_baseline=payroll_baseline)
+    true_team_cost = true_team["true_team_cost_monthly"]
+
+    # Owner pay breakdown (compares Xero Wages and Salaries against expected)
+    xero_wages = xero_data.get("xero_wages") if xero_data else None
+    owner_breakdown = compute_owner_pay_breakdown(xero_wages)
+
+    # Contractors split (team payroll vs subcontractor COGS)
+    contractors_total = xero_data.get("xero_contractors") if xero_data else None
+    contractors_split = categorise_contractors_account(contractors_total, payroll_baseline)
+
+    payroll = {
+        "true_team_cost": true_team,
+        "owner_pay_breakdown": owner_breakdown,
+        "contractors_split": contractors_split,
+    }
+
+    # Flag excess in owner pay as a data-quality issue
+    if owner_breakdown.get("excess_flag"):
+        degraded.append({
+            "metric": "owner_pay_excess",
+            "reason": owner_breakdown["excess_flag"],
+        })
+
+    if profit:
+        profit["payroll"] = payroll
 
     # Build revenue views cross-reference
     stripe_data = stripe_result.get("stripe")
@@ -165,7 +171,20 @@ def build_snapshot() -> dict:
         "ok": len(degraded) == 0,
     }
 
+    # Hormozi metrics + verdict layer (computed AFTER snapshot assembled)
+    hormozi = compute_hormozi(snapshot, true_team_cost=true_team_cost)
+    verdicts = build_verdicts(snapshot, hormozi)
+    snapshot["hormozi"] = hormozi
+    snapshot["verdicts"] = verdicts
+
     _persist(snapshot)
+
+    # History logging — non-critical, must never fail the snapshot
+    try:
+        history_store.append(snapshot)
+    except Exception as e:
+        logger.error("History store write failed (non-critical): %s", e)
+
     return snapshot
 
 

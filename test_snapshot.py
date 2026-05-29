@@ -201,6 +201,9 @@ def test_xero_pnl_parser():
     assert result["net_profit"] == expected_net, f"Net profit {result['net_profit']} != expected {expected_net}"
     # Xero wages cross-check
     assert result["xero_wages"] == 101964.00 + 7675.68, f"Xero wages wrong: {result['xero_wages']}"
+    # Ad spend extraction
+    assert result["xero_ad_spend"] == 7320.57, f"Ad spend wrong: {result['xero_ad_spend']}"
+    print(f"  Ad spend: {result['xero_ad_spend']}")
     print(f"  Revenue: {result['revenue']}")
     print(f"  COGS: {result['cogs']}")
     print(f"  Gross profit: {result['gross_profit']} ({result['gross_margin_pct']}%)")
@@ -561,6 +564,241 @@ def test_deep_fixture_hand_calc():
     print("  On-target scenario: 0 flags — correct")
 
 
+def test_hormozi_metrics():
+    """Hormozi metrics compute correctly with known inputs."""
+    from hormozi_metrics import (
+        m1_ltgp_cac, m2_cac_breakdown, m3_payback_days,
+        m4_gross_margin, m5_op_efficiency, m6_sales_velocity,
+    )
+
+    # Build a mock snapshot with known values (simulating Railway with Xero)
+    mock = {
+        "sales": {
+            "funnel": {"leads_in": 100, "closes": 4, "lead_to_close_pct": 4.0,
+                       "sets": 31, "set_to_show_pct": 51.6, "show_to_close_pct": 25.0,
+                       "shows": 16},
+            "deep": {"money": {"avg_contract": 14650.0, "avg_cash": 9132.5,
+                               "offer_mix": [{"offer": "Scale Engine", "count": 3, "pct": 75.0},
+                                             {"offer": "Custom", "count": 1, "pct": 25.0}],
+                               "wins_in_window": 4, "total_commission": 6000.0,
+                               "custom_share_pct": 25.0}},
+            "payout": {"total_owed": 1100.0},
+            "velocity": {"days_lead_to_cash_median": 9.5},
+        },
+        "xero": {
+            "gross_margin_pct": 47.5,
+            "revenue": 57966.15,
+            "gross_profit": 27526.22,
+            "operating_expenses": 120999.77,
+            "xero_ad_spend": 7320.57,
+        },
+        "costs": {"setter_commission": 0.0, "closer_commission": 6000.0},
+        "sheets": {"cash_collected": 36530.0},
+        "stripe": {"mrr": 49491.0},
+    }
+
+    # M1: LTGP:CAC
+    m1 = m1_ltgp_cac(mock)
+    assert m1["confidence"] == "high", f"M1 confidence: {m1['confidence']}"
+    assert m1["value"] is not None, "M1 value is None"
+    # ltgp = 14650 * 0.475 = 6958.75
+    # cac = (7320.57 + 1100 + 6000) / 4 = 3605.14
+    # ratio = 6958.75 / 3605.14 = 1.93
+    expected_ratio = round(6958.75 / 3605.1425, 2)
+    assert m1["value"] == expected_ratio, f"M1 value {m1['value']} != expected {expected_ratio}"
+    assert m1["status"] == "critical", f"M1 status: {m1['status']} (expected critical, <2.0)"
+    assert m1["dollar_gap"] is not None and m1["dollar_gap"] > 0
+    print(f"  M1 LTGP:CAC = {m1['value']}× (status={m1['status']}, gap=${m1['dollar_gap']:,.0f})")
+
+    # M2: CAC breakdown
+    m2 = m2_cac_breakdown(mock)
+    assert m2["value"] is not None
+    assert m2["inputs_used"].get("per_offer_cac"), "Missing per-offer CAC"
+    print(f"  M2 CAC = ${m2['value']:,.0f} (status={m2['status']})")
+    for po in m2["inputs_used"]["per_offer_cac"]:
+        print(f"    {po['offer']}: ${po['attributed_cac']:,.0f} ({po['share_pct']}%)")
+
+    # M3: Payback
+    m3 = m3_payback_days(mock)
+    assert m3["value"] is not None
+    # cac = 3605.14, daily_cash = 9132.5/30 = 304.42, payback = 3605.14/304.42 = 11.8
+    assert m3["value"] < 30, f"M3 payback {m3['value']} should be <30 with these inputs"
+    assert m3["status"] == "healthy"
+    print(f"  M3 Payback = {m3['value']:.0f} days (status={m3['status']})")
+
+    # M4: Gross margin
+    m4 = m4_gross_margin(mock)
+    assert m4["value"] == 47.5
+    assert m4["status"] == "watch"
+    assert m4["dollar_gap"] > 0, f"M4 dollar_gap should be positive: {m4['dollar_gap']}"
+    print(f"  M4 Margin = {m4['value']}% (status={m4['status']}, gap=${m4.get('dollar_gap', 0):,.0f})")
+
+    # M5: Op efficiency
+    m5 = m5_op_efficiency(mock, true_team_cost=29671.0)
+    assert m5["value"] is not None
+    # ratio = 57966.15 / 29671 = 1.95
+    assert m5["status"] == "healthy"
+    print(f"  M5 OpEff = {m5['value']}× (status={m5['status']})")
+
+    # M6: Sales velocity
+    m6 = m6_sales_velocity(mock)
+    assert m6["value"] is not None
+    # velocity = (100 * 0.04 * 14650) / 9.5 = 6168.42
+    expected_vel = round((100 * 0.04 * 14650) / 9.5, 2)
+    assert m6["value"] == expected_vel, f"M6 {m6['value']} != {expected_vel}"
+    print(f"  M6 Velocity = ${m6['value']:,.0f}/day")
+
+    # Confidence: null inputs → low
+    empty = {}
+    m1_empty = m1_ltgp_cac(empty)
+    assert m1_empty["confidence"] == "low"
+    assert m1_empty["status"] == "unknown"
+    print("  Null inputs → confidence:low, status:unknown — correct")
+
+
+def test_verdicts():
+    """Verdict layer: ranking by dollar impact, Xero wages flag, headline."""
+    from verdicts import build_verdicts
+
+    mock_hormozi = {
+        "ltgp_cac": {
+            "value": 1.93, "benchmark": 3.0, "status": "critical",
+            "dollar_gap": 15500.0, "read": "Below 3× line",
+            "confidence": "high", "inputs_used": {},
+        },
+        "gross_margin": {
+            "value": 47.5, "benchmark": 45.0, "status": "watch",
+            "dollar_gap": 1450.0, "read": "Margin watch",
+            "confidence": "high", "inputs_used": {},
+        },
+        "op_efficiency": {
+            "value": 3.07, "benchmark": 1.5, "status": "healthy",
+            "dollar_gap": None, "read": "Healthy",
+            "confidence": "high", "inputs_used": {},
+        },
+        "payback_days": {
+            "value": 12.0, "benchmark": 30, "status": "healthy",
+            "dollar_gap": None, "read": "Healthy payback",
+            "confidence": "high", "inputs_used": {},
+        },
+        "cac_loaded": {
+            "value": 3605, "benchmark": 6959, "status": "healthy",
+            "dollar_gap": None, "read": "CAC covered",
+            "confidence": "high", "inputs_used": {},
+        },
+        "sales_velocity": {
+            "value": 6168, "benchmark": None, "status": "unknown",
+            "dollar_gap": None, "read": "Engine output",
+            "confidence": "high", "inputs_used": {},
+        },
+    }
+
+    mock_snap = {
+        "sales": {
+            "funnel": {"leads_in": 100, "closes": 4, "sets": 31,
+                       "set_to_show_pct": 51.6, "show_to_close_pct": 25.0, "shows": 16},
+            "deep": {
+                "money": {"avg_contract": 14650, "offer_mix": []},
+                "lead_quality": {"by_revenue_range": [
+                    {"range": "$20k-50k", "leads": 32, "closes": 0,
+                     "close_rate_pct": 0.0, "targeting_flag": "32 leads, 0 closes"},
+                ]},
+            },
+        },
+        "xero": {"xero_ad_spend": 7320},
+        "profit": {
+            "payroll": {
+                "owner_pay_breakdown": {
+                    "raw_wages_and_salaries": 109640.0,
+                    "recurring_gross": 8964,
+                    "weeks_detected": 4,
+                    "excess": 100676.0,
+                    "excess_flag": (
+                        "Wages and Salaries $109,640 contains $100,676 above "
+                        "4-week recurring ($8,964). Investigate — post-fix "
+                        "periods should be clean."
+                    ),
+                },
+            },
+        },
+        "stripe": {"mrr": 49491},
+        "costs": {},
+    }
+
+    verdicts = build_verdicts(mock_snap, mock_hormozi)
+    assert "headline" in verdicts
+    assert "top_leaks" in verdicts
+    assert "wins" in verdicts
+    assert len(verdicts["top_leaks"]) <= 5, "Max 5 leaks"
+
+    # Owner pay excess must appear in leaks
+    leak_names = [l["name"] for l in verdicts["top_leaks"]]
+    assert any("wages" in n.lower() or "owner pay" in n.lower() for n in leak_names), \
+        f"Owner pay excess flag missing from leaks: {leak_names}"
+
+    # Leaks must be ranked by dollar_impact desc
+    impacts = [l["dollar_impact_monthly"] for l in verdicts["top_leaks"]]
+    assert impacts == sorted(impacts, reverse=True), f"Not sorted by impact: {impacts}"
+
+    # All leaks have rank
+    for l in verdicts["top_leaks"]:
+        assert "rank" in l
+
+    # Wins include healthy metrics
+    win_names = [w["name"] for w in verdicts["wins"]]
+    assert len(win_names) > 0, "Should have at least one win"
+
+    print(f"  Headline: {verdicts['headline']}")
+    for l in verdicts["top_leaks"]:
+        print(f"  #{l['rank']} {l['name']}: ${l['dollar_impact_monthly']:,.0f}/mo — {l['read'][:80]}")
+    print(f"  Wins: {[w['name'] for w in verdicts['wins']]}")
+
+
+def test_history_store():
+    """History store: append, read back, schema stability."""
+    import tempfile
+    import history_store as hs
+
+    original_path = hs.HISTORY_FILE
+    tmp = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False)
+    tmp.close()
+    hs.HISTORY_FILE = tmp.name
+
+    try:
+        # Clean
+        with open(tmp.name, "w") as f:
+            pass
+
+        # Append two entries
+        snap1 = {"test": "entry1", "generated_at": "2026-05-28T10:00:00+10:00"}
+        snap2 = {"test": "entry2", "generated_at": "2026-05-29T10:00:00+10:00"}
+        hs.append(snap1)
+        hs.append(snap2)
+
+        # Read back
+        entries = hs.last_n_snapshots(10)
+        assert len(entries) == 2, f"Expected 2 entries, got {len(entries)}"
+        assert entries[0]["snapshot"]["test"] == "entry1"
+        assert entries[1]["snapshot"]["test"] == "entry2"
+        assert entries[0]["schema_version"] == 1
+        print(f"  Append + read: 2 entries, schema_version=1")
+
+        # Series extraction
+        s = hs.series("test", 10)
+        assert len(s) == 2
+        assert s[0]["value"] == "entry1"
+        print(f"  Series extraction: {len(s)} points")
+
+        # last_n_days
+        recent = hs.last_n_days(1)
+        assert len(recent) >= 1
+        print(f"  last_n_days(1): {len(recent)} entries")
+
+    finally:
+        hs.HISTORY_FILE = original_path
+        os.unlink(tmp.name)
+
+
 def test_salary_baseline():
     """Salary baseline returns aggregate only, no PII."""
     from finance_sheets_pull import pull_salary_baseline
@@ -587,6 +825,8 @@ def test_full_snapshot():
     assert "costs" in snap
     assert "profit" in snap
     assert "revenue_views" in snap
+    assert "hormozi" in snap
+    assert "verdicts" in snap
     assert "degraded" in snap
     assert "ok" in snap
     print(f"  OK: {snap['ok']}")
@@ -597,7 +837,10 @@ def test_full_snapshot():
         print(f"  Profit: net={p.get('net_profit')}, other_income={p.get('other_income')}, gross_margin={p.get('gross_margin_pct')}%")
         if p.get("payroll"):
             pr = p["payroll"]
-            print(f"  Payroll: xero_wages={pr.get('xero_wages_actual')}, baseline={pr.get('fixed_baseline_monthly')}, ratio={pr.get('variance_pct')}x")
+            ttc = pr.get("true_team_cost", {})
+            ob = pr.get("owner_pay_breakdown", {})
+            print(f"  True team cost: ${ttc.get('true_team_cost_monthly', 0):,.0f} ({ttc.get('confidence')})")
+            print(f"  Owner pay: recurring=${ob.get('recurring_gross', 0):,.0f}, excess=${ob.get('excess', 0):,.0f}")
     else:
         print("  Profit: None (Xero not connected)")
     if snap.get("sales"):
@@ -609,6 +852,18 @@ def test_full_snapshot():
             print(f"  Leak flags: {len(flags)}")
             for fl in flags:
                 print(f"    >> {fl}")
+    # Hormozi metrics
+    h = snap.get("hormozi", {})
+    for key, m in h.items():
+        print(f"  Hormozi {key}: value={m.get('value')}, status={m.get('status')}, "
+              f"confidence={m.get('confidence')}, gap={m.get('dollar_gap')}")
+    # Verdicts
+    v = snap.get("verdicts", {})
+    print(f"  Verdict headline: {v.get('headline', 'N/A')}")
+    for l in v.get("top_leaks", []):
+        print(f"    #{l['rank']} {l['name']}: ${l['dollar_impact_monthly']:,.0f}/mo")
+    for w in v.get("wins", []):
+        print(f"    WIN: {w['name']}")
     rv = snap.get("revenue_views", {})
     print(f"  Revenue views: stripe={rv.get('stripe_cash_trailing_30d')}, xero={rv.get('xero_pl_period')}, recognized={rv.get('recognized_current_month')}")
     v = rv.get("recognized_validation", {})
@@ -675,6 +930,9 @@ if __name__ == "__main__":
         ("Velocity Requires Both Dates", test_velocity_requires_both_dates),
         ("Deep Analytics", test_deep_analytics),
         ("Deep Fixture Hand-Calc", test_deep_fixture_hand_calc),
+        ("Hormozi Metrics", test_hormozi_metrics),
+        ("Verdicts", test_verdicts),
+        ("History Store", test_history_store),
         ("Salary Baseline", test_salary_baseline),
         ("Full Snapshot", test_full_snapshot),
         ("Flask App", test_flask_app),
