@@ -1052,6 +1052,25 @@ def pull_sales_analytics() -> dict:
     # ── Multi-window analysis ───────────────────────────────────────────
     windows = _compute_multi_window(ltc_rows, today) if ltc_rows else []
 
+    # ── Extract won businesses for reconciliation ────────────────────────
+    won_businesses = []
+    if ltc_rows:
+        for row in ltc_rows[1:]:
+            outcome = _cell(row, 23).strip().lower()
+            if outcome != "won":
+                continue
+            biz = _cell(row, 7).strip()
+            close_dt = _parse_date(_cell(row, 27))
+            offer = _cell(row, 26).strip()
+            contract = _parse_money(_cell(row, 28))
+            if biz:  # only include if business name is populated
+                won_businesses.append({
+                    "name": biz,
+                    "close_date": str(close_dt) if close_dt else None,
+                    "offer": offer,
+                    "contract_value": contract,
+                })
+
     sales = {
         "window_days": 30,
         "window_start": str(cutoff),
@@ -1066,6 +1085,7 @@ def pull_sales_analytics() -> dict:
         "validation": validation,
         "deep": deep,
         "windows": windows,
+        "won_businesses": won_businesses,
     }
 
     return {"sales": sales, "degraded": degraded}

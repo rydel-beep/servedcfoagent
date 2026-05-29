@@ -83,6 +83,7 @@
     renderMRRTrend(snap);
     renderRevenueViews(snap);
     renderChurnRisk(snap);
+    renderReconciliation(snap);
     renderClientHealth(snap);
     renderVerdicts(snap);
     renderFunnel(snap);
@@ -549,6 +550,67 @@
       `;
       list.appendChild(row);
     });
+  }
+
+  // ── Client Reconciliation ────────────────────────────────
+  function renderReconciliation(snap) {
+    const recon = snap.client_reconciliation || {};
+    const missing = recon.missing_from_health || [];
+    const zeroMrr = recon.zero_mrr_active || [];
+    const section = $('#section-reconciliation');
+    const badge = $('#recon-badge');
+    const content = $('#recon-content');
+
+    const totalIssues = missing.length + zeroMrr.length;
+    if (totalIssues === 0) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = '';
+    badge.textContent = totalIssues + ' issue' + (totalIssues > 1 ? 's' : '');
+    badge.style.background = 'var(--red-dim)';
+    badge.style.color = 'var(--red)';
+
+    let html = '';
+
+    if (missing.length > 0) {
+      html += '<div class="recon-section">';
+      html += '<div class="recon-section-title">Won deals missing from Health tab</div>';
+      missing.forEach(m => {
+        const details = [m.offer, m.close_date].filter(Boolean).join(' · ');
+        html += `<div class="recon-row missing">
+          <span class="recon-name">${esc(m.name)}</span>
+          <span class="recon-detail">${esc(details)}</span>
+          <span class="recon-value" style="color:var(--red)">${m.contract_value ? fmt$(m.contract_value) : '—'}</span>
+        </div>`;
+      });
+
+      const estMissing = recon.estimated_missing_mrr || 0;
+      if (estMissing > 0) {
+        html += `<div class="recon-impact">
+          <strong>MRR is understated</strong> — these ${missing.length} client(s) represent an estimated
+          <strong>${fmt$(estMissing)}/mo</strong> not reflected in the Health tab.
+          Update the Finance Sheet to fix MRR figures.
+        </div>`;
+      }
+      html += '</div>';
+    }
+
+    if (zeroMrr.length > 0) {
+      html += '<div class="recon-section">';
+      html += '<div class="recon-section-title">Active clients with $0 MRR (may be churned)</div>';
+      zeroMrr.forEach(name => {
+        html += `<div class="recon-row zero">
+          <span class="recon-name">${esc(name)}</span>
+          <span class="recon-detail">Listed as Active but $0 revenue this month</span>
+          <span class="recon-value" style="color:var(--amber)">$0</span>
+        </div>`;
+      });
+      html += '</div>';
+    }
+
+    content.innerHTML = html;
   }
 
   // ── Client Health ────────────────────────────────────────

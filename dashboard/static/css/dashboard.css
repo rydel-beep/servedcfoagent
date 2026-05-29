@@ -610,6 +610,36 @@ body {
   font-size: 10px; color: var(--text-muted); font-weight: 400;
 }
 
+/* ── Reconciliation ────────────────────── */
+.recon-section { margin-bottom: 14px; }
+.recon-section-title {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--text-muted);
+  margin-bottom: 8px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.recon-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+}
+.recon-row.missing { border-color: rgba(239,68,68,0.25); background: var(--red-dim); }
+.recon-row.zero { border-color: rgba(245,158,11,0.25); background: var(--amber-dim); }
+.recon-name { font-size: 13px; font-weight: 500; flex: 1; }
+.recon-detail { font-size: 11px; color: var(--text-muted); margin: 0 10px; }
+.recon-value { font-size: 13px; font-weight: 600; flex-shrink: 0; }
+.recon-impact {
+  margin-top: 12px; padding: 12px 14px;
+  background: var(--red-dim);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-radius: var(--radius-sm);
+  font-size: 13px; color: var(--red); line-height: 1.5;
+}
+.recon-impact strong { font-weight: 700; }
+
 /* ── Data Quality ──────────────────────── */
 .clickable { cursor: pointer; user-select: none; }
 .collapse-icon {

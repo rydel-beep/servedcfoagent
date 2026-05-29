@@ -32,6 +32,79 @@ import history_store
 logger = logging.getLogger(__name__)
 
 
+def _reconcile_clients(sales: dict | None, client_health: dict | None) -> dict:
+    """
+    Cross-reference won deals from Lead-to-Cash tracker against Health tab.
+    Flags:
+    - Won deals whose business name is NOT on the Health tab
+    - Active clients on Health tab with $0 MRR (likely churned)
+    """
+    result = {
+        "missing_from_health": [],
+        "zero_mrr_active": [],
+        "estimated_missing_mrr": 0,
+        "health_client_count": 0,
+        "won_business_count": 0,
+    }
+
+    if not sales or not client_health:
+        return result
+
+    won_businesses = sales.get("won_businesses") or []
+    health_clients = client_health.get("clients") or []
+
+    result["won_business_count"] = len(won_businesses)
+    result["health_client_count"] = len(health_clients)
+
+    # Normalise health client names for fuzzy matching
+    health_names = set()
+    for c in health_clients:
+        name = c.get("name", "").strip().lower()
+        if name:
+            health_names.add(name)
+
+    # Check which won businesses are NOT on the Health tab
+    for wb in won_businesses:
+        wb_name = wb.get("name", "").strip()
+        if not wb_name:
+            continue
+        normalised = wb_name.lower()
+        # Try exact match, then substring match (handles "Butlers cucina" vs "Butler's Cucina")
+        matched = False
+        for hn in health_names:
+            if normalised == hn:
+                matched = True
+                break
+            # Substring: if either contains the other (handles apostrophes, abbreviations)
+            clean_wb = normalised.replace("'", "").replace("'", "")
+            clean_hn = hn.replace("'", "").replace("'", "")
+            if clean_wb in clean_hn or clean_hn in clean_wb:
+                matched = True
+                break
+        if not matched:
+            result["missing_from_health"].append({
+                "name": wb_name,
+                "close_date": wb.get("close_date"),
+                "offer": wb.get("offer"),
+                "contract_value": wb.get("contract_value"),
+            })
+
+    # Estimate missing MRR: contract_value / 6 months (typical contract length)
+    for m in result["missing_from_health"]:
+        cv = m.get("contract_value")
+        if cv and cv > 0:
+            result["estimated_missing_mrr"] += cv / 6
+
+    result["estimated_missing_mrr"] = round(result["estimated_missing_mrr"], 2)
+
+    # Find Active clients with $0 MRR
+    for c in health_clients:
+        if c.get("status") == "Active" and (c.get("current_mrr") or 0) == 0:
+            result["zero_mrr_active"].append(c.get("name", "Unknown"))
+
+    return result
+
+
 def build_snapshot() -> dict:
     """Pull all sources in parallel and assemble a single snapshot dict."""
     ts = now_sydney()
@@ -158,6 +231,30 @@ def build_snapshot() -> dict:
         "recognized_validation": recognized_validation,
     }
 
+    # ── Client reconciliation: cross-reference LTC won deals vs Health tab ──
+    reconciliation = _reconcile_clients(
+        sales_result.get("sales"),
+        health_result.get("client_health"),
+    )
+    if reconciliation.get("missing_from_health"):
+        degraded.append({
+            "metric": "client_reconciliation",
+            "reason": (
+                f"{len(reconciliation['missing_from_health'])} won deal(s) not on Health tab: "
+                + ", ".join(c["name"] for c in reconciliation["missing_from_health"])
+                + f" — MRR may be understated by ~${reconciliation.get('estimated_missing_mrr', 0):,.0f}/mo"
+            ),
+        })
+    if reconciliation.get("zero_mrr_active"):
+        degraded.append({
+            "metric": "zero_mrr_active_clients",
+            "reason": (
+                f"{len(reconciliation['zero_mrr_active'])} Active client(s) with $0 MRR: "
+                + ", ".join(reconciliation["zero_mrr_active"])
+                + " — may be churned, update Health tab status"
+            ),
+        })
+
     snapshot = {
         "generated_at": ts.isoformat(),
         "timezone": "Australia/Sydney",
@@ -171,6 +268,7 @@ def build_snapshot() -> dict:
         "costs": costs,
         "profit": profit,
         "revenue_views": revenue_views,
+        "client_reconciliation": reconciliation,
         "degraded": degraded if degraded else [],
         "ok": len(degraded) == 0,
     }
