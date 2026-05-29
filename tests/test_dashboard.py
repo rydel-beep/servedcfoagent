@@ -72,7 +72,7 @@ def test_cookie_grants_access():
     # Now access dashboard
     resp = client.get("/dashboard/")
     assert resp.status_code == 200
-    assert b"Served" in resp.data
+    assert b"JARVIS" in resp.data or b"Served" in resp.data
     print("  Cookie grants access (200)")
 
 

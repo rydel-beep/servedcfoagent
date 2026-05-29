@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Served CFO — Jarvis Dashboard</title>
+<title>Served CFO — Jarvis</title>
 <link rel="stylesheet" href="/dashboard/static/css/dashboard.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 </head>
@@ -13,117 +13,178 @@
 <header class="header">
   <div class="header-left">
     <div class="reactor"></div>
-    <h1 class="wordmark">Served <span>CFO</span></h1>
+    <h1 class="wordmark">JARVIS</h1>
+    <span class="wordmark-sub">Served CFO</span>
   </div>
   <div class="header-right">
-    <div class="status-indicator" id="status-indicator">
+    <div class="status-pill" id="status-pill">
       <span class="status-dot" id="status-dot"></span>
-      <span class="status-text" id="status-text">Loading...</span>
+      <span id="status-text">Loading...</span>
     </div>
-    <button class="btn-refresh" id="btn-refresh" title="Refresh snapshot">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M13.65 2.35A7.96 7.96 0 008 0C3.58 0 .01 3.58.01 8S3.58 16 8 16c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 018 14 6 6 0 012 8a6 6 0 016-6c1.66 0 3.14.69 4.22 1.78L9 7h7V0l-2.35 2.35z" fill="currentColor"/></svg>
-      <span>Refresh</span>
+    <button class="icon-btn" id="btn-refresh" title="Refresh data">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M13.65 2.35A7.96 7.96 0 008 0C3.58 0 .01 3.58.01 8S3.58 16 8 16c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 018 14 6 6 0 012 8a6 6 0 016-6c1.66 0 3.14.69 4.22 1.78L9 7h7V0l-2.35 2.35z" fill="currentColor"/></svg>
     </button>
-    <button class="btn-chat-toggle" id="btn-chat-toggle" title="Toggle chat">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z" fill="currentColor"/></svg>
+    <button class="icon-btn" id="btn-chat-toggle" title="Chat with Jarvis">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z" fill="currentColor"/></svg>
     </button>
   </div>
 </header>
 
 <main class="main" id="main">
 
-  <!-- Section 1: MONEY -->
-  <section class="section" id="section-money">
-    <h2 class="section-title">Money</h2>
-    <div class="cards-grid-4">
-      <div class="card card-big" id="card-mrr">
-        <div class="card-label">MRR (Stripe)</div>
-        <div class="card-value" id="val-mrr">—</div>
-      </div>
-      <div class="card card-big" id="card-cash">
-        <div class="card-label">Cash Collected (30d)</div>
-        <div class="card-value" id="val-cash">—</div>
-      </div>
-      <div class="card card-big" id="card-margin">
-        <div class="card-label">Gross Margin</div>
-        <div class="card-value" id="val-margin">—</div>
-      </div>
-      <div class="card card-big" id="card-opeff">
-        <div class="card-label">Op Efficiency</div>
-        <div class="card-value" id="val-opeff">—</div>
-      </div>
+  <!-- KPI Strip -->
+  <section class="kpi-strip" id="section-kpis">
+    <div class="kpi" id="kpi-mrr">
+      <div class="kpi-label">Sheet MRR</div>
+      <div class="kpi-value" id="val-sheet-mrr">—</div>
+      <div class="kpi-sub" id="sub-sheet-mrr"></div>
     </div>
-    <div class="cards-grid-4 secondary">
-      <div class="card card-sm">
-        <div class="card-label">Revenue (30d)</div>
-        <div class="card-value" id="val-revenue">—</div>
-      </div>
-      <div class="card card-sm">
-        <div class="card-label">Net Profit</div>
-        <div class="card-value" id="val-netprofit">—</div>
-      </div>
-      <div class="card card-sm">
-        <div class="card-label">Payback</div>
-        <div class="card-value" id="val-payback">—</div>
-      </div>
-      <div class="card card-sm">
-        <div class="card-label">LTGP:CAC</div>
-        <div class="card-value" id="val-ltgpcac">—</div>
-      </div>
+    <div class="kpi-divider"></div>
+    <div class="kpi" id="kpi-stripe">
+      <div class="kpi-label">Stripe MRR</div>
+      <div class="kpi-value" id="val-stripe-mrr">—</div>
+      <div class="kpi-sub" id="sub-stripe-mrr"></div>
+    </div>
+    <div class="kpi-divider"></div>
+    <div class="kpi" id="kpi-cash">
+      <div class="kpi-label">Cash Collected</div>
+      <div class="kpi-value" id="val-cash">—</div>
+      <div class="kpi-sub">trailing 30d</div>
+    </div>
+    <div class="kpi-divider"></div>
+    <div class="kpi" id="kpi-margin">
+      <div class="kpi-label">Gross Margin</div>
+      <div class="kpi-value" id="val-margin">—</div>
+      <div class="kpi-sub" id="sub-margin"></div>
+    </div>
+    <div class="kpi-divider"></div>
+    <div class="kpi" id="kpi-opeff">
+      <div class="kpi-label">Op Efficiency</div>
+      <div class="kpi-value" id="val-opeff">—</div>
+      <div class="kpi-sub" id="sub-opeff"></div>
+    </div>
+    <div class="kpi-divider"></div>
+    <div class="kpi" id="kpi-clients">
+      <div class="kpi-label">Active Clients</div>
+      <div class="kpi-value" id="val-clients">—</div>
+      <div class="kpi-sub" id="sub-clients"></div>
     </div>
   </section>
 
-  <!-- Section 2: VERDICTS -->
-  <section class="section" id="section-verdicts">
-    <h2 class="section-title">Verdicts</h2>
-    <div class="verdict-headline" id="verdict-headline">Loading...</div>
-    <div class="leaks-list" id="leaks-list"></div>
-    <div class="wins-row" id="wins-row"></div>
-  </section>
+  <!-- Two-column: Client Health + Verdicts -->
+  <div class="grid-2">
 
-  <!-- Section 3: SALES FUNNEL -->
-  <section class="section" id="section-funnel">
-    <h2 class="section-title">Sales Funnel</h2>
-    <div class="funnel-bars" id="funnel-bars"></div>
-    <div class="tables-row">
-      <div class="table-wrap">
-        <h3 class="table-title">Per Setter</h3>
+    <!-- Client Health -->
+    <section class="panel" id="section-health">
+      <div class="panel-header">
+        <h2 class="panel-title">Client Health</h2>
+        <div class="panel-badge" id="health-badge"></div>
+      </div>
+      <div class="health-summary" id="health-summary"></div>
+      <div class="client-list" id="client-list"></div>
+    </section>
+
+    <!-- Verdicts -->
+    <section class="panel" id="section-verdicts">
+      <div class="panel-header">
+        <h2 class="panel-title">Verdicts</h2>
+      </div>
+      <div class="verdict-headline" id="verdict-headline">Loading...</div>
+      <div class="leaks-list" id="leaks-list"></div>
+      <div class="wins-row" id="wins-row"></div>
+    </section>
+
+  </div>
+
+  <!-- Two-column: Funnel + Charts -->
+  <div class="grid-2">
+
+    <!-- Sales Funnel -->
+    <section class="panel" id="section-funnel">
+      <div class="panel-header">
+        <h2 class="panel-title">Sales Funnel</h2>
+        <span class="panel-sub">trailing 30d</span>
+      </div>
+      <div class="funnel-visual" id="funnel-bars"></div>
+      <div class="funnel-stats" id="funnel-stats"></div>
+    </section>
+
+    <!-- Offer Mix -->
+    <section class="panel" id="section-offers">
+      <div class="panel-header">
+        <h2 class="panel-title">Offer Mix</h2>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="chart-offers" height="220"></canvas>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Two-column: Secondary metrics + Per-rep tables -->
+  <div class="grid-2">
+
+    <section class="panel" id="section-metrics">
+      <div class="panel-header">
+        <h2 class="panel-title">Unit Economics</h2>
+      </div>
+      <div class="metrics-grid" id="metrics-grid">
+        <div class="metric-row">
+          <span class="metric-label">Revenue (Xero P&L)</span>
+          <span class="metric-value" id="val-revenue">—</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Net Profit</span>
+          <span class="metric-value" id="val-netprofit">—</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Payback Period</span>
+          <span class="metric-value" id="val-payback">—</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">LTGP:CAC</span>
+          <span class="metric-value" id="val-ltgpcac">—</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Sales Velocity</span>
+          <span class="metric-value" id="val-velocity">—</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">CAC (loaded)</span>
+          <span class="metric-value" id="val-cac">—</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="section-reps">
+      <div class="panel-header">
+        <h2 class="panel-title">Rep Performance</h2>
+      </div>
+      <div class="rep-section">
+        <h3 class="rep-heading">Setters</h3>
         <table class="data-table" id="table-setters">
-          <thead><tr><th>Name</th><th>Dials</th><th>Sets</th><th>D/S</th><th>Speed</th><th>Show%</th><th>Close%</th></tr></thead>
+          <thead><tr><th>Name</th><th>Dials</th><th>Sets</th><th>D/S</th><th>Show%</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
-      <div class="table-wrap">
-        <h3 class="table-title">Per Closer</h3>
+      <div class="rep-section">
+        <h3 class="rep-heading">Closers</h3>
         <table class="data-table" id="table-closers">
-          <thead><tr><th>Name</th><th>Shows</th><th>Closes</th><th>Rate</th><th>Commission</th></tr></thead>
+          <thead><tr><th>Name</th><th>Shows</th><th>Closes</th><th>Rate</th><th>Comm</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- Section 4: CHARTS -->
-  <section class="section" id="section-charts">
-    <h2 class="section-title">Trends</h2>
-    <div class="charts-grid">
-      <div class="chart-card">
-        <div class="chart-label">Funnel Breakdown</div>
-        <canvas id="chart-funnel" height="200"></canvas>
-      </div>
-      <div class="chart-card">
-        <div class="chart-label">Offer Mix</div>
-        <canvas id="chart-offers" height="200"></canvas>
-      </div>
-    </div>
-  </section>
+  </div>
 
-  <!-- Section 5: DATA QUALITY -->
-  <section class="section collapsible" id="section-quality">
-    <h2 class="section-title clickable" id="toggle-quality">
-      Data Quality <span class="collapse-icon">+</span>
-    </h2>
-    <div class="collapsible-body" id="quality-body" style="display:none;">
+  <!-- Data Quality -->
+  <section class="panel panel-muted" id="section-quality">
+    <div class="panel-header clickable" id="toggle-quality">
+      <h2 class="panel-title">Data Quality</h2>
+      <span class="collapse-icon" id="collapse-icon">+</span>
+    </div>
+    <div class="quality-body" id="quality-body" style="display:none;">
       <div id="degraded-list"></div>
       <div id="quality-meta"></div>
     </div>
@@ -132,9 +193,10 @@
 </main>
 
 <!-- Chat Panel -->
+<div class="chat-overlay" id="chat-overlay"></div>
 <div class="chat-panel" id="chat-panel">
   <div class="chat-header">
-    <span class="chat-title">CFO Chat</span>
+    <span class="chat-title">Jarvis</span>
     <span class="chat-context" id="chat-context"></span>
     <button class="chat-close" id="chat-close">&times;</button>
   </div>

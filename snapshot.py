@@ -17,7 +17,7 @@ from stripe_pull import pull_stripe
 from ghl_pull import pull_ghl
 from sheets_pull import pull_sheets
 from xero_pull import pull_xero
-from finance_sheets_pull import pull_salary_baseline, pull_recognized_revenue
+from finance_sheets_pull import pull_salary_baseline, pull_recognized_revenue, pull_client_health
 from sales_analytics_pull import pull_sales_analytics
 from hormozi_metrics import compute_all as compute_hormozi
 from verdicts import build_verdicts
@@ -36,7 +36,7 @@ def build_snapshot() -> dict:
     """Pull all sources in parallel and assemble a single snapshot dict."""
     ts = now_sydney()
 
-    with ThreadPoolExecutor(max_workers=7) as pool:
+    with ThreadPoolExecutor(max_workers=8) as pool:
         f_stripe = pool.submit(pull_stripe)
         f_ghl = pool.submit(pull_ghl)
         f_sheets = pool.submit(pull_sheets)
@@ -44,6 +44,7 @@ def build_snapshot() -> dict:
         f_salary = pool.submit(pull_salary_baseline)
         f_recognized = pool.submit(pull_recognized_revenue)
         f_sales = pool.submit(pull_sales_analytics)
+        f_health = pool.submit(pull_client_health)
 
     stripe_result = f_stripe.result()
     ghl_result = f_ghl.result()
@@ -52,6 +53,7 @@ def build_snapshot() -> dict:
     salary_result = f_salary.result()
     recognized_result = f_recognized.result()
     sales_result = f_sales.result()
+    health_result = f_health.result()
 
     # Merge degraded lists
     degraded = (
@@ -62,6 +64,7 @@ def build_snapshot() -> dict:
         + salary_result.get("degraded", [])
         + recognized_result.get("degraded", [])
         + sales_result.get("degraded", [])
+        + health_result.get("degraded", [])
     )
 
     # Build costs block from actual sheet commission values
@@ -164,6 +167,7 @@ def build_snapshot() -> dict:
         "sheets": sheets_data,
         "xero": xero_data,
         "sales": sales_result.get("sales"),
+        "client_health": health_result.get("client_health"),
         "costs": costs,
         "profit": profit,
         "revenue_views": revenue_views,

@@ -50,6 +50,7 @@ FINANCE_SHEET_CONFIG = {
     "salary_tab": os.getenv("FINANCE_SALARY_TAB", "SALARY"),
     "recognized_tab": os.getenv("FINANCE_RECOGNIZED_TAB", "RECOGNIZED"),
     "salary_aud_col": os.getenv("FINANCE_SALARY_AUD_COL", "SALARY (AUD)"),
+    "health_tab": os.getenv("FINANCE_HEALTH_TAB", "Health"),
     "salary_total_label": "TOTAL SALARY (AUD)",
     "payroll_variance_threshold": 1.5,  # flag when xero wages > N × baseline
 }

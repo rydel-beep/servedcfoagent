@@ -3,6 +3,7 @@
   'use strict';
 
   const panel = document.getElementById('chat-panel');
+  const overlay = document.getElementById('chat-overlay');
   const toggleBtn = document.getElementById('btn-chat-toggle');
   const closeBtn = document.getElementById('chat-close');
   const messages = document.getElementById('chat-messages');
@@ -15,11 +16,13 @@
   function toggle() {
     isOpen = !isOpen;
     panel.classList.toggle('open', isOpen);
+    overlay.classList.toggle('open', isOpen);
     if (isOpen) input.focus();
   }
 
   toggleBtn.addEventListener('click', toggle);
   closeBtn.addEventListener('click', toggle);
+  overlay.addEventListener('click', toggle);
 
   function addMessage(text, role) {
     const div = document.createElement('div');
@@ -72,7 +75,6 @@
     }
   });
 
-  // Auto-resize textarea
   input.addEventListener('input', function() {
     this.style.height = 'auto';
     this.style.height = Math.min(this.scrollHeight, 120) + 'px';

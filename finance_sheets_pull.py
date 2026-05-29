@@ -19,6 +19,14 @@ logger = logging.getLogger(__name__)
 
 SKIP_MARKERS = {"end month", "churned", "x", "renewal", "end month previous month", ""}
 
+# Month column mapping in Health tab (col 8 = 10/2025, col 15 = 5/2026, etc.)
+_HEALTH_MONTH_START_COL = 8
+_HEALTH_MONTH_LABELS = [
+    "10/2025", "11/2025", "12/2025",
+    "1/2026", "2/2026", "3/2026", "4/2026", "5/2026",
+    "6/2026", "7/2026", "8/2026", "9/2026",
+]
+
 
 def _fetch_tab(tab: str) -> list[list[str]]:
     """Fetch a tab from the finance sheet as raw rows."""
@@ -213,5 +221,108 @@ def pull_recognized_revenue() -> dict:
         "recognized_client_count": client_count,
         "recognized_month": month_label,
         "recognized_validation": validation,
+        "degraded": degraded,
+    }
+
+
+def _current_month_col_index() -> int | None:
+    """Return the column index in the Health tab for the current Sydney month."""
+    today = today_sydney()
+    label = f"{today.month}/{today.year}"
+    try:
+        offset = _HEALTH_MONTH_LABELS.index(label)
+        return _HEALTH_MONTH_START_COL + offset
+    except ValueError:
+        return None
+
+
+def pull_client_health() -> dict:
+    """
+    Pull per-client health data from the Health tab.
+    Returns active client count, current month MRR, next month projected MRR,
+    and per-client rows (name, status, package, current_mrr, next_mrr).
+    No PII beyond client business names (public entities).
+    """
+    degraded = []
+    tab = FINANCE_SHEET_CONFIG.get("health_tab", "Health")
+    rows = _fetch_tab(tab)
+
+    if not rows or len(rows) < 3:
+        degraded.append({"metric": "client_health", "reason": f"Failed to fetch {tab} tab"})
+        return {"client_health": None, "degraded": degraded}
+
+    # Row 0 is title, Row 1 is headers, data starts at Row 2
+    data_rows = rows[2:]
+
+    col_idx = _current_month_col_index()
+    next_col_idx = col_idx + 1 if col_idx is not None else None
+
+    clients = []
+    total_current = 0.0
+    total_next = 0.0
+    active_count = 0
+    web_sub_count = 0
+
+    for row in data_rows:
+        name = row[0].strip() if len(row) > 0 else ""
+        if not name or name.upper().startswith("TOTAL"):
+            continue
+
+        status = row[1].strip() if len(row) > 1 else ""
+        package = row[2].strip() if len(row) > 2 else ""
+
+        # Skip non-client rows (footers, blanks)
+        if status not in ("Active", "Web Sub"):
+            continue
+
+        current_mrr = None
+        next_mrr = None
+
+        if col_idx is not None and col_idx < len(row):
+            current_mrr = _parse_money(row[col_idx])
+
+        if next_col_idx is not None and next_col_idx < len(row):
+            next_mrr = _parse_money(row[next_col_idx])
+
+        # Count zeros as zero, not None
+        if current_mrr is None:
+            current_mrr = 0.0
+        if next_mrr is None:
+            next_mrr = 0.0
+
+        if status == "Active":
+            active_count += 1
+        elif status == "Web Sub":
+            web_sub_count += 1
+
+        total_current += current_mrr
+        total_next += next_mrr
+
+        clients.append({
+            "name": name,
+            "status": status,
+            "package": package,
+            "current_mrr": round(current_mrr, 2),
+            "next_mrr": round(next_mrr, 2),
+        })
+
+    today = today_sydney()
+    current_label = f"{today.month}/{today.year}"
+    next_month = today.month + 1 if today.month < 12 else 1
+    next_year = today.year if today.month < 12 else today.year + 1
+    next_label = f"{next_month}/{next_year}"
+
+    return {
+        "client_health": {
+            "active_count": active_count,
+            "web_sub_count": web_sub_count,
+            "total_clients": active_count + web_sub_count,
+            "current_month": current_label,
+            "current_mrr": round(total_current, 2),
+            "next_month": next_label,
+            "next_mrr": round(total_next, 2),
+            "mrr_delta": round(total_next - total_current, 2),
+            "clients": clients,
+        },
         "degraded": degraded,
     }
