@@ -1,4 +1,4 @@
-/* dashboard.js v2 — Data fetching, rendering, auto-refresh */
+/* dashboard.js v3 — Full dashboard with trend, churn risk, revenue views */
 (function() {
   'use strict';
 
@@ -66,6 +66,9 @@
 
     renderStatus(snap);
     renderKPIs(snap);
+    renderMRRTrend(snap);
+    renderRevenueViews(snap);
+    renderChurnRisk(snap);
     renderClientHealth(snap);
     renderVerdicts(snap);
     renderFunnel(snap);
@@ -101,8 +104,7 @@
     const ch = snap.client_health || {};
 
     // Sheet MRR
-    const sheetMrr = ch.current_mrr;
-    setKPI('val-sheet-mrr', fmt$(sheetMrr));
+    setKPI('val-sheet-mrr', fmt$(ch.current_mrr));
     const delta = ch.mrr_delta;
     if (delta != null && delta !== 0) {
       const dir = delta > 0 ? '+' : '';
@@ -121,7 +123,6 @@
 
     // Gross Margin
     const margin = get(h, 'gross_margin.value');
-    const marginEl = document.getElementById('val-margin');
     setKPI('val-margin', fmtPct(margin), statusClass(get(h, 'gross_margin.status')));
     $('#sub-margin').textContent = margin != null ? 'benchmark: 45%' : '';
 
@@ -148,6 +149,217 @@
     el.className = 'kpi-value' + (cls ? ' ' + cls : '');
   }
 
+  // ── MRR Trend Chart ──────────────────────────────────────
+  let trendChart = null;
+
+  function renderMRRTrend(snap) {
+    const ch = snap.client_health || {};
+    const trend = ch.trend || [];
+    const ctx = document.getElementById('chart-mrr-trend');
+    if (trendChart) trendChart.destroy();
+
+    if (trend.length === 0) {
+      ctx.parentElement.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:40px 0;text-align:center;">No trend data</div>';
+      return;
+    }
+
+    // Find current month index to split past/future
+    const currentMonth = ch.current_month;
+    const currentIdx = trend.findIndex(t => t.month === currentMonth);
+
+    // Create gradient for past vs future
+    const labels = trend.map(t => t.month);
+    const values = trend.map(t => t.mrr);
+
+    // Point styling — highlight current month
+    const pointRadius = trend.map((_, i) => i === currentIdx ? 5 : 2);
+    const pointBg = trend.map((_, i) => {
+      if (i === currentIdx) return '#3B82F6';
+      if (i < currentIdx) return 'rgba(59,130,246,0.6)';
+      return 'rgba(148,163,184,0.4)';
+    });
+
+    trendChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: values,
+          borderColor: function(context) {
+            const chart = context.chart;
+            const {ctx: c, chartArea} = chart;
+            if (!chartArea) return '#3B82F6';
+            const gradient = c.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+            const splitPct = currentIdx >= 0 ? currentIdx / (trend.length - 1) : 1;
+            gradient.addColorStop(0, 'rgba(59,130,246,0.8)');
+            gradient.addColorStop(Math.min(splitPct, 0.99), 'rgba(59,130,246,0.8)');
+            gradient.addColorStop(Math.min(splitPct + 0.01, 1), 'rgba(148,163,184,0.35)');
+            gradient.addColorStop(1, 'rgba(148,163,184,0.35)');
+            return gradient;
+          },
+          borderWidth: 2.5,
+          pointRadius: pointRadius,
+          pointBackgroundColor: pointBg,
+          pointBorderWidth: 0,
+          fill: {
+            target: 'origin',
+            above: function(context) {
+              const chart = context.chart;
+              const {ctx: c, chartArea} = chart;
+              if (!chartArea) return 'rgba(59,130,246,0.05)';
+              const gradient = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+              gradient.addColorStop(0, 'rgba(59,130,246,0.12)');
+              gradient.addColorStop(1, 'rgba(59,130,246,0)');
+              return gradient;
+            },
+          },
+          tension: 0.3,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) { return fmt$(ctx.parsed.y); }
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: 'rgba(148,163,184,0.5)', font: { size: 10 } },
+            grid: { display: false },
+          },
+          y: {
+            ticks: {
+              color: 'rgba(148,163,184,0.4)',
+              font: { size: 10 },
+              callback: function(v) { return '$' + (v/1000).toFixed(0) + 'k'; }
+            },
+            grid: { color: 'rgba(255,255,255,0.03)' },
+          }
+        },
+        interaction: { intersect: false, mode: 'index' },
+      }
+    });
+  }
+
+  // ── Revenue Views (Cash vs Accrual) ──────────────────────
+  function renderRevenueViews(snap) {
+    const container = $('#revenue-bars');
+    const note = $('#revenue-note');
+
+    const rv = snap.revenue_views || {};
+    const stripeCash = rv.stripe_cash_trailing_30d;
+    const xeroPL = rv.xero_pl_period;
+    const sheetRecognized = rv.recognized_current_month;
+
+    const views = [
+      { label: 'Stripe Cash (30d)', value: stripeCash, cls: 'stripe', source: 'Bank' },
+      { label: 'Xero P&L', value: xeroPL, cls: 'xero', source: 'Accounting' },
+      { label: 'Sheet Recognized', value: sheetRecognized, cls: 'sheet', source: 'Accrual' },
+    ].filter(v => v.value != null);
+
+    if (views.length === 0) {
+      container.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">No revenue data</div>';
+      note.innerHTML = '';
+      return;
+    }
+
+    const maxVal = Math.max(...views.map(v => v.value), 1);
+
+    container.innerHTML = views.map(v => {
+      const pct = Math.max((v.value / maxVal) * 100, 3);
+      return `
+        <div class="rev-row">
+          <div class="rev-row-header">
+            <span class="rev-label">${v.label} <span style="color:var(--text-muted)">(${v.source})</span></span>
+            <span class="rev-amount">${fmt$(v.value)}</span>
+          </div>
+          <div class="rev-bar-bg">
+            <div class="rev-bar-fill ${v.cls}" style="width:${pct}%"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Reconciliation note
+    const parts = [];
+    if (stripeCash != null && xeroPL != null) {
+      const diff = stripeCash - xeroPL;
+      const dir = diff >= 0 ? '+' : '';
+      parts.push(`Stripe ${dir}${fmt$(diff)} vs Xero — timing differences expected`);
+    }
+    if (rv.recognized_month) {
+      parts.push(`Recognized: ${rv.recognized_month} (${rv.recognized_client_count || '?'} clients)`);
+    }
+    note.textContent = parts.join(' · ') || 'Same money, different lenses — never sum these.';
+  }
+
+  // ── Churn Risk ────────────────────────────────────────────
+  function renderChurnRisk(snap) {
+    const ch = snap.client_health || {};
+    const atRisk = ch.at_risk || [];
+    const badge = $('#churn-badge');
+    const summary = $('#churn-summary');
+    const list = $('#churn-list');
+
+    if (atRisk.length === 0) {
+      badge.textContent = 'Clear';
+      badge.style.background = 'var(--green-dim)';
+      badge.style.color = 'var(--green)';
+      summary.innerHTML = '';
+      list.innerHTML = '<div class="churn-empty">No contracts expiring in the next 60 days</div>';
+      return;
+    }
+
+    // Badge
+    badge.textContent = atRisk.length + ' at risk';
+    badge.style.background = 'var(--red-dim)';
+    badge.style.color = 'var(--red)';
+
+    // Summary
+    const risk30 = ch.revenue_at_risk_30d || 0;
+    const risk60 = ch.revenue_at_risk_60d || 0;
+    summary.innerHTML = `
+      <div class="churn-stat">
+        <div class="churn-stat-value" style="color:var(--red)">${fmt$(risk30)}</div>
+        <div class="churn-stat-label">At risk (30d)</div>
+      </div>
+      <div class="churn-stat">
+        <div class="churn-stat-value" style="color:var(--amber)">${fmt$(risk60)}</div>
+        <div class="churn-stat-label">At risk (60d)</div>
+      </div>
+      <div class="churn-stat">
+        <div class="churn-stat-value">${atRisk.length}</div>
+        <div class="churn-stat-label">Contracts</div>
+      </div>
+    `;
+
+    // List
+    list.innerHTML = '';
+    atRisk.forEach(c => {
+      const row = document.createElement('div');
+      row.className = 'churn-row ' + c.risk_level;
+
+      let daysText;
+      if (c.risk_level === 'expired') {
+        daysText = 'Expired';
+      } else {
+        daysText = c.days_remaining + 'd left';
+      }
+
+      row.innerHTML = `
+        <span class="churn-client">${esc(c.name)}</span>
+        <span class="churn-days ${c.risk_level}">${daysText}</span>
+        <span class="churn-revenue">${fmt$(c.monthly_revenue)}/mo</span>
+      `;
+      list.appendChild(row);
+    });
+  }
+
   // ── Client Health ────────────────────────────────────────
   function renderClientHealth(snap) {
     const ch = snap.client_health;
@@ -161,12 +373,10 @@
       return;
     }
 
-    // Badge
     badge.textContent = ch.total_clients + ' clients';
     badge.style.background = 'var(--green-dim)';
     badge.style.color = 'var(--green)';
 
-    // Summary stats
     summary.innerHTML = `
       <div class="health-stat">
         <div class="health-stat-value" style="color:var(--text)">${fmt$(ch.current_mrr)}</div>
@@ -182,7 +392,6 @@
       </div>
     `;
 
-    // Client rows — sorted by current_mrr descending
     const sorted = [...ch.clients].sort((a, b) => (b.current_mrr || 0) - (a.current_mrr || 0));
     list.innerHTML = '';
     sorted.forEach(c => {
@@ -265,7 +474,6 @@
       container.appendChild(row);
     });
 
-    // Stats row
     const stats = $('#funnel-stats');
     const parts = [];
     if (f.lead_to_close_pct != null) parts.push(`<span class="funnel-stat">Lead-to-close: <strong>${f.lead_to_close_pct}%</strong></span>`);
@@ -287,12 +495,9 @@
     }
 
     const colors = [
-      'rgba(59,130,246,0.7)',
-      'rgba(34,197,94,0.7)',
-      'rgba(245,158,11,0.7)',
-      'rgba(239,68,68,0.7)',
-      'rgba(168,85,247,0.7)',
-      'rgba(236,72,153,0.7)',
+      'rgba(59,130,246,0.7)', 'rgba(34,197,94,0.7)',
+      'rgba(245,158,11,0.7)', 'rgba(239,68,68,0.7)',
+      'rgba(168,85,247,0.7)', 'rgba(236,72,153,0.7)',
     ];
 
     offersChart = new Chart(ctx, {
@@ -302,23 +507,18 @@
         datasets: [{
           data: offers.map(o => o.count),
           backgroundColor: offers.map((_, i) => colors[i % colors.length]),
-          borderWidth: 0,
-          spacing: 2,
+          borderWidth: 0, spacing: 2,
         }]
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
+        responsive: true, maintainAspectRatio: false,
         cutout: '65%',
         plugins: {
           legend: {
             position: 'right',
             labels: {
-              color: 'rgba(148,163,184,0.8)',
-              font: { size: 11 },
-              padding: 10,
-              usePointStyle: true,
-              pointStyleWidth: 8,
+              color: 'rgba(148,163,184,0.8)', font: { size: 11 },
+              padding: 10, usePointStyle: true, pointStyleWidth: 8,
             }
           }
         }

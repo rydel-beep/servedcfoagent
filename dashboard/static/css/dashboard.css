@@ -285,6 +285,78 @@ body {
 .chart-wrap {
   position: relative; height: 220px;
 }
+.chart-wide { height: 200px; }
+
+/* ── Revenue Views ─────────────────────── */
+.revenue-bars {
+  display: flex; flex-direction: column; gap: 12px;
+}
+.rev-row {
+  display: flex; flex-direction: column; gap: 4px;
+}
+.rev-row-header {
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.rev-label { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+.rev-amount { font-size: 16px; font-weight: 600; }
+.rev-bar-bg {
+  height: 8px; border-radius: 4px;
+  background: rgba(255,255,255,0.04);
+  overflow: hidden;
+}
+.rev-bar-fill {
+  height: 100%; border-radius: 4px;
+  transition: width 0.5s ease-out;
+}
+.rev-bar-fill.stripe { background: var(--accent); }
+.rev-bar-fill.xero { background: var(--green); }
+.rev-bar-fill.sheet { background: var(--amber); }
+.revenue-note {
+  margin-top: 12px; padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text-muted); line-height: 1.5;
+}
+
+/* ── Churn Risk ────────────────────────── */
+.churn-summary {
+  display: flex; gap: 16px; margin-bottom: 14px;
+}
+.churn-stat {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.churn-stat-value { font-size: 18px; font-weight: 600; }
+.churn-stat-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+.churn-list {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.churn-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.churn-row.critical { border-color: rgba(239,68,68,0.25); background: var(--red-dim); }
+.churn-row.watch { border-color: rgba(245,158,11,0.2); background: var(--amber-dim); }
+.churn-row.expired { border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.15); }
+.churn-client {
+  font-size: 13px; font-weight: 500; flex: 1;
+}
+.churn-days {
+  font-size: 11px; font-weight: 600; margin: 0 12px;
+}
+.churn-days.critical { color: var(--red); }
+.churn-days.watch { color: var(--amber); }
+.churn-days.expired { color: var(--red); }
+.churn-revenue {
+  font-size: 13px; font-weight: 600; color: var(--text-secondary);
+}
+.churn-empty {
+  font-size: 13px; color: var(--green); padding: 12px 0;
+}
 
 /* ── Metrics ───────────────────────────── */
 .metrics-grid {

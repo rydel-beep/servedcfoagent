@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+from datetime import date, timedelta
 
 import requests
 
@@ -236,11 +237,31 @@ def _current_month_col_index() -> int | None:
         return None
 
 
+def _parse_date_mmddyyyy(val: str) -> date | None:
+    """Parse 'MM-DD-YYYY' or 'MM/DD/YYYY' dates from the Health tab."""
+    val = val.strip()
+    if not val:
+        return None
+    sep = "-" if "-" in val else ("/" if "/" in val else None)
+    if not sep:
+        return None
+    try:
+        parts = val.split(sep)
+        if len(parts) == 3:
+            return date(int(parts[2]), int(parts[0]), int(parts[1]))
+    except (ValueError, IndexError):
+        pass
+    return None
+
+
 def pull_client_health() -> dict:
     """
     Pull per-client health data from the Health tab.
-    Returns active client count, current month MRR, next month projected MRR,
-    and per-client rows (name, status, package, current_mrr, next_mrr).
+    Returns:
+    - Active client count, current/next month MRR, delta
+    - Per-client rows with contract dates and churn risk
+    - Monthly MRR totals for trend chart (Oct 2025 → Sep 2026)
+    - At-risk clients (contracts expiring within 60 days)
     No PII beyond client business names (public entities).
     """
     degraded = []
@@ -253,6 +274,7 @@ def pull_client_health() -> dict:
 
     # Row 0 is title, Row 1 is headers, data starts at Row 2
     data_rows = rows[2:]
+    today = today_sydney()
 
     col_idx = _current_month_col_index()
     next_col_idx = col_idx + 1 if col_idx is not None else None
@@ -262,6 +284,12 @@ def pull_client_health() -> dict:
     total_next = 0.0
     active_count = 0
     web_sub_count = 0
+
+    # Monthly totals for trend chart
+    monthly_totals = {label: 0.0 for label in _HEALTH_MONTH_LABELS}
+
+    # Churn risk tracking
+    at_risk = []
 
     for row in data_rows:
         name = row[0].strip() if len(row) > 0 else ""
@@ -274,6 +302,10 @@ def pull_client_health() -> dict:
         # Skip non-client rows (footers, blanks)
         if status not in ("Active", "Web Sub"):
             continue
+
+        # Parse contract dates — col 5 = start, col 6 = end
+        contract_start = _parse_date_mmddyyyy(row[5]) if len(row) > 5 else None
+        contract_end = _parse_date_mmddyyyy(row[6]) if len(row) > 6 else None
 
         current_mrr = None
         next_mrr = None
@@ -298,19 +330,70 @@ def pull_client_health() -> dict:
         total_current += current_mrr
         total_next += next_mrr
 
-        clients.append({
+        # Accumulate monthly totals for trend chart
+        for i, label in enumerate(_HEALTH_MONTH_LABELS):
+            ci = _HEALTH_MONTH_START_COL + i
+            if ci < len(row):
+                val = _parse_money(row[ci])
+                if val is not None:
+                    monthly_totals[label] += val
+
+        # Churn risk: contracts expiring within 60 days (future only).
+        # Past end dates with current revenue = renewed/month-to-month, not churn risk.
+        days_to_end = None
+        risk_level = None
+        if contract_end:
+            days_to_end = (contract_end - today).days
+            if days_to_end > 0 and days_to_end <= 30:
+                risk_level = "critical"
+            elif days_to_end > 0 and days_to_end <= 60:
+                risk_level = "watch"
+            # Past dates with revenue = renewed, skip churn risk
+
+        if risk_level and current_mrr > 0:
+            at_risk.append({
+                "name": name,
+                "contract_end": str(contract_end),
+                "days_remaining": days_to_end,
+                "risk_level": risk_level,
+                "monthly_revenue": round(current_mrr, 2),
+            })
+
+        client_entry = {
             "name": name,
             "status": status,
             "package": package,
             "current_mrr": round(current_mrr, 2),
             "next_mrr": round(next_mrr, 2),
-        })
+        }
+        if contract_start:
+            client_entry["contract_start"] = str(contract_start)
+        if contract_end:
+            client_entry["contract_end"] = str(contract_end)
+            if days_to_end is not None:
+                client_entry["days_to_end"] = max(days_to_end, 0)
 
-    today = today_sydney()
+        clients.append(client_entry)
+
     current_label = f"{today.month}/{today.year}"
     next_month = today.month + 1 if today.month < 12 else 1
     next_year = today.year if today.month < 12 else today.year + 1
     next_label = f"{next_month}/{next_year}"
+
+    # Build trend data array (sorted chronologically)
+    trend = []
+    for label in _HEALTH_MONTH_LABELS:
+        trend.append({
+            "month": label,
+            "mrr": round(monthly_totals[label], 2),
+        })
+
+    # Revenue at risk from expiring contracts
+    revenue_at_risk_30d = sum(c["monthly_revenue"] for c in at_risk if c["risk_level"] in ("critical", "expired"))
+    revenue_at_risk_60d = sum(c["monthly_revenue"] for c in at_risk)
+
+    # Sort at_risk by days remaining
+    at_risk.sort(key=lambda c: c["days_remaining"])
 
     return {
         "client_health": {
@@ -322,6 +405,10 @@ def pull_client_health() -> dict:
             "next_month": next_label,
             "next_mrr": round(total_next, 2),
             "mrr_delta": round(total_next - total_current, 2),
+            "trend": trend,
+            "at_risk": at_risk,
+            "revenue_at_risk_30d": round(revenue_at_risk_30d, 2),
+            "revenue_at_risk_60d": round(revenue_at_risk_60d, 2),
             "clients": clients,
         },
         "degraded": degraded,
