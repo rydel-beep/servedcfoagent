@@ -30,7 +30,31 @@
   </div>
 </header>
 
+<!-- Section Navigation -->
+<nav class="section-nav" id="section-nav">
+  <a href="#section-exec" class="nav-link">Summary</a>
+  <a href="#section-kpis" class="nav-link">KPIs</a>
+  <a href="#section-trend" class="nav-link">MRR</a>
+  <a href="#section-month-perf" class="nav-link">Performance</a>
+  <a href="#section-waterfall" class="nav-link">P&L</a>
+  <a href="#section-cash-position" class="nav-link">Cash</a>
+  <a href="#section-funnel" class="nav-link">Funnel</a>
+  <a href="#section-pipeline" class="nav-link">Pipeline</a>
+  <a href="#section-health" class="nav-link">Clients</a>
+  <a href="#section-reps" class="nav-link">Reps</a>
+  <a href="#section-quality" class="nav-link">DQ</a>
+</nav>
+
 <main class="main" id="main">
+
+  <!-- Executive Summary -->
+  <section class="panel exec-panel" id="section-exec">
+    <div class="panel-header">
+      <h2 class="panel-title">Executive Summary</h2>
+      <span class="panel-sub" id="exec-date"></span>
+    </div>
+    <div class="exec-body" id="exec-body">Loading...</div>
+  </section>
 
   <!-- KPI Strip -->
   <section class="kpi-strip" id="section-kpis">
@@ -101,6 +125,43 @@
     <div id="perf-analysis-content"></div>
   </section>
 
+  <!-- Profit Waterfall (full width) -->
+  <section class="panel" id="section-waterfall">
+    <div class="panel-header">
+      <h2 class="panel-title">Profit Waterfall</h2>
+      <span class="panel-sub" id="waterfall-period"></span>
+    </div>
+    <div id="waterfall-content"></div>
+  </section>
+
+  <!-- Two-column: Cash Position + Stripe Health -->
+  <div class="grid-2">
+
+    <!-- Cash Position / Runway -->
+    <section class="panel" id="section-cash-position">
+      <div class="panel-header">
+        <h2 class="panel-title">Cash Position</h2>
+        <div class="panel-badge" id="cash-badge"></div>
+      </div>
+      <div id="cash-position-content"></div>
+    </section>
+
+    <!-- Stripe Health -->
+    <section class="panel" id="section-stripe-health">
+      <div class="panel-header">
+        <h2 class="panel-title">Stripe Health</h2>
+        <div class="panel-badge" id="stripe-badge"></div>
+      </div>
+      <div id="stripe-health-content"></div>
+    </section>
+
+  </div>
+
+  <!-- Speed-to-Lead Alert -->
+  <section class="panel alert-panel" id="section-speed-to-lead" style="display:none;">
+    <div id="speed-to-lead-content"></div>
+  </section>
+
   <!-- Two-column: Revenue Views + Churn Risk -->
   <div class="grid-2">
 
@@ -160,7 +221,7 @@
 
   </div>
 
-  <!-- Two-column: Funnel + Offer Mix -->
+  <!-- Two-column: Funnel + Setter Deep Dive -->
   <div class="grid-2">
 
     <!-- Sales Funnel -->
@@ -173,6 +234,43 @@
       <div class="funnel-stats" id="funnel-stats"></div>
     </section>
 
+    <!-- Setter Deep Dive Funnel -->
+    <section class="panel" id="section-setter-deep">
+      <div class="panel-header">
+        <h2 class="panel-title">Setter Deep Dive</h2>
+        <span class="panel-sub">full pipeline breakdown</span>
+      </div>
+      <div id="setter-deep-content"></div>
+    </section>
+
+  </div>
+
+  <!-- Two-column: GHL Pipeline + DQ/Loss Intelligence -->
+  <div class="grid-2">
+
+    <!-- GHL Pipeline View -->
+    <section class="panel" id="section-pipeline">
+      <div class="panel-header">
+        <h2 class="panel-title">GHL Pipeline</h2>
+        <div class="panel-badge" id="pipeline-badge"></div>
+      </div>
+      <div id="pipeline-content"></div>
+    </section>
+
+    <!-- DQ & Loss Intelligence -->
+    <section class="panel" id="section-dq-loss">
+      <div class="panel-header">
+        <h2 class="panel-title">DQ & Loss Intelligence</h2>
+        <span class="panel-sub">why deals don't close</span>
+      </div>
+      <div id="dq-loss-content"></div>
+    </section>
+
+  </div>
+
+  <!-- Two-column: Offer Mix + Lead Source ROI -->
+  <div class="grid-2">
+
     <!-- Offer Mix -->
     <section class="panel" id="section-offers">
       <div class="panel-header">
@@ -182,11 +280,6 @@
         <canvas id="chart-offers" height="220"></canvas>
       </div>
     </section>
-
-  </div>
-
-  <!-- Two-column: Lead Source ROI + Commission Tracker -->
-  <div class="grid-2">
 
     <!-- Lead Source ROI -->
     <section class="panel" id="section-lead-roi">
@@ -198,6 +291,11 @@
       <div class="lead-roi-note" id="lead-roi-note"></div>
     </section>
 
+  </div>
+
+  <!-- Two-column: Commission Tracker + Unit Economics -->
+  <div class="grid-2">
+
     <!-- Commission Tracker -->
     <section class="panel" id="section-commissions">
       <div class="panel-header">
@@ -207,11 +305,6 @@
       <div class="commission-summary" id="commission-summary"></div>
       <div id="commission-detail"></div>
     </section>
-
-  </div>
-
-  <!-- Two-column: Secondary metrics + Per-rep tables -->
-  <div class="grid-2">
 
     <section class="panel" id="section-metrics">
       <div class="panel-header">
@@ -245,11 +338,15 @@
       </div>
     </section>
 
-    <section class="panel" id="section-reps">
-      <div class="panel-header">
-        <h2 class="panel-title">Rep Performance</h2>
-        <span class="panel-sub" id="reps-sparkline-status"></span>
-      </div>
+  </div>
+
+  <!-- Rep Performance (full width) -->
+  <section class="panel" id="section-reps">
+    <div class="panel-header">
+      <h2 class="panel-title">Rep Performance</h2>
+      <span class="panel-sub" id="reps-sparkline-status"></span>
+    </div>
+    <div class="grid-2" style="gap:20px;">
       <div class="rep-section">
         <h3 class="rep-heading">Setters</h3>
         <table class="data-table" id="table-setters">
@@ -264,9 +361,8 @@
           <tbody></tbody>
         </table>
       </div>
-    </section>
-
-  </div>
+    </div>
+  </section>
 
   <!-- Cohort Retention (full width) -->
   <section class="panel" id="section-cohort">

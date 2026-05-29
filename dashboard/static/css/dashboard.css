@@ -1,4 +1,4 @@
-/* Jarvis Dashboard v2 — Clean executive theme */
+/* Jarvis Dashboard v3 — Full executive theme */
 :root {
   --bg: #0B0F19;
   --bg-card: #111827;
@@ -16,6 +16,8 @@
   --amber-dim: rgba(245,158,11,0.12);
   --red: #EF4444;
   --red-dim: rgba(239,68,68,0.12);
+  --purple: #A855F7;
+  --purple-dim: rgba(168,85,247,0.12);
   --radius: 10px;
   --radius-sm: 6px;
 }
@@ -86,8 +88,51 @@ body {
 .icon-btn.loading svg { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── Section Navigation ─────────────────── */
+.section-nav {
+  position: sticky; top: 52px; z-index: 90;
+  display: flex; align-items: center; gap: 2px;
+  padding: 6px 24px;
+  background: rgba(11,15,25,0.88);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.section-nav::-webkit-scrollbar { display: none; }
+.nav-link {
+  padding: 4px 10px; border-radius: 6px;
+  font-size: 11px; font-weight: 500;
+  color: var(--text-muted); text-decoration: none;
+  white-space: nowrap; transition: all 0.15s;
+}
+.nav-link:hover { color: var(--text-secondary); background: rgba(255,255,255,0.04); }
+.nav-link.active { color: var(--accent); background: var(--accent-dim); }
+
 /* ── Main ─────────────────────────────── */
 .main { max-width: 1280px; margin: 0 auto; padding: 20px 24px 40px; }
+
+/* ── Executive Summary ────────────────── */
+.exec-panel {
+  border-left: 3px solid var(--accent);
+  margin-bottom: 20px;
+}
+.exec-body {
+  font-size: 13px; color: var(--text-secondary); line-height: 1.7;
+}
+.exec-line {
+  padding: 6px 0;
+  display: flex; align-items: flex-start; gap: 10px;
+}
+.exec-icon {
+  font-size: 14px; flex-shrink: 0; margin-top: 1px;
+  width: 20px; text-align: center;
+}
+.exec-text { flex: 1; }
+.exec-text strong { color: var(--text); font-weight: 600; }
+.exec-divider {
+  height: 1px; background: var(--border); margin: 8px 0;
+}
 
 /* ── KPI Strip ─────────────────────────── */
 .kpi-strip {
@@ -140,6 +185,7 @@ body {
   border-radius: var(--radius);
   padding: 20px;
   min-height: 0;
+  margin-bottom: 16px;
 }
 .panel-muted { background: rgba(17,24,39,0.5); }
 
@@ -157,6 +203,250 @@ body {
 .panel-badge {
   font-size: 11px; padding: 2px 8px;
   border-radius: 10px; font-weight: 600;
+}
+
+/* ── Alert Panel ──────────────────────── */
+.alert-panel {
+  border-color: rgba(239,68,68,0.3);
+  background: rgba(239,68,68,0.04);
+}
+.alert-content {
+  display: flex; align-items: center; gap: 16px;
+  padding: 4px 0;
+}
+.alert-icon { font-size: 28px; flex-shrink: 0; }
+.alert-body { flex: 1; }
+.alert-title {
+  font-size: 14px; font-weight: 700; color: var(--red);
+  margin-bottom: 4px;
+}
+.alert-detail {
+  font-size: 12px; color: var(--text-secondary); line-height: 1.5;
+}
+.alert-metric {
+  text-align: center; min-width: 80px; flex-shrink: 0;
+}
+.alert-metric-value {
+  font-size: 28px; font-weight: 700; color: var(--red);
+}
+.alert-metric-label {
+  font-size: 10px; text-transform: uppercase; color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+/* ── Profit Waterfall ─────────────────── */
+.waterfall-flow {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-bottom: 16px;
+}
+.wf-row {
+  display: grid; grid-template-columns: 140px 1fr 90px;
+  align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: var(--radius-sm);
+}
+.wf-row:hover { background: rgba(255,255,255,0.02); }
+.wf-row.total {
+  border-top: 1px solid var(--border);
+  margin-top: 4px; padding-top: 12px;
+}
+.wf-label {
+  font-size: 12px; font-weight: 500; color: var(--text-secondary);
+}
+.wf-bar-bg {
+  height: 18px; border-radius: 3px;
+  background: rgba(255,255,255,0.03); position: relative; overflow: hidden;
+}
+.wf-bar-fill {
+  height: 100%; border-radius: 3px;
+  transition: width 0.5s ease-out;
+}
+.wf-bar-fill.revenue { background: var(--accent); opacity: 0.7; }
+.wf-bar-fill.cost { background: var(--red); opacity: 0.5; }
+.wf-bar-fill.profit { background: var(--green); opacity: 0.6; }
+.wf-bar-fill.loss { background: var(--red); opacity: 0.6; }
+.wf-value {
+  font-size: 13px; font-weight: 600; text-align: right;
+}
+.wf-breakdown {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px; margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.wf-detail {
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.wf-detail-label {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 4px;
+}
+.wf-detail-value {
+  font-size: 16px; font-weight: 600;
+}
+
+/* ── Cash Position ────────────────────── */
+.cash-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 10px; margin-bottom: 12px;
+}
+.cash-card {
+  padding: 14px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.cash-card-label {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 4px;
+}
+.cash-card-value {
+  font-size: 20px; font-weight: 600;
+}
+.cash-card-sub {
+  font-size: 11px; color: var(--text-muted); margin-top: 2px;
+}
+.runway-bar-bg {
+  height: 8px; border-radius: 4px;
+  background: rgba(255,255,255,0.04);
+  overflow: hidden; margin-top: 12px;
+}
+.runway-bar-fill {
+  height: 100%; border-radius: 4px;
+  transition: width 0.5s ease-out;
+}
+.runway-note {
+  font-size: 11px; color: var(--text-muted); margin-top: 6px;
+  line-height: 1.4;
+}
+
+/* ── Stripe Health ────────────────────── */
+.stripe-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.stripe-card {
+  padding: 14px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.stripe-card.alert { border-color: rgba(239,68,68,0.25); background: var(--red-dim); }
+.stripe-card.ok { border-color: rgba(34,197,94,0.15); }
+.stripe-card-label {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 4px;
+}
+.stripe-card-value {
+  font-size: 20px; font-weight: 600;
+}
+.stripe-card-sub {
+  font-size: 11px; color: var(--text-muted); margin-top: 2px;
+}
+
+/* ── GHL Pipeline ─────────────────────── */
+.pipeline-summary {
+  display: flex; gap: 16px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.pipeline-stat {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.pipeline-stat-value { font-size: 20px; font-weight: 600; }
+.pipeline-stat-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+.pipeline-stages {
+  display: flex; flex-direction: column; gap: 4px;
+}
+.pipeline-stage-row {
+  display: grid; grid-template-columns: 140px 1fr 50px 70px;
+  align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+.pipeline-stage-row:hover { background: rgba(255,255,255,0.02); }
+.pipeline-stage-name { font-weight: 500; color: var(--text-secondary); }
+.pipeline-stage-bar-bg {
+  height: 14px; border-radius: 3px;
+  background: rgba(255,255,255,0.03); overflow: hidden;
+}
+.pipeline-stage-bar {
+  height: 100%; border-radius: 3px;
+  background: var(--accent); opacity: 0.6;
+  transition: width 0.4s ease-out;
+}
+.pipeline-stage-count { text-align: right; color: var(--text-muted); }
+.pipeline-stage-value { text-align: right; font-weight: 600; color: var(--text-secondary); }
+
+/* ── DQ & Loss Intelligence ───────────── */
+.dq-section { margin-bottom: 14px; }
+.dq-section-title {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--text-muted);
+  margin-bottom: 8px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.dq-bar-row {
+  display: grid; grid-template-columns: 120px 1fr 40px;
+  align-items: center; gap: 8px;
+  padding: 4px 0; font-size: 12px;
+}
+.dq-reason { font-weight: 500; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dq-bar-bg {
+  height: 12px; border-radius: 3px;
+  background: rgba(255,255,255,0.03); overflow: hidden;
+}
+.dq-bar-fill {
+  height: 100%; border-radius: 3px; opacity: 0.6;
+  transition: width 0.4s ease-out;
+}
+.dq-bar-fill.dq { background: var(--amber); }
+.dq-bar-fill.loss { background: var(--red); }
+.dq-bar-fill.rev { background: var(--purple); }
+.dq-count { text-align: right; color: var(--text-muted); font-weight: 500; }
+.dq-insight {
+  padding: 10px 12px; margin-top: 8px;
+  background: rgba(255,255,255,0.015);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--amber);
+  font-size: 12px; color: var(--text-secondary); line-height: 1.5;
+}
+
+/* ── Setter Deep Dive ─────────────────── */
+.deep-funnel {
+  display: flex; flex-direction: column; gap: 4px;
+  margin-bottom: 14px;
+}
+.deep-stage-row {
+  display: grid; grid-template-columns: 70px 1fr 50px 50px;
+  align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: var(--radius-sm);
+}
+.deep-stage-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-align: right; }
+.deep-stage-bar-bg {
+  height: 22px; border-radius: 4px;
+  background: rgba(255,255,255,0.04); position: relative; overflow: hidden;
+}
+.deep-stage-bar {
+  height: 100%; border-radius: 4px;
+  background: var(--accent); opacity: 0.7;
+  transition: width 0.5s ease-out;
+}
+.deep-stage-bar.closes { background: var(--green); }
+.deep-stage-count {
+  font-size: 12px; font-weight: 600; color: var(--text); text-align: right;
+}
+.deep-stage-rate {
+  font-size: 11px; color: var(--text-muted); text-align: right;
+}
+.deep-connect-note {
+  font-size: 11px; color: var(--text-muted); padding: 8px 12px;
+  background: rgba(255,255,255,0.015);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--accent);
+  line-height: 1.5;
 }
 
 /* ── Client Health ─────────────────────── */
@@ -744,6 +1034,7 @@ body {
   .kpi { min-width: calc(33% - 1px); }
   .kpi-divider:nth-child(6) { display: none; }
   .chat-panel { width: 100%; right: -100%; }
+  .section-nav { padding: 6px 16px; }
 }
 @media (max-width: 640px) {
   .kpi-strip { flex-direction: column; }
