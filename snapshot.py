@@ -18,6 +18,7 @@ from ghl_pull import pull_ghl
 from sheets_pull import pull_sheets
 from xero_pull import pull_xero
 from finance_sheets_pull import pull_salary_baseline, pull_recognized_revenue
+from sales_analytics_pull import pull_sales_analytics
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +27,14 @@ def build_snapshot() -> dict:
     """Pull all sources in parallel and assemble a single snapshot dict."""
     ts = now_sydney()
 
-    with ThreadPoolExecutor(max_workers=6) as pool:
+    with ThreadPoolExecutor(max_workers=7) as pool:
         f_stripe = pool.submit(pull_stripe)
         f_ghl = pool.submit(pull_ghl)
         f_sheets = pool.submit(pull_sheets)
         f_xero = pool.submit(pull_xero)
         f_salary = pool.submit(pull_salary_baseline)
         f_recognized = pool.submit(pull_recognized_revenue)
+        f_sales = pool.submit(pull_sales_analytics)
 
     stripe_result = f_stripe.result()
     ghl_result = f_ghl.result()
@@ -40,6 +42,7 @@ def build_snapshot() -> dict:
     xero_result = f_xero.result()
     salary_result = f_salary.result()
     recognized_result = f_recognized.result()
+    sales_result = f_sales.result()
 
     # Merge degraded lists
     degraded = (
@@ -49,6 +52,7 @@ def build_snapshot() -> dict:
         + xero_result.get("degraded", [])
         + salary_result.get("degraded", [])
         + recognized_result.get("degraded", [])
+        + sales_result.get("degraded", [])
     )
 
     # Build costs block from actual sheet commission values
@@ -153,6 +157,7 @@ def build_snapshot() -> dict:
         "ghl": ghl_result.get("ghl"),
         "sheets": sheets_data,
         "xero": xero_data,
+        "sales": sales_result.get("sales"),
         "costs": costs,
         "profit": profit,
         "revenue_views": revenue_views,
