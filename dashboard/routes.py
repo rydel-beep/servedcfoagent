@@ -89,6 +89,51 @@ def api_refresh():
     })
 
 
+@bp.route("/api/history", methods=["GET"])
+@require_auth
+def api_history():
+    """Return last N daily snapshots for sparkline/trend data."""
+    import history_store
+    n = request.args.get("n", 14, type=int)
+    n = min(n, 30)  # cap at 30 entries
+    entries = history_store.last_n_snapshots(n)
+
+    # Extract only the fields needed for sparklines (keep payload small)
+    result = []
+    for entry in entries:
+        snap = entry.get("snapshot", {})
+        sales = snap.get("sales") or {}
+        funnel = sales.get("funnel") or {}
+        per_closer = sales.get("per_closer") or []
+        deep = sales.get("deep") or {}
+        setter_perf = deep.get("setter_performance") or []
+        ch = snap.get("client_health") or {}
+
+        result.append({
+            "date": entry.get("date"),
+            "funnel": {
+                "leads_in": funnel.get("leads_in"),
+                "sets": funnel.get("sets"),
+                "shows": funnel.get("shows"),
+                "closes": funnel.get("closes"),
+            },
+            "setters": [
+                {"name": s.get("name"), "sets": s.get("sets"), "dials": s.get("dials"),
+                 "show_pct": s.get("show_pct")}
+                for s in setter_perf
+            ],
+            "closers": [
+                {"name": c.get("name"), "closes": c.get("closes"),
+                 "close_rate_pct": c.get("close_rate_pct"), "commission_total": c.get("commission_total")}
+                for c in per_closer
+            ],
+            "mrr": ch.get("current_mrr"),
+            "clients": ch.get("total_clients"),
+        })
+
+    return jsonify(result)
+
+
 @bp.route("/api/chat", methods=["POST"])
 @require_auth
 def api_chat():

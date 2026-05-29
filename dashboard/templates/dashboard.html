@@ -157,6 +157,31 @@
 
   </div>
 
+  <!-- Two-column: Lead Source ROI + Commission Tracker -->
+  <div class="grid-2">
+
+    <!-- Lead Source ROI -->
+    <section class="panel" id="section-lead-roi">
+      <div class="panel-header">
+        <h2 class="panel-title">Lead Source ROI</h2>
+        <span class="panel-sub">cost-per-close by source</span>
+      </div>
+      <div id="lead-roi-table"></div>
+      <div class="lead-roi-note" id="lead-roi-note"></div>
+    </section>
+
+    <!-- Commission Tracker -->
+    <section class="panel" id="section-commissions">
+      <div class="panel-header">
+        <h2 class="panel-title">Commission Tracker</h2>
+        <span class="panel-sub">MTD owed</span>
+      </div>
+      <div class="commission-summary" id="commission-summary"></div>
+      <div id="commission-detail"></div>
+    </section>
+
+  </div>
+
   <!-- Two-column: Secondary metrics + Per-rep tables -->
   <div class="grid-2">
 
@@ -195,24 +220,34 @@
     <section class="panel" id="section-reps">
       <div class="panel-header">
         <h2 class="panel-title">Rep Performance</h2>
+        <span class="panel-sub" id="reps-sparkline-status"></span>
       </div>
       <div class="rep-section">
         <h3 class="rep-heading">Setters</h3>
         <table class="data-table" id="table-setters">
-          <thead><tr><th>Name</th><th>Dials</th><th>Sets</th><th>D/S</th><th>Show%</th></tr></thead>
+          <thead><tr><th>Name</th><th>Dials</th><th>Sets</th><th>D/S</th><th>Show%</th><th>Trend</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
       <div class="rep-section">
         <h3 class="rep-heading">Closers</h3>
         <table class="data-table" id="table-closers">
-          <thead><tr><th>Name</th><th>Shows</th><th>Closes</th><th>Rate</th><th>Comm</th></tr></thead>
+          <thead><tr><th>Name</th><th>Shows</th><th>Closes</th><th>Rate</th><th>Comm</th><th>Trend</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
     </section>
 
   </div>
+
+  <!-- Cohort Retention (full width) -->
+  <section class="panel" id="section-cohort">
+    <div class="panel-header">
+      <h2 class="panel-title">Cohort Retention</h2>
+      <span class="panel-sub">clients by sign-up month</span>
+    </div>
+    <div id="cohort-grid"></div>
+  </section>
 
   <!-- Data Quality -->
   <section class="panel panel-muted" id="section-quality">

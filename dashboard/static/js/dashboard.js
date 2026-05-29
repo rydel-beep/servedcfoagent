@@ -4,6 +4,7 @@
 
   const $ = (s) => document.querySelector(s);
   let currentSnap = null;
+  let historyData = null;
   let refreshCooldown = false;
 
   // ── Helpers ──────────────────────────────────────────────
@@ -59,6 +60,17 @@
     }
   }
 
+  async function fetchHistory() {
+    try {
+      const resp = await fetch('/dashboard/api/history?n=14');
+      if (!resp.ok) return null;
+      return await resp.json();
+    } catch (e) {
+      console.error('History fetch failed:', e);
+      return null;
+    }
+  }
+
   // ── Render ───────────────────────────────────────────────
   function render(snap) {
     if (!snap) return;
@@ -73,9 +85,12 @@
     renderVerdicts(snap);
     renderFunnel(snap);
     renderOfferChart(snap);
+    renderLeadSourceROI(snap);
+    renderCommissions(snap);
     renderMetrics(snap);
     renderSetters(snap);
     renderClosers(snap);
+    renderCohortRetention(snap);
     renderQuality(snap);
 
     if (snap.generated_at) {
@@ -526,6 +541,153 @@
     });
   }
 
+  // ── Lead Source ROI ──────────────────────────────────────
+  function renderLeadSourceROI(snap) {
+    const container = $('#lead-roi-table');
+    const note = $('#lead-roi-note');
+    const bySrc = get(snap, 'sales.deep.lead_quality.by_source') || [];
+    const adSpend = get(snap, 'xero.xero_ad_spend');
+
+    if (bySrc.length === 0) {
+      container.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">No source data</div>';
+      note.innerHTML = '';
+      return;
+    }
+
+    const totalCloses = bySrc.reduce((s, r) => s + (r.closes || 0), 0);
+    const totalLeads = bySrc.reduce((s, r) => s + (r.leads || 0), 0);
+
+    // Estimate spend allocation proportional to leads (simplification)
+    const hasSpend = adSpend != null && adSpend > 0;
+
+    let html = `<div class="lead-roi-row header">
+      <span>Source</span><span class="num">Leads</span><span class="num">Sets</span>
+      <span class="num">Closes</span><span class="num">Close%</span>
+      <span class="num">${hasSpend ? 'Cost/Close' : 'DQ%'}</span>
+    </div>`;
+
+    // Sort by closes desc
+    const sorted = [...bySrc].sort((a, b) => (b.closes || 0) - (a.closes || 0));
+
+    sorted.forEach(s => {
+      let lastCol;
+      if (hasSpend && totalLeads > 0) {
+        const srcSpend = (s.leads / totalLeads) * adSpend;
+        const costPerClose = s.closes > 0 ? srcSpend / s.closes : null;
+        if (costPerClose != null) {
+          const cls = costPerClose < 500 ? 'good' : costPerClose < 1000 ? 'warn' : 'bad';
+          lastCol = `<span class="highlight ${cls}">${fmt$(costPerClose)}</span>`;
+        } else {
+          lastCol = '<span class="highlight bad">No closes</span>';
+        }
+      } else {
+        lastCol = `<span class="num">${s.dq_rate_pct != null ? s.dq_rate_pct + '%' : '—'}</span>`;
+      }
+
+      const closeCls = s.close_rate_pct >= 15 ? 'good' : s.close_rate_pct >= 5 ? 'warn' : 'bad';
+
+      html += `<div class="lead-roi-row">
+        <span class="source">${esc(s.source)}</span>
+        <span class="num">${s.leads ?? '—'}</span>
+        <span class="num">${s.sets ?? '—'}</span>
+        <span class="num">${s.closes ?? '—'}</span>
+        <span class="highlight ${closeCls}">${s.close_rate_pct != null ? s.close_rate_pct + '%' : '—'}</span>
+        ${lastCol}
+      </div>`;
+    });
+
+    container.innerHTML = html;
+
+    // Note
+    const parts = [];
+    if (hasSpend) parts.push(`Total ad spend: ${fmt$(adSpend)} (trailing 30d)`);
+    if (totalCloses > 0 && hasSpend) parts.push(`Blended cost/close: ${fmt$(adSpend / totalCloses)}`);
+    parts.push('Spend allocated proportional to lead volume by source');
+    note.textContent = parts.join(' · ');
+  }
+
+  // ── Commission Tracker ──────────────────────────────────
+  function renderCommissions(snap) {
+    const summary = $('#commission-summary');
+    const detail = $('#commission-detail');
+
+    const closerComm = get(snap, 'costs.closer_commission');
+    const setterComm = get(snap, 'costs.setter_commission');
+    const payout = get(snap, 'sales.payout') || {};
+    const perCloser = get(snap, 'sales.per_closer') || [];
+    const perSetter = payout.per_setter || [];
+
+    const totalComm = ((closerComm || 0) + (setterComm || 0));
+
+    if (totalComm === 0 && perCloser.length === 0 && perSetter.length === 0) {
+      summary.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">No commission data</div>';
+      detail.innerHTML = '';
+      return;
+    }
+
+    // Summary
+    summary.innerHTML = `
+      <div class="comm-stat">
+        <div class="comm-stat-value">${fmt$(totalComm)}</div>
+        <div class="comm-stat-label">Total owed</div>
+      </div>
+      <div class="comm-stat">
+        <div class="comm-stat-value">${fmt$(closerComm)}</div>
+        <div class="comm-stat-label">Closer comm</div>
+      </div>
+      <div class="comm-stat">
+        <div class="comm-stat-value">${fmt$(setterComm)}</div>
+        <div class="comm-stat-label">Setter comm</div>
+      </div>
+    `;
+
+    // Per-person breakdown
+    let html = '';
+
+    // Closers
+    perCloser.forEach(c => {
+      if (!c.commission_total) return;
+      html += `<div class="comm-row">
+        <span class="comm-name">${esc(c.name)}</span>
+        <span class="comm-role closer">Closer</span>
+        <span class="comm-detail">${c.closes ?? 0} closes @ ${c.close_rate_pct ?? '—'}%</span>
+        <span class="comm-amount">${fmt$(c.commission_total)}</span>
+      </div>`;
+    });
+
+    // Setters
+    perSetter.forEach(s => {
+      if (!s.owed) return;
+      html += `<div class="comm-row">
+        <span class="comm-name">${esc(s.name)}</span>
+        <span class="comm-role">Setter</span>
+        <span class="comm-detail">${s.qualified_sets ?? 0} sets @ ${fmt$(s.rate)}/set</span>
+        <span class="comm-amount">${fmt$(s.owed)}</span>
+      </div>`;
+    });
+
+    if (!html) html = '<div style="color:var(--text-muted);font-size:12px;">No per-person breakdown available</div>';
+    detail.innerHTML = html;
+  }
+
+  // ── Sparkline helper ────────────────────────────────────
+  function sparklineSVG(values, color) {
+    const valid = values.filter(v => v != null);
+    if (valid.length < 2) return '';
+    const min = Math.min(...valid);
+    const max = Math.max(...valid);
+    const range = max - min || 1;
+    const w = 60, h = 20, pad = 1;
+
+    const points = valid.map((v, i) => {
+      const x = pad + (i / (valid.length - 1)) * (w - 2 * pad);
+      const y = h - pad - ((v - min) / range) * (h - 2 * pad);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+
+    return `<span class="sparkline-cell"><svg viewBox="0 0 ${w} ${h}"><polyline points="${points}" stroke="${color}"/></svg></span>`;
+  }
+
   // ── Metrics ──────────────────────────────────────────────
   function renderMetrics(snap) {
     const h = snap.hormozi || {};
@@ -559,7 +721,20 @@
     const setters = get(snap, 'sales.deep.setter_performance') || get(snap, 'sales.per_setter') || [];
     const tbody = document.querySelector('#table-setters tbody');
     tbody.innerHTML = '';
+
+    // Build sparkline data from history
+    const setterHistory = {};
+    if (historyData && historyData.length > 1) {
+      historyData.forEach(h => {
+        (h.setters || []).forEach(s => {
+          if (!setterHistory[s.name]) setterHistory[s.name] = [];
+          setterHistory[s.name].push(s.sets);
+        });
+      });
+    }
+
     setters.forEach(s => {
+      const spark = setterHistory[s.name] ? sparklineSVG(setterHistory[s.name], 'var(--accent)') : '';
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${esc(s.name)}</td>
@@ -567,11 +742,12 @@
         <td>${s.sets ?? '—'}</td>
         <td>${s.dials_per_set ?? '—'}</td>
         <td>${s.show_pct != null ? s.show_pct + '%' : '—'}</td>
+        <td>${spark || '<span style="color:var(--text-muted)">—</span>'}</td>
       `;
       tbody.appendChild(tr);
     });
     if (setters.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted)">No setter data</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">No setter data</td></tr>';
     }
   }
 
@@ -579,7 +755,20 @@
     const closers = get(snap, 'sales.per_closer') || [];
     const tbody = document.querySelector('#table-closers tbody');
     tbody.innerHTML = '';
+
+    // Build sparkline data from history
+    const closerHistory = {};
+    if (historyData && historyData.length > 1) {
+      historyData.forEach(h => {
+        (h.closers || []).forEach(c => {
+          if (!closerHistory[c.name]) closerHistory[c.name] = [];
+          closerHistory[c.name].push(c.closes);
+        });
+      });
+    }
+
     closers.forEach(c => {
+      const spark = closerHistory[c.name] ? sparklineSVG(closerHistory[c.name], 'var(--green)') : '';
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${esc(c.name)}</td>
@@ -587,12 +776,117 @@
         <td>${c.closes ?? '—'}</td>
         <td>${c.close_rate_pct != null ? c.close_rate_pct + '%' : '—'}</td>
         <td>${c.commission_total != null ? fmt$(c.commission_total) : '—'}</td>
+        <td>${spark || '<span style="color:var(--text-muted)">—</span>'}</td>
       `;
       tbody.appendChild(tr);
     });
     if (closers.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted)">No closer data</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">No closer data</td></tr>';
     }
+  }
+
+  // ── Cohort Retention ─────────────────────────────────────
+  function renderCohortRetention(snap) {
+    const container = $('#cohort-grid');
+    const ch = snap.client_health;
+    if (!ch || !ch.clients || ch.clients.length === 0) {
+      container.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">No client data for cohort analysis</div>';
+      return;
+    }
+
+    // Group clients by sign-up month
+    const cohorts = {};
+    const now = new Date();
+    const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    ch.clients.forEach(c => {
+      let cohortKey = 'Unknown';
+      if (c.contract_start) {
+        const d = new Date(c.contract_start);
+        if (!isNaN(d)) {
+          cohortKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        }
+      }
+      if (!cohorts[cohortKey]) cohorts[cohortKey] = [];
+      cohorts[cohortKey].push(c);
+    });
+
+    // Sort cohort keys chronologically
+    const sortedKeys = Object.keys(cohorts).sort();
+
+    // Generate month columns from oldest cohort to current month
+    const monthCols = [];
+    if (sortedKeys.length > 0 && sortedKeys[0] !== 'Unknown') {
+      const first = sortedKeys.find(k => k !== 'Unknown') || currentKey;
+      const [fy, fm] = first.split('-').map(Number);
+      let y = fy, m = fm;
+      const [cy, cm] = currentKey.split('-').map(Number);
+      while (y < cy || (y === cy && m <= cm)) {
+        monthCols.push(`${y}-${String(m).padStart(2, '0')}`);
+        m++;
+        if (m > 12) { m = 1; y++; }
+      }
+    }
+
+    // Limit to last 12 months of columns for readability
+    const displayCols = monthCols.slice(-12);
+
+    // Format month label
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    function fmtMonth(key) {
+      if (key === 'Unknown') return 'Unknown';
+      const [y, m] = key.split('-').map(Number);
+      return monthNames[m - 1] + ' ' + String(y).slice(2);
+    }
+
+    // Build table
+    let html = '<table class="cohort-table"><thead><tr>';
+    html += '<th>Cohort</th><th>#</th>';
+    displayCols.forEach(col => { html += `<th>${fmtMonth(col)}</th>`; });
+    html += '</tr></thead><tbody>';
+
+    sortedKeys.forEach(key => {
+      const clients = cohorts[key];
+      const total = clients.length;
+      html += `<tr><td>${fmtMonth(key)} <span class="cohort-count">(${total})</span></td>`;
+      html += `<td style="text-align:center">${total}</td>`;
+
+      displayCols.forEach(col => {
+        // How many from this cohort are still paying in this month?
+        // A client is "paying" if their current_mrr > 0 AND the col month >= their start
+        // AND (col month <= their end OR they have no end / end is past with revenue)
+        if (key === 'Unknown' || col < key) {
+          html += '<td><span class="cohort-cell empty">—</span></td>';
+          return;
+        }
+
+        const active = clients.filter(c => {
+          if ((c.current_mrr || 0) <= 0 && col === currentKey) return false;
+          // For historical months, assume they were active if they started before and haven't ended
+          if (c.contract_end) {
+            const endKey = c.contract_end.slice(0, 7);
+            // If contract ended before this column month, count as churned
+            // BUT past end dates with current revenue = renewed
+            if (endKey < col && col === currentKey && (c.current_mrr || 0) > 0) return true;
+            if (endKey < col && col !== currentKey) return false;
+          }
+          return true;
+        }).length;
+
+        const pct = total > 0 ? Math.round((active / total) * 100) : 0;
+        let cls = 'empty';
+        if (pct >= 80) cls = 'full';
+        else if (pct >= 40) cls = 'partial';
+        else if (pct > 0) cls = 'churned';
+
+        html += `<td><span class="cohort-cell ${cls}">${pct}%</span></td>`;
+      });
+
+      html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
   }
 
   // ── Data Quality ─────────────────────────────────────────
@@ -654,8 +948,12 @@
 
   // ── Init ─────────────────────────────────────────────────
   (async function init() {
-    const snap = await fetchSnapshot();
+    const [snap, history] = await Promise.all([fetchSnapshot(), fetchHistory()]);
+    if (history) historyData = history;
     if (snap) render(snap);
+    if (historyData && historyData.length > 1) {
+      $('#reps-sparkline-status').textContent = historyData.length + ' days of history';
+    }
   })();
 
   // Auto-refresh every 10 minutes
