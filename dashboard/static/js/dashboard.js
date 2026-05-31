@@ -85,6 +85,7 @@
 
     renderStatus(snap);
     renderExecSummary(snap);
+    renderActionItems(snap);
     renderKPIs(snap);
     renderMonthPerformance(snap);
     renderPerfAnalysis(snap);
@@ -179,8 +180,8 @@
       lines.push({ icon: '\u26A0', text: `Top leak: <strong>${esc(top.name)}</strong> — ${fmt$(top.dollar_impact_monthly)}/mo impact. ${esc(top.read).substring(0, 120)}...` });
     }
 
-    // Speed-to-lead
-    const stl = get(snap, 'sales.deep.speed_to_lead.pct_under_5min');
+    // Speed-to-lead (correct path: sales.velocity.speed_to_lead_5min_pct)
+    const stl = get(snap, 'sales.velocity.speed_to_lead_5min_pct');
     if (stl != null && stl < 50) {
       lines.push({ icon: '\u23F1', text: `Speed-to-lead: <strong>${stl}%</strong> under 5min (target: 50%). This is the highest-leverage fix right now.` });
     }
@@ -212,10 +213,88 @@
     ).join('');
   }
 
+  // ── Action Items ─────────────────────────────────────────
+  function renderActionItems(snap) {
+    const section = $('#section-actions');
+    const content = $('#actions-content');
+    const badge = $('#actions-badge');
+    const actions = [];
+
+    // Speed-to-lead
+    const stl = get(snap, 'sales.velocity.speed_to_lead_5min_pct');
+    if (stl != null && stl < 50) {
+      actions.push({ priority: 'critical', text: `Speed-to-lead is ${stl}% (target 50%). Coach setters on immediate callback within 5 minutes.`, owner: 'Sales Manager' });
+    }
+
+    // Failed charges
+    const failed = get(snap, 'stripe.failed_charges_count');
+    if (failed != null && failed > 0) {
+      actions.push({ priority: 'watch', text: `${failed} failed Stripe charges. Review and retry — potential recoverable revenue.`, owner: 'Ops' });
+    }
+
+    // Past due subs
+    const pastDue = get(snap, 'stripe.subscriptions.past_due');
+    if (pastDue != null && pastDue > 0) {
+      actions.push({ priority: 'watch', text: `${pastDue} past-due subscription${pastDue > 1 ? 's' : ''}. Reach out to retain.`, owner: 'Ops' });
+    }
+
+    // Churn risk
+    const atRisk = get(snap, 'client_health.at_risk') || [];
+    const critical = atRisk.filter(c => c.risk_level === 'critical');
+    if (critical.length > 0) {
+      const names = critical.map(c => c.name).join(', ');
+      actions.push({ priority: 'critical', text: `${critical.length} client${critical.length > 1 ? 's' : ''} expiring in <30 days: ${names}. Schedule renewal calls.`, owner: 'Rydel' });
+    }
+
+    // Top leak
+    const leaks = get(snap, 'verdicts.top_leaks') || [];
+    if (leaks.length > 0) {
+      const top = leaks[0];
+      actions.push({ priority: 'watch', text: `Fix #1 leak: ${top.name} (${fmt$(top.dollar_impact_monthly)}/mo impact).`, owner: 'Rydel' });
+    }
+
+    // Reconciliation issues
+    const missing = get(snap, 'client_reconciliation.missing_from_health') || [];
+    if (missing.length > 0) {
+      actions.push({ priority: 'watch', text: `${missing.length} won client${missing.length > 1 ? 's' : ''} missing from Health tab. Update the sheet.`, owner: 'Ops' });
+    }
+
+    if (actions.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = '';
+    badge.textContent = actions.length + ' item' + (actions.length > 1 ? 's' : '');
+    const critCount = actions.filter(a => a.priority === 'critical').length;
+    badge.style.background = critCount > 0 ? 'var(--red-dim)' : 'var(--amber-dim)';
+    badge.style.color = critCount > 0 ? 'var(--red)' : 'var(--amber)';
+
+    content.innerHTML = actions.map(a => `
+      <div class="action-item ${a.priority}">
+        <span class="action-priority ${a.priority}">${a.priority === 'critical' ? '!!' : '!'}</span>
+        <span class="action-text">${esc(a.text)}</span>
+        <span class="action-owner">${esc(a.owner)}</span>
+      </div>
+    `).join('');
+  }
+
   // ── KPI Strip ────────────────────────────────────────────
+  function kpiArrow(current, previous) {
+    if (current == null || previous == null) return '';
+    const diff = current - previous;
+    if (Math.abs(diff) < 0.01) return '';
+    const arrow = diff > 0 ? '\u2191' : '\u2193';
+    const color = diff > 0 ? 'var(--green)' : 'var(--red)';
+    return ` <span style="color:${color};font-size:11px">${arrow}</span>`;
+  }
+
   function renderKPIs(snap) {
     const h = snap.hormozi || {};
     const ch = snap.client_health || {};
+
+    // Get previous snapshot for WoW arrows
+    const prev = (historyData && historyData.length >= 2) ? historyData[historyData.length - 2] : null;
 
     // Sheet MRR
     setKPI('val-sheet-mrr', fmt$(ch.current_mrr));
@@ -229,20 +308,46 @@
     }
 
     // Stripe MRR
-    setKPI('val-stripe-mrr', fmt$(get(snap, 'stripe.mrr')));
-    $('#sub-stripe-mrr').textContent = 'recurring';
+    const stripeMRR = get(snap, 'stripe.mrr');
+    const prevStripeMRR = prev ? get(prev, 'stripe.mrr') : null;
+    const stripeMRREl = document.getElementById('val-stripe-mrr');
+    if (stripeMRREl) stripeMRREl.innerHTML = fmt$(stripeMRR) + kpiArrow(stripeMRR, prevStripeMRR);
+    // Show MRR gap context if both exist
+    if (stripeMRR != null && ch.current_mrr != null) {
+      const mrrGap = ch.current_mrr - stripeMRR;
+      if (Math.abs(mrrGap) > 100) {
+        const subEl = $('#sub-stripe-mrr');
+        subEl.textContent = (mrrGap > 0 ? 'Sheet +' : 'Sheet ') + fmt$(mrrGap) + ' gap';
+        subEl.title = 'Sheet includes manually-tracked clients not yet on Stripe billing';
+      } else {
+        $('#sub-stripe-mrr').textContent = 'reconciled';
+      }
+    } else {
+      $('#sub-stripe-mrr').textContent = 'recurring';
+    }
 
     // Cash
-    setKPI('val-cash', fmt$(get(snap, 'sheets.cash_collected')));
+    const cash = get(snap, 'sheets.cash_collected');
+    setKPI('val-cash', fmt$(cash));
 
     // Gross Margin
     const margin = get(h, 'gross_margin.value');
-    setKPI('val-margin', fmtPct(margin), statusClass(get(h, 'gross_margin.status')));
+    const prevMargin = prev ? get(prev, 'hormozi.gross_margin.value') : null;
+    const marginEl = document.getElementById('val-margin');
+    if (marginEl) {
+      marginEl.innerHTML = fmtPct(margin) + kpiArrow(margin, prevMargin);
+      marginEl.className = 'kpi-value ' + statusClass(get(h, 'gross_margin.status'));
+    }
     $('#sub-margin').textContent = margin != null ? 'benchmark: 45%' : '';
 
     // Op Efficiency
     const opeff = get(h, 'op_efficiency.value');
-    setKPI('val-opeff', fmtX(opeff), statusClass(get(h, 'op_efficiency.status')));
+    const prevOpeff = prev ? get(prev, 'hormozi.op_efficiency.value') : null;
+    const opeffEl = document.getElementById('val-opeff');
+    if (opeffEl) {
+      opeffEl.innerHTML = fmtX(opeff) + kpiArrow(opeff, prevOpeff);
+      opeffEl.className = 'kpi-value ' + statusClass(get(h, 'op_efficiency.status'));
+    }
     $('#sub-opeff').textContent = opeff != null ? 'target: 1.5\u00d7' : '';
 
     // Active Clients
@@ -294,12 +399,17 @@
       return `<div class="wf-bar-bg"><div class="wf-bar-fill ${cls}" style="width:${pct}%"></div></div>`;
     }
 
+    function pctOf(part, whole) {
+      if (part == null || whole == null || whole === 0) return '';
+      return ` <span style="color:var(--text-muted);font-size:12px">(${Math.round(Math.abs(part) / whole * 100)}%)</span>`;
+    }
+
     let rows = '';
     rows += `<div class="wf-row"><span class="wf-label">Revenue</span>${bar(rev, 'revenue')}<span class="wf-value" style="color:var(--accent)">${fmt$(rev)}</span></div>`;
-    if (cogs != null) rows += `<div class="wf-row"><span class="wf-label">COGS</span>${bar(cogs, 'cost')}<span class="wf-value" style="color:var(--red)">-${fmt$(cogs)}</span></div>`;
-    if (gp != null) rows += `<div class="wf-row total"><span class="wf-label">Gross Profit</span>${bar(gp, gp >= 0 ? 'profit' : 'loss')}<span class="wf-value" style="color:${gp >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt$(gp)}</span></div>`;
-    if (opex != null) rows += `<div class="wf-row"><span class="wf-label">Operating Expenses</span>${bar(opex, 'cost')}<span class="wf-value" style="color:var(--red)">-${fmt$(opex)}</span></div>`;
-    if (net != null) rows += `<div class="wf-row total"><span class="wf-label">Net Profit</span>${bar(Math.abs(net), net >= 0 ? 'profit' : 'loss')}<span class="wf-value" style="color:${net >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt$(net)}</span></div>`;
+    if (cogs != null) rows += `<div class="wf-row"><span class="wf-label">COGS${pctOf(cogs, rev)}</span>${bar(cogs, 'cost')}<span class="wf-value" style="color:var(--red)">-${fmt$(cogs)}</span></div>`;
+    if (gp != null) rows += `<div class="wf-row total"><span class="wf-label">Gross Profit${pctOf(gp, rev)}</span>${bar(gp, gp >= 0 ? 'profit' : 'loss')}<span class="wf-value" style="color:${gp >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt$(gp)}</span></div>`;
+    if (opex != null) rows += `<div class="wf-row"><span class="wf-label">Operating Expenses${pctOf(opex, rev)}</span>${bar(opex, 'cost')}<span class="wf-value" style="color:var(--red)">-${fmt$(opex)}</span></div>`;
+    if (net != null) rows += `<div class="wf-row total"><span class="wf-label">Net Profit${pctOf(net, rev)}</span>${bar(Math.abs(net), net >= 0 ? 'profit' : 'loss')}<span class="wf-value" style="color:${net >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt$(net)}</span></div>`;
 
     // OpEx breakdown
     let breakdownHtml = '';
@@ -441,6 +551,18 @@
 
     html += '</div>';
 
+    // Recoverable revenue estimate for failed charges
+    if (failed > 0) {
+      const avgMRR = get(snap, 'stripe.mrr');
+      const activeSubs = subs.active || 1;
+      const estPerCharge = avgMRR && activeSubs ? Math.round(avgMRR / activeSubs) : null;
+      const estRecoverable = estPerCharge ? estPerCharge * failed : null;
+      html += `<div style="font-size:12px;color:var(--text-muted);margin-top:8px;padding:8px 12px;background:var(--red-dim);border-radius:var(--radius-sm)">
+        ${failed} failed charges. ${estRecoverable ? 'Estimated recoverable: <strong style="color:var(--red)">' + fmt$(estRecoverable) + '</strong> (avg ' + fmt$(estPerCharge) + '/charge).' : ''}
+        Review in Stripe > Payments > Failed.
+      </div>`;
+    }
+
     // Badge
     const issues = (failed || 0) + pastDue;
     if (issues > 0) {
@@ -460,8 +582,10 @@
   function renderSpeedToLead(snap) {
     const section = $('#section-speed-to-lead');
     const content = $('#speed-to-lead-content');
-    const stl = get(snap, 'sales.deep.speed_to_lead') || {};
-    const pct = stl.pct_under_5min;
+    // Correct path: sales.velocity.speed_to_lead_5min_pct
+    const pct = get(snap, 'sales.velocity.speed_to_lead_5min_pct');
+    const callsIn5 = get(snap, 'sales.velocity.calls_within_5_min');
+    const totalDials = get(snap, 'sales.velocity.total_dials');
 
     if (pct == null || pct >= 50) {
       section.style.display = 'none';
@@ -469,14 +593,14 @@
     }
 
     section.style.display = '';
+    const dialDetail = callsIn5 != null && totalDials != null ? ` (${callsIn5}/${totalDials} dials)` : '';
     content.innerHTML = `
       <div class="alert-content">
         <div class="alert-icon">\u26A1</div>
         <div class="alert-body">
           <div class="alert-title">Speed-to-Lead Below Target</div>
           <div class="alert-detail">
-            Only <strong>${pct}%</strong> of leads contacted within 5 minutes (target: 50%).
-            ${stl.median_minutes != null ? 'Median response: ' + Math.round(stl.median_minutes) + ' minutes.' : ''}
+            Only <strong>${pct}%</strong> of leads contacted within 5 minutes${dialDetail} (target: 50%).
             Leads contacted within 5 minutes are <strong>21x more likely</strong> to qualify.
             This is the single highest-leverage improvement available.
           </div>
@@ -518,18 +642,33 @@
     html += `<div class="pipeline-stat"><div class="pipeline-stat-value">${fmtK(ghl.total_pipeline_value)}</div><div class="pipeline-stat-label">Pipeline Value</div></div>`;
     html += '</div>';
 
-    // Stage breakdown
+    // Stage breakdown — collapse low-signal stages (Unresponsive, etc.) into "Other"
     const stages = ghl.stage_breakdown || {};
     const stageEntries = Object.entries(stages).sort((a, b) => b[1].count - a[1].count);
-    const maxCount = Math.max(...stageEntries.map(e => e[1].count), 1);
+    const LOW_SIGNAL_STAGES = ['unresponsive', 'no answer', 'dead', 'invalid'];
+    let otherCount = 0, otherValue = 0;
+    const activeStages = [];
+    stageEntries.forEach(([name, data]) => {
+      if (LOW_SIGNAL_STAGES.includes(name.toLowerCase())) {
+        otherCount += data.count;
+        otherValue += data.value || 0;
+      } else {
+        activeStages.push([name, data]);
+      }
+    });
+    if (otherCount > 0) {
+      activeStages.push(['Other (unresponsive/dead)', { count: otherCount, value: otherValue }]);
+    }
+    const maxCount = Math.max(...activeStages.map(e => e[1].count), 1);
 
-    if (stageEntries.length > 0) {
+    if (activeStages.length > 0) {
       html += '<div class="pipeline-stages">';
-      stageEntries.forEach(([name, data]) => {
+      activeStages.forEach(([name, data]) => {
         const pct = Math.max(data.count / maxCount * 100, 3);
+        const isOther = name.startsWith('Other (');
         html += `<div class="pipeline-stage-row">
-          <span class="pipeline-stage-name">${esc(name)}</span>
-          <div class="pipeline-stage-bar-bg"><div class="pipeline-stage-bar" style="width:${pct}%"></div></div>
+          <span class="pipeline-stage-name" style="${isOther ? 'color:var(--text-muted)' : ''}">${esc(name)}</span>
+          <div class="pipeline-stage-bar-bg"><div class="pipeline-stage-bar" style="width:${pct}%;${isOther ? 'opacity:0.4' : ''}"></div></div>
           <span class="pipeline-stage-count">${data.count}</span>
           <span class="pipeline-stage-value">${fmtK(data.value)}</span>
         </div>`;
@@ -618,22 +757,28 @@
   // ── Setter Deep Dive Funnel ─────────────────────────────
   function renderSetterDeepDive(snap) {
     const content = $('#setter-deep-content');
-    const deep = get(snap, 'sales.deep') || {};
-    const setterPerf = deep.setter_performance || [];
+    // Use setter_deep_dive (from "Setter Deep-Dive" tab) for connects data
+    const deepDive = get(snap, 'sales.setter_deep_dive') || {};
+    const setterPerf = get(snap, 'sales.deep.setter_performance') || [];
 
-    // Aggregate: dials, connects, sets from setter_performance
-    let totalDials = 0, totalConnects = 0, totalSets = 0;
+    // Get dials/sets from setter_performance (raw LTC computation)
+    let totalDials = 0, totalSets = 0;
     setterPerf.forEach(s => {
       totalDials += s.dials || 0;
-      totalConnects += s.connects || 0;
       totalSets += s.sets || 0;
     });
 
-    const funnel = get(snap, 'sales.funnel') || {};
-    const shows = funnel.shows || 0;
-    const closes = funnel.closes || 0;
+    // Use deep dive tab for connects (setter_performance doesn't have connects)
+    const totalConnects = deepDive.connects || 0;
 
-    // If no deep data, use what we have
+    // Prefer deep dive tab numbers if setter_performance is empty
+    if (totalDials === 0 && deepDive.dials) totalDials = deepDive.dials;
+    if (totalSets === 0 && deepDive.sets_booked) totalSets = deepDive.sets_booked;
+
+    const funnel = get(snap, 'sales.funnel') || {};
+    const shows = deepDive.showed || funnel.shows || 0;
+    const closes = deepDive.closed || funnel.closes || 0;
+
     if (totalDials === 0 && totalSets === 0) {
       content.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">No setter deep-dive data available</div>';
       return;
@@ -986,8 +1131,10 @@
     const parts = [];
     if (stripeCash != null && xeroPL != null) {
       const diff = stripeCash - xeroPL;
-      const dir = diff >= 0 ? '+' : '';
-      parts.push(`Stripe ${dir}${fmt$(diff)} vs Xero — timing differences expected`);
+      const absDiff = Math.abs(diff);
+      const dir = diff >= 0 ? '+' : '-';
+      const pctDiff = Math.round(absDiff / Math.max(stripeCash, xeroPL, 1) * 100);
+      parts.push(`Stripe ${dir}${fmt$(absDiff)} vs Xero (${pctDiff}% gap) — Stripe = cash collected, Xero = accrual-recognised. Gap is normal: timing, Stripe fees, and recognition period differences.`);
     }
     if (rv.recognized_month) {
       parts.push(`Recognized: ${rv.recognized_month} (${rv.recognized_client_count || '?'} clients)`);
@@ -1139,7 +1286,9 @@
       </div>
     `;
 
-    const sorted = [...ch.clients].sort((a, b) => (b.current_mrr || 0) - (a.current_mrr || 0));
+    // Filter out $0 MRR clients (likely churned but still marked Active)
+    const active = ch.clients.filter(c => (c.current_mrr || 0) > 0 || (c.next_mrr || 0) > 0);
+    const sorted = [...active].sort((a, b) => (b.current_mrr || 0) - (a.current_mrr || 0));
     list.innerHTML = '';
     sorted.forEach(c => {
       const row = document.createElement('div');

@@ -1027,6 +1027,32 @@ body {
 }
 .chat-send:hover { opacity: 0.85; }
 
+/* ── Action Items ──────────────────────── */
+.action-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 14px; border-radius: var(--radius-sm);
+  border-left: 3px solid var(--amber);
+  background: var(--amber-dim);
+  margin-bottom: 6px;
+  font-size: 13px; line-height: 1.5;
+}
+.action-item.critical {
+  border-left-color: var(--red);
+  background: var(--red-dim);
+}
+.action-priority {
+  font-weight: 700; font-size: 12px;
+  min-width: 20px; text-align: center;
+  padding: 1px 4px; border-radius: 3px;
+  color: var(--amber);
+}
+.action-priority.critical { color: var(--red); }
+.action-text { flex: 1; color: var(--text-secondary); }
+.action-owner {
+  font-size: 11px; color: var(--text-muted);
+  white-space: nowrap; padding-top: 2px;
+}
+
 /* ── Responsive ────────────────────────── */
 @media (max-width: 960px) {
   .grid-2 { grid-template-columns: 1fr; }

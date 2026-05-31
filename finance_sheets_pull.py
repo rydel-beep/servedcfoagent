@@ -20,6 +20,17 @@ logger = logging.getLogger(__name__)
 
 SKIP_MARKERS = {"end month", "churned", "x", "renewal", "end month previous month", ""}
 
+# Confirmed churned clients — still marked Active in Health tab but no longer active.
+# Filter these out of client health, MRR, and trend calculations.
+CONFIRMED_CHURNED = {
+    "1st Edition Bar",
+    "Asian Streat",
+    "Nonnas",
+    "Riverloop",
+    "V Noodle",
+    "Bunni Beez",
+}
+
 # Month column mapping in Health tab (col 8 = 10/2025, col 15 = 5/2026, etc.)
 _HEALTH_MONTH_START_COL = 8
 _HEALTH_MONTH_LABELS = [
@@ -301,6 +312,10 @@ def pull_client_health() -> dict:
 
         # Skip non-client rows (footers, blanks)
         if status not in ("Active", "Web Sub"):
+            continue
+
+        # Skip confirmed churned clients (still marked Active in sheet)
+        if name in CONFIRMED_CHURNED:
             continue
 
         # Parse contract dates — col 5 = start, col 6 = end
