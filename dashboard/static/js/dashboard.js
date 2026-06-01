@@ -166,7 +166,8 @@
       if (stripeMRR != null) parts.push('Stripe ' + fmt$(stripeMRR));
       const delta = ch.mrr_delta;
       const deltaStr = delta != null && delta !== 0 ? (delta > 0 ? ' (+' + fmt$(delta) + ' next month)' : ' (' + fmt$(delta) + ' next month)') : '';
-      lines.push({ icon: '\u2191', text: `MRR: ${parts.join(' / ')}${deltaStr}. <strong>${ch.total_clients || '?'} active clients</strong>.` });
+      const activeCount = (snap.active_clients && snap.active_clients.active_count) || ch.total_clients || '?';
+      lines.push({ icon: '\u2191', text: `MRR: ${parts.join(' / ')}${deltaStr}. <strong>${activeCount} active clients</strong>.` });
     }
 
     // Sales funnel
