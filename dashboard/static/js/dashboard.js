@@ -97,6 +97,7 @@
     renderRevenueViews(snap);
     renderChurnRisk(snap);
     renderReconciliation(snap);
+    renderDerivedClients(snap);
     renderClientHealth(snap);
     renderVerdicts(snap);
     renderFunnel(snap);
@@ -201,6 +202,16 @@
     const degraded = snap.degraded || [];
     if (degraded.length > 0) {
       lines.push({ icon: '\u{1F527}', text: `${degraded.length} data quality issue${degraded.length > 1 ? 's' : ''} flagged — check Data Quality section.` });
+    }
+
+    // Data freshness warning
+    const ac = snap.active_clients || {};
+    const latestClose = ac.latest_close_date;
+    if (latestClose) {
+      const daysSince = Math.round((Date.now() - new Date(latestClose)) / 86400000);
+      if (daysSince > 3) {
+        lines.push({ icon: '\u{1F4C5}', text: `LTC tracker last close was ${daysSince} days ago (${latestClose}). If deals have closed since, the tracker may not be updated.` });
+      }
     }
 
     if (lines.length === 0) {
@@ -1254,56 +1265,132 @@
     content.innerHTML = html;
   }
 
+  // ── Derived Active Clients ─────────────────────────────
+  function renderDerivedClients(snap) {
+    const ac = snap.active_clients;
+    if (!ac) return;
+
+    // Update the KPI client count to use derived count
+    const clientKPI = document.getElementById('val-clients');
+    if (clientKPI) {
+      clientKPI.textContent = ac.active_count || '—';
+    }
+    const clientSub = $('#sub-clients');
+    if (clientSub) {
+      const parts = [];
+      if (ac.confirmed_both_sources) parts.push(ac.confirmed_both_sources + ' confirmed');
+      if (ac.legacy_pre_tracker) parts.push(ac.legacy_pre_tracker + ' legacy');
+      if (ac.pending_health_update) parts.push(ac.pending_health_update + ' new');
+      clientSub.textContent = parts.join(', ');
+    }
+
+    // Update health badge with derived count
+    const healthBadge = $('#health-badge');
+    if (healthBadge) {
+      healthBadge.textContent = ac.active_count + ' clients';
+      const conf = ac.confidence;
+      healthBadge.style.background = conf === 'high' ? 'var(--green-dim)' : conf === 'medium' ? 'var(--amber-dim)' : 'var(--red-dim)';
+      healthBadge.style.color = conf === 'high' ? 'var(--green)' : conf === 'medium' ? 'var(--amber)' : 'var(--red)';
+    }
+
+    // Show discrepancies in reconciliation panel
+    const discs = ac.discrepancies || [];
+    if (discs.length > 0) {
+      const reconSection = $('#section-reconciliation');
+      if (reconSection) reconSection.style.display = '';
+      const reconBadge = $('#recon-badge');
+      if (reconBadge) {
+        reconBadge.textContent = discs.length + ' discrepanc' + (discs.length > 1 ? 'ies' : 'y');
+        reconBadge.style.background = 'var(--amber-dim)';
+        reconBadge.style.color = 'var(--amber)';
+      }
+    }
+
+    // Stripe MRR validation
+    const sv = ac.stripe_validation;
+    if (sv) {
+      const mrrSub = $('#sub-sheet-mrr');
+      if (mrrSub && sv.gap_pct > 5) {
+        // Don't override if already showing delta
+      }
+    }
+  }
+
   // ── Client Health ────────────────────────────────────────
   function renderClientHealth(snap) {
     const ch = snap.client_health;
+    const ac = snap.active_clients;
     const summary = $('#health-summary');
     const list = $('#client-list');
     const badge = $('#health-badge');
 
-    if (!ch || !ch.clients) {
+    // Use derived active clients if available, fall back to health tab
+    const clients = ac ? ac.active : (ch ? ch.clients : null);
+
+    if (!clients || clients.length === 0) {
       summary.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">No client health data</div>';
       list.innerHTML = '';
       return;
     }
 
-    badge.textContent = ch.total_clients + ' clients';
-    badge.style.background = 'var(--green-dim)';
-    badge.style.color = 'var(--green)';
+    const totalMRR = ac ? ac.total_mrr_derived : (ch ? ch.current_mrr : 0);
+    const nextMRR = ch ? ch.next_mrr : null;
+    const mrrDelta = ch ? ch.mrr_delta : null;
+    const clientCount = ac ? ac.active_count : (ch ? ch.total_clients : clients.length);
+
+    badge.textContent = clientCount + ' clients';
 
     summary.innerHTML = `
       <div class="health-stat">
-        <div class="health-stat-value" style="color:var(--text)">${fmt$(ch.current_mrr)}</div>
-        <div class="health-stat-label">This month</div>
+        <div class="health-stat-value" style="color:var(--text)">${fmt$(totalMRR)}</div>
+        <div class="health-stat-label">Derived MRR</div>
       </div>
       <div class="health-stat">
-        <div class="health-stat-value" style="color:${ch.mrr_delta >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt$(ch.next_mrr)}</div>
+        <div class="health-stat-value" style="color:${(mrrDelta || 0) >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt$(nextMRR)}</div>
         <div class="health-stat-label">Next month</div>
       </div>
       <div class="health-stat">
-        <div class="health-stat-value" style="color:${ch.mrr_delta >= 0 ? 'var(--green)' : 'var(--red)'}">${ch.mrr_delta >= 0 ? '+' : ''}${fmt$(ch.mrr_delta)}</div>
+        <div class="health-stat-value" style="color:${(mrrDelta || 0) >= 0 ? 'var(--green)' : 'var(--red)'}">${mrrDelta != null ? (mrrDelta >= 0 ? '+' : '') + fmt$(mrrDelta) : '—'}</div>
         <div class="health-stat-label">MRR delta</div>
       </div>
     `;
 
-    // Filter out $0 MRR clients (likely churned but still marked Active)
-    const active = ch.clients.filter(c => (c.current_mrr || 0) > 0 || (c.next_mrr || 0) > 0);
-    const sorted = [...active].sort((a, b) => (b.current_mrr || 0) - (a.current_mrr || 0));
+    // Sort: clients with MRR first (descending), then new signings
+    const sorted = [...clients].sort((a, b) => {
+      const aMRR = a.current_mrr || 0;
+      const bMRR = b.current_mrr || 0;
+      if (aMRR > 0 && bMRR === 0) return -1;
+      if (aMRR === 0 && bMRR > 0) return 1;
+      return bMRR - aMRR || (b.contract_value || 0) - (a.contract_value || 0);
+    });
+
     list.innerHTML = '';
     sorted.forEach(c => {
       const row = document.createElement('div');
       row.className = 'client-row';
-      const badgeCls = c.status === 'Active' ? 'active' : 'websub';
-      const delta = (c.next_mrr || 0) - (c.current_mrr || 0);
+      const isNew = c.source === 'ltc_tracker' || c.status === 'signed_not_in_health';
+      const isLegacy = c.sources_agree === 'legacy';
+      const hasZeroMRR = c.mrr_flag === 'active_zero_mrr';
+
+      let badgeText, badgeCls;
+      if (isNew) { badgeText = 'New'; badgeCls = 'new'; }
+      else if (c.status === 'Web Sub') { badgeText = 'Web'; badgeCls = 'websub'; }
+      else { badgeText = 'Active'; badgeCls = 'active'; }
+
+      const mrr = c.current_mrr || 0;
+      const mrrText = mrr > 0 ? fmt$(mrr) : (isNew && c.contract_value ? fmt$(c.contract_value) + ' contract' : '$0');
+      const delta = (c.next_mrr || 0) - mrr;
       let deltaHtml = '';
       if (delta > 0) deltaHtml = `<span class="client-delta up">+${fmt$(delta)}</span>`;
       else if (delta < 0) deltaHtml = `<span class="client-delta down">${fmt$(delta)}</span>`;
+
       row.innerHTML = `
         <span class="client-name">${esc(c.name)}</span>
-        <span class="client-badge ${badgeCls}">${c.status === 'Active' ? 'Active' : 'Web'}</span>
-        <span class="client-mrr">${fmt$(c.current_mrr)}</span>
+        <span class="client-badge ${badgeCls}">${badgeText}</span>
+        <span class="client-mrr">${mrrText}</span>
         ${deltaHtml}
       `;
+      if (hasZeroMRR) row.style.opacity = '0.6';
       list.appendChild(row);
     });
   }

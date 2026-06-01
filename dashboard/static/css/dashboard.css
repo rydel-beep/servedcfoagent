@@ -488,6 +488,7 @@ body {
 }
 .client-badge.active { background: var(--green-dim); color: var(--green); }
 .client-badge.websub { background: var(--accent-dim); color: var(--accent); }
+.client-badge.new { background: var(--purple-dim); color: var(--purple); }
 .client-mrr {
   font-size: 13px; font-weight: 600; color: var(--text-secondary);
   margin-left: 12px; flex-shrink: 0;

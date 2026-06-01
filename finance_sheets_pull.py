@@ -30,6 +30,7 @@ CONFIRMED_CHURNED_PREFIXES = [
     "Riverloop",
     "V Noodle",
     "Bunni Beez",
+    "The Advocate",
 ]
 
 

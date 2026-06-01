@@ -160,6 +160,26 @@ contain the pre-fix $57k excess (bonus + unidentified items) in Wages. The agent
 flag this in `inputs_used` when
 producing wages-derived metrics, so reads aren't misinterpreted as ongoing run-rate.
 
+## Client list derivation (never hardcode)
+
+The active-client list is DERIVED on every snapshot from source systems, never hardcoded.
+An active client requires presence in the Health tab (Finance Sheet) with Active/Web Sub
+status and non-churned status. LTC tracker Won deals are cross-referenced to add contract
+values, cash collected, and to catch new signings not yet in the Health tab.
+
+Stripe MCP provides aggregate MRR only (no per-customer data), so it serves as a validation
+cross-check, not a per-client source.
+
+Disagreements between sources are surfaced in `active_clients.discrepancies`, never silently
+resolved. Known-churned clients (Advocate, Vietnamese Mint, Gloria Jean's, 1st Edition Bar,
+Johnnies Fitzroy, Hanmades, Nonnas, Asian Streat, Riverloop, V Noodle, Bunni Beez) are
+excluded even if a lingering payment or old Won record appears — flag if a churned client
+shows new activity.
+
+Never reintroduce a hardcoded client list; it is the known cause of staleness. The module
+`active_clients.py` owns this logic. Legacy Health tab clients (predating the LTC tracker)
+are treated as active with `sources_agree: "legacy"`.
+
 ## Why this matters
 
 A confidently wrong number is worse than no number. The agent's job is to be the honest

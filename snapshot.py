@@ -21,6 +21,7 @@ from finance_sheets_pull import pull_salary_baseline, pull_recognized_revenue, p
 from sales_analytics_pull import pull_sales_analytics
 from hormozi_metrics import compute_all as compute_hormozi
 from verdicts import build_verdicts
+from active_clients import derive_active_clients
 from xero_wages_categoriser import (
     compute_true_team_cost,
     compute_owner_pay_breakdown,
@@ -255,6 +256,34 @@ def build_snapshot() -> dict:
             ),
         })
 
+    # ── Derived active clients ──────────────────────────────────────────────
+    sales_data = sales_result.get("sales") or {}
+    won_businesses_raw = sales_data.get("won_businesses") or []
+    # Build won_deals list for active_clients module
+    won_deals_for_derivation = []
+    for wb in won_businesses_raw:
+        if wb.get("name"):
+            won_deals_for_derivation.append({
+                "business": wb["name"],
+                "close_date": wb.get("close_date"),
+                "contract": wb.get("contract_value"),
+                "cash": wb.get("cash_collected"),
+                "offer": wb.get("offer"),
+            })
+
+    health_clients_list = (health_result.get("client_health") or {}).get("clients") or []
+    stripe_mrr_val = stripe_data.get("mrr") if stripe_data else None
+    stripe_subs_active = None
+    if stripe_data and stripe_data.get("subscriptions"):
+        stripe_subs_active = stripe_data["subscriptions"].get("active")
+
+    derived_clients = derive_active_clients(
+        health_clients=health_clients_list,
+        won_deals=won_deals_for_derivation,
+        stripe_mrr=stripe_mrr_val,
+        stripe_active_subs=stripe_subs_active,
+    )
+
     snapshot = {
         "generated_at": ts.isoformat(),
         "timezone": "Australia/Sydney",
@@ -269,6 +298,7 @@ def build_snapshot() -> dict:
         "profit": profit,
         "revenue_views": revenue_views,
         "client_reconciliation": reconciliation,
+        "active_clients": derived_clients,
         "degraded": degraded if degraded else [],
         "ok": len(degraded) == 0,
     }
