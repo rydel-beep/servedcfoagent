@@ -166,8 +166,13 @@
       if (stripeMRR != null) parts.push('Stripe ' + fmt$(stripeMRR));
       const delta = ch.mrr_delta;
       const deltaStr = delta != null && delta !== 0 ? (delta > 0 ? ' (+' + fmt$(delta) + ' next month)' : ' (' + fmt$(delta) + ' next month)') : '';
-      const activeCount = (snap.active_clients && snap.active_clients.active_count) || ch.total_clients || '?';
-      lines.push({ icon: '\u2191', text: `MRR: ${parts.join(' / ')}${deltaStr}. <strong>${activeCount} active clients</strong>.` });
+      const ac_ = snap.active_clients || {};
+      const confirmedCount = (ac_.confirmed_both_sources || 0) + (ac_.legacy_pre_tracker || 0);
+      const signingCount = ac_.pending_health_update || 0;
+      const clientLabel = signingCount > 0
+        ? `<strong>${confirmedCount} active</strong> + ${signingCount} signing`
+        : `<strong>${confirmedCount || ch.total_clients || '?'} active clients</strong>`;
+      lines.push({ icon: '\u2191', text: `MRR: ${parts.join(' / ')}${deltaStr}. ${clientLabel}.` });
     }
 
     // Sales funnel
@@ -362,10 +367,12 @@
     }
     $('#sub-opeff').textContent = opeff != null ? 'target: 1.5\u00d7' : '';
 
-    // Active Clients
-    const total = ch.total_clients;
-    setKPI('val-clients', total != null ? total : '—');
-    if (ch.active_count != null) {
+    // Active Clients — only set fallback here; renderDerivedClients overwrites with split count
+    if (!snap.active_clients) {
+      const total = ch.total_clients;
+      setKPI('val-clients', total != null ? total : '—');
+    }
+    if (!snap.active_clients && ch.active_count != null) {
       const parts = [];
       if (ch.active_count) parts.push(ch.active_count + ' active');
       if (ch.web_sub_count) parts.push(ch.web_sub_count + ' web');
@@ -1271,24 +1278,27 @@
     const ac = snap.active_clients;
     if (!ac) return;
 
-    // Update the KPI client count to use derived count
+    // KPI headline = confirmed active (both + legacy), not blurred total
+    const confirmedActive = (ac.confirmed_both_sources || 0) + (ac.legacy_pre_tracker || 0);
+    const signing = ac.pending_health_update || 0;
     const clientKPI = document.getElementById('val-clients');
     if (clientKPI) {
-      clientKPI.textContent = ac.active_count || '—';
+      clientKPI.textContent = confirmedActive || '—';
     }
     const clientSub = $('#sub-clients');
     if (clientSub) {
       const parts = [];
-      if (ac.confirmed_both_sources) parts.push(ac.confirmed_both_sources + ' confirmed');
-      if (ac.legacy_pre_tracker) parts.push(ac.legacy_pre_tracker + ' legacy');
-      if (ac.pending_health_update) parts.push(ac.pending_health_update + ' new');
+      if (signing) parts.push('+' + signing + ' signing');
+      if (ac.confirmed_both_sources) parts.push(ac.confirmed_both_sources + ' verified');
       clientSub.textContent = parts.join(', ');
     }
 
-    // Update health badge with derived count
+    // Health badge: "24 active + 6 signing"
     const healthBadge = $('#health-badge');
     if (healthBadge) {
-      healthBadge.textContent = ac.active_count + ' clients';
+      healthBadge.textContent = signing > 0
+        ? confirmedActive + ' active + ' + signing + ' signing'
+        : confirmedActive + ' clients';
       const conf = ac.confidence;
       healthBadge.style.background = conf === 'high' ? 'var(--green-dim)' : conf === 'medium' ? 'var(--amber-dim)' : 'var(--red-dim)';
       healthBadge.style.color = conf === 'high' ? 'var(--green)' : conf === 'medium' ? 'var(--amber)' : 'var(--red)';
@@ -1337,9 +1347,11 @@
     const totalMRR = ac ? ac.total_mrr_derived : (ch ? ch.current_mrr : 0);
     const nextMRR = ch ? ch.next_mrr : null;
     const mrrDelta = ch ? ch.mrr_delta : null;
-    const clientCount = ac ? ac.active_count : (ch ? ch.total_clients : clients.length);
-
-    badge.textContent = clientCount + ' clients';
+    // badge is set by renderDerivedClients — only set fallback here
+    if (!ac) {
+      const clientCount = ch ? ch.total_clients : clients.length;
+      badge.textContent = clientCount + ' clients';
+    }
 
     summary.innerHTML = `
       <div class="health-stat">
