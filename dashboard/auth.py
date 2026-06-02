@@ -49,7 +49,7 @@ def require_auth(f):
                 max_age=COOKIE_MAX_AGE,
                 httponly=True,
                 samesite="Lax",
-                secure=request.is_secure,
+                secure=True,
             )
             return resp
 

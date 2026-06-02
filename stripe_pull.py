@@ -167,6 +167,29 @@ def pull_stripe() -> dict:
         payouts = None
         degraded.append({"metric": "payouts", "reason": "Stripe MCP get_stripe_payouts failed"})
 
+    # ── Sanity check: MRR vs active subs ─────────────────────────────────
+    active_subs = subscriptions["active"] if subscriptions else None
+    if mrr is not None and active_subs is not None and active_subs > 0:
+        implied_per_sub = mrr / active_subs
+        # A single sub paying >$10K/mo is implausible for a hospitality agency
+        if implied_per_sub > 10000:
+            degraded.append({
+                "metric": "stripe_mrr_subs_mismatch",
+                "reason": (
+                    f"MRR ${mrr:,.0f} with only {active_subs} active sub(s) "
+                    f"implies ${implied_per_sub:,.0f}/sub — Stripe MCP may be "
+                    f"miscounting subscriptions. Verify in Stripe dashboard."
+                ),
+            })
+    elif mrr is not None and mrr > 0 and active_subs is not None and active_subs == 0:
+        degraded.append({
+            "metric": "stripe_mrr_subs_mismatch",
+            "reason": (
+                f"MRR ${mrr:,.0f} but 0 active subscriptions — "
+                f"Stripe MCP subscription count appears wrong. Verify in Stripe dashboard."
+            ),
+        })
+
     # ── Compute period labels ────────────────────────────────────────────
     current_start = today - timedelta(days=WINDOW_CURRENT)
     previous_start = today - timedelta(days=WINDOW_PREVIOUS)

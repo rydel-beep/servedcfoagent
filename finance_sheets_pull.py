@@ -373,6 +373,9 @@ def pull_client_health() -> dict:
     # Churn risk tracking
     at_risk = []
 
+    # Renewal watch tracking — clients approaching contract renewal
+    renewal_watch = []
+
     for row in data_rows:
         name = row[_H_NAME].strip() if len(row) > _H_NAME else ""
         if not name or name.upper().startswith("TOTAL"):
@@ -392,6 +395,10 @@ def pull_client_health() -> dict:
         # Parse contract dates — col 4 = start, col 5 = end
         contract_start = _parse_date_mmddyyyy(row[_H_START]) if len(row) > _H_START else None
         contract_end = _parse_date_mmddyyyy(row[_H_END]) if len(row) > _H_END else None
+
+        # Parse contract value (col 6) and monthly recognized revenue (col 7)
+        contract_value = _parse_money(row[_H_CONTRACT_VALUE]) if len(row) > _H_CONTRACT_VALUE else None
+        monthly_recognized_revenue = _parse_money(row[_H_MONTHLY_REV]) if len(row) > _H_MONTHLY_REV else None
 
         current_mrr = None
         next_mrr = None
@@ -443,6 +450,12 @@ def pull_client_health() -> dict:
                 "monthly_revenue": round(current_mrr, 2),
             })
 
+        # Prepaid detection: $0 current MRR but contract still active with value
+        prepaid_flag = None
+        if current_mrr == 0 and contract_end and contract_value and contract_value > 0:
+            if (contract_end - today).days > 0:
+                prepaid_flag = "prepaid_active"
+
         client_entry = {
             "name": name,
             "status": "Web Sub" if package == "Web Sub" else "Active",
@@ -450,6 +463,12 @@ def pull_client_health() -> dict:
             "current_mrr": round(current_mrr, 2),
             "next_mrr": round(next_mrr, 2),
         }
+        if contract_value is not None:
+            client_entry["contract_value"] = round(contract_value, 2)
+        if monthly_recognized_revenue is not None:
+            client_entry["monthly_recognized_revenue"] = round(monthly_recognized_revenue, 2)
+        if prepaid_flag:
+            client_entry["prepaid_flag"] = prepaid_flag
         if contract_start:
             client_entry["contract_start"] = str(contract_start)
         if contract_end:
@@ -458,6 +477,25 @@ def pull_client_health() -> dict:
                 client_entry["days_to_end"] = max(days_to_end, 0)
 
         clients.append(client_entry)
+
+        # Renewal watch: flag clients from month 4+ of their contract
+        if contract_start and contract_end:
+            total_months = (contract_end - contract_start).days / 30.44
+            elapsed_months = (today - contract_start).days / 30.44
+            if elapsed_months >= 4 and total_months >= 4:
+                renewal_watch.append({
+                    "name": name,
+                    "contract_start": str(contract_start),
+                    "contract_end": str(contract_end),
+                    "months_elapsed": round(elapsed_months, 1),
+                    "total_months": round(total_months, 1),
+                    "days_until_renewal": max((contract_end - today).days, 0),
+                    "monthly_revenue": round(current_mrr, 2),
+                    "status": "renewal_urgent" if elapsed_months >= 5 else "renewal_prep",
+                })
+
+    # Sort renewal watch by days until renewal (most urgent first)
+    renewal_watch.sort(key=lambda c: c["days_until_renewal"])
 
     # Build trend data array (sorted chronologically)
     trend = []
@@ -538,6 +576,7 @@ def pull_client_health() -> dict:
             "mrr_delta": round(total_next - total_current, 2),
             "trend": trend,
             "at_risk": at_risk,
+            "renewal_watch": renewal_watch,
             "revenue_at_risk_30d": round(revenue_at_risk_30d, 2),
             "revenue_at_risk_60d": round(revenue_at_risk_60d, 2),
             "projection": projection,

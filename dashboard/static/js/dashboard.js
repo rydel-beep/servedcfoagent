@@ -381,15 +381,23 @@
     }
     $('#sub-margin').textContent = margin != null ? 'benchmark: 45%' : '';
 
-    // Op Efficiency
-    const opeff = get(h, 'op_efficiency.value');
-    const prevOpeff = prev ? get(prev, 'hormozi.op_efficiency.value') : null;
-    const opeffEl = document.getElementById('val-opeff');
-    if (opeffEl) {
-      opeffEl.innerHTML = fmtX(opeff) + kpiArrow(opeff, prevOpeff);
-      opeffEl.className = 'kpi-value ' + statusClass(get(h, 'op_efficiency.status'));
+    // LTGP:CAC
+    const ltgpcac = get(h, 'ltgp_cac.value');
+    const ltgpEl = document.getElementById('val-ltgpcac-kpi');
+    if (ltgpEl) {
+      ltgpEl.textContent = fmtX(ltgpcac);
+      ltgpEl.className = 'kpi-value ' + statusClass(get(h, 'ltgp_cac.status'));
     }
-    $('#sub-opeff').textContent = opeff != null ? 'target: 1.5\u00d7' : '';
+    $('#sub-ltgpcac').textContent = ltgpcac != null ? 'benchmark: 3.0\u00d7' : 'gross profit / acq cost';
+
+    // LTV:CAC
+    const ltvcac = get(h, 'ltv_to_cac.value');
+    const ltvcacEl = document.getElementById('val-ltvcac');
+    if (ltvcacEl) {
+      ltvcacEl.textContent = fmtX(ltvcac);
+      ltvcacEl.className = 'kpi-value';
+    }
+    $('#sub-ltvcac').textContent = ltvcac != null ? 'full revenue / acq cost' : '';
 
     // Active Clients — only set fallback here; renderDerivedClients overwrites with split count
     if (!snap.active_clients) {
@@ -594,15 +602,20 @@
 
     html += '</div>';
 
-    // Recoverable revenue estimate for failed charges
+    // Failed charges detail
     if (failed > 0) {
-      const avgMRR = get(snap, 'stripe.mrr');
-      const activeSubs = subs.active || 1;
-      const estPerCharge = avgMRR && activeSubs ? Math.round(avgMRR / activeSubs) : null;
-      const estRecoverable = estPerCharge ? estPerCharge * failed : null;
       html += `<div style="font-size:12px;color:var(--text-muted);margin-top:8px;padding:8px 12px;background:var(--red-dim);border-radius:var(--radius-sm)">
-        ${failed} failed charges. ${estRecoverable ? 'Estimated recoverable: <strong style="color:var(--red)">' + fmt$(estRecoverable) + '</strong> (avg ' + fmt$(estPerCharge) + '/charge).' : ''}
-        Review in Stripe > Payments > Failed.
+        <strong style="color:var(--red)">${failed} failed charge${failed > 1 ? 's' : ''}</strong> in the last 30 days.
+        Per-charge amounts and customer detail require direct Stripe dashboard access
+        (Stripe &gt; Payments &gt; Failed). Recoverable amount cannot be estimated from aggregate count alone.
+      </div>`;
+    }
+
+    // Past-due subscription detail
+    if (pastDue > 0) {
+      html += `<div style="font-size:12px;color:var(--text-muted);margin-top:8px;padding:8px 12px;background:var(--amber-dim);border-radius:var(--radius-sm)">
+        <strong style="color:var(--amber)">${pastDue} past-due subscription${pastDue > 1 ? 's' : ''}</strong>.
+        Customer detail requires direct Stripe dashboard access (Stripe &gt; Subscriptions &gt; Past due).
       </div>`;
     }
 
@@ -875,7 +888,7 @@
       { key: 'cac_loaded', label: 'CAC (Loaded)', fmt: v => fmt$(v), bench: null },
       { key: 'payback_days', label: 'Payback', fmt: v => fmtDays(v), bench: '30d' },
       { key: 'gross_margin', label: 'Gross Margin', fmt: v => fmtPct(v), bench: '45%' },
-      { key: 'op_efficiency', label: 'Op Efficiency', fmt: v => fmtX(v), bench: '1.5\u00d7' },
+      { key: 'ltv_to_cac', label: 'LTV:CAC', fmt: v => fmtX(v), bench: null },
       { key: 'sales_velocity', label: 'Sales Velocity', fmt: v => v != null ? '$' + Math.round(v) + '/day' : '—', bench: null },
     ];
 
@@ -1320,11 +1333,12 @@
   function renderChurnRisk(snap) {
     const ch = snap.client_health || {};
     const atRisk = ch.at_risk || [];
+    const renewalWatch = ch.renewal_watch || [];
     const badge = $('#churn-badge');
     const summary = $('#churn-summary');
     const list = $('#churn-list');
 
-    if (atRisk.length === 0) {
+    if (atRisk.length === 0 && renewalWatch.length === 0) {
       badge.textContent = 'Clear';
       badge.style.background = 'var(--green-dim)';
       badge.style.color = 'var(--green)';
@@ -1333,9 +1347,16 @@
       return;
     }
 
-    badge.textContent = atRisk.length + ' at risk';
-    badge.style.background = 'var(--red-dim)';
-    badge.style.color = 'var(--red)';
+    const totalFlags = atRisk.length + renewalWatch.length;
+    if (atRisk.length > 0) {
+      badge.textContent = atRisk.length + ' at risk';
+      badge.style.background = 'var(--red-dim)';
+      badge.style.color = 'var(--red)';
+    } else {
+      badge.textContent = renewalWatch.length + ' renewal' + (renewalWatch.length > 1 ? 's' : '');
+      badge.style.background = 'var(--amber-dim)';
+      badge.style.color = 'var(--amber)';
+    }
 
     const risk30 = ch.revenue_at_risk_30d || 0;
     const risk60 = ch.revenue_at_risk_60d || 0;
@@ -1366,6 +1387,30 @@
       `;
       list.appendChild(row);
     });
+
+    // ── Renewal Watch Panel ──────────────────────────────────
+    if (renewalWatch.length > 0) {
+      const renewalHeader = document.createElement('div');
+      renewalHeader.style.cssText = 'margin-top:1.2rem;padding:0.6rem 0;border-top:1px solid var(--border);font-weight:600;font-size:0.95rem;color:var(--amber);';
+      renewalHeader.textContent = 'Renewal Watch';
+      list.appendChild(renewalHeader);
+
+      renewalWatch.forEach(c => {
+        const row = document.createElement('div');
+        const isUrgent = c.status === 'renewal_urgent';
+        const color = isUrgent ? 'var(--red)' : 'var(--amber)';
+        row.className = 'churn-row';
+        row.style.borderLeft = '3px solid ' + color;
+        const statusLabel = isUrgent ? 'URGENT' : 'PREP';
+        row.innerHTML = `
+          <span class="churn-client">${esc(c.name)}</span>
+          <span class="churn-days" style="color:${color}">${c.months_elapsed}/${c.total_months} mo \u00b7 ${c.days_until_renewal}d left</span>
+          <span class="churn-revenue">${fmt$(c.monthly_revenue)}/mo</span>
+          <span style="font-size:0.7rem;padding:2px 6px;border-radius:4px;background:${isUrgent ? 'var(--red-dim)' : 'var(--amber-dim)'};color:${color};margin-left:0.4rem">${statusLabel}</span>
+        `;
+        list.appendChild(row);
+      });
+    }
   }
 
   // ── Client Reconciliation ────────────────────────────────
@@ -1373,20 +1418,28 @@
     const recon = snap.client_reconciliation || {};
     const missing = recon.missing_from_health || [];
     const zeroMrr = recon.zero_mrr_active || [];
+    const prepaid = recon.prepaid_active || [];
     const section = $('#section-reconciliation');
     const badge = $('#recon-badge');
     const content = $('#recon-content');
 
     const totalIssues = missing.length + zeroMrr.length;
-    if (totalIssues === 0) {
+    const hasContent = totalIssues > 0 || prepaid.length > 0;
+    if (!hasContent) {
       section.style.display = 'none';
       return;
     }
 
     section.style.display = '';
-    badge.textContent = totalIssues + ' issue' + (totalIssues > 1 ? 's' : '');
-    badge.style.background = 'var(--red-dim)';
-    badge.style.color = 'var(--red)';
+    if (totalIssues > 0) {
+      badge.textContent = totalIssues + ' issue' + (totalIssues > 1 ? 's' : '');
+      badge.style.background = 'var(--red-dim)';
+      badge.style.color = 'var(--red)';
+    } else {
+      badge.textContent = 'Clear';
+      badge.style.background = 'var(--green-dim)';
+      badge.style.color = 'var(--green)';
+    }
 
     let html = '';
 
@@ -1420,6 +1473,21 @@
           <span class="recon-name">${esc(name)}</span>
           <span class="recon-detail">Listed as Active but $0 revenue this month</span>
           <span class="recon-value" style="color:var(--amber)">$0</span>
+        </div>`;
+      });
+      html += '</div>';
+    }
+
+    if (prepaid.length > 0) {
+      html += '<div class="recon-section">';
+      html += '<div class="recon-section-title" style="color:var(--green)">Prepaid clients (contract active, $0 monthly MRR expected)</div>';
+      prepaid.forEach(p => {
+        const endDate = p.contract_end || 'unknown';
+        const cv = p.contract_value ? fmt$(p.contract_value) : '\u2014';
+        html += `<div class="recon-row" style="border-left:3px solid var(--green)">
+          <span class="recon-name">${esc(p.name)}</span>
+          <span class="recon-detail">Prepaid \u2014 contract active until ${esc(endDate)}</span>
+          <span class="recon-value" style="color:var(--green)">${cv}</span>
         </div>`;
       });
       html += '</div>';
@@ -1559,6 +1627,8 @@
       let mrrText;
       if (mrr > 0) {
         mrrText = fmt$(mrr);
+      } else if (c.prepaid_flag === 'prepaid_active') {
+        mrrText = 'Prepaid \u2014 active until ' + (c.contract_end || '?');
       } else if (isNew && c.estimated_mrr) {
         mrrText = '~' + fmt$(c.estimated_mrr) + '/mo est.';
       } else if (isNew && c.contract_value) {
@@ -1577,7 +1647,7 @@
         <span class="client-mrr">${mrrText}</span>
         ${deltaHtml}
       `;
-      if (hasZeroMRR) row.style.opacity = '0.6';
+      if (hasZeroMRR && c.prepaid_flag !== 'prepaid_active') row.style.opacity = '0.6';
       list.appendChild(row);
     });
   }
@@ -1937,76 +2007,175 @@
     }
   }
 
-  // ── Commission Detail (from Payout Log) ─────────────────
+  // ── Commission Detail (from Payout Log + Closer Detail) ──
   function renderCommissionDetail(snap) {
     const container = document.getElementById('commission-detail-expanded');
     if (!container) return;
 
     const detail = get(snap, 'sales.commission_detail');
-    if (!detail || !detail.per_setter || detail.per_setter.length === 0) {
+    if (!detail) {
       container.innerHTML = '';
       return;
     }
 
-    let html = '<div class="comm-detail-section"><div class="comm-detail-title">Setter Payout Log Detail</div>';
+    const hasSetters = detail.per_setter && detail.per_setter.length > 0;
+    const hasCloser = detail.closer && detail.closer.deals && detail.closer.deals.length > 0;
+    const payoutStatus = detail.payout_status;
 
-    // Per-setter cards
-    detail.per_setter.forEach(setter => {
-      const deals = setter.deals || [];
-      // Filter by current window if needed
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - currentWindow);
-      const filteredDeals = currentWindow !== 30
-        ? deals.filter(d => d.date && new Date(d.date) >= cutoff)
-        : deals;
+    if (!hasSetters && !hasCloser) {
+      container.innerHTML = '';
+      return;
+    }
 
-      html += `<div class="comm-setter-card">
-        <div class="comm-setter-header">
-          <span class="comm-setter-name">${esc(setter.name)}</span>
-          <div class="comm-setter-totals">
-            <span>Owed: <strong style="color:var(--amber)">${fmt$(setter.total_owed)}</strong></span>
-            <span>Paid: <strong style="color:var(--green)">${fmt$(setter.total_paid)}</strong></span>
-            <span>Due: <strong style="color:var(--red)">${fmt$(setter.still_due)}</strong></span>
+    let html = '';
+
+    // ── Payout Status Summary ──────────────────────────────
+    if (payoutStatus) {
+      html += `<div class="comm-detail-section" style="margin-bottom:12px;">
+        <div class="comm-detail-title">Payout Status</div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;padding:8px 0;">
+          <div class="comm-stat" style="flex:1;min-width:120px;">
+            <div class="comm-stat-value" style="color:var(--amber)">${fmt$(payoutStatus.grand_total_owed)}</div>
+            <div class="comm-stat-label">Total Owed</div>
           </div>
-        </div>`;
+          <div class="comm-stat" style="flex:1;min-width:120px;">
+            <div class="comm-stat-value" style="color:var(--green)">${fmt$(payoutStatus.setter_paid)}</div>
+            <div class="comm-stat-label">Setter Paid</div>
+          </div>
+          <div class="comm-stat" style="flex:1;min-width:120px;">
+            <div class="comm-stat-value" style="color:var(--red)">${fmt$(payoutStatus.setter_pending)}</div>
+            <div class="comm-stat-label">Setter Pending</div>
+          </div>
+          <div class="comm-stat" style="flex:1;min-width:120px;">
+            <div class="comm-stat-value" style="color:var(--amber)">${fmt$(payoutStatus.closer_owed)}</div>
+            <div class="comm-stat-label">Closer Owed</div>
+          </div>
+        </div>
+      </div>`;
+    }
 
-      if (filteredDeals.length > 0) {
-        html += `<table class="comm-deal-table"><thead><tr>
-          <th>Date</th><th>Business</th><th>Status</th><th>Cash</th><th>Fee</th><th>Total</th><th>Paid</th>
-        </tr></thead><tbody>`;
-        filteredDeals.forEach(d => {
-          html += `<tr>
-            <td>${esc(d.date)}</td>
-            <td>${esc(d.business)}</td>
-            <td>${d.won ? '<span style="color:var(--green)">Won</span>' : esc(d.show_status)}</td>
-            <td>${fmt$(d.cash_collected)}</td>
-            <td>${fmt$(d.set_fee)}</td>
-            <td>${fmt$(d.total_owed)}</td>
-            <td>${esc(d.paid_status) || '—'}</td>
-          </tr>`;
-        });
-        html += '</tbody></table>';
-      } else {
-        html += `<div style="font-size:11px;color:var(--text-muted);padding:4px 0;">No deals in ${currentWindow}d window</div>`;
-      }
-      html += '</div>';
-    });
-
-    // Paid log timeline
-    if (detail.paid_log && detail.paid_log.length > 0) {
-      html += '<div class="comm-paid-log"><div class="comm-detail-title">Payment Log</div>';
-      detail.paid_log.forEach(p => {
-        html += `<div class="comm-paid-entry">
-          <span>${esc(p.date_paid)}</span>
-          <span>${esc(p.deal_name)}</span>
-          <span>${esc(p.what_paid)}</span>
-          <span class="amount">${fmt$(p.amount)}</span>
-        </div>`;
+    // ── Cross-check warnings ──────────────────────────────
+    const crossChecks = detail.cross_checks;
+    if (crossChecks && crossChecks.length > 0) {
+      html += '<div style="margin-bottom:10px;">';
+      crossChecks.forEach(function(msg) {
+        html += '<div style="font-size:11px;color:var(--amber);padding:2px 0;">&#9888; ' + esc(msg) + '</div>';
       });
       html += '</div>';
     }
 
-    html += '</div>';
+    // ── Setter Payout Detail ──────────────────────────────
+    if (hasSetters) {
+      html += '<div class="comm-detail-section"><div class="comm-detail-title">Setter Payout Detail</div>';
+
+      detail.per_setter.forEach(function(setter) {
+        const deals = setter.deals || [];
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - currentWindow);
+        const filteredDeals = currentWindow !== 30
+          ? deals.filter(function(d) { return d.date && new Date(d.date) >= cutoff; })
+          : deals;
+
+        const cardId = 'setter-card-' + esc(setter.name).replace(/\s/g, '-');
+        html += '<div class="comm-setter-card" id="' + cardId + '">';
+        html += '<div class="comm-setter-header" onclick="this.parentElement.classList.toggle(\'expanded\')" style="cursor:pointer;">';
+        html += '<span class="comm-setter-name">' + esc(setter.name) + ' <span style="font-size:10px;color:var(--text-muted);">(' + (setter.sets_count || deals.length) + ' deals)</span></span>';
+        html += '<div class="comm-setter-totals">';
+        html += '<span>Owed: <strong style="color:var(--amber)">' + fmt$(setter.total_owed) + '</strong></span>';
+        html += '<span>Paid: <strong style="color:var(--green)">' + fmt$(setter.total_paid) + '</strong></span>';
+        html += '<span>Due: <strong style="color:var(--red)">' + fmt$(setter.still_due) + '</strong></span>';
+        html += '</div></div>';
+
+        html += '<div class="comm-setter-deals">';
+        if (filteredDeals.length > 0) {
+          html += '<table class="comm-deal-table"><thead><tr>';
+          html += '<th>Date</th><th>Business</th><th>Status</th><th>Cash</th><th>Fee</th><th>Total</th><th>Paid</th>';
+          html += '</tr></thead><tbody>';
+          filteredDeals.forEach(function(d) {
+            html += '<tr>';
+            html += '<td>' + esc(d.date) + '</td>';
+            html += '<td>' + esc(d.business) + '</td>';
+            html += '<td>' + (d.won ? '<span style="color:var(--green)">Won</span>' : esc(d.show_status)) + '</td>';
+            html += '<td>' + fmt$(d.cash_collected) + '</td>';
+            html += '<td>' + fmt$(d.set_fee) + '</td>';
+            html += '<td>' + fmt$(d.total_owed) + '</td>';
+            html += '<td>' + (esc(d.paid_status) || '\u2014') + '</td>';
+            html += '</tr>';
+          });
+          html += '</tbody></table>';
+        } else {
+          html += '<div style="font-size:11px;color:var(--text-muted);padding:4px 0;">No deals in ' + currentWindow + 'd window</div>';
+        }
+        html += '</div></div>';
+      });
+
+      html += '</div>';
+    }
+
+    // ── Closer Payout Detail ──────────────────────────────
+    if (hasCloser) {
+      const closer = detail.closer;
+      html += '<div class="comm-detail-section"><div class="comm-detail-title">Closer Payout Detail';
+      if (closer.closer_name) html += ' \u2014 ' + esc(closer.closer_name);
+      html += '</div>';
+
+      html += '<div style="display:flex;gap:12px;flex-wrap:wrap;padding:4px 0 8px;">';
+      html += '<span style="font-size:12px;">Deals: <strong>' + closer.deal_count + '</strong></span>';
+      html += '<span style="font-size:12px;">Commission (sheet): <strong style="color:var(--amber)">' + fmt$(closer.total_commission_sheet) + '</strong></span>';
+      html += '<span style="font-size:12px;">Expected (rate table): <strong style="color:var(--text-muted)">' + fmt$(closer.total_commission_expected) + '</strong></span>';
+      html += '</div>';
+
+      const closerDeals = closer.deals || [];
+      const cutoff2 = new Date();
+      cutoff2.setDate(cutoff2.getDate() - currentWindow);
+      const filteredCloserDeals = currentWindow !== 30
+        ? closerDeals.filter(function(d) { return d.date && new Date(d.date) >= cutoff2; })
+        : closerDeals;
+
+      if (filteredCloserDeals.length > 0) {
+        html += '<table class="comm-deal-table"><thead><tr>';
+        html += '<th>Date</th><th>Business</th><th>Offer</th><th>Cash</th><th>Comm (Sheet)</th><th>Comm (Expected)</th><th>Match</th>';
+        html += '</tr></thead><tbody>';
+        filteredCloserDeals.forEach(function(d) {
+          var match;
+          if (d.mismatch) {
+            match = '<span style="color:var(--red)" title="' + esc(d.mismatch) + '">&#10007;</span>';
+          } else if (d.commission_expected != null) {
+            match = '<span style="color:var(--green)">&#10003;</span>';
+          } else {
+            match = '<span style="color:var(--text-muted)">\u2014</span>';
+          }
+          html += '<tr>';
+          html += '<td>' + esc(d.date) + '</td>';
+          html += '<td>' + esc(d.business) + '</td>';
+          html += '<td>' + esc(d.offer) + '</td>';
+          html += '<td>' + fmt$(d.cash_collected) + '</td>';
+          html += '<td>' + fmt$(d.commission_sheet) + '</td>';
+          html += '<td>' + (d.commission_expected != null ? fmt$(d.commission_expected) : '<span style="color:var(--text-muted)">N/A</span>') + '</td>';
+          html += '<td>' + match + '</td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+      } else {
+        html += '<div style="font-size:11px;color:var(--text-muted);padding:4px 0;">No closer deals in ' + currentWindow + 'd window</div>';
+      }
+      html += '</div>';
+    }
+
+    // ── Paid log timeline ──────────────────────────────────
+    if (detail.paid_log && detail.paid_log.length > 0) {
+      html += '<div class="comm-paid-log"><div class="comm-detail-title">Payment Log</div>';
+      detail.paid_log.forEach(function(p) {
+        html += '<div class="comm-paid-entry">';
+        html += '<span>' + esc(p.date_paid) + '</span>';
+        html += '<span>' + esc(p.deal_name) + '</span>';
+        html += '<span>' + esc(p.what_paid) + '</span>';
+        html += '<span class="amount">' + fmt$(p.amount) + '</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
     container.innerHTML = html;
   }
 

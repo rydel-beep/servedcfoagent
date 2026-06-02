@@ -1049,6 +1049,32 @@ body {
   color: var(--text-muted); font-style: italic;
 }
 
+/* Rendered markdown inside assistant messages */
+.chat-msg.assistant p { margin: 0 0 8px 0; }
+.chat-msg.assistant p:last-child { margin-bottom: 0; }
+.chat-msg.assistant strong { color: #fff; }
+.chat-msg.assistant ul, .chat-msg.assistant ol {
+  margin: 4px 0 8px 0; padding-left: 18px;
+}
+.chat-msg.assistant li { margin-bottom: 2px; }
+.chat-msg.assistant h1, .chat-msg.assistant h2,
+.chat-msg.assistant h3, .chat-msg.assistant h4,
+.chat-msg.assistant h5, .chat-msg.assistant h6 {
+  font-size: 13px; font-weight: 700; margin: 8px 0 4px 0; color: #fff;
+}
+.chat-msg.assistant code {
+  background: rgba(255,255,255,0.08); padding: 1px 4px;
+  border-radius: 3px; font-size: 12px;
+}
+.chat-msg.assistant pre {
+  background: rgba(255,255,255,0.06); padding: 8px;
+  border-radius: 6px; overflow-x: auto; margin: 6px 0;
+}
+.chat-msg.assistant blockquote {
+  border-left: 2px solid var(--accent); margin: 6px 0;
+  padding-left: 10px; color: var(--text-muted);
+}
+
 .chat-input-wrap {
   display: flex; align-items: flex-end; gap: 8px;
   padding: 12px 16px;

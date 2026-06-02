@@ -39,6 +39,58 @@ app.register_blueprint(dashboard_bp, url_prefix="/dashboard")
 # In-memory cache of the latest snapshot
 _current_snapshot: dict | None = None
 
+# Max age (seconds) before a persisted snapshot triggers auto-refresh on startup
+_STALE_THRESHOLD = 4 * 3600  # 4 hours
+# Keys that must be present — if missing, the snapshot predates current code
+_REQUIRED_KEYS = {"active_clients", "client_reconciliation"}
+
+
+def _snapshot_needs_refresh(snap: dict | None) -> bool:
+    """Check if the persisted snapshot is stale or missing critical sections."""
+    if snap is None:
+        return True
+    # Missing required keys means snapshot predates current code
+    if not _REQUIRED_KEYS.issubset(snap.keys()):
+        logger.info("Snapshot missing keys %s — needs refresh",
+                     _REQUIRED_KEYS - snap.keys())
+        return True
+    # Check age
+    gen_at = snap.get("generated_at")
+    if gen_at:
+        try:
+            from datetime import datetime
+            from helpers import now_sydney
+            generated = datetime.fromisoformat(gen_at)
+            age_seconds = (now_sydney() - generated).total_seconds()
+            if age_seconds > _STALE_THRESHOLD:
+                logger.info("Snapshot is %.1f hours old — needs refresh",
+                            age_seconds / 3600)
+                return True
+        except (ValueError, TypeError):
+            return True
+    else:
+        return True
+    return False
+
+
+def _startup_refresh() -> None:
+    """Auto-refresh the snapshot on startup if it's stale or incomplete."""
+    global _current_snapshot
+    existing = load_persisted()
+    if _snapshot_needs_refresh(existing):
+        logger.info("Startup auto-refresh triggered")
+        try:
+            snap = build_snapshot()
+            _current_snapshot = snap
+            logger.info("Startup refresh complete — ok=%s, degraded=%d",
+                        snap.get("ok"), len(snap.get("degraded", [])))
+        except Exception as e:
+            logger.error("Startup refresh failed: %s — using stale snapshot", e)
+            _current_snapshot = existing
+    else:
+        _current_snapshot = existing
+        logger.info("Persisted snapshot is fresh — skipping startup refresh")
+
 
 def _get_snapshot() -> dict | None:
     global _current_snapshot
@@ -278,6 +330,18 @@ def debug_xero_raw():
         "raw_report": raw,
     }
     return jsonify(summary)
+
+
+# ── Startup auto-refresh (runs once per worker, non-blocking) ──────────
+import threading
+
+def _deferred_startup():
+    """Run startup refresh in a background thread so the worker can start serving."""
+    with app.app_context():
+        _startup_refresh()
+
+_startup_thread = threading.Thread(target=_deferred_startup, daemon=True)
+_startup_thread.start()
 
 
 if __name__ == "__main__":

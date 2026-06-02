@@ -6,6 +6,8 @@
 <title>Served CFO — Jarvis</title>
 <link rel="stylesheet" href="/dashboard/static/css/dashboard.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 </head>
 <body>
 
@@ -102,10 +104,16 @@
       <div class="kpi-sub" id="sub-margin"></div>
     </div>
     <div class="kpi-divider"></div>
-    <div class="kpi" id="kpi-opeff">
-      <div class="kpi-label">Op Efficiency</div>
-      <div class="kpi-value" id="val-opeff">—</div>
-      <div class="kpi-sub" id="sub-opeff"></div>
+    <div class="kpi" id="kpi-ltgpcac">
+      <div class="kpi-label">LTGP:CAC</div>
+      <div class="kpi-value" id="val-ltgpcac-kpi">—</div>
+      <div class="kpi-sub" id="sub-ltgpcac">gross profit / acq cost</div>
+    </div>
+    <div class="kpi-divider"></div>
+    <div class="kpi" id="kpi-ltvcac">
+      <div class="kpi-label">LTV:CAC</div>
+      <div class="kpi-value" id="val-ltvcac">—</div>
+      <div class="kpi-sub" id="sub-ltvcac">full revenue / acq cost</div>
     </div>
     <div class="kpi-divider"></div>
     <div class="kpi" id="kpi-clients">

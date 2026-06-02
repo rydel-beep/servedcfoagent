@@ -43,6 +43,7 @@ def _reconcile_clients(sales: dict | None, client_health: dict | None) -> dict:
     result = {
         "missing_from_health": [],
         "zero_mrr_active": [],
+        "prepaid_active": [],
         "estimated_missing_mrr": 0,
         "health_client_count": 0,
         "won_business_count": 0,
@@ -98,10 +99,18 @@ def _reconcile_clients(sales: dict | None, client_health: dict | None) -> dict:
 
     result["estimated_missing_mrr"] = round(result["estimated_missing_mrr"], 2)
 
-    # Find Active clients with $0 MRR
+    # Find Active clients with $0 MRR — separate prepaid from potential churn
     for c in health_clients:
         if c.get("status") == "Active" and (c.get("current_mrr") or 0) == 0:
-            result["zero_mrr_active"].append(c.get("name", "Unknown"))
+            if c.get("prepaid_flag") == "prepaid_active":
+                # Prepaid client with active contract — not churn
+                result["prepaid_active"].append({
+                    "name": c.get("name", "Unknown"),
+                    "contract_end": c.get("contract_end"),
+                    "contract_value": c.get("contract_value"),
+                })
+            else:
+                result["zero_mrr_active"].append(c.get("name", "Unknown"))
 
     return result
 

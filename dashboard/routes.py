@@ -50,7 +50,7 @@ def login_submit():
             max_age=COOKIE_MAX_AGE,
             httponly=True,
             samesite="Lax",
-            secure=request.is_secure,
+            secure=True,
         )
         return resp
     return render_template("login.html", error="Invalid token"), 401

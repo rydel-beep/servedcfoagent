@@ -427,12 +427,52 @@ def m6_sales_velocity(snap: dict) -> dict:
     return _metric(velocity, None, "unknown", None, read, confidence, inputs)
 
 
+# ── M7: LTV:CAC (full revenue, no margin) ────────────────────────────────
+
+def m7_ltv_to_cac(snap: dict) -> dict:
+    """Lifetime value (full contract, no margin) to fully-loaded CAC."""
+    avg_contract = _get(snap, "sales.deep.money.avg_contract")
+    closes = _get(snap, "sales.funnel.closes")
+    setter_comm = _get(snap, "costs.setter_commission") or 0
+    closer_comm = _get(snap, "costs.closer_commission") or 0
+    setter_payout = _get(snap, "sales.payout.total_owed") or 0
+    ad_spend = _get(snap, "xero.xero_ad_spend")
+
+    inputs = {
+        "avg_contract": avg_contract,
+        "closes": closes,
+        "ad_spend": ad_spend,
+    }
+
+    if avg_contract is None or not closes:
+        return _metric(None, None, "unknown", None,
+                       "Cannot compute — missing data", "low", inputs)
+
+    total_acq_cost = (ad_spend or 0) + setter_payout + closer_comm
+    cac_loaded = round(total_acq_cost / closes, 2) if closes > 0 else None
+
+    if cac_loaded is None or cac_loaded == 0:
+        return _metric(None, None, "unknown", None,
+                       "CAC is zero", "low", inputs)
+
+    ratio = round(avg_contract / cac_loaded, 2)
+    inputs["cac_loaded"] = cac_loaded
+    inputs["ratio"] = ratio
+
+    read = (f"${avg_contract:,.0f} full contract value per ${cac_loaded:,.0f} CAC "
+            f"({ratio}x) — full revenue before margin")
+
+    return _metric(ratio, None, "unknown", None, read, "high" if ad_spend else "medium", inputs)
+
+
 # ── Compute all metrics ───────────────────────────────────────────────────
 
 def compute_all(snap: dict, true_team_cost: float | None = None) -> dict:
     """Return all Hormozi metrics keyed by name."""
     return {
         "ltgp_cac": m1_ltgp_cac(snap),
+        "ltgp_to_cac": m1_ltgp_cac(snap),  # alias for KPI strip
+        "ltv_to_cac": m7_ltv_to_cac(snap),
         "cac_loaded": m2_cac_breakdown(snap),
         "payback_days": m3_payback_days(snap),
         "gross_margin": m4_gross_margin(snap),

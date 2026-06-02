@@ -18,7 +18,11 @@ from datetime import date, timedelta
 
 import requests
 
-from config import SHEET_CONFIG, HTTP_TIMEOUT, WINDOW_CURRENT
+from config import (
+    SHEET_CONFIG, HTTP_TIMEOUT, WINDOW_CURRENT,
+    CLOSER_COMMISSION_BY_OFFER, CLOSER_GP_MAY_OVERRIDE_AUD,
+    CLOSER_MAY_OVERRIDE_ACTIVE,
+)
 from helpers import today_sydney
 
 logger = logging.getLogger(__name__)
@@ -1011,103 +1015,222 @@ def _compute_multi_window(ltc_rows: list[list[str]], today: date) -> list[dict]:
 _PAYOUT_LOG_GID = 1862317163
 
 
-def _pull_commission_detail() -> dict | None:
-    """Parse the LTC Setter Payout Log tab for per-setter commission detail."""
+def _normalise_offer(offer: str) -> str | None:
+    """Map sheet offer name to CLOSER_COMMISSION_BY_OFFER key."""
+    o = offer.strip().lower()
+    mapping = {
+        "growth pro": "growth_pro",
+        "growthpro": "growth_pro",
+        "cafe walkins": "cafe_walkins",
+        "café walkins": "cafe_walkins",
+        "cafe walk-ins": "cafe_walkins",
+        "scale engine": "scale_engine",
+        "se split": "se_split",
+        "scale engine split": "se_split",
+        "content scale": "content_scale",
+        "dwy": "dwy",
+        "do with you": "dwy",
+    }
+    return mapping.get(o)
+
+
+def _pull_closer_commission_detail(
+    ltc_rows: list[list[str]], cutoff: date, today: date,
+) -> dict:
+    """Build per-deal closer commission detail from main LTC Tracker rows.
+
+    Source of truth for closer commission is column 40 (Commission Closer).
+    The CLOSER_COMMISSION_BY_OFFER table is used for expected-vs-actual validation only.
+    """
+    deals = []
+    total_sheet_commission = 0.0
+    total_expected_commission = 0.0
+    mismatches = []
+
+    for row in ltc_rows[1:]:
+        closer_outcome = _cell(row, 23).strip().lower()
+        if closer_outcome != "won":
+            continue
+        close_dt = _parse_date(_cell(row, 27))
+        if not close_dt or close_dt < cutoff or close_dt > today:
+            continue
+
+        business = _cell(row, 7).strip()
+        closer_name = _cell(row, 21).strip() or "Unattributed"
+        offer = _cell(row, 26).strip()
+        sheet_comm = _parse_money(_cell(row, 40))
+        cash_collected = _parse_money(_cell(row, 32))
+
+        # Expected commission from rate table
+        offer_key = _normalise_offer(offer)
+        expected = None
+        if offer_key:
+            expected = CLOSER_COMMISSION_BY_OFFER.get(offer_key)
+            # Apply May 2026 Growth Pro override
+            if (
+                offer_key == "growth_pro"
+                and CLOSER_MAY_OVERRIDE_ACTIVE
+                and close_dt
+                and close_dt.year == 2026
+                and close_dt.month == 5
+            ):
+                expected = CLOSER_GP_MAY_OVERRIDE_AUD
+
+        deal = {
+            "date": str(close_dt),
+            "business": business,
+            "closer": closer_name,
+            "offer": offer,
+            "cash_collected": cash_collected,
+            "commission_sheet": sheet_comm,
+            "commission_expected": expected,
+        }
+
+        if sheet_comm is not None:
+            total_sheet_commission += sheet_comm
+        if expected is not None:
+            total_expected_commission += expected
+
+        # Flag mismatch between sheet and expected
+        if sheet_comm is not None and expected is not None:
+            if abs(sheet_comm - expected) > 1.0:
+                deal["mismatch"] = f"sheet ${sheet_comm:,.0f} vs expected ${expected:,.0f}"
+                mismatches.append(deal["mismatch"])
+
+        deals.append(deal)
+
+    return {
+        "closer_name": deals[0]["closer"] if deals else None,
+        "deals": deals,
+        "total_commission_sheet": round(total_sheet_commission, 2),
+        "total_commission_expected": round(total_expected_commission, 2),
+        "deal_count": len(deals),
+        "mismatches": mismatches if mismatches else None,
+    }
+
+
+def _pull_commission_detail(
+    ltc_rows: list[list[str]] | None = None,
+    cutoff: date | None = None,
+    today_dt: date | None = None,
+) -> dict | None:
+    """Parse the LTC Setter Payout Log tab for per-setter commission detail,
+    and build closer commission detail from the main LTC Tracker rows."""
     rows = _fetch_tab_by_gid(_PAYOUT_LOG_GID)
-    if not rows:
-        return None
 
     setters = {}
     current_setter = None
     paid_log = []
 
-    for row in rows:
-        if not row:
-            continue
+    if rows:
+        for row in rows:
+            if not row:
+                continue
 
-        first = row[0].strip().upper() if row[0].strip() else ""
+            first = row[0].strip().upper() if row[0].strip() else ""
 
-        # Detect setter headers — all-caps single word that's a known setter name
-        if first in ("COBY", "MARAN", "UNATTRIBUTED") and len(row[0].strip()) == len(first):
-            current_setter = row[0].strip().title()
-            if current_setter == "Unattributed":
-                current_setter = "Unattributed"
-            if current_setter not in setters:
-                setters[current_setter] = {
-                    "name": current_setter,
-                    "deals": [],
-                    "sets_count": 0,
-                    "total_owed": 0.0,
-                    "total_paid": 0.0,
-                    "still_due": 0.0,
-                }
-            continue
+            # Detect setter headers — all-caps single word that's a known setter name
+            if first in ("COBY", "MARAN", "UNATTRIBUTED") and len(row[0].strip()) == len(first):
+                current_setter = row[0].strip().title()
+                if current_setter == "Unattributed":
+                    current_setter = "Unattributed"
+                if current_setter not in setters:
+                    setters[current_setter] = {
+                        "name": current_setter,
+                        "deals": [],
+                        "sets_count": 0,
+                        "total_owed": 0.0,
+                        "total_paid": 0.0,
+                        "still_due": 0.0,
+                    }
+                continue
 
-        # Detect total rows for current setter
-        if current_setter and ("total" in first.lower() or "Total" in _cell(row, 0)):
-            total_label = _cell(row, 0).strip().lower()
-            if "owed" in total_label or "total" in total_label:
-                owed = _parse_money(_cell(row, 9)) or _parse_money(_cell(row, 8))
-                if owed:
-                    setters[current_setter]["total_owed"] = owed
-            if "paid" in total_label:
-                paid = _parse_money(_cell(row, 9)) or _parse_money(_cell(row, 8))
-                if paid:
-                    setters[current_setter]["total_paid"] = paid
-            if "pending" in total_label or "due" in total_label:
-                due = _parse_money(_cell(row, 9)) or _parse_money(_cell(row, 8))
-                if due:
-                    setters[current_setter]["still_due"] = due
-            continue
+            # Detect total rows for current setter
+            if current_setter and ("total" in first.lower() or "Total" in _cell(row, 0)):
+                total_label = _cell(row, 0).strip().lower()
+                if "owed" in total_label or "total" in total_label:
+                    owed = _parse_money(_cell(row, 9)) or _parse_money(_cell(row, 8))
+                    if owed:
+                        setters[current_setter]["total_owed"] = owed
+                if "paid" in total_label:
+                    paid = _parse_money(_cell(row, 9)) or _parse_money(_cell(row, 8))
+                    if paid:
+                        setters[current_setter]["total_paid"] = paid
+                if "pending" in total_label or "due" in total_label:
+                    due = _parse_money(_cell(row, 9)) or _parse_money(_cell(row, 8))
+                    if due:
+                        setters[current_setter]["still_due"] = due
+                continue
 
-        # Parse deal rows under current setter
-        if current_setter:
-            deal_date = _parse_date(_cell(row, 1)) or _parse_date(_cell(row, 0))
-            business = _cell(row, 2).strip()
-            if business and deal_date:
-                deal = {
-                    "date": str(deal_date),
-                    "business": business,
-                    "setter": _cell(row, 3).strip(),
-                    "show_status": _cell(row, 4).strip(),
-                    "won": _cell(row, 5).strip().upper() == "WON" or _cell(row, 5).strip().upper() == "YES",
-                    "cash_collected": _parse_money(_cell(row, 6)),
-                    "set_fee": _parse_money(_cell(row, 7)),
-                    "pct_bonus": _parse_money(_cell(row, 8)),
-                    "total_owed": _parse_money(_cell(row, 9)),
-                    "paid_status": _cell(row, 10).strip(),
-                }
-                setters[current_setter]["deals"].append(deal)
-                setters[current_setter]["sets_count"] += 1
+            # Parse deal rows under current setter
+            if current_setter:
+                deal_date = _parse_date(_cell(row, 1)) or _parse_date(_cell(row, 0))
+                business = _cell(row, 2).strip()
+                if business and deal_date:
+                    deal = {
+                        "date": str(deal_date),
+                        "business": business,
+                        "setter": _cell(row, 3).strip(),
+                        "show_status": _cell(row, 4).strip(),
+                        "won": _cell(row, 5).strip().upper() == "WON" or _cell(row, 5).strip().upper() == "YES",
+                        "cash_collected": _parse_money(_cell(row, 6)),
+                        "set_fee": _parse_money(_cell(row, 7)),
+                        "pct_bonus": _parse_money(_cell(row, 8)),
+                        "total_owed": _parse_money(_cell(row, 9)),
+                        "paid_status": _cell(row, 10).strip(),
+                    }
+                    setters[current_setter]["deals"].append(deal)
+                    setters[current_setter]["sets_count"] += 1
 
-        # Parse paid log entries (cols 14-18)
-        if len(row) > 18:
-            paid_deal = _cell(row, 14).strip()
-            paid_amount = _parse_money(_cell(row, 17))
-            if paid_deal and paid_amount:
-                paid_log.append({
-                    "deal_name": paid_deal,
-                    "deal_date": _cell(row, 15).strip(),
-                    "what_paid": _cell(row, 16).strip(),
-                    "amount": paid_amount,
-                    "date_paid": _cell(row, 18).strip(),
-                })
-
-    if not setters:
-        return None
+            # Parse paid log entries (cols 14-18)
+            if len(row) > 18:
+                paid_deal = _cell(row, 14).strip()
+                paid_amount = _parse_money(_cell(row, 17))
+                if paid_deal and paid_amount:
+                    paid_log.append({
+                        "deal_name": paid_deal,
+                        "deal_date": _cell(row, 15).strip(),
+                        "what_paid": _cell(row, 16).strip(),
+                        "amount": paid_amount,
+                        "date_paid": _cell(row, 18).strip(),
+                    })
 
     # Calculate still_due if not explicitly found
     for s in setters.values():
         if s["still_due"] == 0 and s["total_owed"] > 0:
             s["still_due"] = round(s["total_owed"] - s["total_paid"], 2)
 
-    return {
+    # ── Closer commission detail from main LTC rows ───────────────────────
+    closer_detail = None
+    if ltc_rows and cutoff is not None and today_dt is not None:
+        closer_detail = _pull_closer_commission_detail(ltc_rows, cutoff, today_dt)
+
+    # Build result even if setter data is empty (closer data may exist)
+    setter_total_owed = round(sum(s["total_owed"] for s in setters.values()), 2)
+    setter_total_paid = round(sum(s["total_paid"] for s in setters.values()), 2)
+    setter_total_due = round(sum(s["still_due"] for s in setters.values()), 2)
+
+    closer_total = closer_detail["total_commission_sheet"] if closer_detail else 0.0
+
+    if not setters and not closer_detail:
+        return None
+
+    result = {
         "per_setter": list(setters.values()),
         "paid_log": paid_log,
-        "total_owed": round(sum(s["total_owed"] for s in setters.values()), 2),
-        "total_paid": round(sum(s["total_paid"] for s in setters.values()), 2),
-        "total_due": round(sum(s["still_due"] for s in setters.values()), 2),
+        "total_owed": setter_total_owed,
+        "total_paid": setter_total_paid,
+        "total_due": setter_total_due,
+        "closer": closer_detail,
+        "payout_status": {
+            "setter_owed": setter_total_owed,
+            "setter_paid": setter_total_paid,
+            "setter_pending": setter_total_due,
+            "closer_owed": closer_total,
+            "grand_total_owed": round(setter_total_owed + closer_total, 2),
+        },
     }
+    return result
 
 
 # ── Main pull ──────────────────────────────────────────────────────────────
@@ -1147,7 +1270,7 @@ def pull_sales_analytics() -> dict:
     # Setter payout (from Scorecard + Payout Log)
     payout_scorecard = _pull_setter_payout(sc_rows) if sc_rows else None
     payout_log = _pull_payout_log_footer()
-    commission_detail = _pull_commission_detail()
+    commission_detail = _pull_commission_detail(ltc_rows, cutoff, today)
 
     payout = None
     if payout_scorecard:
@@ -1162,6 +1285,39 @@ def pull_sales_analytics() -> dict:
             # They measure different things: scorecard = $50/set, log = $50+5% per won deal
             # Just surface both, flag if wildly different
             payout["note"] = "Scorecard=$50/qualified-set; Payout Log=$50+5%/won-deal — different formulas"
+
+    # ── Cross-check: commission detail vs scorecard / payout log ───────
+    commission_checks = []
+    if commission_detail:
+        # Setter: payout log detail totals vs footer totals
+        cd_setter_owed = commission_detail.get("total_owed", 0)
+        log_footer_owed = payout_log.get("total_owed")
+        if log_footer_owed is not None and cd_setter_owed > 0:
+            diff = abs(cd_setter_owed - log_footer_owed)
+            if diff > 1.0:
+                commission_checks.append(
+                    f"Setter owed: detail ${cd_setter_owed:,.2f} vs log footer ${log_footer_owed:,.2f} "
+                    f"(diff ${diff:,.2f})"
+                )
+
+        # Closer: sheet commission vs expected from rate table
+        closer = commission_detail.get("closer")
+        if closer and closer.get("mismatches"):
+            for m in closer["mismatches"]:
+                commission_checks.append(f"Closer commission mismatch: {m}")
+
+        if closer:
+            sheet_total = closer.get("total_commission_sheet", 0)
+            expected_total = closer.get("total_commission_expected", 0)
+            if sheet_total > 0 and expected_total > 0:
+                diff = abs(sheet_total - expected_total)
+                if diff > 1.0:
+                    commission_checks.append(
+                        f"Closer total: sheet ${sheet_total:,.2f} vs rate-table expected "
+                        f"${expected_total:,.2f} (diff ${diff:,.2f})"
+                    )
+
+        commission_detail["cross_checks"] = commission_checks if commission_checks else None
 
     # Velocity (from raw Lead-to-Cash rows)
     velocity = None
