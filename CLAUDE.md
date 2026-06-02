@@ -171,11 +171,9 @@ Stripe MCP provides aggregate MRR only (no per-customer data), so it serves as a
 cross-check, not a per-client source.
 
 Disagreements between sources are surfaced in `active_clients.discrepancies`, never silently
-resolved. Known-churned clients (Vietnamese Mint, Gloria Jean's, Johnnies Fitzroy,
-Hanmades, Nonnas, Riverloop, V Noodle, Bunni Beez) are excluded even if a lingering
-payment or old Won record appears. Note: Asian Streat, 1st Edition Bar, and The Advocate
-were previously listed as churned but have active June 2026 MRR — they are now treated
-as active (updated 2026-06-02). Flag if a churned client
+resolved. Known-churned clients (Advocate, Vietnamese Mint, Gloria Jean's, 1st Edition Bar,
+Johnnies Fitzroy, Hanmades, Nonnas, Asian Streat, Riverloop, V Noodle, Bunni Beez) are
+excluded even if a lingering payment or old Won record appears — flag if a churned client
 shows new activity.
 
 Never reintroduce a hardcoded client list; it is the known cause of staleness. The module

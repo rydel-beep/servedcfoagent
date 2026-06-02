@@ -23,13 +23,14 @@ SKIP_MARKERS = {"end month", "churned", "x", "renewal", "end month previous mont
 # Confirmed churned clients — still marked Active in Health tab but no longer active.
 # Filter these out of client health, MRR, and trend calculations.
 # Uses prefix matching (startswith) since sheet names may be longer.
-# Updated 2026-06-02: Removed Asian Streat, 1st Edition Bar, The Advocate —
-# all three have active June 2026 MRR in the Health tab (renewed/still active).
 CONFIRMED_CHURNED_PREFIXES = [
+    "1st Edition Bar",
+    "Asian Streat",
     "Nonnas",
     "Riverloop",
     "V Noodle",
     "Bunni Beez",
+    "The Advocate",
 ]
 
 
@@ -40,13 +41,20 @@ def _is_confirmed_churned(name: str) -> bool:
             return True
     return False
 
-# Month column mapping in Health tab (col 8 = 10/2025, col 15 = 5/2026, etc.)
-_HEALTH_MONTH_START_COL = 8
-_HEALTH_MONTH_LABELS = [
-    "10/2025", "11/2025", "12/2025",
-    "1/2026", "2/2026", "3/2026", "4/2026", "5/2026",
-    "6/2026", "7/2026", "8/2026", "9/2026",
-]
+# Health tab GID for direct CSV export (more reliable than tab name)
+_HEALTH_TAB_GID = 1407663952
+
+# Health tab column indices (new June 2026 restructured layout)
+_H_NAME = 0
+_H_STATUS = 1
+_H_PACKAGE = 2
+_H_TERM = 3
+_H_START = 4
+_H_END = 5
+_H_CONTRACT_VALUE = 6
+_H_MONTHLY_REV = 7
+# Col 8 is blank separator; monthly MRR columns start at col 9
+_H_MONTH_START = 9
 
 
 def _fetch_tab(tab: str) -> list[list[str]]:
@@ -65,6 +73,24 @@ def _fetch_tab(tab: str) -> list[list[str]]:
         return all_rows
     except requests.RequestException as e:
         logger.error("Finance sheet %s request failed: %s", tab, e)
+        return []
+
+
+def _fetch_tab_by_gid(gid: int) -> list[list[str]]:
+    """Fetch a tab from the Finance sheet by GID (more reliable than tab name)."""
+    sid = FINANCE_SHEET_CONFIG["sheet_id"]
+    url = (
+        f"https://docs.google.com/spreadsheets/d/{sid}"
+        f"/export?format=csv&gid={gid}"
+    )
+    try:
+        resp = requests.get(url, timeout=(5, HTTP_TIMEOUT))
+        if resp.status_code != 200:
+            logger.error("Finance sheet GID %d fetch failed (status %d)", gid, resp.status_code)
+            return []
+        return list(csv.reader(io.StringIO(resp.text)))
+    except requests.RequestException as e:
+        logger.error("Finance sheet GID %d request failed: %s", gid, e)
         return []
 
 
@@ -246,15 +272,30 @@ def pull_recognized_revenue() -> dict:
     }
 
 
-def _current_month_col_index() -> int | None:
-    """Return the column index in the Health tab for the current Sydney month."""
-    today = today_sydney()
-    label = f"{today.month}/{today.year}"
-    try:
-        offset = _HEALTH_MONTH_LABELS.index(label)
-        return _HEALTH_MONTH_START_COL + offset
-    except ValueError:
-        return None
+def _parse_month_columns(headers: list[str]) -> list[tuple[int, str]]:
+    """
+    Parse month column headers from the Health tab.
+    Returns list of (col_index, "M/YYYY") for each month column found.
+    Headers are like "January 2026", "February 2026", etc.
+    """
+    import calendar
+    month_name_to_num = {name.lower(): num for num, name in enumerate(calendar.month_name) if num}
+    result = []
+    for i, h in enumerate(headers):
+        if i < _H_MONTH_START:
+            continue
+        h = h.strip()
+        if not h:
+            continue
+        parts = h.split()
+        if len(parts) == 2 and parts[0].lower() in month_name_to_num:
+            try:
+                m = month_name_to_num[parts[0].lower()]
+                y = int(parts[1])
+                result.append((i, f"{m}/{y}"))
+            except ValueError:
+                continue
+    return result
 
 
 def _parse_date_mmddyyyy(val: str) -> date | None:
@@ -280,24 +321,45 @@ def pull_client_health() -> dict:
     Returns:
     - Active client count, current/next month MRR, delta
     - Per-client rows with contract dates and churn risk
-    - Monthly MRR totals for trend chart (Oct 2025 → Sep 2026)
+    - Monthly MRR totals for trend chart
     - At-risk clients (contracts expiring within 60 days)
     No PII beyond client business names (public entities).
+
+    Sheet layout (restructured June 2026):
+    Row 0 = headers, Row 1+ = data.
+    Cols: Name(0), Status(1), Package(2), Term(3), Start(4), End(5),
+          ContractValue(6), MonthlyRev(7), blank(8), month cols(9+).
+    Status: "Active" or "Finished". Finished = churned/completed.
     """
     degraded = []
-    tab = FINANCE_SHEET_CONFIG.get("health_tab", "Health")
-    rows = _fetch_tab(tab)
+    rows = _fetch_tab_by_gid(_HEALTH_TAB_GID)
 
-    if not rows or len(rows) < 3:
-        degraded.append({"metric": "client_health", "reason": f"Failed to fetch {tab} tab"})
+    if not rows or len(rows) < 2:
+        degraded.append({"metric": "client_health", "reason": "Failed to fetch Health tab"})
         return {"client_health": None, "degraded": degraded}
 
-    # Row 0 is title, Row 1 is headers, data starts at Row 2
-    data_rows = rows[2:]
+    # Row 0 is headers, data starts at Row 1
+    headers = rows[0]
+    data_rows = rows[1:]
     today = today_sydney()
 
-    col_idx = _current_month_col_index()
-    next_col_idx = col_idx + 1 if col_idx is not None else None
+    # Dynamically parse month columns from header row
+    month_cols = _parse_month_columns(headers)  # [(col_idx, "M/YYYY"), ...]
+    month_labels = [label for _, label in month_cols]
+
+    # Find current and next month column indices
+    current_label = f"{today.month}/{today.year}"
+    next_month_num = today.month + 1 if today.month < 12 else 1
+    next_year = today.year if today.month < 12 else today.year + 1
+    next_label = f"{next_month_num}/{next_year}"
+
+    col_idx = None
+    next_col_idx = None
+    for ci, label in month_cols:
+        if label == current_label:
+            col_idx = ci
+        elif label == next_label:
+            next_col_idx = ci
 
     clients = []
     total_current = 0.0
@@ -306,30 +368,30 @@ def pull_client_health() -> dict:
     web_sub_count = 0
 
     # Monthly totals for trend chart
-    monthly_totals = {label: 0.0 for label in _HEALTH_MONTH_LABELS}
+    monthly_totals = {label: 0.0 for label in month_labels}
 
     # Churn risk tracking
     at_risk = []
 
     for row in data_rows:
-        name = row[0].strip() if len(row) > 0 else ""
+        name = row[_H_NAME].strip() if len(row) > _H_NAME else ""
         if not name or name.upper().startswith("TOTAL"):
             continue
 
-        status = row[1].strip() if len(row) > 1 else ""
-        package = row[2].strip() if len(row) > 2 else ""
+        status = row[_H_STATUS].strip() if len(row) > _H_STATUS else ""
+        package = row[_H_PACKAGE].strip() if len(row) > _H_PACKAGE else ""
 
-        # Skip non-client rows (footers, blanks)
-        if status not in ("Active", "Web Sub"):
+        # Skip non-Active rows (Finished = churned, blank = empty row)
+        if status != "Active":
             continue
 
-        # Skip confirmed churned clients (still marked Active in sheet)
+        # Skip confirmed churned clients (still marked Active in sheet but known churned)
         if _is_confirmed_churned(name):
             continue
 
-        # Parse contract dates — col 5 = start, col 6 = end
-        contract_start = _parse_date_mmddyyyy(row[5]) if len(row) > 5 else None
-        contract_end = _parse_date_mmddyyyy(row[6]) if len(row) > 6 else None
+        # Parse contract dates — col 4 = start, col 5 = end
+        contract_start = _parse_date_mmddyyyy(row[_H_START]) if len(row) > _H_START else None
+        contract_end = _parse_date_mmddyyyy(row[_H_END]) if len(row) > _H_END else None
 
         current_mrr = None
         next_mrr = None
@@ -346,24 +408,23 @@ def pull_client_health() -> dict:
         if next_mrr is None:
             next_mrr = 0.0
 
-        if status == "Active":
-            active_count += 1
-        elif status == "Web Sub":
+        # Web Sub is now a package type, not a status
+        if package == "Web Sub":
             web_sub_count += 1
+        else:
+            active_count += 1
 
         total_current += current_mrr
         total_next += next_mrr
 
         # Accumulate monthly totals for trend chart
-        for i, label in enumerate(_HEALTH_MONTH_LABELS):
-            ci = _HEALTH_MONTH_START_COL + i
+        for ci, label in month_cols:
             if ci < len(row):
                 val = _parse_money(row[ci])
                 if val is not None:
                     monthly_totals[label] += val
 
         # Churn risk: contracts expiring within 60 days (future only).
-        # Past end dates with current revenue = renewed/month-to-month, not churn risk.
         days_to_end = None
         risk_level = None
         if contract_end:
@@ -372,7 +433,6 @@ def pull_client_health() -> dict:
                 risk_level = "critical"
             elif days_to_end > 0 and days_to_end <= 60:
                 risk_level = "watch"
-            # Past dates with revenue = renewed, skip churn risk
 
         if risk_level and current_mrr > 0:
             at_risk.append({
@@ -385,7 +445,7 @@ def pull_client_health() -> dict:
 
         client_entry = {
             "name": name,
-            "status": status,
+            "status": "Web Sub" if package == "Web Sub" else "Active",
             "package": package,
             "current_mrr": round(current_mrr, 2),
             "next_mrr": round(next_mrr, 2),
@@ -399,14 +459,9 @@ def pull_client_health() -> dict:
 
         clients.append(client_entry)
 
-    current_label = f"{today.month}/{today.year}"
-    next_month = today.month + 1 if today.month < 12 else 1
-    next_year = today.year if today.month < 12 else today.year + 1
-    next_label = f"{next_month}/{next_year}"
-
     # Build trend data array (sorted chronologically)
     trend = []
-    for label in _HEALTH_MONTH_LABELS:
+    for label in month_labels:
         trend.append({
             "month": label,
             "mrr": round(monthly_totals[label], 2),
@@ -420,7 +475,6 @@ def pull_client_health() -> dict:
     at_risk.sort(key=lambda c: c["days_remaining"])
 
     # ── MRR Projection Analysis ───────────────────────────────────────────
-    # Compute month-over-month growth rates from historical trend data
     growth_rates = []
     for i in range(1, len(trend)):
         prev_mrr = trend[i - 1]["mrr"]
@@ -441,11 +495,9 @@ def pull_client_health() -> dict:
     recent_rates = historical_rates[-3:] if len(historical_rates) >= 3 else historical_rates
     growth_3mo_avg = round(sum(recent_rates) / len(recent_rates), 1) if recent_rates else 0.0
 
-    # Base MRR for projection = next month from Health tab
     base_mrr = round(total_next, 2) if total_next > 0 else round(total_current, 2)
     churn_risk = round(revenue_at_risk_30d, 2)
 
-    # 3-month forward projection
     months_forward = []
     proj_base = base_mrr
     for i in range(3):

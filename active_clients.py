@@ -23,17 +23,19 @@ logger = logging.getLogger(__name__)
 
 # Confirmed churned — excluded from active even if they appear in sources.
 # If a churned client shows new Stripe activity, flag it.
-# Updated 2026-06-02: Removed Asian Streat, 1st Edition Bar, The Advocate —
-# all three have active June 2026 MRR in the Health tab (renewed/still active).
 KNOWN_CHURNED = {
+    "advocate",
+    "the advocate",
     "vietnamese mint",
     "gloria jeans",
     "gloria jean's",
+    "1st edition bar",
     "johnnies fitzroy",
     "hanmades",
     "nonnas",
     "nonnas pizzeria",
     "nonnas pizzeria and cucina",
+    "asian streat",
     "riverloop",
     "riverloop cafe",
     "v noodle",
