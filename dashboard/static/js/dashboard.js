@@ -169,9 +169,15 @@
       const ac_ = snap.active_clients || {};
       const confirmedCount = (ac_.confirmed_both_sources || 0) + (ac_.legacy_pre_tracker || 0);
       const signingCount = ac_.pending_health_update || 0;
-      const clientLabel = signingCount > 0
-        ? `<strong>${confirmedCount} active</strong> + ${signingCount} signing`
-        : `<strong>${confirmedCount || ch.total_clients || '?'} active clients</strong>`;
+      const projectedMRR = ac_.projected_mrr;
+      const estimatedMRR = ac_.estimated_mrr;
+      let clientLabel;
+      if (signingCount > 0) {
+        clientLabel = `<strong>${confirmedCount + signingCount} clients</strong> (${confirmedCount} active + ${signingCount} awaiting Stripe)`;
+        if (projectedMRR) clientLabel += `. Projected MRR incl. new: <strong>${fmt$(projectedMRR)}</strong>`;
+      } else {
+        clientLabel = `<strong>${confirmedCount || ch.total_clients || '?'} active clients</strong>`;
+      }
       lines.push({ icon: '\u2191', text: `MRR: ${parts.join(' / ')}${deltaStr}. ${clientLabel}.` });
     }
 
@@ -313,10 +319,16 @@
     // Get previous snapshot for WoW arrows
     const prev = (historyData && historyData.length >= 2) ? historyData[historyData.length - 2] : null;
 
-    // Sheet MRR
+    // Sheet MRR — show projected if new signings exist
+    const acData = snap.active_clients || {};
+    const projMRR = acData.projected_mrr;
+    const estMRR = acData.estimated_mrr || 0;
     setKPI('val-sheet-mrr', fmt$(ch.current_mrr));
     const delta = ch.mrr_delta;
-    if (delta != null && delta !== 0) {
+    if (estMRR > 0) {
+      $('#sub-sheet-mrr').textContent = 'projected: ' + fmt$(projMRR);
+      $('#sub-sheet-mrr').style.color = 'var(--purple)';
+    } else if (delta != null && delta !== 0) {
       const dir = delta > 0 ? '+' : '';
       $('#sub-sheet-mrr').textContent = dir + fmt$(delta) + ' next month';
       $('#sub-sheet-mrr').style.color = delta >= 0 ? 'var(--green)' : 'var(--red)';
@@ -1278,27 +1290,28 @@
     const ac = snap.active_clients;
     if (!ac) return;
 
-    // KPI headline = confirmed active (both + legacy), not blurred total
+    // KPI headline = total clients, sub-text shows breakdown
     const confirmedActive = (ac.confirmed_both_sources || 0) + (ac.legacy_pre_tracker || 0);
     const signing = ac.pending_health_update || 0;
     const clientKPI = document.getElementById('val-clients');
     if (clientKPI) {
-      clientKPI.textContent = confirmedActive || '—';
+      clientKPI.textContent = ac.active_count || '—';
     }
     const clientSub = $('#sub-clients');
     if (clientSub) {
-      const parts = [];
-      if (signing) parts.push('+' + signing + ' signing');
-      if (ac.confirmed_both_sources) parts.push(ac.confirmed_both_sources + ' verified');
-      clientSub.textContent = parts.join(', ');
+      if (signing > 0) {
+        clientSub.textContent = confirmedActive + ' active, ' + signing + ' awaiting Stripe';
+      } else {
+        clientSub.textContent = confirmedActive + ' active';
+      }
     }
 
-    // Health badge: "24 active + 6 signing"
+    // Health badge
     const healthBadge = $('#health-badge');
     if (healthBadge) {
       healthBadge.textContent = signing > 0
-        ? confirmedActive + ' active + ' + signing + ' signing'
-        : confirmedActive + ' clients';
+        ? ac.active_count + ' clients (' + signing + ' awaiting Stripe)'
+        : ac.active_count + ' clients';
       const conf = ac.confidence;
       healthBadge.style.background = conf === 'high' ? 'var(--green-dim)' : conf === 'medium' ? 'var(--amber-dim)' : 'var(--red-dim)';
       healthBadge.style.color = conf === 'high' ? 'var(--green)' : conf === 'medium' ? 'var(--amber)' : 'var(--red)';
@@ -1344,7 +1357,9 @@
       return;
     }
 
-    const totalMRR = ac ? ac.total_mrr_derived : (ch ? ch.current_mrr : 0);
+    const confirmedMRR = ac ? ac.confirmed_mrr : (ch ? ch.current_mrr : 0);
+    const estimatedMRR = ac ? ac.estimated_mrr : 0;
+    const projectedMRR = ac ? ac.projected_mrr : confirmedMRR;
     const nextMRR = ch ? ch.next_mrr : null;
     const mrrDelta = ch ? ch.mrr_delta : null;
     // badge is set by renderDerivedClients — only set fallback here
@@ -1353,11 +1368,19 @@
       badge.textContent = clientCount + ' clients';
     }
 
-    summary.innerHTML = `
+    let summaryHtml = `
       <div class="health-stat">
-        <div class="health-stat-value" style="color:var(--text)">${fmt$(totalMRR)}</div>
-        <div class="health-stat-label">Derived MRR</div>
-      </div>
+        <div class="health-stat-value" style="color:var(--text)">${fmt$(confirmedMRR)}</div>
+        <div class="health-stat-label">Confirmed MRR</div>
+      </div>`;
+    if (estimatedMRR > 0) {
+      summaryHtml += `
+      <div class="health-stat">
+        <div class="health-stat-value" style="color:var(--purple)">${fmt$(projectedMRR)}</div>
+        <div class="health-stat-label">Projected MRR <span style="font-size:11px;opacity:0.7">(+${fmt$(estimatedMRR)} est.)</span></div>
+      </div>`;
+    }
+    summaryHtml += `
       <div class="health-stat">
         <div class="health-stat-value" style="color:${(mrrDelta || 0) >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt$(nextMRR)}</div>
         <div class="health-stat-label">Next month</div>
@@ -1365,15 +1388,13 @@
       <div class="health-stat">
         <div class="health-stat-value" style="color:${(mrrDelta || 0) >= 0 ? 'var(--green)' : 'var(--red)'}">${mrrDelta != null ? (mrrDelta >= 0 ? '+' : '') + fmt$(mrrDelta) : '—'}</div>
         <div class="health-stat-label">MRR delta</div>
-      </div>
-    `;
+      </div>`;
+    summary.innerHTML = summaryHtml;
 
-    // Sort: clients with MRR first (descending), then new signings
+    // Sort: confirmed MRR first (descending), then estimated MRR (new signings), then $0
     const sorted = [...clients].sort((a, b) => {
-      const aMRR = a.current_mrr || 0;
-      const bMRR = b.current_mrr || 0;
-      if (aMRR > 0 && bMRR === 0) return -1;
-      if (aMRR === 0 && bMRR > 0) return 1;
+      const aMRR = a.current_mrr || a.estimated_mrr || 0;
+      const bMRR = b.current_mrr || b.estimated_mrr || 0;
       return bMRR - aMRR || (b.contract_value || 0) - (a.contract_value || 0);
     });
 
@@ -1386,12 +1407,22 @@
       const hasZeroMRR = c.mrr_flag === 'active_zero_mrr';
 
       let badgeText, badgeCls;
-      if (isNew) { badgeText = 'New'; badgeCls = 'new'; }
+      if (isNew && c.awaiting_stripe) { badgeText = 'Awaiting Stripe'; badgeCls = 'new'; }
+      else if (isNew) { badgeText = 'New'; badgeCls = 'new'; }
       else if (c.status === 'Web Sub') { badgeText = 'Web'; badgeCls = 'websub'; }
       else { badgeText = 'Active'; badgeCls = 'active'; }
 
       const mrr = c.current_mrr || 0;
-      const mrrText = mrr > 0 ? fmt$(mrr) : (isNew && c.contract_value ? fmt$(c.contract_value) + ' contract' : '$0');
+      let mrrText;
+      if (mrr > 0) {
+        mrrText = fmt$(mrr);
+      } else if (isNew && c.estimated_mrr) {
+        mrrText = '~' + fmt$(c.estimated_mrr) + '/mo est.';
+      } else if (isNew && c.contract_value) {
+        mrrText = fmt$(c.contract_value) + ' contract';
+      } else {
+        mrrText = '$0';
+      }
       const delta = (c.next_mrr || 0) - mrr;
       let deltaHtml = '';
       if (delta > 0) deltaHtml = `<span class="client-delta up">+${fmt$(delta)}</span>`;

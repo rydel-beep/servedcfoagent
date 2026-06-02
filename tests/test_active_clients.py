@@ -202,3 +202,38 @@ def test_confidence_low():
         won_deals=[_won(f"Client {i}") for i in range(5)],
     )
     assert result["confidence"] == "low"
+
+
+# ── Estimated MRR from contract ──────────────────────────────
+
+def test_estimated_mrr_from_contract():
+    """Won-only client gets estimated_mrr = contract / 6."""
+    result = derive_active_clients(
+        health_clients=[],
+        won_deals=[_won("New Client", contract=14500)],
+    )
+    client = result["active"][0]
+    assert client["estimated_mrr"] == round(14500 / 6, 2)
+    assert client["awaiting_stripe"] is True
+    assert client["mrr_source"] == "estimated_from_contract"
+
+
+def test_projected_mrr_includes_estimated():
+    """projected_mrr = confirmed + estimated."""
+    result = derive_active_clients(
+        health_clients=[_health("Existing", mrr=3000)],
+        won_deals=[_won("New Deal", contract=12000)],
+    )
+    assert result["confirmed_mrr"] == 3000.0
+    assert result["estimated_mrr"] == 2000.0
+    assert result["projected_mrr"] == 5000.0
+
+
+def test_confirmed_client_not_awaiting_stripe():
+    """Health tab client is not marked as awaiting Stripe."""
+    result = derive_active_clients(
+        health_clients=[_health("Confirmed")],
+        won_deals=[_won("Confirmed")],
+    )
+    assert result["active"][0]["awaiting_stripe"] is False
+    assert result["active"][0]["estimated_mrr"] is None

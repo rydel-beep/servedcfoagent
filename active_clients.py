@@ -247,15 +247,30 @@ def derive_active_clients(
         # Include as active (signed client awaiting Health tab entry)
         active.append(entry)
 
-    # 3. Compute totals
+    # 3. Estimate MRR for new signings from contract value (6-month standard)
+    CONTRACT_MONTHS = 6
+    for a in active:
+        if a.get("source") == "ltc_tracker" and a.get("current_mrr") is None:
+            cv = a.get("contract_value")
+            if cv and cv > 0:
+                a["estimated_mrr"] = round(cv / CONTRACT_MONTHS, 2)
+                a["mrr_source"] = "estimated_from_contract"
+            else:
+                a["estimated_mrr"] = None
+                a["mrr_source"] = "unknown"
+            a["awaiting_stripe"] = True
+        else:
+            a["estimated_mrr"] = None
+            a["awaiting_stripe"] = False
+
+    # Compute totals
     confirmed_count = sum(1 for a in active if a.get("sources_agree") is True)
     legacy_count = sum(1 for a in active if a.get("sources_agree") == "legacy")
     pending_count = sum(1 for a in active if a.get("sources_agree") is False)
-    total_mrr = sum(a.get("current_mrr") or 0 for a in active)
-    total_contract_mtd = sum(
-        a.get("contract_value") or 0 for a in active
-        if a.get("source") == "ltc_tracker"
-    )
+    confirmed_mrr = sum(a.get("current_mrr") or 0 for a in active)
+    estimated_mrr = sum(a.get("estimated_mrr") or 0 for a in active)
+    projected_mrr = round(confirmed_mrr + estimated_mrr, 2)
+    total_mrr = confirmed_mrr  # backward compat
 
     # 4. Stripe validation
     stripe_validation = None
@@ -297,6 +312,9 @@ def derive_active_clients(
         "legacy_pre_tracker": legacy_count,
         "pending_health_update": pending_count,
         "total_mrr_derived": round(total_mrr, 2),
+        "confirmed_mrr": round(confirmed_mrr, 2),
+        "estimated_mrr": round(estimated_mrr, 2),
+        "projected_mrr": projected_mrr,
         "churned_excluded": churned_excluded,
         "stripe_validation": stripe_validation,
         "confidence": confidence,
