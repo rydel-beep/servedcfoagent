@@ -50,7 +50,7 @@ def test_short_names_no_false_positive():
 # ── Churned detection ─────────────────────────────────────────
 
 def test_churned_exact():
-    assert _is_churned("The Advocate")
+    assert _is_churned("Riverloop Cafe")
 
 
 def test_churned_prefix():
@@ -113,11 +113,11 @@ def test_won_only_discrepancy():
 def test_churned_excluded():
     """Churned client excluded even if in both sources."""
     result = derive_active_clients(
-        health_clients=[_health("The Advocate", mrr=3050)],
-        won_deals=[_won("The Advocate")],
+        health_clients=[_health("Riverloop Cafe", mrr=0)],
+        won_deals=[_won("Riverloop Cafe")],
     )
     assert result["active_count"] == 0
-    assert "The Advocate" in result["churned_excluded"]
+    assert "Riverloop Cafe" in result["churned_excluded"]
 
 
 def test_churned_with_lingering_health():

@@ -23,14 +23,13 @@ SKIP_MARKERS = {"end month", "churned", "x", "renewal", "end month previous mont
 # Confirmed churned clients — still marked Active in Health tab but no longer active.
 # Filter these out of client health, MRR, and trend calculations.
 # Uses prefix matching (startswith) since sheet names may be longer.
+# Updated 2026-06-02: Removed Asian Streat, 1st Edition Bar, The Advocate —
+# all three have active June 2026 MRR in the Health tab (renewed/still active).
 CONFIRMED_CHURNED_PREFIXES = [
-    "1st Edition Bar",
-    "Asian Streat",
     "Nonnas",
     "Riverloop",
     "V Noodle",
     "Bunni Beez",
-    "The Advocate",
 ]
 
 
