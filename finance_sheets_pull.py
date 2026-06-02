@@ -420,6 +420,61 @@ def pull_client_health() -> dict:
     # Sort at_risk by days remaining
     at_risk.sort(key=lambda c: c["days_remaining"])
 
+    # ── MRR Projection Analysis ───────────────────────────────────────────
+    # Compute month-over-month growth rates from historical trend data
+    growth_rates = []
+    for i in range(1, len(trend)):
+        prev_mrr = trend[i - 1]["mrr"]
+        curr_mrr = trend[i]["mrr"]
+        if prev_mrr > 0 and curr_mrr > 0:
+            rate = round((curr_mrr - prev_mrr) / prev_mrr * 100, 1)
+            growth_rates.append(rate)
+
+    # Find current month index in trend
+    current_trend_idx = None
+    for i, t in enumerate(trend):
+        if t["month"] == current_label:
+            current_trend_idx = i
+            break
+
+    # Only use growth rates up to current month (not future projections from sheet)
+    historical_rates = growth_rates[:current_trend_idx] if current_trend_idx else growth_rates
+    recent_rates = historical_rates[-3:] if len(historical_rates) >= 3 else historical_rates
+    growth_3mo_avg = round(sum(recent_rates) / len(recent_rates), 1) if recent_rates else 0.0
+
+    # Base MRR for projection = next month from Health tab
+    base_mrr = round(total_next, 2) if total_next > 0 else round(total_current, 2)
+    churn_risk = round(revenue_at_risk_30d, 2)
+
+    # 3-month forward projection
+    months_forward = []
+    proj_base = base_mrr
+    for i in range(3):
+        proj_month_num = (today.month + 1 + i) % 12 or 12
+        proj_year = today.year + ((today.month + 1 + i - 1) // 12)
+        month_label_proj = f"{proj_month_num}/{proj_year}"
+
+        optimistic = round(proj_base * (1 + growth_3mo_avg / 100), 2) if growth_3mo_avg else proj_base
+        pessimistic = round(proj_base - churn_risk, 2)
+
+        months_forward.append({
+            "month": month_label_proj,
+            "base": round(proj_base, 2),
+            "optimistic": optimistic,
+            "pessimistic": max(pessimistic, 0),
+        })
+
+        proj_base = round(proj_base * (1 + growth_3mo_avg / 100), 2) if growth_3mo_avg else proj_base
+
+    projection = {
+        "growth_rate_mom": historical_rates,
+        "growth_rate_3mo_avg": growth_3mo_avg,
+        "next_month_base": base_mrr,
+        "churn_risk_mrr": churn_risk,
+        "next_month_worst": max(round(base_mrr - churn_risk, 2), 0),
+        "months_forward": months_forward,
+    }
+
     return {
         "client_health": {
             "active_count": active_count,
@@ -434,6 +489,7 @@ def pull_client_health() -> dict:
             "at_risk": at_risk,
             "revenue_at_risk_30d": round(revenue_at_risk_30d, 2),
             "revenue_at_risk_60d": round(revenue_at_risk_60d, 2),
+            "projection": projection,
             "clients": clients,
         },
         "degraded": degraded,

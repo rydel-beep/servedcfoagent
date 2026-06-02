@@ -45,6 +45,17 @@
   <a href="#section-quality" class="nav-link">DQ</a>
 </nav>
 
+<!-- Global Date Range Selector -->
+<div class="global-window-bar" id="global-window-bar">
+  <span class="global-window-label">Window:</span>
+  <button class="global-window-btn" data-window="7">7d</button>
+  <button class="global-window-btn" data-window="14">14d</button>
+  <button class="global-window-btn active" data-window="30">30d</button>
+  <button class="global-window-btn" data-window="60">60d</button>
+  <button class="global-window-btn" data-window="90">90d</button>
+  <span class="global-window-note" id="global-window-note"></span>
+</div>
+
 <main class="main" id="main">
 
   <!-- Executive Summary -->
@@ -68,7 +79,7 @@
   <!-- KPI Strip -->
   <section class="kpi-strip" id="section-kpis">
     <div class="kpi" id="kpi-mrr">
-      <div class="kpi-label">Sheet MRR</div>
+      <div class="kpi-label">Total MRR</div>
       <div class="kpi-value" id="val-sheet-mrr">—</div>
       <div class="kpi-sub" id="sub-sheet-mrr"></div>
     </div>
@@ -237,7 +248,7 @@
     <section class="panel" id="section-funnel">
       <div class="panel-header">
         <h2 class="panel-title">Sales Funnel</h2>
-        <span class="panel-sub">trailing 30d</span>
+        <span class="panel-sub" id="funnel-window-label">trailing 30d</span>
       </div>
       <div class="funnel-visual" id="funnel-bars"></div>
       <div class="funnel-stats" id="funnel-stats"></div>
@@ -313,6 +324,7 @@
       </div>
       <div class="commission-summary" id="commission-summary"></div>
       <div id="commission-detail"></div>
+      <div id="commission-detail-expanded"></div>
     </section>
 
     <section class="panel" id="section-metrics">

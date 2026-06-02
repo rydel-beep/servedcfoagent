@@ -109,6 +109,49 @@ body {
 .nav-link:hover { color: var(--text-secondary); background: rgba(255,255,255,0.04); }
 .nav-link.active { color: var(--accent); background: var(--accent-dim); }
 
+/* ── Global Window Selector ─────────────── */
+.global-window-bar {
+  position: sticky; top: 88px; z-index: 85;
+  display: flex; align-items: center; gap: 4px;
+  padding: 6px 24px;
+  background: rgba(11,15,25,0.85);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.global-window-label {
+  font-size: 11px; font-weight: 500;
+  color: var(--text-muted); margin-right: 4px;
+}
+.global-window-btn {
+  padding: 3px 10px; border-radius: 4px;
+  font-size: 11px; font-weight: 500;
+  color: var(--text-muted); background: transparent;
+  border: 1px solid transparent; cursor: pointer;
+  transition: all 0.15s;
+}
+.global-window-btn:hover { color: var(--text-secondary); border-color: var(--border-hover); }
+.global-window-btn.active { color: var(--accent); background: var(--accent-dim); border-color: var(--accent); }
+.global-window-note {
+  font-size: 10px; color: var(--text-muted); margin-left: 12px; font-style: italic;
+}
+
+/* ── Commission Detail Expanded ─────────── */
+.comm-detail-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.comm-detail-title { font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.comm-setter-card { background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 8px; }
+.comm-setter-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.comm-setter-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.comm-setter-totals { display: flex; gap: 12px; font-size: 11px; }
+.comm-setter-totals span { color: var(--text-muted); }
+.comm-setter-totals strong { color: var(--text); }
+.comm-deal-table { width: 100%; font-size: 11px; border-collapse: collapse; }
+.comm-deal-table th { text-align: left; color: var(--text-muted); padding: 3px 6px; font-weight: 500; border-bottom: 1px solid var(--border); }
+.comm-deal-table td { padding: 3px 6px; color: var(--text-secondary); }
+.comm-deal-table tr:hover td { color: var(--text); }
+.comm-paid-log { margin-top: 10px; }
+.comm-paid-entry { display: flex; gap: 8px; font-size: 11px; color: var(--text-muted); padding: 3px 0; }
+.comm-paid-entry .amount { color: var(--green); font-weight: 500; }
+
 /* ── Main ─────────────────────────────── */
 .main { max-width: 1280px; margin: 0 auto; padding: 20px 24px 40px; }
 

@@ -42,6 +42,24 @@ def _fetch_tab(tab: str) -> list[list[str]]:
         return []
 
 
+def _fetch_tab_by_gid(gid: int) -> list[list[str]]:
+    """Fetch a tab from the Lead-to-Cash sheet by GID (more reliable than name)."""
+    sid = SHEET_CONFIG["sheet_id"]
+    url = (
+        f"https://docs.google.com/spreadsheets/d/{sid}"
+        f"/export?format=csv&gid={gid}"
+    )
+    try:
+        resp = requests.get(url, timeout=(5, HTTP_TIMEOUT))
+        if resp.status_code != 200:
+            logger.error("Sheet GID %d fetch failed (status %d)", gid, resp.status_code)
+            return []
+        return list(csv.reader(io.StringIO(resp.text)))
+    except requests.RequestException as e:
+        logger.error("Sheet GID %d request failed: %s", gid, e)
+        return []
+
+
 def _parse_money(val: str) -> float | None:
     val = val.strip().replace("$", "").replace(",", "")
     if not val:
@@ -868,24 +886,49 @@ def _compute_window_metrics(
     closer_comms = 0.0
     deltas: list[int] = []
 
+    # Per-person tracking
+    setter_stats: dict[str, dict] = {}
+    closer_stats: dict[str, dict] = {}
+
     for row in ltc_rows[1:]:
         input_dt = _parse_date(_cell(row, 1))
         if not input_dt or input_dt < cutoff or input_dt > today:
             continue
 
         leads += 1
+        setter_name = _cell(row, 10).strip() or "Unattributed"
+        closer_name = _cell(row, 21).strip() or "Unattributed"
         setter_outcome = _cell(row, 16).strip().upper()
         show_status = _cell(row, 22).strip().lower()
         closer_outcome = _cell(row, 23).strip().lower()
 
+        # Setter stats
+        if setter_name not in setter_stats:
+            setter_stats[setter_name] = {"dials": 0, "sets": 0, "shows": 0}
+        attempts = _parse_int(_cell(row, 15))
+        if attempts and attempts > 0:
+            setter_stats[setter_name]["dials"] += attempts
+
         if setter_outcome == "SET":
             sets += 1
+            setter_stats[setter_name]["sets"] += 1
         if setter_outcome == "DQ":
             dqs += 1
         if show_status in ("showed", "show"):
             shows += 1
+            setter_stats[setter_name]["shows"] += 1
+
+        # Closer stats
+        if show_status in ("showed", "show"):
+            if closer_name not in closer_stats:
+                closer_stats[closer_name] = {"shows": 0, "closes": 0, "commission": 0.0}
+            closer_stats[closer_name]["shows"] += 1
+
         if closer_outcome == "won":
             closes += 1
+            if closer_name not in closer_stats:
+                closer_stats[closer_name] = {"shows": 0, "closes": 0, "commission": 0.0}
+            closer_stats[closer_name]["closes"] += 1
             contract = _parse_money(_cell(row, 28))
             cash = _parse_money(_cell(row, 32))
             if contract and contract > 0:
@@ -898,6 +941,7 @@ def _compute_window_metrics(
                 setter_comms += sc
             if cc and cc > 0:
                 closer_comms += cc
+                closer_stats[closer_name]["commission"] += cc
             close_dt = _parse_date(_cell(row, 27))
             if close_dt and input_dt:
                 d = (close_dt - input_dt).days
@@ -915,6 +959,25 @@ def _compute_window_metrics(
     commission_pct = round(total_commission / total_cash * 100, 1) if total_cash > 0 else None
     median_days = statistics.median(deltas) if deltas else None
     dq_rate = round(dqs / leads * 100, 1) if leads > 0 else None
+
+    # Build per-setter list
+    per_setter_list = []
+    for name, ss in sorted(setter_stats.items()):
+        dials_per_set = round(ss["dials"] / ss["sets"], 1) if ss["sets"] > 0 else None
+        show_pct = round(ss["shows"] / ss["sets"] * 100, 1) if ss["sets"] > 0 else None
+        per_setter_list.append({
+            "name": name, "dials": ss["dials"], "sets": ss["sets"],
+            "dials_per_set": dials_per_set, "show_pct": show_pct,
+        })
+
+    # Build per-closer list
+    per_closer_list = []
+    for name, cs in sorted(closer_stats.items()):
+        close_rate = round(cs["closes"] / cs["shows"] * 100, 1) if cs["shows"] > 0 else None
+        per_closer_list.append({
+            "name": name, "shows": cs["shows"], "closes": cs["closes"],
+            "close_rate_pct": close_rate, "commission_total": round(cs["commission"], 2),
+        })
 
     return {
         "window_days": window_days,
@@ -935,12 +998,116 @@ def _compute_window_metrics(
         "total_commission": total_commission,
         "commission_pct": commission_pct,
         "median_days_to_close": median_days,
+        "per_setter": per_setter_list,
+        "per_closer": per_closer_list,
     }
 
 
 def _compute_multi_window(ltc_rows: list[list[str]], today: date) -> list[dict]:
     """Compute metrics across all standard windows."""
     return [_compute_window_metrics(ltc_rows, today, w) for w in _WINDOWS]
+
+
+_PAYOUT_LOG_GID = 1862317163
+
+
+def _pull_commission_detail() -> dict | None:
+    """Parse the LTC Setter Payout Log tab for per-setter commission detail."""
+    rows = _fetch_tab_by_gid(_PAYOUT_LOG_GID)
+    if not rows:
+        return None
+
+    setters = {}
+    current_setter = None
+    paid_log = []
+
+    for row in rows:
+        if not row:
+            continue
+
+        first = row[0].strip().upper() if row[0].strip() else ""
+
+        # Detect setter headers — all-caps single word that's a known setter name
+        if first in ("COBY", "MARAN", "UNATTRIBUTED") and len(row[0].strip()) == len(first):
+            current_setter = row[0].strip().title()
+            if current_setter == "Unattributed":
+                current_setter = "Unattributed"
+            if current_setter not in setters:
+                setters[current_setter] = {
+                    "name": current_setter,
+                    "deals": [],
+                    "sets_count": 0,
+                    "total_owed": 0.0,
+                    "total_paid": 0.0,
+                    "still_due": 0.0,
+                }
+            continue
+
+        # Detect total rows for current setter
+        if current_setter and ("total" in first.lower() or "Total" in _cell(row, 0)):
+            total_label = _cell(row, 0).strip().lower()
+            if "owed" in total_label or "total" in total_label:
+                owed = _parse_money(_cell(row, 9)) or _parse_money(_cell(row, 8))
+                if owed:
+                    setters[current_setter]["total_owed"] = owed
+            if "paid" in total_label:
+                paid = _parse_money(_cell(row, 9)) or _parse_money(_cell(row, 8))
+                if paid:
+                    setters[current_setter]["total_paid"] = paid
+            if "pending" in total_label or "due" in total_label:
+                due = _parse_money(_cell(row, 9)) or _parse_money(_cell(row, 8))
+                if due:
+                    setters[current_setter]["still_due"] = due
+            continue
+
+        # Parse deal rows under current setter
+        if current_setter:
+            deal_date = _parse_date(_cell(row, 1)) or _parse_date(_cell(row, 0))
+            business = _cell(row, 2).strip()
+            if business and deal_date:
+                deal = {
+                    "date": str(deal_date),
+                    "business": business,
+                    "setter": _cell(row, 3).strip(),
+                    "show_status": _cell(row, 4).strip(),
+                    "won": _cell(row, 5).strip().upper() == "WON" or _cell(row, 5).strip().upper() == "YES",
+                    "cash_collected": _parse_money(_cell(row, 6)),
+                    "set_fee": _parse_money(_cell(row, 7)),
+                    "pct_bonus": _parse_money(_cell(row, 8)),
+                    "total_owed": _parse_money(_cell(row, 9)),
+                    "paid_status": _cell(row, 10).strip(),
+                }
+                setters[current_setter]["deals"].append(deal)
+                setters[current_setter]["sets_count"] += 1
+
+        # Parse paid log entries (cols 14-18)
+        if len(row) > 18:
+            paid_deal = _cell(row, 14).strip()
+            paid_amount = _parse_money(_cell(row, 17))
+            if paid_deal and paid_amount:
+                paid_log.append({
+                    "deal_name": paid_deal,
+                    "deal_date": _cell(row, 15).strip(),
+                    "what_paid": _cell(row, 16).strip(),
+                    "amount": paid_amount,
+                    "date_paid": _cell(row, 18).strip(),
+                })
+
+    if not setters:
+        return None
+
+    # Calculate still_due if not explicitly found
+    for s in setters.values():
+        if s["still_due"] == 0 and s["total_owed"] > 0:
+            s["still_due"] = round(s["total_owed"] - s["total_paid"], 2)
+
+    return {
+        "per_setter": list(setters.values()),
+        "paid_log": paid_log,
+        "total_owed": round(sum(s["total_owed"] for s in setters.values()), 2),
+        "total_paid": round(sum(s["total_paid"] for s in setters.values()), 2),
+        "total_due": round(sum(s["still_due"] for s in setters.values()), 2),
+    }
 
 
 # ── Main pull ──────────────────────────────────────────────────────────────
@@ -980,6 +1147,7 @@ def pull_sales_analytics() -> dict:
     # Setter payout (from Scorecard + Payout Log)
     payout_scorecard = _pull_setter_payout(sc_rows) if sc_rows else None
     payout_log = _pull_payout_log_footer()
+    commission_detail = _pull_commission_detail()
 
     payout = None
     if payout_scorecard:
@@ -1086,6 +1254,7 @@ def pull_sales_analytics() -> dict:
         "deep": deep,
         "windows": windows,
         "won_businesses": won_businesses,
+        "commission_detail": commission_detail,
     }
 
     return {"sales": sales, "degraded": degraded}

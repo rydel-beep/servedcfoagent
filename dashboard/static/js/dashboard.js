@@ -107,6 +107,7 @@
     renderOfferChart(snap);
     renderLeadSourceROI(snap);
     renderCommissions(snap);
+    renderCommissionDetail(snap);
     renderMetrics(snap);
     renderSetters(snap);
     renderClosers(snap);
@@ -161,24 +162,30 @@
     const sheetMRR = ch.current_mrr;
     const stripeMRR = stripe.mrr;
     if (sheetMRR != null || stripeMRR != null) {
-      const parts = [];
-      if (sheetMRR != null) parts.push('Sheet ' + fmt$(sheetMRR));
-      if (stripeMRR != null) parts.push('Stripe ' + fmt$(stripeMRR));
-      const delta = ch.mrr_delta;
-      const deltaStr = delta != null && delta !== 0 ? (delta > 0 ? ' (+' + fmt$(delta) + ' next month)' : ' (' + fmt$(delta) + ' next month)') : '';
       const ac_ = snap.active_clients || {};
       const confirmedCount = (ac_.confirmed_both_sources || 0) + (ac_.legacy_pre_tracker || 0);
       const signingCount = ac_.pending_health_update || 0;
       const projectedMRR = ac_.projected_mrr;
-      const estimatedMRR = ac_.estimated_mrr;
+      const estimatedMRR = ac_.estimated_mrr || 0;
+      const delta = ch.mrr_delta;
+      const deltaStr = delta != null && delta !== 0 ? (delta > 0 ? ' (+' + fmt$(delta) + ' next month)' : ' (' + fmt$(delta) + ' next month)') : '';
+      let mrrText;
+      if (estimatedMRR > 0 && projectedMRR) {
+        mrrText = `MRR: <strong>${fmt$(projectedMRR)}</strong> (${fmt$(sheetMRR)} confirmed + ~${fmt$(estimatedMRR)} est. from ${signingCount} new signings)`;
+        if (stripeMRR != null) mrrText += ` · Stripe ${fmt$(stripeMRR)}`;
+      } else {
+        const parts = [];
+        if (sheetMRR != null) parts.push('Sheet ' + fmt$(sheetMRR));
+        if (stripeMRR != null) parts.push('Stripe ' + fmt$(stripeMRR));
+        mrrText = `MRR: ${parts.join(' / ')}`;
+      }
       let clientLabel;
       if (signingCount > 0) {
         clientLabel = `<strong>${confirmedCount + signingCount} clients</strong> (${confirmedCount} active + ${signingCount} awaiting Stripe)`;
-        if (projectedMRR) clientLabel += `. Projected MRR incl. new: <strong>${fmt$(projectedMRR)}</strong>`;
       } else {
         clientLabel = `<strong>${confirmedCount || ch.total_clients || '?'} active clients</strong>`;
       }
-      lines.push({ icon: '\u2191', text: `MRR: ${parts.join(' / ')}${deltaStr}. ${clientLabel}.` });
+      lines.push({ icon: '\u2191', text: `${mrrText}${deltaStr}. ${clientLabel}.` });
     }
 
     // Sales funnel
@@ -323,17 +330,22 @@
     const acData = snap.active_clients || {};
     const projMRR = acData.projected_mrr;
     const estMRR = acData.estimated_mrr || 0;
-    setKPI('val-sheet-mrr', fmt$(ch.current_mrr));
+    const signingCount = acData.pending_health_update || 0;
+    const confirmedMRR = ch.current_mrr;
     const delta = ch.mrr_delta;
-    if (estMRR > 0) {
-      $('#sub-sheet-mrr').textContent = 'projected: ' + fmt$(projMRR);
+    if (estMRR > 0 && projMRR) {
+      setKPI('val-sheet-mrr', fmt$(projMRR));
+      $('#sub-sheet-mrr').innerHTML = fmt$(confirmedMRR) + ' confirmed + ~' + fmt$(estMRR) + ' est. (' + signingCount + ' new)';
       $('#sub-sheet-mrr').style.color = 'var(--purple)';
-    } else if (delta != null && delta !== 0) {
-      const dir = delta > 0 ? '+' : '';
-      $('#sub-sheet-mrr').textContent = dir + fmt$(delta) + ' next month';
-      $('#sub-sheet-mrr').style.color = delta >= 0 ? 'var(--green)' : 'var(--red)';
     } else {
-      $('#sub-sheet-mrr').textContent = ch.current_month || '';
+      setKPI('val-sheet-mrr', fmt$(confirmedMRR));
+      if (delta != null && delta !== 0) {
+        const dir = delta > 0 ? '+' : '';
+        $('#sub-sheet-mrr').textContent = dir + fmt$(delta) + ' next month';
+        $('#sub-sheet-mrr').style.color = delta >= 0 ? 'var(--green)' : 'var(--red)';
+      } else {
+        $('#sub-sheet-mrr').textContent = ch.current_month || '';
+      }
     }
 
     // Stripe MRR
@@ -924,6 +936,37 @@
     }
   }
 
+  // ── Global Window State ─────────────────────────────────
+  let currentWindow = 30;
+
+  function initGlobalWindowSelector() {
+    const bar = $('#global-window-bar');
+    if (!bar) return;
+    bar.querySelectorAll('.global-window-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        currentWindow = parseInt(this.dataset.window);
+        bar.querySelectorAll('.global-window-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        // Show note for non-30d windows about financial data
+        const note = $('#global-window-note');
+        if (currentWindow !== 30) {
+          note.textContent = 'Financial data (P&L, Cash) shown for trailing 30d only';
+        } else {
+          note.textContent = '';
+        }
+        // Re-render window-aware sections
+        if (currentSnap) {
+          activeWindow = currentWindow;
+          renderPerfAnalysis(currentSnap);
+          renderFunnel(currentSnap);
+          renderSetters(currentSnap);
+          renderClosers(currentSnap);
+          renderCommissionDetail(currentSnap);
+        }
+      });
+    });
+  }
+
   // ── Performance Analysis (multi-window) ─────────────────
   let activeWindow = 30;
 
@@ -945,11 +988,23 @@
       return `<button class="window-tab${active}" data-window="${w.window_days}">${label}</button>`;
     }).join('');
 
-    // Tab click handlers
+    // Tab click handlers — sync with global window
     tabsEl.querySelectorAll('.window-tab').forEach(btn => {
       btn.addEventListener('click', function() {
         activeWindow = parseInt(this.dataset.window);
+        currentWindow = activeWindow;
+        // Sync global bar
+        const bar = $('#global-window-bar');
+        if (bar) {
+          bar.querySelectorAll('.global-window-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.window) === currentWindow));
+          const note = $('#global-window-note');
+          if (note) note.textContent = currentWindow !== 30 ? 'Financial data (P&L, Cash) shown for trailing 30d only' : '';
+        }
         renderPerfAnalysis(currentSnap);
+        renderFunnel(currentSnap);
+        renderSetters(currentSnap);
+        renderClosers(currentSnap);
+        renderCommissionDetail(currentSnap);
       });
     });
 
@@ -1053,10 +1108,41 @@
       return 'rgba(148,163,184,0.4)';
     });
 
+    // Projection data
+    const projection = ch.projection;
+    let projLabels = [...labels];
+    let baseData = [...values];
+    let optimisticData = new Array(values.length).fill(null);
+    let pessimisticData = new Array(values.length).fill(null);
+
+    if (projection && projection.months_forward && projection.months_forward.length > 0) {
+      // Connect projection to last actual data point
+      const lastActualIdx = currentIdx >= 0 ? currentIdx : values.length - 1;
+      optimisticData[lastActualIdx] = values[lastActualIdx];
+      pessimisticData[lastActualIdx] = values[lastActualIdx];
+      baseData[lastActualIdx] = values[lastActualIdx];
+
+      projection.months_forward.forEach(m => {
+        if (!projLabels.includes(m.month)) {
+          projLabels.push(m.month);
+          values.push(null);
+          pointRadius.push(0);
+          pointBg.push('transparent');
+        }
+        const idx = projLabels.indexOf(m.month);
+        while (baseData.length <= idx) baseData.push(null);
+        while (optimisticData.length <= idx) optimisticData.push(null);
+        while (pessimisticData.length <= idx) pessimisticData.push(null);
+        baseData[idx] = m.base;
+        optimisticData[idx] = m.optimistic;
+        pessimisticData[idx] = m.pessimistic;
+      });
+    }
+
     trendChart = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: labels,
+        labels: projLabels,
         datasets: [{
           data: values,
           borderColor: function(context) {
@@ -1088,7 +1174,44 @@
             },
           },
           tension: 0.3,
-        }]
+        },
+        // Projection: base (dashed blue)
+        ...(projection && projection.months_forward ? [{
+          data: baseData,
+          borderColor: 'rgba(59,130,246,0.5)',
+          borderWidth: 2,
+          borderDash: [6, 3],
+          pointRadius: 3,
+          pointBackgroundColor: 'rgba(59,130,246,0.5)',
+          pointBorderWidth: 0,
+          fill: false,
+          tension: 0.3,
+        },
+        // Projection: optimistic (green)
+        {
+          data: optimisticData,
+          borderColor: 'rgba(34,197,94,0.4)',
+          borderWidth: 1.5,
+          borderDash: [4, 4],
+          pointRadius: 2,
+          pointBackgroundColor: 'rgba(34,197,94,0.4)',
+          pointBorderWidth: 0,
+          fill: false,
+          tension: 0.3,
+        },
+        // Projection: pessimistic (red)
+        {
+          data: pessimisticData,
+          borderColor: 'rgba(239,68,68,0.4)',
+          borderWidth: 1.5,
+          borderDash: [4, 4],
+          pointRadius: 2,
+          pointBackgroundColor: 'rgba(239,68,68,0.4)',
+          pointBorderWidth: 0,
+          fill: '-1',
+          backgroundColor: 'rgba(239,68,68,0.05)',
+          tension: 0.3,
+        }] : [])]
       },
       options: {
         responsive: true,
@@ -1118,6 +1241,26 @@
         interaction: { intersect: false, mode: 'index' },
       }
     });
+
+    // Projection summary text
+    if (projection && projection.months_forward && projection.months_forward.length > 0) {
+      const container = ctx.parentElement;
+      const summaryDiv = document.createElement('div');
+      summaryDiv.style.cssText = 'font-size:12px;color:var(--text-muted);padding:12px 0 0;line-height:1.6;';
+      const parts = [];
+      if (projection.growth_rate_3mo_avg !== 0) {
+        parts.push(`Growing <strong style="color:var(--accent)">${projection.growth_rate_3mo_avg}%/mo</strong> (3mo avg)`);
+      }
+      const lastProj = projection.months_forward[projection.months_forward.length - 1];
+      if (lastProj) {
+        parts.push(`Projected <strong>${fmt$(lastProj.base)}</strong> by ${lastProj.month}`);
+      }
+      if (projection.churn_risk_mrr > 0) {
+        parts.push(`Risk: <span style="color:var(--red)">${fmt$(projection.churn_risk_mrr)}/mo</span> from expiring contracts`);
+      }
+      summaryDiv.innerHTML = parts.join(' · ');
+      container.appendChild(summaryDiv);
+    }
   }
 
   // ── Revenue Views (Cash vs Accrual) ──────────────────────
@@ -1472,12 +1615,17 @@
 
   // ── Funnel ───────────────────────────────────────────────
   function renderFunnel(snap) {
-    const f = get(snap, 'sales.funnel') || {};
+    // Use window data if non-30d selected
+    const windows = get(snap, 'sales.windows') || [];
+    const windowData = currentWindow !== 30 ? windows.find(w => w.window_days === currentWindow) : null;
+    const f = windowData || get(snap, 'sales.funnel') || {};
+    const funnelLabel = $('#funnel-window-label');
+    if (funnelLabel) funnelLabel.textContent = 'trailing ' + currentWindow + 'd';
     const stages = [
-      { label: 'Leads', count: f.leads_in, pct: null },
-      { label: 'Sets', count: f.sets, pct: f.lead_to_set_pct },
-      { label: 'Shows', count: f.shows, pct: f.set_to_show_pct },
-      { label: 'Closes', count: f.closes, pct: f.show_to_close_pct },
+      { label: 'Leads', count: windowData ? f.leads : f.leads_in, pct: null },
+      { label: 'Sets', count: windowData ? f.sets : f.sets, pct: windowData ? f.lead_to_set_pct : f.lead_to_set_pct },
+      { label: 'Shows', count: windowData ? f.shows : f.shows, pct: windowData ? f.set_to_show_pct : f.set_to_show_pct },
+      { label: 'Closes', count: windowData ? f.closes : f.closes, pct: windowData ? f.show_to_close_pct : f.show_to_close_pct },
     ];
     const maxCount = Math.max(...stages.map(s => s.count || 0), 1);
 
@@ -1718,7 +1866,10 @@
 
   // ── Tables ───────────────────────────────────────────────
   function renderSetters(snap) {
-    const setters = get(snap, 'sales.deep.setter_performance') || get(snap, 'sales.per_setter') || [];
+    // Use per-window data if non-30d window selected
+    const windows = get(snap, 'sales.windows') || [];
+    const windowData = currentWindow !== 30 ? windows.find(w => w.window_days === currentWindow) : null;
+    const setters = (windowData && windowData.per_setter) || get(snap, 'sales.deep.setter_performance') || get(snap, 'sales.per_setter') || [];
     const tbody = document.querySelector('#table-setters tbody');
     tbody.innerHTML = '';
 
@@ -1751,7 +1902,10 @@
   }
 
   function renderClosers(snap) {
-    const closers = get(snap, 'sales.per_closer') || [];
+    // Use per-window data if non-30d window selected
+    const windows = get(snap, 'sales.windows') || [];
+    const windowData = currentWindow !== 30 ? windows.find(w => w.window_days === currentWindow) : null;
+    const closers = (windowData && windowData.per_closer) || get(snap, 'sales.per_closer') || [];
     const tbody = document.querySelector('#table-closers tbody');
     tbody.innerHTML = '';
 
@@ -1781,6 +1935,79 @@
     if (closers.length === 0) {
       tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">No closer data</td></tr>';
     }
+  }
+
+  // ── Commission Detail (from Payout Log) ─────────────────
+  function renderCommissionDetail(snap) {
+    const container = document.getElementById('commission-detail-expanded');
+    if (!container) return;
+
+    const detail = get(snap, 'sales.commission_detail');
+    if (!detail || !detail.per_setter || detail.per_setter.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    let html = '<div class="comm-detail-section"><div class="comm-detail-title">Setter Payout Log Detail</div>';
+
+    // Per-setter cards
+    detail.per_setter.forEach(setter => {
+      const deals = setter.deals || [];
+      // Filter by current window if needed
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - currentWindow);
+      const filteredDeals = currentWindow !== 30
+        ? deals.filter(d => d.date && new Date(d.date) >= cutoff)
+        : deals;
+
+      html += `<div class="comm-setter-card">
+        <div class="comm-setter-header">
+          <span class="comm-setter-name">${esc(setter.name)}</span>
+          <div class="comm-setter-totals">
+            <span>Owed: <strong style="color:var(--amber)">${fmt$(setter.total_owed)}</strong></span>
+            <span>Paid: <strong style="color:var(--green)">${fmt$(setter.total_paid)}</strong></span>
+            <span>Due: <strong style="color:var(--red)">${fmt$(setter.still_due)}</strong></span>
+          </div>
+        </div>`;
+
+      if (filteredDeals.length > 0) {
+        html += `<table class="comm-deal-table"><thead><tr>
+          <th>Date</th><th>Business</th><th>Status</th><th>Cash</th><th>Fee</th><th>Total</th><th>Paid</th>
+        </tr></thead><tbody>`;
+        filteredDeals.forEach(d => {
+          html += `<tr>
+            <td>${esc(d.date)}</td>
+            <td>${esc(d.business)}</td>
+            <td>${d.won ? '<span style="color:var(--green)">Won</span>' : esc(d.show_status)}</td>
+            <td>${fmt$(d.cash_collected)}</td>
+            <td>${fmt$(d.set_fee)}</td>
+            <td>${fmt$(d.total_owed)}</td>
+            <td>${esc(d.paid_status) || '—'}</td>
+          </tr>`;
+        });
+        html += '</tbody></table>';
+      } else {
+        html += `<div style="font-size:11px;color:var(--text-muted);padding:4px 0;">No deals in ${currentWindow}d window</div>`;
+      }
+      html += '</div>';
+    });
+
+    // Paid log timeline
+    if (detail.paid_log && detail.paid_log.length > 0) {
+      html += '<div class="comm-paid-log"><div class="comm-detail-title">Payment Log</div>';
+      detail.paid_log.forEach(p => {
+        html += `<div class="comm-paid-entry">
+          <span>${esc(p.date_paid)}</span>
+          <span>${esc(p.deal_name)}</span>
+          <span>${esc(p.what_paid)}</span>
+          <span class="amount">${fmt$(p.amount)}</span>
+        </div>`;
+      });
+      html += '</div>';
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
   }
 
   // ── Cohort Retention ─────────────────────────────────────
@@ -1975,6 +2202,7 @@
   // ── Init ─────────────────────────────────────────────────
   (async function init() {
     initNavigation();
+    initGlobalWindowSelector();
     const [snap, history] = await Promise.all([fetchSnapshot(), fetchHistory()]);
     if (history) historyData = history;
     if (snap) render(snap);
