@@ -134,6 +134,29 @@ def api_history():
     return jsonify(result)
 
 
+@bp.route("/api/sales-summary", methods=["GET"])
+@require_auth
+def api_sales_summary():
+    """Generate a sales-team-safe markdown summary for a given window.
+
+    Privacy boundary: ONLY sales/funnel/rep data. No financials, no payroll,
+    no commissions, no MRR, no revenue, no CAC, no LTGP.
+    """
+    from dashboard.sales_summary import build_sales_summary
+    from snapshot import load_persisted
+
+    window_days = request.args.get("window_days", 30, type=int)
+    if window_days not in (7, 14, 30, 60, 90):
+        window_days = 30
+
+    snap = load_persisted()
+    if snap is None:
+        return jsonify({"error": "No snapshot available"}), 404
+
+    markdown = build_sales_summary(snap, window_days)
+    return jsonify({"markdown": markdown, "window_days": window_days})
+
+
 @bp.route("/api/chat", methods=["POST"])
 @require_auth
 def api_chat():

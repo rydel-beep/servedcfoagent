@@ -26,6 +26,9 @@
     <button class="icon-btn" id="btn-refresh" title="Refresh data">
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M13.65 2.35A7.96 7.96 0 008 0C3.58 0 .01 3.58.01 8S3.58 16 8 16c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 018 14 6 6 0 012 8a6 6 0 016-6c1.66 0 3.14.69 4.22 1.78L9 7h7V0l-2.35 2.35z" fill="currentColor"/></svg>
     </button>
+    <button class="icon-btn" id="btn-export-sales" title="Export Sales Summary">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" fill="currentColor"/></svg>
+    </button>
     <button class="icon-btn" id="btn-chat-toggle" title="Chat with Jarvis">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z" fill="currentColor"/></svg>
     </button>
@@ -416,6 +419,21 @@
 
 </main>
 
+<!-- Sales Summary Export Modal -->
+<div class="modal-overlay" id="export-overlay"></div>
+<div class="export-modal" id="export-modal">
+  <div class="export-modal-header">
+    <span class="export-modal-title">Sales Performance Summary</span>
+    <span class="export-modal-period" id="export-period"></span>
+    <button class="export-modal-close" id="export-close">&times;</button>
+  </div>
+  <pre class="export-modal-body" id="export-body"></pre>
+  <div class="export-modal-footer">
+    <button class="export-copy-btn" id="export-copy">Copy to Clipboard</button>
+    <span class="export-copied" id="export-copied">Copied!</span>
+  </div>
+</div>
+
 <!-- Chat Panel -->
 <div class="chat-overlay" id="chat-overlay"></div>
 <div class="chat-panel" id="chat-panel">
@@ -435,5 +453,6 @@
 
 <script src="/dashboard/static/js/dashboard.js"></script>
 <script src="/dashboard/static/js/chat.js"></script>
+<script src="/dashboard/static/js/export.js"></script>
 </body>
 </html>
