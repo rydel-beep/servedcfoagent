@@ -379,26 +379,43 @@ def build_snapshot() -> dict:
     )
     snapshot["deficiency_analysis"] = deficiency
 
-    # Pre-compute a sample hiring scenario for the dashboard
-    monthly_net = 0.0
-    xero_net = (xero_result.get("xero") or {}).get("net_profit")
-    if xero_net is not None:
-        monthly_net = xero_net
+    # ── Dual-basis financial position (single source of truth) ───────────
+    from financial_position import build_financial_position
 
+    current_mrr = (health_result.get("client_health") or {}).get("current_mrr") or 0
+    xero_d = xero_result.get("xero") or {}
+
+    fin_pos = build_financial_position(
+        stripe_cash_30d=stripe_rev,
+        xero_revenue=xero_d.get("revenue"),
+        xero_cogs=xero_d.get("cogs"),
+        xero_gross_profit=xero_d.get("gross_profit"),
+        xero_gross_margin_pct=xero_d.get("gross_margin_pct"),
+        xero_opex=xero_d.get("operating_expenses"),
+        xero_net_profit=xero_d.get("net_profit"),
+        true_team_cost=true_team_cost,
+        ad_spend=xero_d.get("xero_ad_spend"),
+        current_mrr=current_mrr,
+    )
+    snapshot["financial_position"] = fin_pos
+
+    # Hiring context — derives from financial_position (no double-count)
+    headline_net = (fin_pos.get("headline") or {}).get("monthly_net") or 0
     avg_cash_per_close = None
     deep_money = ((sales_result.get("sales") or {}).get("deep") or {}).get("money") or {}
     avg_cash_per_close = deep_money.get("avg_cash_per_close")
 
     snapshot["hiring_context"] = {
-        "monthly_net_income": round(monthly_net, 2),
-        "monthly_headroom": round(monthly_net - true_team_cost, 2) if monthly_net else None,
+        "monthly_net_income": round(headline_net, 2) if headline_net else 0,
+        "monthly_headroom": round(headline_net, 2) if headline_net else 0,
         "true_team_cost": true_team_cost,
-        "current_mrr": (health_result.get("client_health") or {}).get("current_mrr"),
+        "current_mrr": current_mrr,
         "avg_contract_value": deep_money.get("avg_contract"),
         "close_rate_pct": ((sales_result.get("sales") or {}).get("funnel") or {}).get("show_to_close_pct"),
         "avg_cash_per_close": avg_cash_per_close,
-        "gross_margin_pct": (xero_result.get("xero") or {}).get("gross_margin_pct"),
-        "note": "Use /dashboard/api/hiring-scenario to model specific hires",
+        "gross_margin_pct": xero_d.get("gross_margin_pct"),
+        "monthly_revenue": (fin_pos.get("headline") or {}).get("monthly_net"),
+        "note": "Headroom = net profit (costs already deducted). No double-count.",
     }
 
     # ── Data integrity sanity checks ──────────────────────────────────────

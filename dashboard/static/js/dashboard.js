@@ -2373,13 +2373,38 @@
       return;
     }
 
+    var fp = snap.financial_position || {};
+    var headline = fp.headline || {};
+    var cashB = fp.cash_basis;
+    var recB = fp.recognized_basis;
+
     var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px;">';
     html += '<div class="kpi"><div class="kpi-label">Team Size</div><div class="kpi-value">' + tm.headcount + '</div></div>';
-    html += '<div class="kpi"><div class="kpi-label">Team Salary</div><div class="kpi-value">' + fmt$(tm.total_team_salary) + '</div><div class="kpi-sub">/mo (excl. owner)</div></div>';
-    html += '<div class="kpi"><div class="kpi-label">Total w/ Owner</div><div class="kpi-value">' + fmt$(tm.total_with_owner) + '</div><div class="kpi-sub">/mo</div></div>';
-    if (hc && hc.monthly_headroom != null) {
-      html += '<div class="kpi"><div class="kpi-label">Monthly Headroom</div><div class="kpi-value' + (hc.monthly_headroom < 0 ? ' critical' : '') + '">' + fmt$(hc.monthly_headroom) + '</div><div class="kpi-sub">/mo after costs</div></div>';
+    html += '<div class="kpi"><div class="kpi-label">Team Cost</div><div class="kpi-value">' + fmt$(tm.total_with_owner) + '</div><div class="kpi-sub">/mo (incl. owner)</div></div>';
+
+    // Dual-basis net — show both if available, otherwise headline
+    if (cashB && cashB.monthly_net != null) {
+      var cNet = cashB.monthly_net;
+      html += '<div class="kpi"><div class="kpi-label">Cash Net</div><div class="kpi-value' + (cNet < 0 ? ' critical' : '') + '">' + fmt$(cNet) + '</div><div class="kpi-sub">/mo (Stripe)</div></div>';
     }
+    if (recB && recB.monthly_net != null) {
+      var rNet = recB.monthly_net;
+      html += '<div class="kpi"><div class="kpi-label">Recognized Net</div><div class="kpi-value' + (rNet < 0 ? ' critical' : '') + '">' + fmt$(rNet) + '</div><div class="kpi-sub">/mo (Xero P&L)</div></div>';
+    }
+    if (!cashB && !recB && headline.monthly_net != null) {
+      var hNet = headline.monthly_net;
+      html += '<div class="kpi"><div class="kpi-label">Monthly Net</div><div class="kpi-value' + (hNet < 0 ? ' critical' : '') + '">' + fmt$(hNet) + '</div><div class="kpi-sub">/mo (' + (headline.basis || '?') + ')</div></div>';
+    }
+
+    // Team cost ratio
+    var fpCosts = fp.costs || {};
+    if (fpCosts.team_cost_pct_of_mrr != null) {
+      var ratio = fpCosts.team_cost_pct_of_mrr;
+      var bench = fpCosts.team_cost_benchmark;
+      var ratioColor = bench === 'healthy' ? '' : bench === 'elevated' ? ' warning' : ' critical';
+      html += '<div class="kpi"><div class="kpi-label">Team/MRR</div><div class="kpi-value' + ratioColor + '">' + ratio + '%</div><div class="kpi-sub">target &lt;45%</div></div>';
+    }
+
     html += '</div>';
 
     // By function breakdown
@@ -2444,14 +2469,28 @@
     var c = data.combined;
     var cur = data.current;
 
-    // ── Current financial state ──
+    // ── Current financial state (dual-basis) ──
     html += '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;line-height:1.7;margin-bottom:10px;">';
     html += '<div style="font-weight:700;margin-bottom:6px;color:var(--text);">Current State</div>';
-    if (cur.monthly_revenue != null) html += '<div>Revenue: <strong>' + fmt$(cur.monthly_revenue) + '/mo</strong></div>';
-    if (cur.gross_margin_pct != null) html += '<div>Gross margin: <strong>' + cur.gross_margin_pct + '%</strong></div>';
     html += '<div>Team cost: <strong>' + fmt$(cur.true_team_cost) + '/mo</strong></div>';
-    html += '<div>Monthly net: <strong style="color:' + (cur.monthly_net >= 0 ? 'var(--green)' : 'var(--red)') + '">' + fmt$(cur.monthly_net) + '/mo</strong></div>';
-    html += '<div>Status: <strong>' + esc(cur.runway.label) + '</strong></div>';
+    html += '<div>MRR: <strong>' + fmt$(cur.current_mrr) + '</strong></div>';
+    if (cur.team_cost_pct_of_mrr != null) {
+      var tcColor = cur.team_cost_benchmark === 'healthy' ? 'var(--green)' : cur.team_cost_benchmark === 'elevated' ? 'var(--yellow)' : 'var(--red)';
+      html += '<div>Team/MRR: <strong style="color:' + tcColor + '">' + cur.team_cost_pct_of_mrr + '%</strong> <span style="color:var(--text-muted);font-size:10px;">(' + esc(cur.team_cost_benchmark) + ')</span></div>';
+    }
+    // Show dual basis if available
+    if (cur.cash_basis && cur.cash_basis.monthly_net != null) {
+      var cashNet = cur.cash_basis.monthly_net;
+      html += '<div>Cash net (Stripe): <strong style="color:' + (cashNet >= 0 ? 'var(--green)' : 'var(--red)') + '">' + fmt$(cashNet) + '/mo</strong> — ' + esc(cur.cash_basis.status.label) + '</div>';
+    }
+    if (cur.recognized_basis && cur.recognized_basis.monthly_net != null) {
+      var recNet = cur.recognized_basis.monthly_net;
+      html += '<div>Recognized net (Xero): <strong style="color:' + (recNet >= 0 ? 'var(--green)' : 'var(--red)') + '">' + fmt$(recNet) + '/mo</strong> — ' + esc(cur.recognized_basis.status.label) + '</div>';
+    }
+    // Headline fallback if neither basis shown
+    if ((!cur.cash_basis || cur.cash_basis.monthly_net == null) && (!cur.recognized_basis || cur.recognized_basis.monthly_net == null) && cur.headline_net != null) {
+      html += '<div>Monthly net: <strong style="color:' + (cur.headline_net >= 0 ? 'var(--green)' : 'var(--red)') + '">' + fmt$(cur.headline_net) + '/mo</strong></div>';
+    }
     html += '</div>';
 
     // ── Per-role breakdown ──
@@ -2481,12 +2520,12 @@
     }
 
     // ── Combined impact ──
-    html += '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;line-height:1.7;">';
+    html += '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;line-height:1.7;margin-bottom:10px;">';
     html += '<div style="font-weight:700;margin-bottom:6px;color:var(--text);">Combined Impact (' + c.role_count + ' role' + (c.role_count > 1 ? 's' : '') + ')</div>';
     html += '<div>Added cost: <strong>' + fmt$(c.total_added_cost) + '/mo</strong></div>';
     html += '<div>Can afford: <strong style="color:' + (c.can_afford ? 'var(--green)' : 'var(--red)') + '">' + (c.can_afford ? 'Yes' : 'No') + '</strong></div>';
     html += '<div>Monthly net: ' + fmt$(c.monthly_net_before) + ' &rarr; <strong style="color:' + (c.monthly_net_after >= 0 ? 'var(--green)' : 'var(--red)') + '">' + fmt$(c.monthly_net_after) + '/mo</strong></div>';
-    html += '<div>After: <strong>' + esc(c.runway_after.label) + '</strong></div>';
+    html += '<div>After: <strong>' + esc(c.status_after.label) + '</strong></div>';
     if (c.combined_closes_to_offset != null) {
       html += '<div>Closes to offset all hires: <strong>' + c.combined_closes_to_offset + '/mo</strong></div>';
     }
@@ -2494,8 +2533,49 @@
       html += '<div>Team cost would be <strong>' + c.cost_as_pct_of_mrr + '%</strong> of MRR (target: &lt;40%)</div>';
     }
     html += '<div>MRR threshold: <strong>' + fmt$(c.mrr_threshold_for_hires) + '</strong></div>';
-    html += '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;font-style:italic;">' + esc(data.note) + '</div>';
     html += '</div>';
+
+    // ── 3-month forecast ──
+    if (data.forecast_3mo && data.forecast_3mo.length > 0) {
+      html += '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;line-height:1.7;margin-bottom:10px;">';
+      html += '<div style="font-weight:700;margin-bottom:6px;color:var(--text);">3-Month Forecast (with hires)</div>';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+      html += '<tr style="color:var(--text-muted);border-bottom:1px solid var(--border);">';
+      html += '<th style="text-align:left;padding:3px 4px;">Month</th>';
+      html += '<th style="text-align:right;padding:3px 4px;">Proj. MRR</th>';
+      html += '<th style="text-align:right;padding:3px 4px;">Net/mo</th>';
+      html += '<th style="text-align:right;padding:3px 4px;">Cumulative</th>';
+      html += '<th style="text-align:center;padding:3px 4px;">Afford?</th>';
+      html += '</tr>';
+      for (var fi = 0; fi < data.forecast_3mo.length; fi++) {
+        var f = data.forecast_3mo[fi];
+        var netColor = f.projected_net >= 0 ? 'var(--green)' : 'var(--red)';
+        html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">';
+        html += '<td style="padding:3px 4px;">M+' + f.month + '</td>';
+        html += '<td style="text-align:right;padding:3px 4px;">' + fmt$(f.projected_mrr) + '</td>';
+        html += '<td style="text-align:right;padding:3px 4px;color:' + netColor + ';">' + fmt$(f.projected_net) + '</td>';
+        html += '<td style="text-align:right;padding:3px 4px;">' + fmt$(f.cumulative_cash_impact) + '</td>';
+        html += '<td style="text-align:center;padding:3px 4px;">' + (f.can_afford_at_this_point ? '<span style="color:var(--green);">&#10003;</span>' : '<span style="color:var(--red);">&#10007;</span>') + '</td>';
+        html += '</tr>';
+      }
+      html += '</table>';
+      if (data.affordable_at_month != null) {
+        html += '<div style="margin-top:6px;color:var(--yellow);font-size:11px;">&#9888; Becomes affordable at Month +' + data.affordable_at_month + ' based on MRR growth</div>';
+      }
+      html += '</div>';
+    }
+
+    // ── Constraint context ──
+    if (data.constraint_context) {
+      html += '<div style="background:rgba(255,200,0,0.05);border:1px solid var(--yellow);border-radius:8px;padding:10px;font-size:11px;line-height:1.6;margin-bottom:10px;">';
+      html += '<div style="font-weight:700;color:var(--yellow);margin-bottom:4px;">Binding Constraint</div>';
+      html += '<div>Current bottleneck: <strong>' + esc(data.constraint_context.binding_constraint) + '</strong></div>';
+      html += '<div style="color:var(--text-muted);font-style:italic;">' + esc(data.constraint_context.note) + '</div>';
+      html += '</div>';
+    }
+
+    // ── Note ──
+    html += '<div style="font-size:11px;color:var(--text-muted);font-style:italic;">' + esc(data.note) + '</div>';
 
     return html;
   }

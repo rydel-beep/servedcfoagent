@@ -158,6 +158,16 @@ def api_hiring_scenario():
 
     ctx = snap.get("hiring_context") or {}
     profit = snap.get("profit") or {}
+    fp = snap.get("financial_position") or {}
+
+    # Get growth rate from projection for 3-month forecast
+    projection = (snap.get("client_health") or {}).get("mrr_projection") or {}
+    growth_rate = projection.get("growth_rate_latest")
+
+    # Get binding constraint from deficiency analysis
+    da = snap.get("deficiency_analysis") or {}
+    deficiencies = da.get("deficiencies") or []
+    binding = deficiencies[0].get("label") if deficiencies else None
 
     result = compute_hiring_analysis(
         roles=roles,
@@ -171,6 +181,9 @@ def api_hiring_scenario():
         avg_cash_per_close=ctx.get("avg_cash_per_close"),
         gross_margin_pct=ctx.get("gross_margin_pct"),
         true_team_cost=ctx.get("true_team_cost", 0),
+        financial_position=fp,
+        growth_rate_pct=growth_rate,
+        binding_constraint=binding,
     )
     return jsonify(result)
 

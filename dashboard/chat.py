@@ -113,8 +113,12 @@ DATA RULES:
 - degraded[] lists data quality issues. Mention relevant ones if they affect the answer.
 
 STRATEGIC CAPABILITY — you can now reason about hiring, team structure, and growth:
+- The financial_position shows the DUAL-BASIS model: cash basis (Stripe cash collected)
+  and recognized basis (Xero P&L). Same costs, different revenue views. The headline
+  picks the best available basis. ALWAYS specify which basis you're citing.
 - The team_model shows current team by function, cost, and single-points-of-failure.
 - The hiring_context shows monthly headroom, true team cost, and inputs for hire modeling.
+  Headroom = net profit (costs already deducted, no double-count).
 - The deficiency_analysis ranks what's limiting growth — funnel, team, or financial.
 - For hiring questions: give the analysis (affordability, payback, constraints) AND note
   the decision is Rydel's. Connect layers — a hiring question gets answered in light of
@@ -198,6 +202,11 @@ def _build_context_block(snapshot_json: str) -> str:
     da = snap.get("deficiency_analysis")
     if da:
         sections.append("DEFICIENCY ANALYSIS:\n" + json.dumps(da, indent=2))
+
+    # Financial position (dual-basis model — single source of truth for all financials)
+    fp = snap.get("financial_position")
+    if fp:
+        sections.append("FINANCIAL POSITION (dual-basis):\n" + json.dumps(fp, indent=2))
 
     # Hiring context
     hc = snap.get("hiring_context")
