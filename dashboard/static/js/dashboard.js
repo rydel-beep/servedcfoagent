@@ -2421,6 +2421,44 @@
     }
     html += '</div>';
 
+    // Forward MRR churn curve (if available)
+    var fwd = snap.forward_mrr;
+    if (fwd && fwd.forward_months && fwd.forward_months.length > 0) {
+      html += '<div style="margin-top:14px;">';
+      html += '<div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">Forward Recognized MRR (contract expirations)</div>';
+
+      // Mini bar chart using inline divs
+      var maxMrr = 0;
+      var fwdMonths = fwd.forward_months.slice(0, 6);
+      for (var mi = 0; mi < fwdMonths.length; mi++) {
+        if (fwdMonths[mi].recognized_mrr > maxMrr) maxMrr = fwdMonths[mi].recognized_mrr;
+      }
+      html += '<div style="display:flex;gap:4px;align-items:flex-end;height:60px;margin-bottom:4px;">';
+      for (var mi = 0; mi < fwdMonths.length; mi++) {
+        var fm = fwdMonths[mi];
+        var pct = maxMrr > 0 ? (fm.recognized_mrr / maxMrr * 100) : 0;
+        var barColor = fm.recognized_mrr >= 29671 ? 'var(--green)' : 'var(--red)';
+        html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;">';
+        html += '<div style="width:100%;background:' + barColor + ';border-radius:3px 3px 0 0;height:' + Math.max(pct, 2) + '%;opacity:0.7;"></div>';
+        html += '</div>';
+      }
+      html += '</div>';
+      html += '<div style="display:flex;gap:4px;font-size:9px;color:var(--text-muted);">';
+      for (var mi = 0; mi < fwdMonths.length; mi++) {
+        var fm = fwdMonths[mi];
+        var shortMonth = fm.month.split(' ')[0].substring(0, 3);
+        html += '<div style="flex:1;text-align:center;">' + shortMonth + '<br>' + fmt$(fm.recognized_mrr) + '<br>' + fm.clients + ' cl.</div>';
+      }
+      html += '</div>';
+
+      html += '<div style="font-size:10px;color:var(--text-muted);margin-top:4px;">MTM floor: ' + fmt$(fwd.mtm_floor) + '/mo | Renewal rate: 0% historical (0/12)</div>';
+      if (fwd.expiry_schedule && fwd.expiry_schedule.length > 0) {
+        var nextExpiry = fwd.expiry_schedule[0];
+        html += '<div style="font-size:10px;color:var(--yellow);margin-top:2px;">Next: ' + nextExpiry.contracts_expiring + ' contract(s) expiring ' + nextExpiry.month + ' = -' + fmt$(nextExpiry.mrr_at_risk) + '/mo</div>';
+      }
+      html += '</div>';
+    }
+
     body.innerHTML = html;
   }
 
@@ -2562,6 +2600,69 @@
       if (data.affordable_at_month != null) {
         html += '<div style="margin-top:6px;color:var(--yellow);font-size:11px;">&#9888; Becomes affordable at Month +' + data.affordable_at_month + ' based on MRR growth</div>';
       }
+      html += '</div>';
+    }
+
+    // ── Forward MRR sustainability lens ──
+    var fwd = data.forward_sustainability;
+    if (fwd) {
+      html += '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;line-height:1.7;margin-bottom:10px;">';
+      html += '<div style="font-weight:700;margin-bottom:6px;color:var(--text);">Forward Recognized MRR (churn-adjusted)</div>';
+
+      // Key metrics
+      html += '<div>Current recognized MRR: <strong>' + fmt$(fwd.current_recognized_mrr) + '/mo</strong> (' + fwd.active_clients + ' clients)</div>';
+      html += '<div>MTM floor (recurring): <strong>' + fmt$(fwd.mtm_floor) + '/mo</strong></div>';
+      html += '<div>Avg contribution/client: <strong>' + fmt$(fwd.avg_monthly_per_client) + '/mo</strong></div>';
+      if (fwd.clients_to_fund_hire != null) {
+        html += '<div>Clients to fund this hire: <strong>' + fwd.clients_to_fund_hire + '</strong></div>';
+      }
+      if (fwd.new_clients_to_replace_churn_monthly != null) {
+        html += '<div>Avg churn rate: <strong>~' + fwd.new_clients_to_replace_churn_monthly + ' clients/mo</strong> expiring</div>';
+      }
+
+      // Churn warning
+      if (fwd.churn_warning && fwd.sustainable_until) {
+        html += '<div style="color:var(--red);margin-top:4px;font-weight:600;">&#9888; Hire becomes unsustainable by ' + esc(fwd.sustainable_until) + ' due to contract expirations (0% historical renewal)</div>';
+      }
+
+      // Forward forecast table
+      if (fwd.forward_forecast && fwd.forward_forecast.length > 0) {
+        html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px;">';
+        html += '<tr style="color:var(--text-muted);border-bottom:1px solid var(--border);">';
+        html += '<th style="text-align:left;padding:3px 4px;">Month</th>';
+        html += '<th style="text-align:right;padding:3px 4px;">Rec. MRR</th>';
+        html += '<th style="text-align:center;padding:3px 4px;">Clients</th>';
+        html += '<th style="text-align:right;padding:3px 4px;">Net (no hire)</th>';
+        html += '<th style="text-align:right;padding:3px 4px;">Net (w/ hire)</th>';
+        html += '<th style="text-align:center;padding:3px 4px;">Team %</th>';
+        html += '<th style="text-align:center;padding:3px 4px;">Sustain?</th>';
+        html += '</tr>';
+        for (var ffi = 0; ffi < fwd.forward_forecast.length; ffi++) {
+          var ff = fwd.forward_forecast[ffi];
+          var ffNetColor = ff.net_after_hire >= 0 ? 'var(--green)' : 'var(--red)';
+          var tcPct = ff.team_cost_pct != null ? ff.team_cost_pct + '%' : '-';
+          var tcColor = ff.team_cost_pct != null && ff.team_cost_pct > 55 ? 'color:var(--red);' : ff.team_cost_pct != null && ff.team_cost_pct > 45 ? 'color:var(--yellow);' : '';
+          html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">';
+          html += '<td style="padding:3px 4px;font-size:10px;">' + esc(ff.month) + '</td>';
+          html += '<td style="text-align:right;padding:3px 4px;">' + fmt$(ff.recognized_mrr) + '</td>';
+          html += '<td style="text-align:center;padding:3px 4px;">' + (ff.clients || '-') + '</td>';
+          html += '<td style="text-align:right;padding:3px 4px;">' + fmt$(ff.net_before_hire) + '</td>';
+          html += '<td style="text-align:right;padding:3px 4px;color:' + ffNetColor + ';">' + fmt$(ff.net_after_hire) + '</td>';
+          html += '<td style="text-align:center;padding:3px 4px;' + tcColor + '">' + tcPct + '</td>';
+          html += '<td style="text-align:center;padding:3px 4px;">' + (ff.can_sustain ? '<span style="color:var(--green);">&#10003;</span>' : '<span style="color:var(--red);">&#10007;</span>') + '</td>';
+          html += '</tr>';
+        }
+        html += '</table>';
+      }
+
+      // Verdict
+      if (fwd.verdict) {
+        html += '<div style="margin-top:8px;padding:8px;background:rgba(255,255,255,0.02);border-radius:6px;font-size:11px;line-height:1.6;">';
+        html += '<strong>Verdict:</strong> ' + esc(fwd.verdict);
+        html += '</div>';
+      }
+
+      html += '<div style="font-size:10px;color:var(--text-muted);margin-top:4px;">Renewal rate: ' + esc(fwd.renewal_rate || '0% historical') + '</div>';
       html += '</div>';
     }
 

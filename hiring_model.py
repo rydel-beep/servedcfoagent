@@ -81,6 +81,47 @@ def _compute_forecast(
     return forecast
 
 
+def _forward_verdict(
+    fwd_forecast: list[dict],
+    total_added_cost: float,
+    sustainable_until: str | None,
+    clients_to_fund: float | None,
+    binding_constraint: str | None,
+) -> str:
+    """Generate a plain-English verdict from the forward sustainability lens."""
+    if not fwd_forecast:
+        return "Forward MRR data unavailable — judge against trailing net only."
+
+    # Check first month
+    first = fwd_forecast[0]
+    sustainable_now = first.get("can_sustain", False)
+
+    # Count sustainable months
+    sus_count = sum(1 for f in fwd_forecast if f.get("can_sustain"))
+
+    parts = []
+    if sustainable_now and sus_count == len(fwd_forecast):
+        parts.append(f"Sustainable across all {len(fwd_forecast)} months of forward MRR.")
+    elif sustainable_now:
+        parts.append(
+            f"Sustainable now, but churn makes it tight by {sustainable_until}. "
+            f"Sustained for {sus_count}/{len(fwd_forecast)} forward months."
+        )
+    else:
+        parts.append(
+            f"Not sustainable against forward recognized MRR — "
+            f"net negative from {fwd_forecast[0]['month']}."
+        )
+
+    if clients_to_fund is not None:
+        parts.append(f"Requires ~{clients_to_fund} client contributions to fund.")
+
+    if binding_constraint:
+        parts.append(f"Binding constraint: {binding_constraint}.")
+
+    return " ".join(parts)
+
+
 def compute_single_hire(
     proposed_cost: float,
     proposed_role: str,
@@ -134,6 +175,7 @@ def compute_hiring_analysis(
     financial_position: dict | None = None,
     growth_rate_pct: float | None = None,
     binding_constraint: str | None = None,
+    forward_mrr: dict | None = None,
 ) -> dict:
     """Compute hiring affordability for one or more proposed roles.
 
@@ -252,11 +294,86 @@ def compute_hiring_analysis(
                      "Hiring capacity where there's no bottleneck = underutilized cost."),
         }
 
+    # ── Forward MRR sustainability lens ──
+    forward_lens = None
+    if forward_mrr:
+        fwd_months = forward_mrr.get("forward_months") or []
+        fwd_current = forward_mrr.get("current_recognized_mrr") or 0
+        mtm_floor = forward_mrr.get("mtm_floor") or 0
+        avg_per_client = forward_mrr.get("avg_monthly_per_client") or 0
+        active_clients = forward_mrr.get("active_clients") or 0
+        expiry_schedule = forward_mrr.get("expiry_schedule") or []
+        renewal_info = forward_mrr.get("renewal_rate_historical") or {}
+
+        # Total costs (current + proposed hires)
+        total_costs = (monthly_cogs or 0) + (monthly_opex or 0)
+
+        # Forward net per month (recognized revenue - costs - hire cost)
+        fwd_forecast = []
+        for fm in fwd_months[:6]:  # cap at 6 months
+            fwd_rev = fm.get("recognized_mrr") or 0
+            fwd_net = fwd_rev - total_costs - total_added_cost
+            fwd_net_before = fwd_rev - total_costs
+            team_pct = (
+                _safe_round(new_team_cost / fwd_rev * 100, 1)
+                if fwd_rev > 0 else None
+            )
+            fwd_forecast.append({
+                "month": fm.get("month"),
+                "recognized_mrr": _safe_round(fwd_rev),
+                "clients": fm.get("clients"),
+                "net_before_hire": _safe_round(fwd_net_before),
+                "net_after_hire": _safe_round(fwd_net),
+                "can_sustain": fwd_net > 0,
+                "team_cost_pct": team_pct,
+            })
+
+        # When does the hire become unsustainable (churn cliff)?
+        sustainable_until = None
+        for ff in fwd_forecast:
+            if not ff["can_sustain"]:
+                sustainable_until = ff["month"]
+                break
+
+        # Contribution margin: how many clients fund this hire?
+        clients_to_fund = None
+        if avg_per_client and avg_per_client > 0 and gross_margin_pct:
+            contribution_per_client = avg_per_client * (gross_margin_pct / 100)
+            clients_to_fund = _safe_round(total_added_cost / contribution_per_client, 1)
+        elif avg_per_client and avg_per_client > 0:
+            clients_to_fund = _safe_round(total_added_cost / avg_per_client, 1)
+
+        # New clients needed to replace churn AND fund hire
+        new_clients_needed_monthly = None
+        if avg_per_client and avg_per_client > 0:
+            # Average monthly churn from expiry schedule
+            total_expiring = sum(e.get("contracts_expiring", 0) for e in expiry_schedule[:6])
+            avg_monthly_churn = total_expiring / 6 if expiry_schedule else 0
+            new_clients_needed_monthly = _safe_round(avg_monthly_churn, 1)
+
+        forward_lens = {
+            "current_recognized_mrr": _safe_round(fwd_current),
+            "mtm_floor": _safe_round(mtm_floor),
+            "avg_monthly_per_client": _safe_round(avg_per_client),
+            "active_clients": active_clients,
+            "clients_to_fund_hire": clients_to_fund,
+            "forward_forecast": fwd_forecast,
+            "sustainable_until": sustainable_until,
+            "churn_warning": sustainable_until is not None,
+            "renewal_rate": renewal_info.get("note"),
+            "new_clients_to_replace_churn_monthly": new_clients_needed_monthly,
+            "verdict": _forward_verdict(
+                fwd_forecast, total_added_cost, sustainable_until,
+                clients_to_fund, binding_constraint,
+            ),
+        }
+
     return json_safe({
         "current": current,
         "per_role": per_role,
         "combined": combined,
         "forecast_3mo": forecast,
+        "forward_sustainability": forward_lens,
         "affordable_at_month": affordable_at_month,
         "constraint_context": constraint_context,
         "note": "Analysis only — the hire decision is yours.",

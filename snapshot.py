@@ -399,6 +399,18 @@ def build_snapshot() -> dict:
     )
     snapshot["financial_position"] = fin_pos
 
+    # ── Forward recognized MRR (churn-adjusted, from RECOGNIZED tab) ────────
+    try:
+        from forward_mrr import build_forward_mrr
+        fwd = build_forward_mrr()
+        fwd_degraded = fwd.pop("degraded", [])
+        snapshot["forward_mrr"] = fwd
+        degraded.extend(fwd_degraded)
+    except Exception as e:
+        logger.error("Forward MRR build failed: %s", e)
+        snapshot["forward_mrr"] = None
+        degraded.append({"metric": "forward_mrr", "reason": f"Build failed: {e}"})
+
     # Hiring context — derives from financial_position (no double-count)
     headline_net = (fin_pos.get("headline") or {}).get("monthly_net") or 0
     avg_cash_per_close = None

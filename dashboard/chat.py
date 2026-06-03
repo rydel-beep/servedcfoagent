@@ -119,6 +119,10 @@ STRATEGIC CAPABILITY — you can now reason about hiring, team structure, and gr
 - The team_model shows current team by function, cost, and single-points-of-failure.
 - The hiring_context shows monthly headroom, true team cost, and inputs for hire modeling.
   Headroom = net profit (costs already deducted, no double-count).
+- The forward_mrr shows CHURN-ADJUSTED recognized MRR by month. This is critical for
+  hiring: current recognized MRR looks strong but contracts expire. Historical renewal
+  rate is 0% (0/12). Judge recurring hires against the FORWARD curve, not trailing.
+  The forward_mrr includes per-month projections, expiry schedule, and MTM floor.
 - The deficiency_analysis ranks what's limiting growth — funnel, team, or financial.
 - For hiring questions: give the analysis (affordability, payback, constraints) AND note
   the decision is Rydel's. Connect layers — a hiring question gets answered in light of
@@ -207,6 +211,13 @@ def _build_context_block(snapshot_json: str) -> str:
     fp = snap.get("financial_position")
     if fp:
         sections.append("FINANCIAL POSITION (dual-basis):\n" + json.dumps(fp, indent=2))
+
+    # Forward recognized MRR (churn-adjusted, from RECOGNIZED tab)
+    fwd = snap.get("forward_mrr")
+    if fwd:
+        # Send summary, not full client list (too large for context)
+        fwd_summary = {k: v for k, v in fwd.items() if k != "clients"}
+        sections.append("FORWARD RECOGNIZED MRR (churn-adjusted):\n" + json.dumps(fwd_summary, indent=2))
 
     # Hiring context
     hc = snap.get("hiring_context")
