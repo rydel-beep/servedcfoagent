@@ -235,17 +235,57 @@ def _pull_setter_payout(sc_rows: list[list[str]]) -> dict:
 
 
 def _pull_payout_log_footer() -> dict:
-    """Read footer totals from Setter Payout Log tab."""
-    rows = _fetch_tab("Setter Payout Log")
+    """Compute grand totals from per-setter totals in the Setter Payout Log tab.
+
+    The tab doesn't have a single footer row — instead each setter section
+    has its own totals.  Sum them up for the grand total.
+    """
+    rows = _fetch_tab_by_gid(_PAYOUT_LOG_GID)
     result = {"total_owed": None, "total_paid": None, "pending": None}
+
+    total_owed = 0.0
+    total_paid = 0.0
+    total_due = 0.0
+    found_any = False
+
     for row in rows:
-        label = row[0].strip() if row else ""
-        if "Total setter owed" in label:
-            result["total_owed"] = _parse_money(_cell(row, 8))
-        elif "Total PAID" in label:
-            result["total_paid"] = _parse_money(_cell(row, 8))
-        elif "PENDING" in label:
-            result["pending"] = _parse_money(_cell(row, 8))
+        if not row:
+            continue
+        col6 = _cell(row, 6).strip().lower()
+        col0 = _cell(row, 0).strip().lower()
+        # Per-setter total rows have labels in col 6, amounts in col 7
+        amount = _parse_money(_cell(row, 7))
+        if "owed" in col6 and amount is not None:
+            total_owed += amount
+            found_any = True
+        elif "paid" in col6 and "through" not in col6 and amount is not None:
+            total_paid += amount
+            found_any = True
+        elif ("due" in col6 or "pending" in col6) and amount is not None:
+            total_due += amount
+            found_any = True
+
+        # Also check legacy format: labels in col 0, amounts in col 8
+        if "total setter owed" in col0:
+            legacy = _parse_money(_cell(row, 8))
+            if legacy is not None:
+                total_owed = legacy
+                found_any = True
+        elif "total paid" in col0:
+            legacy = _parse_money(_cell(row, 8))
+            if legacy is not None:
+                total_paid = legacy
+                found_any = True
+        elif "pending" in col0:
+            legacy = _parse_money(_cell(row, 8))
+            if legacy is not None:
+                total_due = legacy
+                found_any = True
+
+    if found_any:
+        result["total_owed"] = round(total_owed, 2)
+        result["total_paid"] = round(total_paid, 2)
+        result["pending"] = round(total_due, 2)
     return result
 
 
@@ -1145,21 +1185,33 @@ def _pull_commission_detail(
                     }
                 continue
 
-            # Detect total rows for current setter
-            if current_setter and ("total" in first.lower() or "Total" in _cell(row, 0)):
-                total_label = _cell(row, 0).strip().lower()
-                if "owed" in total_label or "total" in total_label:
-                    owed = _parse_money(_cell(row, 9)) or _parse_money(_cell(row, 8))
-                    if owed:
-                        setters[current_setter]["total_owed"] = owed
-                if "paid" in total_label:
-                    paid = _parse_money(_cell(row, 9)) or _parse_money(_cell(row, 8))
-                    if paid:
-                        setters[current_setter]["total_paid"] = paid
-                if "pending" in total_label or "due" in total_label:
-                    due = _parse_money(_cell(row, 9)) or _parse_money(_cell(row, 8))
-                    if due:
-                        setters[current_setter]["still_due"] = due
+            # Detect total/summary rows for current setter.
+            # The sheet layout has labels in BOTH col 0 ("X totals:") and col 6
+            # ("Owed (all):", "Paid:", "Still Due:"), with amounts in col 7.
+            # The "X totals:" row itself is a header; owed/paid/due follow on
+            # separate rows with empty col 0 but labels in col 6.
+            col0_lower = _cell(row, 0).strip().lower()
+            col6_lower = _cell(row, 6).strip().lower()
+
+            if current_setter and ("total" in col0_lower or "total" in col6_lower
+                                   or "owed" in col6_lower or "paid" in col6_lower
+                                   or "due" in col6_lower or "pending" in col6_lower
+                                   or "sets:" in col6_lower):
+                # Try amount from col 7 first (the actual layout), then col 9, col 8
+                amount = (_parse_money(_cell(row, 7))
+                          or _parse_money(_cell(row, 9))
+                          or _parse_money(_cell(row, 8)))
+                label = col6_lower or col0_lower
+                if "owed" in label:
+                    if amount is not None:
+                        setters[current_setter]["total_owed"] = amount
+                elif "paid" in label and "through" not in label:
+                    if amount is not None:
+                        setters[current_setter]["total_paid"] = amount
+                elif "due" in label or "pending" in label:
+                    if amount is not None:
+                        setters[current_setter]["still_due"] = amount
+                # "totals:" header row or "Sets:" row — skip (no owed/paid/due data)
                 continue
 
             # Parse deal rows under current setter

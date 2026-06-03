@@ -61,16 +61,16 @@ FINANCE_SHEET_CONFIG = {
 # PRIMARY source for closer commission is the sheet's Commission Closer column.
 # This table exists for future expected-vs-actual validation, not for computing totals.
 CLOSER_COMMISSION_BY_OFFER = {
-    "growth_pro":    700,
+    "growth_pro":    750,
     "cafe_walkins":  800,
     "scale_engine":  1500,
-    "se_split":      1500,   # paid 2x750, but $1500 total per deal
+    "se_split":      1500,   # Scale Engine split into 3x payments, $1500 total per deal
     "content_scale": 1750,
     "dwy":           300,
 }
-# May 2026 one-month override: Growth Pro pays $900 instead of $700.
+# May 2026 one-month override: Growth Pro paid $900 instead of $750. May only.
 CLOSER_GP_MAY_OVERRIDE_AUD = 900
-CLOSER_MAY_OVERRIDE_ACTIVE = True   # set False from June 2026 onward
+CLOSER_MAY_OVERRIDE_ACTIVE = False  # May 2026 is over; GP reverts to $750
 
 # ── Xero ───────────────────────────────────────────────────────────────────
 XERO_CLIENT_ID = os.getenv("XERO_CLIENT_ID", "")
