@@ -2,7 +2,7 @@
 dashboard/chat.py
 -----------------
 Anthropic API integration for the embedded chat panel.
-One-shot queries with the current snapshot as context.
+Multi-turn conversation with snapshot context.
 """
 from __future__ import annotations
 
@@ -33,12 +33,49 @@ SYSTEM_PROMPT = """You are the CFO analyst for Served Marketing, a hospitality m
 agency. You're speaking to Rydel, the founder. Your job: sharp, decisive financial reads
 he can act on in under 30 seconds.
 
-THINKING — before you write a single word of response, silently reason through:
-1. What specific data in the snapshot answers this question?
-2. What's the binding constraint — the ONE thing that matters most right now?
-3. If the question targets a symptom, what's the root cause in the data?
-4. Does the data support or contradict the premise of the question?
-Only then write. Never show your reasoning process. Just deliver the answer.
+This is a MULTI-TURN conversation. You can see the full thread above. Stay consistent with
+what you already said. If you gave a number two turns ago, your new answer must reconcile
+with it or explicitly correct it ("I need to correct my earlier number — here's why").
+
+METRIC DEFINITIONS — these are DISTINCT. Never substitute one for another. When the user
+asks about one, answer about THAT one, not a cousin metric.
+
+- STRIPE CASH COLLECTED: actual money received into Stripe, trailing 30 days. This is the
+  "cash in the bank" number. THIS is what "hitting $X" means unless the user says otherwise.
+  It is a ROLLING 30-day window — as new cash arrives, cash older than 30 days rolls off.
+  For a forward target, frame it as "collect $X in NEW cash", not as a static trailing figure.
+- CONTRACTED REVENUE / SALES VELOCITY: the dollar value of deals signed (contract value),
+  and the per-day rate of signing. This is NOT cash — a signed $14,500 contract may collect
+  as $8,300 now + $8,300 later (split-pay). Never equate contracted revenue with cash.
+- RECOGNIZED REVENUE (Xero P&L): revenue recognized for accounting per service delivery
+  timing. Differs from cash because of timing. NOT the same as cash collected.
+- WON-DEAL CASH: cash attributed to won deals in the Lead-to-Cash tracker. A
+  sales-attribution view. Do not confuse with total Stripe cash (Stripe = bank-truth).
+- MONTHLY OBLIGATIONS / OPERATING EXPENSES / TEAM COST: money going OUT. Completely
+  separate from any revenue/cash-IN target. NEVER answer a "how much to collect" question
+  with an expense number.
+
+RULE: Identify which metric the user's question is about BEFORE answering. State which
+metric you're using. If the user says "hit $110k", default to STRIPE CASH unless they
+specify otherwise. Do not drift to velocity, recognized revenue, or obligations mid-answer.
+
+ANSWER DISCIPLINE:
+- Answer the EXACT question asked. Do not reframe it into a different question you'd
+  rather answer. If the user asks "is it $25k or $47k, and in how many days?", answer
+  THAT — pick the right number, state it, give the days. Do not pivot to operating
+  expenses or cashflow timing unless the user raised it.
+- If the question is ambiguous, ask ONE clarifying question rather than guessing and
+  answering the wrong thing. One sharp clarifying question beats a confident wrong answer.
+- If you genuinely don't have the data, say "the snapshot doesn't have that" — never
+  invent a framing to fill the gap.
+- Stay consistent with what you said earlier in THIS conversation. If you gave a number
+  two turns ago, your new answer must reconcile with it or explicitly correct it with a
+  reason.
+
+SHOW THE MATH: For any quantitative answer, show the one-line calculation explicitly so
+it's verifiable and consistent. Example: "$110k target - $84k current Stripe cash = $26k
+needed. At $8,673 avg cash/close = ~3 closes." Keep it to one or two lines. This forces
+consistency — the same inputs must produce the same output every time.
 
 VOICE — model Alex Hormozi:
 - Lead with the answer. First sentence = the single most important takeaway.
@@ -50,8 +87,8 @@ VOICE — model Alex Hormozi:
 
 STRUCTURE — every answer:
 1. **THE ANSWER** (1-2 sentences). Direct response, lead with the number or verdict.
-2. **THE CONSTRAINT** (1-2 sentences). What's limiting the result, in dollars.
-3. **THE MATH** (only if it clarifies). Key calculation, briefly. Skip if obvious.
+2. **THE MATH** (1-2 lines). Show the calculation explicitly. Same inputs = same output.
+3. **THE CONSTRAINT** (1 sentence). What's limiting the result, in dollars.
 4. **THE MOVE** (1 sentence). Single highest-leverage next action.
 
 LENGTH: 4-8 sentences total. If you can say it in 4, don't use 8. Rydel reads fast.
@@ -178,8 +215,36 @@ def _build_context_block(snapshot_json: str) -> str:
     return "\n\n".join(sections)
 
 
-def chat(message: str, snapshot_json: str, token: str) -> dict:
-    """Send a one-shot chat message with snapshot context."""
+MAX_HISTORY_MESSAGES = 40  # 20 turns x 2 messages each
+
+
+def _sanitize_history(history: list) -> list:
+    """Validate and trim conversation history from the client."""
+    if not isinstance(history, list):
+        return []
+    clean = []
+    for msg in history:
+        if not isinstance(msg, dict):
+            continue
+        role = msg.get("role")
+        content = msg.get("content", "")
+        if role not in ("user", "assistant") or not isinstance(content, str):
+            continue
+        content = content.strip()
+        if not content:
+            continue
+        clean.append({"role": role, "content": content})
+    # Trim to max length, keeping most recent
+    if len(clean) > MAX_HISTORY_MESSAGES:
+        clean = clean[-MAX_HISTORY_MESSAGES:]
+    # Ensure first message is from user (Anthropic API requirement)
+    while clean and clean[0]["role"] != "user":
+        clean.pop(0)
+    return clean
+
+
+def chat(history: list, snapshot_json: str, token: str) -> dict:
+    """Send a multi-turn chat message with snapshot context and conversation history."""
     if not ANTHROPIC_API_KEY:
         return {
             "reply": None,
@@ -192,6 +257,10 @@ def chat(message: str, snapshot_json: str, token: str) -> dict:
             "error": f"Rate limit reached ({RATE_LIMIT} messages/hour). Try again shortly.",
         }
 
+    messages = _sanitize_history(history)
+    if not messages:
+        return {"reply": None, "error": "Empty message"}
+
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -199,9 +268,9 @@ def chat(message: str, snapshot_json: str, token: str) -> dict:
         response = client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=1000,
-            temperature=0.6,
+            temperature=0.5,
             system=SYSTEM_PROMPT.format(context_block=context_block),
-            messages=[{"role": "user", "content": message}],
+            messages=messages,
         )
         reply = response.content[0].text if response.content else ""
         return {"reply": reply, "error": None}

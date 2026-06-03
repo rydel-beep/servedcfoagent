@@ -97,7 +97,7 @@ def test_chat_no_api_key_returns_fallback():
     client.post("/dashboard/login", data={"token": "test-dash-token"})
     resp = client.post(
         "/dashboard/api/chat",
-        data=json.dumps({"message": "What's my MRR?"}),
+        data=json.dumps({"history": [{"role": "user", "content": "What's my MRR?"}]}),
         content_type="application/json",
     )
     assert resp.status_code == 200

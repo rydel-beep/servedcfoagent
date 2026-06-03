@@ -193,10 +193,10 @@ def api_sales_summary():
 @bp.route("/api/chat", methods=["POST"])
 @require_auth
 def api_chat():
-    """Handle chat message with snapshot context."""
+    """Handle chat message with conversation history and snapshot context."""
     data = request.get_json(silent=True) or {}
-    message = data.get("message", "").strip()
-    if not message:
+    history = data.get("history", [])
+    if not history:
         return jsonify({"error": "Empty message"}), 400
 
     from snapshot import load_persisted
@@ -204,5 +204,5 @@ def api_chat():
     snapshot_json = json.dumps(snap, indent=2) if snap else "{}"
 
     token = request.cookies.get(COOKIE_NAME, "anon")
-    result = chat_fn(message, snapshot_json, token)
+    result = chat_fn(history, snapshot_json, token)
     return jsonify(result)
