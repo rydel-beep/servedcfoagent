@@ -532,8 +532,17 @@ def pull_client_health() -> dict:
     historical_rates = growth_rates[:current_trend_idx] if current_trend_idx else growth_rates
     recent_rates = historical_rates[-3:] if len(historical_rates) >= 3 else historical_rates
     growth_3mo_avg = round(sum(recent_rates) / len(recent_rates), 1) if recent_rates else 0.0
+    growth_latest = historical_rates[-1] if historical_rates else 0.0
 
-    base_mrr = round(total_next, 2) if total_next > 0 else round(total_current, 2)
+    # Deceleration detection: if last 3 months are monotonically declining
+    decelerating = (
+        len(recent_rates) >= 3
+        and recent_rates[-1] < recent_rates[-2] < recent_rates[-3]
+    )
+
+    # Use current month MRR as base (what we have NOW), not next month's
+    # contractual runoff — projection models new business growth on top
+    base_mrr = round(total_current, 2) if total_current > 0 else round(total_next, 2)
     churn_risk = round(revenue_at_risk_30d, 2)
 
     months_forward = []
@@ -544,24 +553,39 @@ def pull_client_health() -> dict:
         month_label_proj = f"{proj_month_num}/{proj_year}"
 
         optimistic = round(proj_base * (1 + growth_3mo_avg / 100), 2) if growth_3mo_avg else proj_base
+        # Base case uses latest MoM rate (most recent signal)
+        base_growth = round(proj_base * (1 + growth_latest / 100), 2) if growth_latest else proj_base
         pessimistic = round(proj_base - churn_risk, 2)
 
         months_forward.append({
             "month": month_label_proj,
-            "base": round(proj_base, 2),
+            "base": base_growth,
             "optimistic": optimistic,
             "pessimistic": max(pessimistic, 0),
         })
 
-        proj_base = round(proj_base * (1 + growth_3mo_avg / 100), 2) if growth_3mo_avg else proj_base
+        proj_base = base_growth
+
+    # Cap sanity: flag if growth rate exceeds 50%/mo
+    growth_flag = None
+    if abs(growth_3mo_avg) > 50:
+        growth_flag = f"3mo avg growth {growth_3mo_avg}%/mo exceeds 50% — likely a calc artifact, treat with caution"
 
     projection = {
         "growth_rate_mom": historical_rates,
         "growth_rate_3mo_avg": growth_3mo_avg,
+        "growth_rate_latest": growth_latest,
+        "decelerating": decelerating,
+        "growth_flag": growth_flag,
         "next_month_base": base_mrr,
         "churn_risk_mrr": churn_risk,
         "next_month_worst": max(round(base_mrr - churn_risk, 2), 0),
         "months_forward": months_forward,
+        "method": "latest MoM rate for base, 3mo avg for optimistic, churn runoff for pessimistic",
+        "caveat": (
+            "Growth is decelerating (latest month significantly below 3mo avg). "
+            "Base projection uses most recent rate; treat optimistic with caution."
+        ) if decelerating else None,
     }
 
     return {

@@ -134,6 +134,39 @@ def api_history():
     return jsonify(result)
 
 
+@bp.route("/api/hiring-scenario", methods=["POST"])
+@require_auth
+def api_hiring_scenario():
+    """Model a specific hire's affordability and payback."""
+    from hiring_model import compute_hiring_analysis
+    from snapshot import load_persisted
+
+    snap = load_persisted()
+    if snap is None:
+        return jsonify({"error": "No snapshot available"}), 404
+
+    data = request.get_json(silent=True) or {}
+    proposed_cost = data.get("monthly_cost", 0)
+    proposed_role = data.get("role", "New hire")
+    is_revenue = data.get("is_revenue_generating", False)
+
+    ctx = snap.get("hiring_context") or {}
+
+    result = compute_hiring_analysis(
+        proposed_cost=proposed_cost,
+        proposed_role=proposed_role,
+        is_revenue_generating=is_revenue,
+        monthly_net_income=ctx.get("monthly_net_income", 0),
+        current_mrr=ctx.get("current_mrr", 0),
+        avg_contract_value=ctx.get("avg_contract_value"),
+        close_rate_pct=ctx.get("close_rate_pct"),
+        avg_cash_per_close=ctx.get("avg_cash_per_close"),
+        gross_margin_pct=ctx.get("gross_margin_pct"),
+        true_team_cost=ctx.get("true_team_cost", 0),
+    )
+    return jsonify(result)
+
+
 @bp.route("/api/sales-summary", methods=["GET"])
 @require_auth
 def api_sales_summary():

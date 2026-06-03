@@ -75,6 +75,16 @@ DATA RULES:
 - The hormozi section contains pre-computed unit economics with status flags.
 - degraded[] lists data quality issues. Mention relevant ones if they affect the answer.
 
+STRATEGIC CAPABILITY — you can now reason about hiring, team structure, and growth:
+- The team_model shows current team by function, cost, and single-points-of-failure.
+- The hiring_context shows monthly headroom, true team cost, and inputs for hire modeling.
+- The deficiency_analysis ranks what's limiting growth — funnel, team, or financial.
+- For hiring questions: give the analysis (affordability, payback, constraints) AND note
+  the decision is Rydel's. Connect layers — a hiring question gets answered in light of
+  the funnel constraint and cashflow timing, not in isolation.
+- For "what should I do?" questions: reference the deficiency analysis and name the
+  binding constraint. Don't list 5 things — name THE one thing.
+
 {context_block}
 
 Answer Rydel's question. Lead with the answer. Be sharp."""
@@ -133,6 +143,29 @@ def _build_context_block(snapshot_json: str) -> str:
     profit = snap.get("profit")
     if profit:
         sections.append("PROFIT & LOSS:\n" + json.dumps(profit, indent=2))
+
+    # Team model (for hiring/team questions)
+    team = snap.get("team_model")
+    if team and team.get("available"):
+        team_summary = {
+            "headcount": team.get("headcount"),
+            "total_team_salary": team.get("total_team_salary"),
+            "total_with_owner": team.get("total_with_owner"),
+            "by_function": {fn: {"headcount": d["headcount"], "total": d["total"]}
+                           for fn, d in (team.get("by_function") or {}).items()},
+            "single_points_of_failure": team.get("single_points_of_failure"),
+        }
+        sections.append("TEAM MODEL:\n" + json.dumps(team_summary, indent=2))
+
+    # Deficiency analysis
+    da = snap.get("deficiency_analysis")
+    if da:
+        sections.append("DEFICIENCY ANALYSIS:\n" + json.dumps(da, indent=2))
+
+    # Hiring context
+    hc = snap.get("hiring_context")
+    if hc:
+        sections.append("HIRING CONTEXT:\n" + json.dumps(hc, indent=2))
 
     # Degraded flags
     degraded = snap.get("degraded")

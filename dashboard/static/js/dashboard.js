@@ -112,10 +112,34 @@
     renderSetters(snap);
     renderClosers(snap);
     renderCohortRetention(snap);
+    renderDeficiency(snap);
+    renderTeamModel(snap);
     renderQuality(snap);
 
     if (snap.generated_at) {
       $('#chat-context').textContent = timeAgo(snap.generated_at);
+    }
+
+    // Render-integrity check: detect duplicated elements
+    checkRenderIntegrity();
+  }
+
+  function checkRenderIntegrity() {
+    // Ensure projection summary is not duplicated
+    var projSummaries = document.querySelectorAll('#mrr-projection-summary');
+    if (projSummaries.length > 1) {
+      console.warn('[integrity] Duplicate projection summary detected — removing extras');
+      for (var i = 1; i < projSummaries.length; i++) projSummaries[i].remove();
+    }
+    // Check for stale data warning
+    if (currentSnap && currentSnap.generated_at) {
+      var ageMs = Date.now() - new Date(currentSnap.generated_at).getTime();
+      if (ageMs > 24 * 3600 * 1000) {
+        var dot = $('#status-dot');
+        if (dot) dot.className = 'status-dot stale';
+        var txt = $('#status-text');
+        if (txt) txt.textContent = '⚠ stale (>24h)';
+      }
     }
   }
 
@@ -1234,6 +1258,16 @@
           tooltip: {
             callbacks: {
               label: function(ctx) { return fmt$(ctx.parsed.y); }
+            },
+            filter: function(item, data) {
+              // Deduplicate: hide if another dataset at same index has the same value
+              var val = item.parsed.y;
+              if (val === null || val === undefined) return false;
+              for (var i = 0; i < item.datasetIndex; i++) {
+                var otherVal = data.datasets[i].data[item.dataIndex];
+                if (otherVal === val) return false;
+              }
+              return true;
             }
           }
         },
@@ -1255,14 +1289,29 @@
       }
     });
 
-    // Projection summary text
+    // Projection summary text — use a stable element, never append
+    const projSummaryId = 'mrr-projection-summary';
+    let summaryDiv = document.getElementById(projSummaryId);
     if (projection && projection.months_forward && projection.months_forward.length > 0) {
-      const container = ctx.parentElement;
-      const summaryDiv = document.createElement('div');
-      summaryDiv.style.cssText = 'font-size:12px;color:var(--text-muted);padding:12px 0 0;line-height:1.6;';
+      if (!summaryDiv) {
+        summaryDiv = document.createElement('div');
+        summaryDiv.id = projSummaryId;
+        summaryDiv.style.cssText = 'font-size:12px;color:var(--text-muted);padding:12px 0 0;line-height:1.6;';
+        ctx.parentElement.appendChild(summaryDiv);
+      }
       const parts = [];
-      if (projection.growth_rate_3mo_avg !== 0) {
-        parts.push(`Growing <strong style="color:var(--accent)">${projection.growth_rate_3mo_avg}%/mo</strong> (3mo avg)`);
+      const latestRate = projection.growth_rate_latest;
+      const avgRate = projection.growth_rate_3mo_avg;
+      if (latestRate != null && latestRate !== 0) {
+        parts.push(`Latest: <strong style="color:var(--accent)">${latestRate}%/mo</strong>`);
+        if (avgRate != null && avgRate !== latestRate) {
+          parts.push(`3mo avg: ${avgRate}%/mo`);
+        }
+      } else if (avgRate != null && avgRate !== 0) {
+        parts.push(`Growing <strong style="color:var(--accent)">${avgRate}%/mo</strong> (3mo avg)`);
+      }
+      if (projection.decelerating) {
+        parts.push(`<span style="color:var(--amber)">⚠ decelerating</span>`);
       }
       const lastProj = projection.months_forward[projection.months_forward.length - 1];
       if (lastProj) {
@@ -1271,8 +1320,12 @@
       if (projection.churn_risk_mrr > 0) {
         parts.push(`Risk: <span style="color:var(--red)">${fmt$(projection.churn_risk_mrr)}/mo</span> from expiring contracts`);
       }
+      if (projection.growth_flag) {
+        parts.push(`<span style="color:var(--red)">⚠ ${projection.growth_flag}</span>`);
+      }
       summaryDiv.innerHTML = parts.join(' · ');
-      container.appendChild(summaryDiv);
+    } else if (summaryDiv) {
+      summaryDiv.remove();
     }
   }
 
@@ -2271,6 +2324,128 @@
     container.innerHTML = html;
   }
 
+  // ── Growth Constraints (Deficiency Analysis) ────────────
+  function renderDeficiency(snap) {
+    var body = document.getElementById('deficiency-body');
+    if (!body) return;
+    var da = snap.deficiency_analysis;
+    if (!da || !da.deficiencies || da.deficiencies.length === 0) {
+      body.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:12px;">No deficiency data available</div>';
+      return;
+    }
+
+    var html = '';
+
+    // Interaction insights (compound effects)
+    if (da.interaction_insights && da.interaction_insights.length > 0) {
+      html += '<div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:8px;padding:10px 14px;margin-bottom:12px;">';
+      html += '<div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:4px;">KEY INSIGHT</div>';
+      da.interaction_insights.forEach(function(insight) {
+        html += '<div style="font-size:12px;line-height:1.5;color:var(--text);">' + esc(insight) + '</div>';
+      });
+      html += '</div>';
+    }
+
+    // Ranked deficiencies
+    da.deficiencies.forEach(function(d, i) {
+      var sevColor = d.severity === 'critical' ? 'var(--red)' : d.severity === 'high' ? 'var(--amber)' : 'var(--text-muted)';
+      html += '<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border);">';
+      html += '<span style="font-weight:700;color:' + sevColor + ';min-width:18px;font-size:13px;">' + (i + 1) + '</span>';
+      html += '<div style="flex:1;">';
+      html += '<div style="font-size:13px;font-weight:600;color:var(--text);">' + esc(d.name) + ' <span style="font-size:11px;color:var(--text-muted);">(' + esc(d.category) + ')</span></div>';
+      html += '<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Current: <strong>' + esc(d.current) + '</strong> → Target: ' + esc(d.target) + '</div>';
+      if (d.impact) html += '<div style="font-size:12px;color:' + sevColor + ';margin-top:2px;">' + esc(d.impact) + '</div>';
+      if (d.fix) html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Fix: ' + esc(d.fix) + '</div>';
+      html += '</div></div>';
+    });
+
+    body.innerHTML = html;
+  }
+
+  // ── Team Model + Hiring ─────────────────────────────────
+  function renderTeamModel(snap) {
+    var body = document.getElementById('team-body');
+    if (!body) return;
+    var tm = snap.team_model;
+    var hc = snap.hiring_context;
+    if (!tm || !tm.available) {
+      body.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:12px;">Team data not available</div>';
+      return;
+    }
+
+    var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px;">';
+    html += '<div class="kpi"><div class="kpi-label">Team Size</div><div class="kpi-value">' + tm.headcount + '</div></div>';
+    html += '<div class="kpi"><div class="kpi-label">Team Salary</div><div class="kpi-value">' + fmt$(tm.total_team_salary) + '</div><div class="kpi-sub">/mo (excl. owner)</div></div>';
+    html += '<div class="kpi"><div class="kpi-label">Total w/ Owner</div><div class="kpi-value">' + fmt$(tm.total_with_owner) + '</div><div class="kpi-sub">/mo</div></div>';
+    if (hc && hc.monthly_headroom != null) {
+      html += '<div class="kpi"><div class="kpi-label">Monthly Headroom</div><div class="kpi-value' + (hc.monthly_headroom < 0 ? ' critical' : '') + '">' + fmt$(hc.monthly_headroom) + '</div><div class="kpi-sub">/mo after costs</div></div>';
+    }
+    html += '</div>';
+
+    // By function breakdown
+    html += '<div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">By Function</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px;">';
+    for (var fn in tm.by_function) {
+      var fd = tm.by_function[fn];
+      var isSPOF = (tm.single_points_of_failure || []).indexOf(fn) >= 0;
+      html += '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:6px;padding:8px 10px;' + (isSPOF ? 'border-left:3px solid var(--amber);' : '') + '">';
+      html += '<div style="font-size:11px;font-weight:700;color:var(--text);text-transform:uppercase;">' + esc(fn.replace(/_/g, ' ')) + '</div>';
+      html += '<div style="font-size:12px;color:var(--text-muted);">' + fd.headcount + ' people · ' + fmt$(fd.total) + '/mo</div>';
+      if (isSPOF) html += '<div style="font-size:10px;color:var(--amber);margin-top:2px;">⚠ single point of failure</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    body.innerHTML = html;
+  }
+
+  // ── Hiring Scenario Form Handler ──────────────────────
+  function initHiringForm() {
+    var btn = document.getElementById('hire-submit');
+    if (!btn) return;
+    btn.addEventListener('click', function() {
+      var role = document.getElementById('hire-role').value.trim() || 'New hire';
+      var cost = parseFloat(document.getElementById('hire-cost').value) || 0;
+      var isRevenue = document.getElementById('hire-revenue').checked;
+      var resultDiv = document.getElementById('hiring-result');
+      if (cost <= 0) {
+        resultDiv.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Enter a monthly cost</div>';
+        return;
+      }
+      resultDiv.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Analyzing...</div>';
+
+      fetch('/dashboard/api/hiring-scenario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: role, monthly_cost: cost, is_revenue_generating: isRevenue }),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.error) {
+          resultDiv.innerHTML = '<div style="color:var(--red);font-size:12px;">' + esc(data.error) + '</div>';
+          return;
+        }
+        var html = '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;line-height:1.6;">';
+        html += '<div style="font-weight:700;margin-bottom:6px;">' + esc(data.proposed_role) + ' @ ' + fmt$(data.proposed_cost) + '/mo</div>';
+        html += '<div>Can afford: <strong style="color:' + (data.can_afford ? 'var(--green)' : 'var(--red)') + '">' + (data.can_afford ? 'Yes' : 'No') + '</strong></div>';
+        html += '<div>Headroom after hire: <strong>' + fmt$(data.headroom_after_hire) + '/mo</strong></div>';
+        if (data.additional_closes_needed != null) {
+          html += '<div>Needs <strong>' + data.additional_closes_needed + ' closes/mo</strong> to self-fund</div>';
+        }
+        if (data.cost_as_pct_of_mrr != null) {
+          html += '<div>Team cost would be <strong>' + data.cost_as_pct_of_mrr + '%</strong> of MRR (target: &lt;40%)</div>';
+        }
+        html += '<div>MRR threshold for this hire: <strong>' + fmt$(data.mrr_threshold_for_hire) + '</strong></div>';
+        html += '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;font-style:italic;">' + esc(data.note) + '</div>';
+        html += '</div>';
+        resultDiv.innerHTML = html;
+      })
+      .catch(function(e) {
+        resultDiv.innerHTML = '<div style="color:var(--red);font-size:12px;">Failed: ' + e.message + '</div>';
+      });
+    });
+  }
+
   // ── Data Quality ─────────────────────────────────────────
   function renderQuality(snap) {
     const degraded = snap.degraded || [];
@@ -2372,6 +2547,7 @@
   (async function init() {
     initNavigation();
     initGlobalWindowSelector();
+    initHiringForm();
     const [snap, history] = await Promise.all([fetchSnapshot(), fetchHistory()]);
     if (history) historyData = history;
     if (snap) render(snap);

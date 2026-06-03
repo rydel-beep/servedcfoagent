@@ -28,6 +28,9 @@ from xero_wages_categoriser import (
     categorise_contractors_account,
     OWNER_RECURRING_GROSS_MONTHLY,
 )
+from team_model import build_team_model
+from deficiency_analysis import build_deficiency_analysis
+from hiring_model import compute_hiring_analysis
 import history_store
 
 logger = logging.getLogger(__name__)
@@ -113,6 +116,55 @@ def _reconcile_clients(sales: dict | None, client_health: dict | None) -> dict:
                 result["zero_mrr_active"].append(c.get("name", "Unknown"))
 
     return result
+
+
+def _run_integrity_checks(snap: dict, hormozi: dict) -> list[str]:
+    """Run cross-source sanity checks. Returns list of warning strings."""
+    warnings = []
+
+    # Gross margin in valid range
+    gm = (snap.get("xero") or {}).get("gross_margin_pct")
+    if gm is not None and (gm < 0 or gm > 100):
+        warnings.append(f"Gross margin {gm}% outside valid range (0-100%)")
+
+    # Projection growth rate sanity
+    proj = ((snap.get("client_health") or {}).get("projection") or {})
+    growth_avg = proj.get("growth_rate_3mo_avg")
+    if growth_avg is not None and abs(growth_avg) > 50:
+        warnings.append(
+            f"MRR projection growth rate {growth_avg}%/mo exceeds 50% — "
+            f"likely a calc artifact or early-stage noise"
+        )
+
+    # Commission ≤ cash collected
+    costs = snap.get("costs") or {}
+    sales = snap.get("sales") or {}
+    deep_money = (sales.get("deep") or {}).get("money") or {}
+    total_cash = deep_money.get("total_cash_collected", 0) or 0
+    closer_comm = costs.get("closer_commission") or 0
+    setter_comm = costs.get("setter_commission") or 0
+    if total_cash > 0 and (closer_comm + setter_comm) > total_cash:
+        warnings.append(
+            f"Total commissions (${closer_comm + setter_comm:,.0f}) exceed "
+            f"total cash collected (${total_cash:,.0f})"
+        )
+
+    # No negative MRR
+    ch = snap.get("client_health") or {}
+    mrr = ch.get("current_mrr")
+    if mrr is not None and mrr < 0:
+        warnings.append(f"Negative MRR (${mrr:,.0f}) — impossible, check source")
+
+    # Hormozi ratios sanity
+    for key, m in hormozi.items():
+        val = m.get("value")
+        if val is not None:
+            if key in ("ltgp_cac", "ltgp_to_cac", "ltv_to_cac") and val > 100:
+                warnings.append(f"Hormozi {key} = {val}x — implausibly high, verify inputs")
+            if key == "payback_days" and val < 0:
+                warnings.append(f"Hormozi payback_days = {val} — negative, impossible")
+
+    return warnings
 
 
 def build_snapshot() -> dict:
@@ -317,6 +369,45 @@ def build_snapshot() -> dict:
     verdicts = build_verdicts(snapshot, hormozi)
     snapshot["hormozi"] = hormozi
     snapshot["verdicts"] = verdicts
+
+    # ── Team model + strategic layer ────────────────────────────────────
+    team = build_team_model()
+    snapshot["team_model"] = team
+
+    deficiency = build_deficiency_analysis(
+        snapshot, team, hormozi, true_team_cost,
+    )
+    snapshot["deficiency_analysis"] = deficiency
+
+    # Pre-compute a sample hiring scenario for the dashboard
+    monthly_net = 0.0
+    xero_net = (xero_result.get("xero") or {}).get("net_profit")
+    if xero_net is not None:
+        monthly_net = xero_net
+
+    avg_cash_per_close = None
+    deep_money = ((sales_result.get("sales") or {}).get("deep") or {}).get("money") or {}
+    avg_cash_per_close = deep_money.get("avg_cash_per_close")
+
+    snapshot["hiring_context"] = {
+        "monthly_net_income": round(monthly_net, 2),
+        "monthly_headroom": round(monthly_net - true_team_cost, 2) if monthly_net else None,
+        "true_team_cost": true_team_cost,
+        "current_mrr": (health_result.get("client_health") or {}).get("current_mrr"),
+        "avg_contract_value": deep_money.get("avg_contract"),
+        "close_rate_pct": ((sales_result.get("sales") or {}).get("funnel") or {}).get("show_to_close_pct"),
+        "avg_cash_per_close": avg_cash_per_close,
+        "gross_margin_pct": (xero_result.get("xero") or {}).get("gross_margin_pct"),
+        "note": "Use /dashboard/api/hiring-scenario to model specific hires",
+    }
+
+    # ── Data integrity sanity checks ──────────────────────────────────────
+    integrity_warnings = _run_integrity_checks(snapshot, hormozi)
+    if integrity_warnings:
+        for w in integrity_warnings:
+            degraded.append({"metric": "integrity_check", "reason": w})
+        snapshot["degraded"] = degraded
+        snapshot["ok"] = False
 
     _persist(snapshot)
 
