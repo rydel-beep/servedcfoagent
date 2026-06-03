@@ -424,14 +424,11 @@
     </div>
     <div id="team-body"></div>
     <div id="hiring-form" style="margin-top:12px;">
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Model a hire:</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <input type="text" id="hire-role" placeholder="Role" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;width:120px;">
-        <input type="number" id="hire-cost" placeholder="$/mo" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;width:90px;">
-        <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px;">
-          <input type="checkbox" id="hire-revenue"> Revenue-generating
-        </label>
-        <button id="hire-submit" style="padding:6px 14px;background:var(--accent);border:none;border-radius:6px;color:white;font-size:12px;cursor:pointer;">Analyze</button>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Model hires:</div>
+      <div id="hire-roles-list"></div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button id="hire-add-role" style="padding:5px 12px;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:11px;cursor:pointer;">+ Add role</button>
+        <button id="hire-submit" style="padding:5px 14px;background:var(--accent);border:none;border-radius:6px;color:white;font-size:12px;cursor:pointer;">Analyze</button>
       </div>
       <div id="hiring-result" style="margin-top:10px;"></div>
     </div>

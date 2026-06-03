@@ -2399,17 +2399,122 @@
     body.innerHTML = html;
   }
 
-  // ── Hiring Scenario Form Handler ──────────────────────
+  // ── Hiring Scenario Form Handler (multi-role) ──────────
+  var _hireRoleIdCounter = 0;
+
+  function _addHireRoleRow() {
+    var list = document.getElementById('hire-roles-list');
+    if (!list) return;
+    _hireRoleIdCounter++;
+    var id = _hireRoleIdCounter;
+    var row = document.createElement('div');
+    row.className = 'hire-role-row';
+    row.id = 'hire-row-' + id;
+    row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px;';
+    row.innerHTML =
+      '<input type="text" class="hire-role-input" placeholder="Role" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;width:120px;">' +
+      '<input type="number" class="hire-cost-input" placeholder="$/mo" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;width:90px;">' +
+      '<label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px;">' +
+      '<input type="checkbox" class="hire-revenue-input"> Rev-gen' +
+      '</label>' +
+      '<button class="hire-remove-btn" data-row="hire-row-' + id + '" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:2px 6px;opacity:0.6;" title="Remove">&times;</button>';
+    list.appendChild(row);
+    row.querySelector('.hire-remove-btn').addEventListener('click', function() {
+      var target = document.getElementById(this.getAttribute('data-row'));
+      if (target) target.remove();
+    });
+  }
+
+  function _collectHireRoles() {
+    var rows = document.querySelectorAll('.hire-role-row');
+    var roles = [];
+    for (var i = 0; i < rows.length; i++) {
+      var role = rows[i].querySelector('.hire-role-input').value.trim() || 'New hire';
+      var cost = parseFloat(rows[i].querySelector('.hire-cost-input').value) || 0;
+      var isRev = rows[i].querySelector('.hire-revenue-input').checked;
+      if (cost > 0) {
+        roles.push({ role: role, monthly_cost: cost, is_revenue_generating: isRev });
+      }
+    }
+    return roles;
+  }
+
+  function _renderHiringResult(data) {
+    var html = '';
+    var c = data.combined;
+    var cur = data.current;
+
+    // ── Current financial state ──
+    html += '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;line-height:1.7;margin-bottom:10px;">';
+    html += '<div style="font-weight:700;margin-bottom:6px;color:var(--text);">Current State</div>';
+    if (cur.monthly_revenue != null) html += '<div>Revenue: <strong>' + fmt$(cur.monthly_revenue) + '/mo</strong></div>';
+    if (cur.gross_margin_pct != null) html += '<div>Gross margin: <strong>' + cur.gross_margin_pct + '%</strong></div>';
+    html += '<div>Team cost: <strong>' + fmt$(cur.true_team_cost) + '/mo</strong></div>';
+    html += '<div>Monthly net: <strong style="color:' + (cur.monthly_net >= 0 ? 'var(--green)' : 'var(--red)') + '">' + fmt$(cur.monthly_net) + '/mo</strong></div>';
+    html += '<div>Status: <strong>' + esc(cur.runway.label) + '</strong></div>';
+    html += '</div>';
+
+    // ── Per-role breakdown ──
+    if (data.per_role.length > 0) {
+      html += '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;line-height:1.7;margin-bottom:10px;">';
+      html += '<div style="font-weight:700;margin-bottom:6px;color:var(--text);">Per Role</div>';
+      for (var i = 0; i < data.per_role.length; i++) {
+        var r = data.per_role[i];
+        html += '<div style="padding:4px 0;' + (i > 0 ? 'border-top:1px solid var(--border);margin-top:4px;' : '') + '">';
+        html += '<strong>' + esc(r.role) + '</strong> @ ' + fmt$(r.monthly_cost) + '/mo';
+        if (r.is_revenue_generating) html += ' <span style="color:var(--accent);font-size:10px;">REV-GEN</span>';
+        html += '<br>';
+        if (r.closes_to_self_fund != null) {
+          html += 'Self-fund: <strong>' + r.closes_to_self_fund + ' closes/mo</strong><br>';
+        }
+        if (r.closes_to_offset != null) {
+          html += 'Closes to offset: <strong>' + r.closes_to_offset + '</strong><br>';
+        }
+        if (r.additional_mrr_needed != null) {
+          html += 'MRR needed to offset: <strong>' + fmt$(r.additional_mrr_needed) + '</strong><br>';
+        }
+        if (r.self_funding_note) html += '<span style="color:var(--text-muted);font-size:11px;">' + esc(r.self_funding_note) + '</span>';
+        if (r.offset_note) html += '<span style="color:var(--text-muted);font-size:11px;">' + esc(r.offset_note) + '</span>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    // ── Combined impact ──
+    html += '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;line-height:1.7;">';
+    html += '<div style="font-weight:700;margin-bottom:6px;color:var(--text);">Combined Impact (' + c.role_count + ' role' + (c.role_count > 1 ? 's' : '') + ')</div>';
+    html += '<div>Added cost: <strong>' + fmt$(c.total_added_cost) + '/mo</strong></div>';
+    html += '<div>Can afford: <strong style="color:' + (c.can_afford ? 'var(--green)' : 'var(--red)') + '">' + (c.can_afford ? 'Yes' : 'No') + '</strong></div>';
+    html += '<div>Monthly net: ' + fmt$(c.monthly_net_before) + ' &rarr; <strong style="color:' + (c.monthly_net_after >= 0 ? 'var(--green)' : 'var(--red)') + '">' + fmt$(c.monthly_net_after) + '/mo</strong></div>';
+    html += '<div>After: <strong>' + esc(c.runway_after.label) + '</strong></div>';
+    if (c.combined_closes_to_offset != null) {
+      html += '<div>Closes to offset all hires: <strong>' + c.combined_closes_to_offset + '/mo</strong></div>';
+    }
+    if (c.cost_as_pct_of_mrr != null) {
+      html += '<div>Team cost would be <strong>' + c.cost_as_pct_of_mrr + '%</strong> of MRR (target: &lt;40%)</div>';
+    }
+    html += '<div>MRR threshold: <strong>' + fmt$(c.mrr_threshold_for_hires) + '</strong></div>';
+    html += '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;font-style:italic;">' + esc(data.note) + '</div>';
+    html += '</div>';
+
+    return html;
+  }
+
   function initHiringForm() {
-    var btn = document.getElementById('hire-submit');
-    if (!btn) return;
-    btn.addEventListener('click', function() {
-      var role = document.getElementById('hire-role').value.trim() || 'New hire';
-      var cost = parseFloat(document.getElementById('hire-cost').value) || 0;
-      var isRevenue = document.getElementById('hire-revenue').checked;
+    var addBtn = document.getElementById('hire-add-role');
+    var submitBtn = document.getElementById('hire-submit');
+    if (!addBtn || !submitBtn) return;
+
+    // Start with one empty row
+    _addHireRoleRow();
+
+    addBtn.addEventListener('click', function() { _addHireRoleRow(); });
+
+    submitBtn.addEventListener('click', function() {
+      var roles = _collectHireRoles();
       var resultDiv = document.getElementById('hiring-result');
-      if (cost <= 0) {
-        resultDiv.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Enter a monthly cost</div>';
+      if (roles.length === 0) {
+        resultDiv.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Add at least one role with a cost</div>';
         return;
       }
       resultDiv.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Analyzing...</div>';
@@ -2417,7 +2522,7 @@
       fetch('/dashboard/api/hiring-scenario', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: role, monthly_cost: cost, is_revenue_generating: isRevenue }),
+        body: JSON.stringify({ roles: roles }),
       })
       .then(function(r) { return r.json(); })
       .then(function(data) {
@@ -2425,23 +2530,10 @@
           resultDiv.innerHTML = '<div style="color:var(--red);font-size:12px;">' + esc(data.error) + '</div>';
           return;
         }
-        var html = '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;line-height:1.6;">';
-        html += '<div style="font-weight:700;margin-bottom:6px;">' + esc(data.proposed_role) + ' @ ' + fmt$(data.proposed_cost) + '/mo</div>';
-        html += '<div>Can afford: <strong style="color:' + (data.can_afford ? 'var(--green)' : 'var(--red)') + '">' + (data.can_afford ? 'Yes' : 'No') + '</strong></div>';
-        html += '<div>Headroom after hire: <strong>' + fmt$(data.headroom_after_hire) + '/mo</strong></div>';
-        if (data.additional_closes_needed != null) {
-          html += '<div>Needs <strong>' + data.additional_closes_needed + ' closes/mo</strong> to self-fund</div>';
-        }
-        if (data.cost_as_pct_of_mrr != null) {
-          html += '<div>Team cost would be <strong>' + data.cost_as_pct_of_mrr + '%</strong> of MRR (target: &lt;40%)</div>';
-        }
-        html += '<div>MRR threshold for this hire: <strong>' + fmt$(data.mrr_threshold_for_hire) + '</strong></div>';
-        html += '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;font-style:italic;">' + esc(data.note) + '</div>';
-        html += '</div>';
-        resultDiv.innerHTML = html;
+        resultDiv.innerHTML = _renderHiringResult(data);
       })
       .catch(function(e) {
-        resultDiv.innerHTML = '<div style="color:var(--red);font-size:12px;">Failed: ' + e.message + '</div>';
+        resultDiv.innerHTML = '<div style="color:var(--red);font-size:12px;">Failed: ' + esc(e.message) + '</div>';
       });
     });
   }

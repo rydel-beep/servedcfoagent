@@ -137,7 +137,7 @@ def api_history():
 @bp.route("/api/hiring-scenario", methods=["POST"])
 @require_auth
 def api_hiring_scenario():
-    """Model a specific hire's affordability and payback."""
+    """Model one or more hires' affordability and financial impact."""
     from hiring_model import compute_hiring_analysis
     from snapshot import load_persisted
 
@@ -146,18 +146,26 @@ def api_hiring_scenario():
         return jsonify({"error": "No snapshot available"}), 404
 
     data = request.get_json(silent=True) or {}
-    proposed_cost = data.get("monthly_cost", 0)
-    proposed_role = data.get("role", "New hire")
-    is_revenue = data.get("is_revenue_generating", False)
+
+    # Accept either a list of roles or a single role (backwards compat)
+    roles = data.get("roles")
+    if not roles:
+        roles = [{
+            "role": data.get("role", "New hire"),
+            "monthly_cost": data.get("monthly_cost", 0),
+            "is_revenue_generating": data.get("is_revenue_generating", False),
+        }]
 
     ctx = snap.get("hiring_context") or {}
+    profit = snap.get("profit") or {}
 
     result = compute_hiring_analysis(
-        proposed_cost=proposed_cost,
-        proposed_role=proposed_role,
-        is_revenue_generating=is_revenue,
+        roles=roles,
         monthly_net_income=ctx.get("monthly_net_income", 0),
         current_mrr=ctx.get("current_mrr", 0),
+        monthly_revenue=ctx.get("monthly_revenue") or profit.get("total_revenue"),
+        monthly_cogs=profit.get("total_cogs"),
+        monthly_opex=profit.get("total_operating_expenses"),
         avg_contract_value=ctx.get("avg_contract_value"),
         close_rate_pct=ctx.get("close_rate_pct"),
         avg_cash_per_close=ctx.get("avg_cash_per_close"),
