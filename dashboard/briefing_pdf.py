@@ -351,18 +351,35 @@ def generate_briefing_pdf(snap: dict) -> bytes:
     pdf.add_page()
     pdf._section_title("2", "Financial Position (Dual-Basis)")
 
-    headers = ["", "Cash Basis (Stripe)", "Recognized (Xero)"]
-    cw = [50, 57, 57]
-    ca = ["L", "R", "R"]
-    rows = [
-        ["Revenue", _fmt(_get(cash_basis, "revenue")), _fmt(_get(rec_basis, "revenue"))],
-        ["COGS", _fmt(_get(cash_basis, "cogs")), _fmt(_get(rec_basis, "cogs"))],
-        ["Gross Profit", _fmt(_get(cash_basis, "gross_profit")), _fmt(_get(rec_basis, "gross_profit"))],
-        ["Gross Margin", _pct(_get(cash_basis, "gross_margin_pct")), _pct(_get(rec_basis, "gross_margin_pct"))],
-        ["OpEx", _fmt(_get(cash_basis, "opex")), _fmt(_get(rec_basis, "opex"))],
-        {"cells": ["Monthly Net", _fmt(cash_net), _fmt(rec_net)], "bold": True,
-         "color": GREEN if (cash_net or 0) >= 0 else RED},
-    ]
+    xero_available = rec_basis is not None
+    cost_source = _get(cash_basis, "cost_source") or "xero"
+
+    if xero_available:
+        headers = ["", "Cash Basis (Stripe)", "Recognized (Xero)"]
+        cw = [50, 57, 57]
+        ca = ["L", "R", "R"]
+        rows = [
+            ["Revenue", _fmt(_get(cash_basis, "revenue")), _fmt(_get(rec_basis, "revenue"))],
+            ["COGS", _fmt(_get(cash_basis, "cogs")), _fmt(_get(rec_basis, "cogs"))],
+            ["Gross Profit", _fmt(_get(cash_basis, "gross_profit")), _fmt(_get(rec_basis, "gross_profit"))],
+            ["Gross Margin", _pct(_get(cash_basis, "gross_margin_pct")), _pct(_get(rec_basis, "gross_margin_pct"))],
+            ["OpEx", _fmt(_get(cash_basis, "opex")), _fmt(_get(rec_basis, "opex"))],
+            {"cells": ["Monthly Net", _fmt(cash_net), _fmt(rec_net)], "bold": True,
+             "color": GREEN if (cash_net or 0) >= 0 else RED},
+        ]
+    else:
+        # Xero unavailable -- show cash basis with burn-derived costs
+        headers = ["", "Cash Basis (Stripe)"]
+        cw = [60, 104]
+        ca = ["L", "R"]
+        rows = [
+            ["Revenue (Stripe 30d)", _fmt(_get(cash_basis, "revenue"))],
+            ["Total Burn (all costs)", _fmt(_get(cash_basis, "opex"))],
+            {"cells": ["Cash Net (Rev - Burn)", _fmt(cash_net)], "bold": True,
+             "color": GREEN if (cash_net or 0) >= 0 else RED},
+        ]
+        pdf._body_text("Note: Xero P&L unavailable. Costs estimated from hardcoded burn components.")
+
     pdf._table(headers, rows, cw, ca)
     pdf.ln(3)
 
@@ -377,6 +394,8 @@ def generate_briefing_pdf(snap: dict) -> bytes:
         f"Total recurring: {_fmt(total_burn)}",
     ]
     pdf._body_text("  |  ".join(burn_items))
+    if cost_source == "burn_fallback":
+        pdf._body_text("(Ad spend, subs, other from last-known values -- Xero offline)")
 
     gm = _get(rec_basis, "gross_margin_pct") or _get(cash_basis, "gross_margin_pct")
     analysis = _build_financial_analysis(cash_net, rec_net, gm, total_burn, current_mrr)
@@ -525,6 +544,11 @@ def generate_briefing_pdf(snap: dict) -> bytes:
         rows.append({"cells": [label, v_str, bench, s_str], "color": color, "bold": False})
     pdf._table(headers, rows, cw, ca)
     pdf.ln(2)
+
+    # Flag missing metrics
+    missing_metrics = [label for label, val, _, _ in metrics if val is None]
+    if missing_metrics:
+        pdf._body_text(f"({', '.join(missing_metrics)} unavailable -- requires Xero gross margin data)")
 
     ue_analysis = _build_unit_econ_analysis(hormozi)
     pdf._analysis_box(ue_analysis)

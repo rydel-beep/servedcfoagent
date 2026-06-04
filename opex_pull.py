@@ -37,6 +37,12 @@ OWNER_TAKEHOME_MONTHLY = 6800.0
 # Instantly $13 · ElevenLabs $9 · Railway $8 · CapCut $6
 SUBSCRIPTIONS_OVERRIDE = 3867.0
 
+# ── Fallback values when Xero is unavailable ────────────────────────────
+# Last known from Xero P&L. Used ONLY when Xero is down so the dashboard
+# and PDF aren't blank. Updated when Xero values change materially.
+AD_SPEND_FALLBACK = 8002.0       # Xero Advertising account (trailing 30d avg)
+OTHER_OPEX_FALLBACK = 817.0      # Consulting + bank fees + office (recurring)
+
 # ── Line-item classification ──────────────────────────────────────────────
 _OPEX_CATEGORY = {
     # Team cost (already counted via SALARY tab)
@@ -98,12 +104,22 @@ def get_monthly_burn(
     owner_pay = OWNER_TAKEHOME_MONTHLY
 
     if not xero_data:
+        # Use hardcoded known values for burn components that don't need Xero
+        subscriptions = SUBSCRIPTIONS_OVERRIDE
+        ad_spend = AD_SPEND_FALLBACK
+        other_opex = OTHER_OPEX_FALLBACK
+        total = team_wise + owner_pay + ad_spend + subscriptions + other_opex
         return {
             "available": False,
-            "reason": "No Xero P&L data",
-            "total_recurring_burn": team_wise + owner_pay,
-            "team": team_wise,
-            "owner_pay": owner_pay,
+            "reason": "No Xero P&L data -- using hardcoded burn components",
+            "total_recurring_burn": round(total, 2),
+            "team": round(team_wise, 2),
+            "owner_pay": round(owner_pay, 2),
+            "ad_spend": round(ad_spend, 2),
+            "ad_spend_note": "Fallback estimate (Xero unavailable)",
+            "subscriptions": round(subscriptions, 2),
+            "other_opex": round(other_opex, 2),
+            "source": "salary_tab + hardcoded_fallback",
         }
 
     opex_lines = xero_data.get("opex_line_items") or []

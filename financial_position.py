@@ -58,6 +58,8 @@ def build_financial_position(
     ad_spend: float | None = None,
     # MRR for ratio calculations
     current_mrr: float = 0.0,
+    # Burn fallback (when Xero unavailable)
+    total_burn: float | None = None,
 ) -> dict:
     """Build the dual-basis financial position model.
 
@@ -92,10 +94,18 @@ def build_financial_position(
             (xero_cogs or 0) + (xero_opex or 0)
         ) if xero_cogs is not None or xero_opex is not None else None
 
+        cost_source = "xero"
         if cash_costs is not None:
             cash_net = stripe_cash_30d - cash_costs
             cash_gp = stripe_cash_30d - (xero_cogs or 0)
             cash_gm = round(cash_gp / stripe_cash_30d * 100, 1) if stripe_cash_30d > 0 else None
+        elif total_burn is not None and total_burn > 0:
+            # Xero unavailable -- use burn breakdown as cost proxy
+            cash_costs = total_burn
+            cash_net = stripe_cash_30d - total_burn
+            cash_gp = None  # Can't split COGS vs OpEx without Xero
+            cash_gm = None
+            cost_source = "burn_fallback"
         else:
             cash_net = None
             cash_gp = None
@@ -107,10 +117,11 @@ def build_financial_position(
             "cogs": _safe_round(xero_cogs),
             "gross_profit": _safe_round(cash_gp),
             "gross_margin_pct": cash_gm,
-            "opex": _safe_round(xero_opex),
+            "opex": _safe_round(xero_opex) if cost_source == "xero" else _safe_round(total_burn),
             "monthly_net": _safe_round(cash_net),
             "status": _net_status(cash_net),
             "hiring_headroom": _safe_round(cash_net),
+            "cost_source": cost_source,
         }
 
     # ── Recognized basis ──

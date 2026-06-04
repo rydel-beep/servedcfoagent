@@ -3,7 +3,7 @@ tests/test_opex_pull.py
 -----------------------
 Tests for the categorised monthly burn breakdown.
 """
-from opex_pull import get_monthly_burn, SUBSCRIPTIONS_OVERRIDE, OWNER_TAKEHOME_MONTHLY
+from opex_pull import get_monthly_burn, SUBSCRIPTIONS_OVERRIDE, OWNER_TAKEHOME_MONTHLY, AD_SPEND_FALLBACK, OTHER_OPEX_FALLBACK
 
 
 SAMPLE_XERO = {
@@ -113,8 +113,13 @@ def test_cogs_ratio():
 
 
 def test_no_xero_data_fallback():
+    """When Xero is down, burn includes hardcoded fallbacks for all components."""
     result = get_monthly_burn(None, TEAM_COST, SALARY_BASELINE)
     assert not result["available"]
-    assert result["total_recurring_burn"] == SALARY_BASELINE + OWNER_TAKEHOME_MONTHLY
     assert result["team"] == SALARY_BASELINE
     assert result["owner_pay"] == OWNER_TAKEHOME_MONTHLY
+    assert result["ad_spend"] == AD_SPEND_FALLBACK
+    assert result["subscriptions"] == SUBSCRIPTIONS_OVERRIDE
+    assert result["other_opex"] == OTHER_OPEX_FALLBACK
+    expected_total = SALARY_BASELINE + OWNER_TAKEHOME_MONTHLY + AD_SPEND_FALLBACK + SUBSCRIPTIONS_OVERRIDE + OTHER_OPEX_FALLBACK
+    assert result["total_recurring_burn"] == expected_total

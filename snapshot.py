@@ -410,6 +410,7 @@ def build_snapshot() -> dict:
         true_team_cost=true_team_cost,
         ad_spend=xero_d.get("xero_ad_spend"),
         current_mrr=current_mrr,
+        total_burn=burn.get("total_recurring_burn"),
     )
     snapshot["financial_position"] = fin_pos
 
