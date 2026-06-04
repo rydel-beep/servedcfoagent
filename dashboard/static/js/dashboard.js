@@ -112,6 +112,7 @@
     renderSetters(snap);
     renderClosers(snap);
     renderCohortRetention(snap);
+    renderForwardProjection(snap);
     renderDeficiency(snap);
     renderTeamModel(snap);
     renderTeamRoster(snap);
@@ -2464,44 +2465,6 @@
     }
     html += '</div>';
 
-    // Forward MRR churn curve (if available)
-    var fwd = snap.forward_mrr;
-    if (fwd && fwd.forward_months && fwd.forward_months.length > 0) {
-      html += '<div style="margin-top:14px;">';
-      html += '<div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">Forward Recognized MRR (contract expirations)</div>';
-
-      // Mini bar chart using inline divs
-      var maxMrr = 0;
-      var fwdMonths = fwd.forward_months.slice(0, 6);
-      for (var mi = 0; mi < fwdMonths.length; mi++) {
-        if (fwdMonths[mi].recognized_mrr > maxMrr) maxMrr = fwdMonths[mi].recognized_mrr;
-      }
-      html += '<div style="display:flex;gap:4px;align-items:flex-end;height:60px;margin-bottom:4px;">';
-      for (var mi = 0; mi < fwdMonths.length; mi++) {
-        var fm = fwdMonths[mi];
-        var pct = maxMrr > 0 ? (fm.recognized_mrr / maxMrr * 100) : 0;
-        var barColor = fm.recognized_mrr >= 29671 ? 'var(--green)' : 'var(--red)';
-        html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;">';
-        html += '<div style="width:100%;background:' + barColor + ';border-radius:3px 3px 0 0;height:' + Math.max(pct, 2) + '%;opacity:0.7;"></div>';
-        html += '</div>';
-      }
-      html += '</div>';
-      html += '<div style="display:flex;gap:4px;font-size:9px;color:var(--text-muted);">';
-      for (var mi = 0; mi < fwdMonths.length; mi++) {
-        var fm = fwdMonths[mi];
-        var shortMonth = fm.month.split(' ')[0].substring(0, 3);
-        html += '<div style="flex:1;text-align:center;">' + shortMonth + '<br>' + fmt$(fm.recognized_mrr) + '<br>' + fm.clients + ' cl.</div>';
-      }
-      html += '</div>';
-
-      html += '<div style="font-size:10px;color:var(--text-muted);margin-top:4px;">MTM floor: ' + fmt$(fwd.mtm_floor) + '/mo | Renewal rate: 0% historical (0/12)</div>';
-      if (fwd.expiry_schedule && fwd.expiry_schedule.length > 0) {
-        var nextExpiry = fwd.expiry_schedule[0];
-        html += '<div style="font-size:10px;color:var(--yellow);margin-top:2px;">Next: ' + nextExpiry.contracts_expiring + ' contract(s) expiring ' + nextExpiry.month + ' = -' + fmt$(nextExpiry.mrr_at_risk) + '/mo</div>';
-      }
-      html += '</div>';
-    }
-
     body.innerHTML = html;
   }
 
@@ -2838,6 +2801,221 @@
       .catch(function(e) {
         resultDiv.innerHTML = '<div style="color:var(--red);font-size:12px;">Failed: ' + esc(e.message) + '</div>';
       });
+    });
+  }
+
+  // ── Forward Projection (standalone, with re-sign slider) ──
+  function renderForwardProjection(snap) {
+    var body = document.getElementById('forward-projection-body');
+    if (!body) return;
+
+    var fwd = snap.forward_mrr;
+    if (!fwd || !fwd.forward_months || fwd.forward_months.length === 0) {
+      body.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:12px;">Forward MRR data not available</div>';
+      return;
+    }
+
+    var resignPct = parseInt(document.getElementById('resign-slider').value) || 0;
+    _renderForwardTable(snap, resignPct);
+  }
+
+  function _renderForwardTable(snap, resignPct) {
+    var body = document.getElementById('forward-projection-body');
+    if (!body) return;
+
+    var fwd = snap.forward_mrr;
+    if (!fwd || !fwd.forward_months) return;
+
+    var burn = snap.monthly_burn || {};
+    var totalBurn = burn.total_recurring_burn || 0;
+    var cashPos = snap.cash_position || {};
+    var startingCash = cashPos.cash_in_bank || 0;  // cash_in_bank ONLY, not total_available
+
+    var fwdMonths = fwd.forward_months.slice(0, 7);
+    var expiryByMonth = {};
+    (fwd.expiry_schedule || []).forEach(function(e) {
+      expiryByMonth[e.month] = e;
+    });
+
+    // Build the forward model with re-sign adjustment
+    var runningCash = startingCash;
+    var rows = [];
+    var monthNames = {
+      'January': '01', 'February': '02', 'March': '03', 'April': '04',
+      'May': '05', 'June': '06', 'July': '07', 'August': '08',
+      'September': '09', 'October': '10', 'November': '11', 'December': '12'
+    };
+
+    for (var i = 0; i < fwdMonths.length; i++) {
+      var fm = fwdMonths[i];
+      var baseMrr = fm.recognized_mrr || 0;
+      var baseClients = fm.clients || 0;
+
+      // Calculate re-sign uplift: what MRR would have been lost this month?
+      // The delta from prior month (if negative) is the churn; re-sign recovers a fraction
+      var resignUplift = 0;
+      var resignClients = 0;
+      if (resignPct > 0 && i > 0) {
+        // Accumulate all expiring MRR up to and including this month
+        // The sheet already handles churn by zeroing out cells past end date
+        // So delta = current - prior captures the drop
+        var prevMrr = fwdMonths[i - 1].recognized_mrr || 0;
+        var drop = prevMrr - baseMrr;
+        if (drop > 0) {
+          resignUplift = drop * (resignPct / 100);
+          // Approximate clients retained
+          var avgPerClient = fwd.avg_monthly_per_client || 2200;
+          resignClients = avgPerClient > 0 ? Math.round(resignUplift / avgPerClient) : 0;
+        }
+      }
+      // Cumulative: carry forward prior re-sign uplifts
+      if (i > 0 && rows[i - 1]) {
+        resignUplift += rows[i - 1].cumulativeResign || 0;
+        resignClients += rows[i - 1].cumulativeResignClients || 0;
+      }
+
+      var adjustedMrr = baseMrr + resignUplift;
+      var adjustedClients = baseClients + resignClients;
+
+      // Net = recognized revenue - total burn (recognized net, only view we have)
+      var netCash = adjustedMrr - totalBurn;
+      runningCash = runningCash + netCash;
+
+      // Team cost as % of MRR
+      var teamCostPct = adjustedMrr > 0 ? Math.round(totalBurn / adjustedMrr * 100) : null;
+
+      // Graded sustainability
+      var grade = 'healthy';
+      var gradeReason = '';
+      if (runningCash < 0) { grade = 'unsustainable'; gradeReason = 'Cash negative'; }
+      else if (teamCostPct !== null && teamCostPct > 80) { grade = 'unsustainable'; gradeReason = 'Burn > 80% of MRR'; }
+      else if (netCash < -5000) { grade = 'unsustainable'; gradeReason = 'Net loss > $5k/mo'; }
+      else if (teamCostPct !== null && teamCostPct > 50) { grade = 'tight'; gradeReason = 'Burn > 50% of MRR'; }
+      else if (netCash < 0) { grade = 'tight'; gradeReason = 'Slightly negative'; }
+      else { gradeReason = 'Healthy'; }
+
+      rows.push({
+        month: fm.month,
+        baseMrr: baseMrr,
+        adjustedMrr: adjustedMrr,
+        clients: adjustedClients,
+        resignUplift: resignUplift,
+        cumulativeResign: resignUplift,
+        cumulativeResignClients: resignClients,
+        net: netCash,
+        cashBalance: runningCash,
+        teamCostPct: teamCostPct,
+        grade: grade,
+        gradeReason: gradeReason,
+      });
+    }
+
+    // Summary stats
+    var healthyCount = rows.filter(function(r) { return r.grade === 'healthy'; }).length;
+    var tightCount = rows.filter(function(r) { return r.grade === 'tight'; }).length;
+    var unsustCount = rows.filter(function(r) { return r.grade === 'unsustainable'; }).length;
+    var cashRunoutMonth = null;
+    for (var ri = 0; ri < rows.length; ri++) {
+      if (rows[ri].cashBalance < 0) { cashRunoutMonth = rows[ri].month; break; }
+    }
+
+    var html = '';
+
+    // Key metrics bar
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:10px 0;">';
+    html += '<div class="kpi"><div class="kpi-label">Current MRR</div><div class="kpi-value">' + fmt$(fwd.current_recognized_mrr) + '</div><div class="kpi-sub">' + fwd.active_clients + ' clients</div></div>';
+    html += '<div class="kpi"><div class="kpi-label">MTM Floor</div><div class="kpi-value">' + fmt$(fwd.mtm_floor) + '</div><div class="kpi-sub">' + fwd.mtm_clients + ' mtm</div></div>';
+    html += '<div class="kpi"><div class="kpi-label">Starting Cash</div><div class="kpi-value">' + fmt$(startingCash) + '</div><div class="kpi-sub">CommBank</div></div>';
+    html += '<div class="kpi"><div class="kpi-label">Monthly Burn</div><div class="kpi-value">' + fmt$(totalBurn) + '</div><div class="kpi-sub">full outflow</div></div>';
+
+    // Sustainability summary
+    var summaryColor = unsustCount > 0 ? 'var(--red)' : tightCount > 0 ? 'var(--amber)' : 'var(--green)';
+    html += '<div class="kpi"><div class="kpi-label">Outlook</div><div class="kpi-value" style="font-size:14px;color:' + summaryColor + ';">';
+    if (unsustCount > 0) {
+      html += healthyCount + '/' + rows.length + ' healthy';
+    } else if (tightCount > 0) {
+      html += healthyCount + ' ok, ' + tightCount + ' tight';
+    } else {
+      html += 'All healthy';
+    }
+    html += '</div>';
+    if (cashRunoutMonth) html += '<div class="kpi-sub" style="color:var(--red);">Cash out by ' + cashRunoutMonth.split(' ')[0].substring(0, 3) + '</div>';
+    html += '</div>';
+    html += '</div>';
+
+    // Re-sign value callout (only when slider > 0)
+    if (resignPct > 0) {
+      var lastRowBase = fwdMonths[fwdMonths.length - 1] ? (fwdMonths[fwdMonths.length - 1].recognized_mrr || 0) : 0;
+      var lastRowAdj = rows[rows.length - 1] ? rows[rows.length - 1].adjustedMrr : 0;
+      var retentionValue = lastRowAdj - lastRowBase;
+      html += '<div style="background:var(--accent-dim);border:1px solid rgba(59,130,246,0.2);border-radius:6px;padding:8px 12px;font-size:11px;margin-bottom:8px;">';
+      html += '<strong style="color:var(--accent);">' + resignPct + '% re-sign rate</strong> preserves <strong>' + fmt$(Math.round(retentionValue)) + '/mo</strong> by ' + (rows[rows.length - 1] ? rows[rows.length - 1].month.split(' ')[0].substring(0, 3) : 'end') + '. ';
+      html += 'Every 25% improvement = ~' + fmt$(Math.round(retentionValue * 25 / resignPct)) + '/mo.';
+      html += '</div>';
+    }
+
+    // Forward table
+    html += '<table class="data-table" style="width:100%;font-size:11px;">';
+    html += '<thead><tr>';
+    html += '<th style="text-align:left;">Month</th>';
+    html += '<th class="col-num" style="text-align:right;">Rec. MRR</th>';
+    if (resignPct > 0) html += '<th class="col-num" style="text-align:right;color:var(--accent);">+ Re-sign</th>';
+    html += '<th style="text-align:center;">Cl.</th>';
+    html += '<th class="col-num" style="text-align:right;">Net</th>';
+    html += '<th class="col-num" style="text-align:right;">Cash Bal.</th>';
+    html += '<th style="text-align:center;">Burn %</th>';
+    html += '<th style="text-align:center;">Status</th>';
+    html += '</tr></thead><tbody>';
+
+    for (var ri = 0; ri < rows.length; ri++) {
+      var r = rows[ri];
+      var netColor = r.net >= 0 ? 'var(--green)' : 'var(--red)';
+      var cashColor = r.cashBalance < 0 ? 'var(--red)' : 'var(--text)';
+      var gradeColor = r.grade === 'healthy' ? 'var(--green)' : r.grade === 'tight' ? 'var(--amber)' : 'var(--red)';
+      var gradeIcon = r.grade === 'healthy' ? '&#10003;' : r.grade === 'tight' ? '&#9888;' : '&#10007;';
+      var shortMonth = r.month.split(' ')[0].substring(0, 3) + ' \'' + r.month.split(' ')[1].substring(2);
+
+      html += '<tr style="border-bottom:1px solid var(--border);">';
+      html += '<td style="padding:6px 8px;font-weight:500;">' + shortMonth + '</td>';
+      html += '<td class="col-num" style="text-align:right;padding:6px 8px;">' + fmt$(Math.round(r.baseMrr)) + '</td>';
+      if (resignPct > 0) {
+        html += '<td class="col-num" style="text-align:right;padding:6px 8px;color:var(--accent);">' + (r.resignUplift > 0 ? '+' + fmt$(Math.round(r.resignUplift)) : '—') + '</td>';
+      }
+      html += '<td style="text-align:center;padding:6px 8px;color:var(--text-muted);">' + r.clients + '</td>';
+      html += '<td class="col-num" style="text-align:right;padding:6px 8px;color:' + netColor + ';">' + fmt$(Math.round(r.net)) + '</td>';
+      html += '<td class="col-num" style="text-align:right;padding:6px 8px;color:' + cashColor + ';font-weight:600;">' + fmt$(Math.round(r.cashBalance)) + '</td>';
+      html += '<td style="text-align:center;padding:6px 8px;color:var(--text-muted);">' + (r.teamCostPct != null ? r.teamCostPct + '%' : '—') + '</td>';
+      html += '<td style="text-align:center;padding:6px 8px;color:' + gradeColor + ';" title="' + esc(r.gradeReason) + '">' + gradeIcon + '</td>';
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+
+    // Expiry schedule
+    var expiries = fwd.expiry_schedule || [];
+    if (expiries.length > 0) {
+      html += '<div style="margin-top:10px;font-size:10px;color:var(--text-muted);">';
+      html += '<strong>Expiries:</strong> ';
+      var parts = [];
+      for (var ei = 0; ei < Math.min(expiries.length, 6); ei++) {
+        var e = expiries[ei];
+        parts.push(e.month + ': ' + e.contracts_expiring + ' cl. (' + fmt$(e.mrr_at_risk) + ')');
+      }
+      html += parts.join(' · ');
+      html += '</div>';
+    }
+
+    html += '<div style="margin-top:6px;font-size:10px;color:var(--text-muted);">Renewal rate: 0% historical (0/12). Cash bal. = prior + (rec. MRR − burn). Source: RECOGNIZED tab, live pull.</div>';
+
+    body.innerHTML = html;
+  }
+
+  function initForwardSlider() {
+    var slider = document.getElementById('resign-slider');
+    var pctLabel = document.getElementById('resign-pct');
+    if (!slider || !pctLabel) return;
+    slider.addEventListener('input', function() {
+      pctLabel.textContent = this.value + '%';
+      if (currentSnap) _renderForwardTable(currentSnap, parseInt(this.value));
     });
   }
 
@@ -3234,6 +3412,7 @@
     initGlobalWindowSelector();
     initHiringForm();
     initRosterControls();
+    initForwardSlider();
     const [snap, history] = await Promise.all([fetchSnapshot(), fetchHistory()]);
     if (history) historyData = history;
     if (snap) render(snap);

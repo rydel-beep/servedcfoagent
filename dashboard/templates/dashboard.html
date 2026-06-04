@@ -47,6 +47,7 @@
   <a href="#section-pipeline" class="nav-link">Pipeline</a>
   <a href="#section-health" class="nav-link">Clients</a>
   <a href="#section-reps" class="nav-link">Reps</a>
+  <a href="#section-forward" class="nav-link">Forward</a>
   <a href="#section-deficiency" class="nav-link">Growth</a>
   <a href="#section-team" class="nav-link">Team</a>
   <a href="#section-quality" class="nav-link">DQ</a>
@@ -405,6 +406,22 @@
       <span class="panel-sub">clients by sign-up month</span>
     </div>
     <div id="cohort-grid"></div>
+  </section>
+
+  <!-- Forward Projection (full width) -->
+  <section class="panel" id="section-forward">
+    <div class="panel-header">
+      <h2 class="panel-title">Forward Projection</h2>
+      <span class="panel-sub">recognized MRR + cash trajectory (6 months)</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;padding:8px 0 4px 0;">
+      <label style="font-size:11px;color:var(--text-muted);white-space:nowrap;">Re-sign rate:</label>
+      <input type="range" id="resign-slider" min="0" max="100" step="5" value="0"
+        style="flex:1;max-width:240px;accent-color:var(--accent);cursor:pointer;">
+      <span id="resign-pct" style="font-size:12px;font-weight:600;color:var(--text);min-width:36px;">0%</span>
+      <span style="font-size:10px;color:var(--text-muted);">of expiring clients renew</span>
+    </div>
+    <div id="forward-projection-body"></div>
   </section>
 
   <!-- Strategic: Deficiency Analysis -->

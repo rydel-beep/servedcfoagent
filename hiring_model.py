@@ -372,9 +372,10 @@ def compute_hiring_analysis(
         # Total costs: use full-outflow burn if available, else COGS + OpEx
         total_costs = total_monthly_burn or ((monthly_cogs or 0) + (monthly_opex or 0))
 
-        # Cash projection starting point
+        # Cash projection starting point — use cash_in_bank ONLY
+        # (total_available double-counts Stripe incoming which arrives over time)
         cp = cash_position or {}
-        starting_cash = cp.get("total_available") or cp.get("cash_in_bank") or 0
+        starting_cash = cp.get("cash_in_bank") or 0
         running_cash = starting_cash
 
         # Forward net per month with graded sustainability + cash projection
