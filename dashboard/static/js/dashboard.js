@@ -2846,14 +2846,13 @@
   var _rosterActual = null;    // source-of-truth from snapshot
   var _rosterActualTotals = null;
 
-  function _getRosterFxRate() {
-    var el = document.getElementById('roster-fx-rate');
-    var v = el ? parseFloat(el.value) : 44;
-    return (v > 0 && !isNaN(v)) ? v : 44;
-  }
-
   function _rosterData() {
     return _rosterScratch || _rosterActual || [];
+  }
+
+  function _fmtPhp(v) {
+    if (v == null || v === 0) return '—';
+    return '₱' + Math.round(v).toLocaleString('en-AU');
   }
 
   function renderTeamRoster(snap) {
@@ -2862,28 +2861,25 @@
 
     var roster = (snap.team_roster || {}).roster;
     if (!roster || roster.length === 0) {
-      wrap.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px;">Roster data not available</div>';
+      wrap.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:12px;">Roster data not available</div>';
       return;
     }
 
-    // Store actual for reset
     _rosterActual = roster.map(function(p) { return Object.assign({}, p); });
     _rosterActualTotals = (snap.team_roster || {}).totals || {};
 
-    // If no scratch edits yet, show actual
-    if (!_rosterScratch) {
-      _renderRosterTable(_rosterActual);
-    } else {
-      _renderRosterTable(_rosterScratch);
-    }
+    _renderRosterTable(_rosterScratch || _rosterActual);
   }
 
   function _renderRosterTable(people) {
     var wrap = document.getElementById('roster-table-wrap');
     if (!wrap) return;
 
-    var fxRate = _getRosterFxRate();
     var isEdited = _rosterScratch !== null;
+
+    // Show/hide modeling badge
+    var badge = document.getElementById('roster-mode-badge');
+    if (badge) badge.style.display = isEdited ? 'inline-flex' : 'none';
 
     // Group by department
     var depts = {};
@@ -2897,91 +2893,94 @@
       totalPhp += (p.salary_php || 0);
     }
 
-    var html = '<table class="data-table" style="font-size:11px;width:100%;">';
+    var html = '<table class="roster-table">';
     html += '<thead><tr>';
-    html += '<th style="text-align:left;">Name</th>';
-    html += '<th style="text-align:left;">Role</th>';
-    html += '<th style="text-align:left;">Dept</th>';
-    html += '<th style="text-align:right;">AUD/mo</th>';
-    html += '<th style="text-align:right;">PHP/mo</th>';
-    html += '<th style="text-align:right;">AUD equiv</th>';
-    html += '<th style="width:30px;"></th>';
+    html += '<th>Name</th>';
+    html += '<th>Role</th>';
+    html += '<th class="col-num">AUD/mo</th>';
+    html += '<th class="col-num">PHP/mo</th>';
+    if (isEdited) html += '<th style="width:28px;"></th>';
     html += '</tr></thead><tbody>';
 
     var deptKeys = Object.keys(depts).sort();
     for (var di = 0; di < deptKeys.length; di++) {
       var dept = deptKeys[di];
       var members = depts[dept];
-      // Department header row
       var deptAud = 0, deptPhp = 0;
       for (var mi = 0; mi < members.length; mi++) {
         deptAud += (members[mi].salary_aud || 0);
         deptPhp += (members[mi].salary_php || 0);
       }
-      var deptEquiv = deptAud + (deptPhp / fxRate);
-      html += '<tr style="background:rgba(255,255,255,0.03);">';
-      html += '<td colspan="3" style="font-weight:700;font-size:10px;text-transform:uppercase;color:var(--text-muted);padding:4px 8px;">' + esc(dept) + ' (' + members.length + ')</td>';
-      html += '<td style="text-align:right;font-weight:600;font-size:10px;color:var(--text-muted);">' + fmt$(deptAud) + '</td>';
-      html += '<td style="text-align:right;font-weight:600;font-size:10px;color:var(--text-muted);">₱' + Math.round(deptPhp).toLocaleString() + '</td>';
-      html += '<td style="text-align:right;font-weight:600;font-size:10px;color:var(--text-muted);">' + fmt$(Math.round(deptEquiv)) + '</td>';
-      html += '<td></td></tr>';
+
+      // Department header row
+      var colSpan = isEdited ? 5 : 4;
+      html += '<tr class="roster-dept-row">';
+      html += '<td colspan="2"><span class="roster-dept-label">' + esc(dept) + '</span><span class="roster-dept-count">' + members.length + '</span></td>';
+      html += '<td class="col-num"><span class="roster-dept-subtotal">' + (deptAud > 0 ? fmt$(deptAud) : '') + '</span></td>';
+      html += '<td class="col-num"><span class="roster-dept-subtotal">' + (deptPhp > 0 ? _fmtPhp(deptPhp) : '') + '</span></td>';
+      if (isEdited) html += '<td></td>';
+      html += '</tr>';
 
       for (var mi = 0; mi < members.length; mi++) {
         var p = members[mi];
         var idx = people.indexOf(p);
-        var audEquiv = (p.salary_aud || 0) + ((p.salary_php || 0) / fxRate);
         html += '<tr data-roster-idx="' + idx + '">';
-        html += '<td style="padding:3px 8px;">';
+
+        // Name
+        html += '<td>';
         if (isEdited) {
-          html += '<input type="text" class="roster-edit-name" data-idx="' + idx + '" value="' + esc(p.first_name + ' ' + p.last_name) + '" style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:11px;width:100%;padding:1px 2px;">';
+          html += '<input type="text" class="roster-edit-input roster-edit-name" data-idx="' + idx + '" value="' + esc(p.first_name + ' ' + p.last_name) + '" style="width:100%;">';
         } else {
-          html += esc(p.first_name + ' ' + p.last_name);
+          html += '<span class="roster-name">' + esc(p.first_name + ' ' + p.last_name) + '</span>';
         }
         html += '</td>';
-        html += '<td style="padding:3px 8px;color:var(--text-muted);">' + esc(p.role) + '</td>';
-        html += '<td style="padding:3px 8px;color:var(--text-muted);font-size:10px;">' + esc(p.department) + '</td>';
 
+        // Role
+        html += '<td><span class="roster-role">' + esc(p.role) + '</span></td>';
+
+        // AUD
+        html += '<td class="col-num">';
         if (isEdited) {
-          html += '<td style="text-align:right;padding:3px 4px;"><input type="number" class="roster-edit-aud" data-idx="' + idx + '" value="' + (p.salary_aud || 0) + '" style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:11px;width:70px;text-align:right;padding:1px 2px;"></td>';
-          html += '<td style="text-align:right;padding:3px 4px;"><input type="number" class="roster-edit-php" data-idx="' + idx + '" value="' + (p.salary_php || 0) + '" style="background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:11px;width:80px;text-align:right;padding:1px 2px;"></td>';
+          html += '<input type="number" class="roster-edit-input num roster-edit-aud" data-idx="' + idx + '" value="' + (p.salary_aud || 0) + '">';
         } else {
-          html += '<td style="text-align:right;padding:3px 8px;">' + (p.salary_aud > 0 ? fmt$(p.salary_aud) : '—') + '</td>';
-          html += '<td style="text-align:right;padding:3px 8px;">' + (p.salary_php > 0 ? '₱' + Math.round(p.salary_php).toLocaleString() : '—') + '</td>';
+          html += (p.salary_aud > 0 ? fmt$(p.salary_aud) : '—');
+        }
+        html += '</td>';
+
+        // PHP
+        html += '<td class="col-num">';
+        if (isEdited) {
+          html += '<input type="number" class="roster-edit-input num roster-edit-php" data-idx="' + idx + '" value="' + (p.salary_php || 0) + '">';
+        } else {
+          html += (p.salary_php > 0 ? _fmtPhp(p.salary_php) : '—');
+        }
+        html += '</td>';
+
+        // Remove button (edit mode only)
+        if (isEdited) {
+          html += '<td><button class="roster-remove roster-remove-btn" data-idx="' + idx + '" title="Remove">&times;</button></td>';
         }
 
-        html += '<td style="text-align:right;padding:3px 8px;color:var(--text-muted);">' + fmt$(Math.round(audEquiv)) + '</td>';
-
-        if (isEdited) {
-          html += '<td><button class="roster-remove-btn" data-idx="' + idx + '" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:0 4px;opacity:0.5;" title="Remove">&times;</button></td>';
-        } else {
-          html += '<td></td>';
-        }
         html += '</tr>';
       }
     }
 
     // Total row
-    var totalEquiv = totalAud + (totalPhp / fxRate);
-    html += '<tr style="border-top:2px solid var(--border);font-weight:700;">';
-    html += '<td colspan="3" style="padding:5px 8px;">TOTAL (' + people.length + ' people)</td>';
-    html += '<td style="text-align:right;padding:5px 8px;">' + fmt$(Math.round(totalAud)) + '</td>';
-    html += '<td style="text-align:right;padding:5px 8px;">₱' + Math.round(totalPhp).toLocaleString() + '</td>';
-    html += '<td style="text-align:right;padding:5px 8px;">' + fmt$(Math.round(totalEquiv)) + '</td>';
-    html += '<td></td></tr>';
+    html += '<tr class="roster-total-row">';
+    html += '<td colspan="2">Total <span style="color:var(--text-muted);font-weight:400;font-size:11px;">(' + people.length + ' people)</span></td>';
+    html += '<td class="col-num">' + fmt$(Math.round(totalAud)) + '</td>';
+    html += '<td class="col-num">' + _fmtPhp(totalPhp) + '</td>';
+    if (isEdited) html += '<td></td>';
+    html += '</tr>';
 
     html += '</tbody></table>';
     wrap.innerHTML = html;
 
-    // Bind edit events if in scratch mode
-    if (isEdited) {
-      _bindRosterEditEvents();
-    }
-
-    // Render readout (modeled vs actual)
-    _renderRosterReadout(people, fxRate);
+    if (isEdited) _bindRosterEditEvents();
+    _renderRosterReadout(people);
   }
 
-  function _renderRosterReadout(people, fxRate) {
+  function _renderRosterReadout(people) {
     var readout = document.getElementById('roster-readout');
     if (!readout) return;
 
@@ -2990,68 +2989,65 @@
       modeledAud += (people[i].salary_aud || 0);
       modeledPhp += (people[i].salary_php || 0);
     }
-    var modeledEquiv = modeledAud + (modeledPhp / fxRate);
 
     var actualAud = _rosterActualTotals ? (_rosterActualTotals.total_aud || 0) : 0;
     var actualPhp = _rosterActualTotals ? (_rosterActualTotals.total_php || 0) : 0;
-    var actualEquiv = actualAud + (actualPhp / fxRate);
 
-    var delta = modeledEquiv - actualEquiv;
     var isEdited = _rosterScratch !== null;
+    var burn = (currentSnap || {}).monthly_burn || {};
+    var totalBurn = burn.total_recurring_burn || 0;
+    var cashPos = (currentSnap || {}).cash_position || {};
+    var cashInBank = cashPos.cash_in_bank || 0;
 
     if (!isEdited) {
-      // Show actual readout only
-      var burn = (currentSnap || {}).monthly_burn || {};
-      var totalBurn = burn.total_recurring_burn || 0;
-      var cashPos = (currentSnap || {}).cash_position || {};
-      var cashInBank = cashPos.cash_in_bank || 0;
-
-      var html = '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:11px;line-height:1.7;">';
-      html += '<span style="color:var(--text-muted);">Team payroll (SALARY tab):</span> <span style="font-weight:600;">' + fmt$(Math.round(actualEquiv)) + '/mo AUD equiv</span>';
-      html += ' <span style="color:var(--text-muted);">(' + fmt$(Math.round(actualAud)) + ' AUD + ₱' + Math.round(actualPhp).toLocaleString() + ' PHP @ ' + fxRate + ')</span>';
+      var html = '<div class="roster-readout">';
+      html += '<span class="roster-readout-label">Team payroll</span> ';
+      html += '<span class="roster-readout-value">' + fmt$(Math.round(actualAud)) + '</span>';
+      html += ' <span style="color:var(--text-muted);">AUD + ' + _fmtPhp(actualPhp) + ' PHP</span>';
       if (totalBurn > 0) {
-        html += '<br><span style="color:var(--text-muted);">Total recurring burn:</span> ' + fmt$(Math.round(totalBurn)) + '/mo';
+        html += '<br><span class="roster-readout-label">Recurring burn</span> ' + fmt$(Math.round(totalBurn)) + '/mo';
         if (cashInBank > 0) {
-          var runway = cashInBank / totalBurn;
-          html += ' · <span style="color:var(--text-muted);">Runway:</span> ' + runway.toFixed(1) + ' months';
+          html += ' &middot; <span class="roster-readout-label">Runway</span> ' + (cashInBank / totalBurn).toFixed(1) + ' months';
         }
       }
-      html += '<br><span style="color:var(--text-muted);font-size:10px;">Click any salary or "Add person" to enter modeling mode</span>';
+      html += '<br><span style="color:var(--text-muted);font-size:10px;">Click any row or "+ Add person" to model changes</span>';
       html += '</div>';
       readout.innerHTML = html;
       return;
     }
 
-    // Modeled vs actual comparison
-    var burn = (currentSnap || {}).monthly_burn || {};
-    var baseBurn = burn.total_recurring_burn || 0;
-    // In burn, team = salary_baseline. Delta applies to that.
-    var modeledBurn = baseBurn + delta;
-    var cashPos = (currentSnap || {}).cash_position || {};
-    var cashInBank = cashPos.cash_in_bank || 0;
-    var modeledRunway = modeledBurn > 0 && cashInBank > 0 ? (cashInBank / modeledBurn) : null;
+    // Modeled vs actual — compute AUD delta only (PHP stays as-is from sheet)
+    var audDelta = modeledAud - actualAud;
+    var phpDelta = modeledPhp - actualPhp;
+    // For burn impact, approximate PHP delta in AUD
+    var fxRate = 44;
+    var el = document.getElementById('roster-fx-rate');
+    if (el) { var v = parseFloat(el.value); if (v > 0) fxRate = v; }
+    var totalDelta = audDelta + (phpDelta / fxRate);
+
+    var baseBurn = totalBurn;
+    var modeledBurn = baseBurn + totalDelta;
     var actualRunway = baseBurn > 0 && cashInBank > 0 ? (cashInBank / baseBurn) : null;
+    var modeledRunway = modeledBurn > 0 && cashInBank > 0 ? (cashInBank / modeledBurn) : null;
+    var deltaColor = totalDelta > 0 ? 'var(--red)' : totalDelta < 0 ? 'var(--green)' : 'var(--text-muted)';
+    var deltaSign = totalDelta > 0 ? '+' : '';
 
-    var deltaColor = delta > 0 ? 'var(--red)' : delta < 0 ? 'var(--green)' : 'var(--text-muted)';
-    var deltaSign = delta > 0 ? '+' : '';
+    var html = '<div class="roster-readout">';
+    html += '<div style="font-weight:600;color:var(--text);margin-bottom:8px;font-size:12px;">Modeled Impact</div>';
+    html += '<div class="roster-readout-grid">';
 
-    var html = '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11px;line-height:1.8;">';
-    html += '<div style="font-weight:600;color:var(--text);margin-bottom:4px;">Modeled vs Actual</div>';
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">';
+    html += '<div><div class="roster-readout-label">Actual team</div><div class="roster-readout-value">' + fmt$(Math.round(actualAud)) + '</div></div>';
+    html += '<div><div class="roster-readout-label">Modeled team</div><div class="roster-readout-value">' + fmt$(Math.round(modeledAud)) + '</div></div>';
+    html += '<div><div class="roster-readout-label">Delta</div><div class="roster-readout-value" style="color:' + deltaColor + ';">' + deltaSign + fmt$(Math.round(totalDelta)) + '/mo</div></div>';
 
-    html += '<div><span style="color:var(--text-muted);">Actual team:</span><br><span style="font-weight:600;">' + fmt$(Math.round(actualEquiv)) + '/mo</span></div>';
-    html += '<div><span style="color:var(--text-muted);">Modeled team:</span><br><span style="font-weight:600;">' + fmt$(Math.round(modeledEquiv)) + '/mo</span></div>';
-    html += '<div><span style="color:var(--text-muted);">Delta:</span><br><span style="font-weight:600;color:' + deltaColor + ';">' + deltaSign + fmt$(Math.round(delta)) + '/mo</span></div>';
-
-    html += '<div><span style="color:var(--text-muted);">Actual burn:</span><br>' + fmt$(Math.round(baseBurn)) + '/mo</div>';
-    html += '<div><span style="color:var(--text-muted);">Modeled burn:</span><br>' + fmt$(Math.round(modeledBurn)) + '/mo</div>';
-    html += '<div><span style="color:var(--text-muted);">Runway delta:</span><br>';
+    html += '<div><div class="roster-readout-label">Actual burn</div><div style="font-size:12px;color:var(--text-secondary);">' + fmt$(Math.round(baseBurn)) + '/mo</div></div>';
+    html += '<div><div class="roster-readout-label">Modeled burn</div><div style="font-size:12px;color:var(--text-secondary);">' + fmt$(Math.round(modeledBurn)) + '/mo</div></div>';
+    html += '<div><div class="roster-readout-label">Runway</div>';
     if (modeledRunway != null && actualRunway != null) {
       var runDelta = modeledRunway - actualRunway;
-      html += '<span style="color:' + (runDelta < 0 ? 'var(--red)' : 'var(--green)') + ';">' + (runDelta > 0 ? '+' : '') + runDelta.toFixed(1) + ' months</span>';
-      html += '<br><span style="color:var(--text-muted);font-size:10px;">' + actualRunway.toFixed(1) + ' → ' + modeledRunway.toFixed(1) + '</span>';
+      html += '<div style="font-size:12px;color:' + (runDelta < 0 ? 'var(--red)' : 'var(--green)') + ';">' + actualRunway.toFixed(1) + ' → ' + modeledRunway.toFixed(1) + ' mo</div>';
     } else {
-      html += '—';
+      html += '<div style="font-size:12px;color:var(--text-muted);">—</div>';
     }
     html += '</div>';
     html += '</div></div>';
@@ -3060,10 +3056,7 @@
   }
 
   function _bindRosterEditEvents() {
-    // AUD/PHP edits
-    var audInputs = document.querySelectorAll('.roster-edit-aud');
-    var phpInputs = document.querySelectorAll('.roster-edit-php');
-    audInputs.forEach(function(el) {
+    document.querySelectorAll('.roster-edit-aud').forEach(function(el) {
       el.addEventListener('change', function() {
         var idx = parseInt(this.getAttribute('data-idx'));
         if (_rosterScratch && _rosterScratch[idx]) {
@@ -3072,7 +3065,7 @@
         }
       });
     });
-    phpInputs.forEach(function(el) {
+    document.querySelectorAll('.roster-edit-php').forEach(function(el) {
       el.addEventListener('change', function() {
         var idx = parseInt(this.getAttribute('data-idx'));
         if (_rosterScratch && _rosterScratch[idx]) {
@@ -3081,9 +3074,7 @@
         }
       });
     });
-    // Remove buttons
-    var removeBtns = document.querySelectorAll('.roster-remove-btn');
-    removeBtns.forEach(function(el) {
+    document.querySelectorAll('.roster-remove-btn').forEach(function(el) {
       el.addEventListener('click', function() {
         var idx = parseInt(this.getAttribute('data-idx'));
         if (_rosterScratch) {
@@ -3095,7 +3086,7 @@
   }
 
   function _enterRosterEditMode() {
-    if (_rosterScratch) return; // already editing
+    if (_rosterScratch) return;
     if (!_rosterActual) return;
     _rosterScratch = _rosterActual.map(function(p) { return Object.assign({}, p); });
     _renderRosterTable(_rosterScratch);
@@ -3103,31 +3094,19 @@
 
   function _resetRoster() {
     _rosterScratch = null;
-    if (_rosterActual) {
-      _renderRosterTable(_rosterActual);
-    }
+    if (_rosterActual) _renderRosterTable(_rosterActual);
   }
 
   function _addRosterPerson() {
     _enterRosterEditMode();
     if (!_rosterScratch) return;
     _rosterScratch.push({
-      first_name: 'New',
-      last_name: 'Hire',
-      role: '',
-      department: 'UNKNOWN',
-      sheet_department: '',
-      status: '',
-      salary_aud: 0,
-      salary_php: 0,
+      first_name: 'New', last_name: 'Hire', role: '', department: 'UNKNOWN',
+      sheet_department: '', status: '', salary_aud: 0, salary_php: 0,
     });
     _renderRosterTable(_rosterScratch);
-    // Scroll to bottom of table
-    var wrap = document.getElementById('roster-table-wrap');
-    if (wrap) wrap.scrollTop = wrap.scrollHeight;
   }
 
-  // Bind roster buttons (run once)
   function initRosterControls() {
     var resetBtn = document.getElementById('roster-reset');
     if (resetBtn) resetBtn.addEventListener('click', _resetRoster);
@@ -3142,17 +3121,12 @@
       });
     }
 
-    // Click on table row enters edit mode
     var wrap = document.getElementById('roster-table-wrap');
     if (wrap) {
       wrap.addEventListener('click', function(e) {
-        // If clicking a cell (not already an input) in a data row, enter edit mode
         if (_rosterScratch) return;
-        var td = e.target.closest('td');
         var tr = e.target.closest('tr[data-roster-idx]');
-        if (tr && td) {
-          _enterRosterEditMode();
-        }
+        if (tr) _enterRosterEditMode();
       });
     }
   }

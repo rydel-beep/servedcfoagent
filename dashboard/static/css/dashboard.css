@@ -729,6 +729,143 @@ body {
 }
 .data-table tbody tr:hover td { background: rgba(255,255,255,0.02); }
 
+/* ── Team Roster ──────────────────────── */
+.roster-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.roster-header-title {
+  font-size: 13px; font-weight: 600; color: var(--text);
+  letter-spacing: 0.3px;
+}
+.roster-controls {
+  display: flex; align-items: center; gap: 10px;
+}
+.roster-fx-label {
+  font-size: 10px; color: var(--text-muted); display: flex;
+  align-items: center; gap: 5px; letter-spacing: 0.3px;
+  text-transform: uppercase; font-weight: 500;
+}
+.roster-fx-input {
+  width: 56px; background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 4px 6px; color: var(--text); font-size: 11px;
+  text-align: right; transition: border-color 0.2s;
+}
+.roster-fx-input:focus {
+  outline: none; border-color: var(--accent);
+}
+.roster-btn {
+  padding: 4px 10px; background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text-muted); font-size: 10px; cursor: pointer;
+  letter-spacing: 0.3px; transition: all 0.2s;
+}
+.roster-btn:hover {
+  background: rgba(255,255,255,0.08); border-color: var(--border-hover);
+  color: var(--text-secondary);
+}
+.roster-btn-accent {
+  background: var(--accent-dim); border-color: rgba(59,130,246,0.3);
+  color: var(--accent);
+}
+.roster-btn-accent:hover {
+  background: rgba(59,130,246,0.25); border-color: var(--accent);
+}
+.roster-modeling-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 9px; font-weight: 600; letter-spacing: 0.5px;
+  text-transform: uppercase; color: var(--amber);
+  background: var(--amber-dim); padding: 2px 8px;
+  border-radius: 10px;
+}
+.roster-table {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  font-size: 12px;
+}
+.roster-table th {
+  text-align: left; padding: 8px 12px;
+  font-size: 10px; font-weight: 600; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.roster-table th.col-num { text-align: right; }
+.roster-table td {
+  padding: 8px 12px; color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+.roster-table td.col-num {
+  text-align: right; font-variant-numeric: tabular-nums;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+  font-size: 11px; letter-spacing: -0.2px;
+}
+.roster-table tbody tr:hover td {
+  background: rgba(255,255,255,0.02);
+}
+.roster-dept-row td {
+  background: rgba(46,110,166,0.06);
+  border-bottom: 1px solid rgba(46,110,166,0.12);
+  padding: 6px 12px;
+}
+.roster-dept-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.8px; color: var(--accent);
+}
+.roster-dept-count {
+  font-size: 10px; font-weight: 400; color: var(--text-muted);
+  margin-left: 6px;
+}
+.roster-dept-subtotal {
+  font-size: 10px; font-weight: 600; color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.roster-total-row td {
+  border-top: 2px solid rgba(255,255,255,0.1);
+  border-bottom: none; padding: 10px 12px;
+  font-weight: 600; color: var(--text);
+}
+.roster-name { color: var(--text); font-weight: 500; }
+.roster-role { color: var(--text-muted); font-size: 11px; }
+.roster-remove {
+  background: none; border: none; color: var(--text-muted);
+  cursor: pointer; font-size: 14px; padding: 0 4px;
+  opacity: 0; transition: opacity 0.2s;
+}
+.roster-table tbody tr:hover .roster-remove { opacity: 0.5; }
+.roster-remove:hover { opacity: 1 !important; color: var(--red); }
+.roster-edit-input {
+  background: transparent; border: none;
+  border-bottom: 1px solid rgba(59,130,246,0.3);
+  color: var(--text); font-size: 11px; padding: 2px 4px;
+  transition: border-color 0.2s;
+  font-variant-numeric: tabular-nums;
+}
+.roster-edit-input:focus {
+  outline: none; border-bottom-color: var(--accent);
+}
+.roster-edit-input.num {
+  text-align: right; width: 80px;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+}
+.roster-readout {
+  background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 14px;
+  font-size: 11px; line-height: 1.8; margin-top: 12px;
+}
+.roster-readout-grid {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;
+}
+.roster-readout-label {
+  font-size: 10px; color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: 0.3px; font-weight: 500;
+}
+.roster-readout-value {
+  font-size: 13px; font-weight: 600; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Month Performance ─────────────────── */
 .month-perf-grid {
   display: grid; grid-template-columns: repeat(3, 1fr);
