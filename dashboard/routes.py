@@ -218,6 +218,29 @@ def api_sales_summary():
     return jsonify({"markdown": markdown, "window_days": window_days})
 
 
+@bp.route("/api/briefing-pdf", methods=["GET"])
+@require_auth
+def api_briefing_pdf():
+    """Generate and return the full CFO briefing PDF."""
+    from dashboard.briefing_pdf import generate_briefing_pdf
+    from snapshot import load_persisted
+
+    snap = load_persisted()
+    if snap is None:
+        return jsonify({"error": "No snapshot available"}), 404
+
+    try:
+        pdf_bytes = generate_briefing_pdf(snap)
+    except Exception as e:
+        logger.exception("PDF generation failed")
+        return jsonify({"error": str(e)}), 500
+
+    resp = make_response(pdf_bytes)
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = "attachment; filename=served-cfo-briefing.pdf"
+    return resp
+
+
 @bp.route("/api/chat", methods=["POST"])
 @require_auth
 def api_chat():

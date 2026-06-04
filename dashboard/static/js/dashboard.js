@@ -3393,6 +3393,30 @@
     }
   });
 
+  // ── Briefing PDF download ────────────────────────────────
+  $('#btn-briefing-pdf').addEventListener('click', async function() {
+    const btn = this;
+    btn.disabled = true;
+    btn.classList.add('loading');
+    try {
+      const resp = await fetch('/dashboard/api/briefing-pdf');
+      if (!resp.ok) throw new Error('PDF generation failed');
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'served-cfo-briefing.pdf';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('PDF download failed:', e);
+      alert('PDF generation failed. Check console for details.');
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove('loading');
+    }
+  });
+
   // ── Collapsible ──────────────────────────────────────────
   $('#toggle-quality').addEventListener('click', function() {
     const body = $('#quality-body');
