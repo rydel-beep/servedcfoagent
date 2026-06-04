@@ -54,7 +54,7 @@ def _fmt(v, prefix="$", decimals=0):
 
 def _pct(v):
     if v is None:
-        return "—"
+        return "--"
     return f"{v:.1f}%"
 
 
@@ -313,7 +313,7 @@ def generate_briefing_pdf(snap: dict) -> bytes:
         ("Cash on Hand", _fmt(cash_in_bank), "CommBank"),
         ("Monthly MRR", _fmt(current_mrr), f"{client_count} clients"),
         ("Monthly Burn", _fmt(total_burn), "full outflow"),
-        ("Runway", f"{runway:.1f} mo" if runway else "—", "at current burn"),
+        ("Runway", f"{runway:.1f} mo" if runway else "--", "at current burn"),
     ])
 
     # Net by basis
@@ -512,7 +512,7 @@ def generate_briefing_pdf(snap: dict) -> bytes:
     ca = ["L", "R", "L", "C"]
     rows = []
     for label, val, bench, status in metrics:
-        v_str = "—"
+        v_str = "--"
         if val is not None:
             if "cac" in label.lower() and "day" not in label.lower():
                 v_str = _fmt(val) if label == "CAC (loaded)" else f"{val:.1f}x"
@@ -520,7 +520,7 @@ def generate_briefing_pdf(snap: dict) -> bytes:
                 v_str = f"{int(val)}d"
             else:
                 v_str = f"{val:.1f}x"
-        s_str = str(status or "—").replace("_", " ").title()
+        s_str = str(status or "--").replace("_", " ").title()
         color = GREEN if status == "healthy" else (AMBER if status == "watch" else (RED if status == "critical" else DARK))
         rows.append({"cells": [label, v_str, bench, s_str], "color": color, "bold": False})
     pdf._table(headers, rows, cw, ca)

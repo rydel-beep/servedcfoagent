@@ -227,17 +227,21 @@ def api_briefing_pdf():
 
     snap = load_persisted()
     if snap is None:
-        return jsonify({"error": "No snapshot available"}), 404
+        return jsonify({"error": "No snapshot available — trigger a refresh first"}), 404
 
     try:
-        pdf_bytes = generate_briefing_pdf(snap)
+        pdf_data = generate_briefing_pdf(snap)
+        pdf_bytes = bytes(pdf_data)  # fpdf2 returns bytearray; Flask needs bytes
     except Exception as e:
         logger.exception("PDF generation failed")
-        return jsonify({"error": str(e)}), 500
+        import traceback
+        tb = traceback.format_exc()
+        return jsonify({"error": str(e), "traceback": tb}), 500
 
     resp = make_response(pdf_bytes)
     resp.headers["Content-Type"] = "application/pdf"
     resp.headers["Content-Disposition"] = "attachment; filename=served-cfo-briefing.pdf"
+    resp.headers["Content-Length"] = str(len(pdf_bytes))
     return resp
 
 

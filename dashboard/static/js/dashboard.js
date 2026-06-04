@@ -3400,8 +3400,24 @@
     btn.classList.add('loading');
     try {
       const resp = await fetch('/dashboard/api/briefing-pdf');
-      if (!resp.ok) throw new Error('PDF generation failed');
+      if (!resp.ok) {
+        // Try to read the error detail from JSON response
+        let detail = 'HTTP ' + resp.status;
+        try {
+          const err = await resp.json();
+          detail = err.error || detail;
+          if (err.traceback) console.error('PDF traceback:', err.traceback);
+        } catch (_) {}
+        throw new Error(detail);
+      }
+      const ct = resp.headers.get('Content-Type') || '';
+      if (!ct.includes('application/pdf')) {
+        throw new Error('Server returned non-PDF response (Content-Type: ' + ct + ')');
+      }
       const blob = await resp.blob();
+      if (blob.size < 500) {
+        throw new Error('PDF too small (' + blob.size + ' bytes) — likely an error response');
+      }
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -3410,7 +3426,7 @@
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error('PDF download failed:', e);
-      alert('PDF generation failed. Check console for details.');
+      alert('CFO Briefing PDF failed: ' + e.message);
     } finally {
       btn.disabled = false;
       btn.classList.remove('loading');
