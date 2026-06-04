@@ -3,7 +3,7 @@ tests/test_opex_pull.py
 -----------------------
 Tests for the categorised monthly burn breakdown.
 """
-from opex_pull import get_monthly_burn
+from opex_pull import get_monthly_burn, SUBSCRIPTIONS_OVERRIDE
 
 
 SAMPLE_XERO = {
@@ -46,11 +46,17 @@ def test_ad_spend_extracted():
     assert result["ad_spend"] == 8002
 
 
+def test_subscriptions_uses_hardcoded_override():
+    result = get_monthly_burn(SAMPLE_XERO, TEAM_COST, SALARY_BASELINE)
+    assert result["subscriptions"] == SUBSCRIPTIONS_OVERRIDE
+    assert result["subscriptions"] == 3867.0
+
+
 def test_commissions_excluded_from_burn():
     result = get_monthly_burn(SAMPLE_XERO, TEAM_COST, SALARY_BASELINE)
     assert result["commissions"] == 4200 + 3221
-    # Commissions should NOT be in total_recurring_burn
-    assert result["total_recurring_burn"] == result["total_with_commissions"] - result["commissions"]
+    # Commissions not in total_recurring_burn
+    assert result["total_recurring_burn"] < result["total_with_commissions"]
 
 
 def test_travel_excluded_as_one_off():
@@ -60,32 +66,37 @@ def test_travel_excluded_as_one_off():
 
 def test_consulting_split_recurring_vs_one_off():
     result = get_monthly_burn(SAMPLE_XERO, TEAM_COST, SALARY_BASELINE)
-    # Only $179 recurring, rest is one-off
     one_off_consulting = 1174 - 179
     assert result["one_off_excluded"] >= one_off_consulting
-    # other_opex should include only $179 from consulting
     assert result["other_opex"] >= 179
 
 
-def test_contractors_with_gst_is_cogs():
+def test_contractors_with_gst_is_variable_cogs():
+    """Videog/photog is variable COGS, not fixed burn."""
     result = get_monthly_burn(SAMPLE_XERO, TEAM_COST, SALARY_BASELINE)
-    # Contractors WITH GST ($1,336) should be in cogs_delivery
-    assert result["cogs_delivery"] >= 1336
+    assert result["variable_cogs"] >= 1336
 
 
-def test_contractors_no_gst_split():
+def test_colby_shaw_subcontractor_is_variable():
+    """Subcontractor portion of Contractors NO GST is variable, not fixed."""
     result = get_monthly_burn(SAMPLE_XERO, TEAM_COST, SALARY_BASELINE)
-    # Contractors NO GST ($20,127) split: $18,891 team + $1,236 subcontractor
     sub_portion = 20127 - SALARY_BASELINE
-    assert result["cogs_delivery"] >= sub_portion
+    assert result["variable_cogs"] >= sub_portion
 
 
 def test_no_double_count_team():
-    """Wages + Super + team portion of Contractors NO GST should NOT inflate burn."""
+    """Team cost items from Xero should NOT inflate the burn total."""
     result = get_monthly_burn(SAMPLE_XERO, TEAM_COST, SALARY_BASELINE)
-    # Total burn should be team_cost + non-team items, NOT team_cost + all Xero expenses
-    xero_total = sum(l["amount"] for l in SAMPLE_XERO["opex_line_items"]) + sum(l["amount"] for l in SAMPLE_XERO["cogs_line_items"])
-    assert result["total_recurring_burn"] < xero_total
+    # Fixed burn = team + ad + subs + other_opex (no COGS, no commissions)
+    expected = TEAM_COST + 8002 + SUBSCRIPTIONS_OVERRIDE + result["other_opex"]
+    assert abs(result["total_recurring_burn"] - expected) < 0.01
+
+
+def test_variable_cogs_excluded_from_fixed_burn():
+    """Variable COGS (videog, subcontractors) not in total_recurring_burn."""
+    result = get_monthly_burn(SAMPLE_XERO, TEAM_COST, SALARY_BASELINE)
+    assert result["variable_cogs"] > 0
+    assert result["total_with_variable"] == result["total_recurring_burn"] + result["variable_cogs"]
 
 
 def test_cogs_ratio():

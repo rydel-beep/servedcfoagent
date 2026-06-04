@@ -1,30 +1,38 @@
 """
 opex_pull.py
 ------------
-Categorised monthly burn breakdown from Xero P&L line items.
+Categorised monthly burn breakdown.
 
 MODULAR INTERFACE: consumers call `get_monthly_burn(xero_data, true_team_cost,
-salary_baseline)` and get a structured breakdown. The source (currently Xero P&L)
-can be swapped to a Google Sheet later without changing consumers — just replace
-the internals of this module.
+salary_baseline)` and get a structured breakdown. The source (currently Xero P&L
++ hardcoded overrides) can be swapped to a Google Sheet later without changing
+consumers — just replace the internals of this module.
 
 Categories:
 - team: owner pay + core team payroll + super (from SALARY tab, not Xero)
 - ad_spend: Xero Advertising account
-- cogs_delivery: non-team COGS (subcontractors, client tools, videog/photog)
-- subscriptions: subscriptions + telecom
+- subscriptions: hardcoded $3,867/mo (Xero miscodes across accounts)
 - other_opex: consulting, bank fees, office, etc (recurring only)
 - commissions: closer + setter (excluded from burn, in CAC layer)
-- one_off: travel, one-off consulting, lumpy super (excluded from forward burn)
+- variable_cogs: videog/photog, subcontractors (excluded — scales with work)
+- one_off: travel, one-off consulting, lumpy items (excluded from forward burn)
 """
 from __future__ import annotations
 
 
-# ── Line-item classification ──────────────────────────────────────────────
-# Maps Xero account labels (lowercased) to burn categories.
-# "exclude" = already in team cost or is a commission (don't double-count).
-# "one_off" = exclude from recurring forward burn.
+# ── Hardcoded subscriptions/tools (Rydel-confirmed, 2026-06-04) ────────────
+# Xero splits these across Client Reporting Tools, Subscriptions, and other
+# accounts depending on how AMEX transactions are coded. Until Piolo recodes
+# to a single account, we use the confirmed total.
+#
+# A-Leads $1,500 · GHL ~$580 · Google Workspace ~$442 · SoWork $307 ·
+# Anthropic $181 · ChatGPT $145 · Notion $122 · Make.com ~$110 · Xero $105 ·
+# Asana $81 · Higgsfield $42 · Canva $40 · ManyChat $39 · Atlassian $29 ·
+# Fathom $26 · Adobe $24 · GoDaddy $24 · Dropbox $19 · Google One $15 ·
+# Instantly $13 · ElevenLabs $9 · Railway $8 · CapCut $6
+SUBSCRIPTIONS_OVERRIDE = 3867.0
 
+# ── Line-item classification ──────────────────────────────────────────────
 _OPEX_CATEGORY = {
     # Team cost (already counted via SALARY tab)
     "wages and salaries": "team_already_counted",
@@ -34,9 +42,9 @@ _OPEX_CATEGORY = {
     "setter commission": "commission",
     # Ad spend
     "advertising": "ad_spend",
-    # Subscriptions & tools
-    "subscriptions": "subscriptions",
-    "telephone & internet": "subscriptions",
+    # Subscriptions — absorbed into SUBSCRIPTIONS_OVERRIDE, don't double-count
+    "subscriptions": "subs_already_counted",
+    "telephone & internet": "subs_already_counted",
     # One-offs (exclude from forward burn)
     "travel - international": "one_off",
     "travel - national": "one_off",
@@ -46,27 +54,18 @@ _OPEX_CATEGORY = {
     "office expenses": "other_opex",
     "general expenses": "other_opex",
     "motor vehicle expenses": "other_opex",
-    # Contractors WITH GST = videog/photog = delivery COGS
-    "contractors with gst remittly": "cogs_delivery",
+    # Contractors WITH GST = videog/photog = variable COGS (not fixed burn)
+    "contractors with gst remittly": "variable_cogs",
 }
 
-# One-off overrides: for accounts where only part of the Xero value is recurring.
-# {label_lower: recurring_monthly_amount}. The rest is treated as one-off.
 _RECURRING_OVERRIDE = {
     "consulting & accounting": 179.0,  # Rydel confirmed $179/mo recurring
 }
 
 _COGS_CATEGORY = {
-    "client reporting tools": "cogs_delivery",
-    "contractors no gst": "cogs_mixed",  # contains team Wise payments + subcontractors
-}
-
-# COGS lines where only part is recurring (rest is one-off investment).
-# {label_lower: recurring_monthly_amount}
-_COGS_RECURRING_OVERRIDE = {
-    # $1,500/mo recurring (email platform) + ~$1,669 other client tools.
-    # The $4,600 one-off email platform setup is excluded from forward burn.
-    "client reporting tools": 3169.0,  # $7,769 - $4,600 one-off = $3,169 recurring
+    # Client Reporting Tools: absorbed into SUBSCRIPTIONS_OVERRIDE
+    "client reporting tools": "subs_already_counted",
+    "contractors no gst": "cogs_mixed",  # team Wise + subcontractors (variable)
 }
 
 
@@ -102,11 +101,11 @@ def get_monthly_burn(
     # ── Categorise OpEx lines ──
     team_already = 0.0
     ad_spend = 0.0
-    subscriptions = 0.0
+    subs_already = 0.0  # Xero subs (absorbed into override, tracked for reference)
     other_opex = 0.0
     commissions = 0.0
     one_off = 0.0
-    cogs_from_opex = 0.0  # items in OpEx that are really COGS
+    variable_cogs = 0.0  # videog/photog, subcontractors (not in fixed burn)
 
     line_details = []
 
@@ -143,52 +142,27 @@ def get_monthly_burn(
             commissions += amount
         elif cat == "ad_spend":
             ad_spend += amount
-        elif cat == "subscriptions":
-            subscriptions += amount
+        elif cat == "subs_already_counted":
+            subs_already += amount
         elif cat == "one_off":
             one_off += amount
-        elif cat == "cogs_delivery":
-            cogs_from_opex += amount
+        elif cat == "variable_cogs":
+            variable_cogs += amount
         else:
             other_opex += amount
 
     # ── Categorise COGS lines ──
-    cogs_delivery = cogs_from_opex  # start with any COGS items found in OpEx
-    cogs_team_overlap = 0.0  # portion of COGS that's team payroll (avoid double-count)
-
     for line in cogs_lines:
         label = line["label"]
         amount = abs(line["amount"])
         key = label.lower()
-        cat = _COGS_CATEGORY.get(key, "cogs_delivery")
-
-        # Handle COGS recurring overrides (partial one-off)
-        if key in _COGS_RECURRING_OVERRIDE and cat != "cogs_mixed":
-            recurring_amt = _COGS_RECURRING_OVERRIDE[key]
-            one_off_amt = max(0, amount - recurring_amt)
-            cogs_delivery += recurring_amt
-            if one_off_amt > 0:
-                one_off += one_off_amt
-                line_details.append({
-                    "label": label, "amount": round(recurring_amt, 2),
-                    "category": "cogs_delivery", "note": "recurring portion",
-                })
-                line_details.append({
-                    "label": f"{label} (one-off)", "amount": round(one_off_amt, 2),
-                    "category": "one_off", "note": "excluded from forward burn",
-                })
-            else:
-                line_details.append({
-                    "label": label, "amount": round(amount, 2), "category": cat,
-                })
-            continue
+        cat = _COGS_CATEGORY.get(key, "variable_cogs")
 
         if cat == "cogs_mixed":
-            # Contractors NO GST: split into team Wise + subcontractors
+            # Contractors NO GST: team Wise (in true_team_cost) + subcontractors (variable)
             team_portion = salary_baseline or 18891.0
             sub_portion = max(0, amount - team_portion)
-            cogs_team_overlap += min(amount, team_portion)
-            cogs_delivery += sub_portion
+            variable_cogs += sub_portion
             line_details.append({
                 "label": f"{label} (team Wise portion)",
                 "amount": round(min(amount, team_portion), 2),
@@ -199,24 +173,36 @@ def get_monthly_burn(
                 line_details.append({
                     "label": f"{label} (subcontractor portion)",
                     "amount": round(sub_portion, 2),
-                    "category": "cogs_delivery",
+                    "category": "variable_cogs",
+                    "note": "variable — scales with client work",
                 })
+        elif cat == "subs_already_counted":
+            subs_already += amount
+            line_details.append({
+                "label": label, "amount": round(amount, 2),
+                "category": "subs_already_counted",
+                "note": "absorbed into subscriptions override",
+            })
         else:
-            cogs_delivery += amount
+            variable_cogs += amount
             line_details.append({
                 "label": label, "amount": round(amount, 2), "category": cat,
             })
 
+    # ── Use hardcoded subscriptions override ──
+    subscriptions = SUBSCRIPTIONS_OVERRIDE
+
     # ── Totals ──
+    # Fixed recurring burn = what goes out every month regardless
     total_recurring_burn = (
         true_team_cost
         + ad_spend
-        + cogs_delivery
         + subscriptions
         + other_opex
     )
 
-    total_with_commissions = total_recurring_burn + commissions
+    total_with_variable = total_recurring_burn + variable_cogs
+    total_with_commissions = total_with_variable + commissions
 
     # COGS ratio for delivery-obligation reserve
     xero_revenue = xero_data.get("revenue") or 0
@@ -227,14 +213,17 @@ def get_monthly_burn(
         "available": True,
         "team": round(true_team_cost, 2),
         "ad_spend": round(ad_spend, 2),
-        "cogs_delivery": round(cogs_delivery, 2),
         "subscriptions": round(subscriptions, 2),
+        "subscriptions_note": "Hardcoded override — Xero miscodes across accounts",
         "other_opex": round(other_opex, 2),
+        "variable_cogs": round(variable_cogs, 2),
+        "variable_cogs_note": "Videog/photog + subcontractors — scales with work, excluded from fixed burn",
         "commissions": round(commissions, 2),
         "one_off_excluded": round(one_off, 2),
         "total_recurring_burn": round(total_recurring_burn, 2),
+        "total_with_variable": round(total_with_variable, 2),
         "total_with_commissions": round(total_with_commissions, 2),
         "cogs_ratio_pct": cogs_ratio,
         "line_details": line_details,
-        "source": "xero_pnl",
+        "source": "xero_pnl + hardcoded_subs",
     }
