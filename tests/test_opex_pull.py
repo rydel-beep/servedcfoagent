@@ -3,7 +3,7 @@ tests/test_opex_pull.py
 -----------------------
 Tests for the categorised monthly burn breakdown.
 """
-from opex_pull import get_monthly_burn, SUBSCRIPTIONS_OVERRIDE
+from opex_pull import get_monthly_burn, SUBSCRIPTIONS_OVERRIDE, OWNER_TAKEHOME_MONTHLY
 
 
 SAMPLE_XERO = {
@@ -87,9 +87,16 @@ def test_colby_shaw_subcontractor_is_variable():
 def test_no_double_count_team():
     """Team cost items from Xero should NOT inflate the burn total."""
     result = get_monthly_burn(SAMPLE_XERO, TEAM_COST, SALARY_BASELINE)
-    # Fixed burn = team + ad + subs + other_opex (no COGS, no commissions)
-    expected = TEAM_COST + 8002 + SUBSCRIPTIONS_OVERRIDE + result["other_opex"]
+    # Fixed burn = team_wise + owner_pay + ad + subs + other_opex
+    expected = SALARY_BASELINE + OWNER_TAKEHOME_MONTHLY + 8002 + SUBSCRIPTIONS_OVERRIDE + result["other_opex"]
     assert abs(result["total_recurring_burn"] - expected) < 0.01
+
+
+def test_team_is_salary_baseline_not_true_team_cost():
+    """Team in burn should be SALARY tab ($18,891), not true_team_cost ($29,671)."""
+    result = get_monthly_burn(SAMPLE_XERO, TEAM_COST, SALARY_BASELINE)
+    assert result["team"] == SALARY_BASELINE
+    assert result["owner_pay"] == OWNER_TAKEHOME_MONTHLY
 
 
 def test_variable_cogs_excluded_from_fixed_burn():
@@ -108,4 +115,6 @@ def test_cogs_ratio():
 def test_no_xero_data_fallback():
     result = get_monthly_burn(None, TEAM_COST, SALARY_BASELINE)
     assert not result["available"]
-    assert result["total_recurring_burn"] == TEAM_COST
+    assert result["total_recurring_burn"] == SALARY_BASELINE + OWNER_TAKEHOME_MONTHLY
+    assert result["team"] == SALARY_BASELINE
+    assert result["owner_pay"] == OWNER_TAKEHOME_MONTHLY

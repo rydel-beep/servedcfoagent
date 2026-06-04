@@ -587,7 +587,7 @@
         <div class="cash-card-value" style="color:var(--red)">${fmt$(totalBurn)}</div>
         <div class="cash-card-sub" style="line-height:1.6">`;
       if (burn.available) {
-        html += `Team ${fmt$(burn.team)} · Ad ${fmt$(burn.ad_spend)} · Subs/Tools ${fmt$(burn.subscriptions)} · Other ${fmt$(burn.other_opex)}`;
+        html += `Team ${fmt$(burn.team)} · Owner ${fmt$(burn.owner_pay)} · Ad ${fmt$(burn.ad_spend)} · Subs ${fmt$(burn.subscriptions)} · Other ${fmt$(burn.other_opex)}`;
       }
       html += `</div></div>`;
     }

@@ -20,6 +20,11 @@ Categories:
 from __future__ import annotations
 
 
+# ── Owner pay for burn (cash leaving bank monthly, not gross) ──────────────
+# Take-home: $1,700/wk × 4 = $6,800/mo. PAYG ($2,164/mo) and super ($1,076/mo)
+# are lumpy quarterly payments, excluded from monthly burn.
+OWNER_TAKEHOME_MONTHLY = 6800.0
+
 # ── Hardcoded subscriptions/tools (Rydel-confirmed, 2026-06-04) ────────────
 # Xero splits these across Client Reporting Tools, Subscriptions, and other
 # accounts depending on how AMEX transactions are coded. Until Piolo recodes
@@ -79,7 +84,9 @@ def get_monthly_burn(
     Parameters
     ----------
     xero_data : parsed Xero P&L dict (from xero_pull._parse_pnl)
-    true_team_cost : monthly team cost from SALARY tab (source of truth)
+    true_team_cost : monthly team cost from SALARY tab (source of truth).
+        NOTE: For burn purposes we use salary_baseline (team Wise) + owner
+        take-home, not the full true_team_cost which includes gross pay + super.
     salary_baseline : core team payroll via Wise from SALARY tab (~$18,891)
         Used to split Contractors NO GST into team vs subcontractor portions.
 
@@ -87,12 +94,16 @@ def get_monthly_burn(
     -------
     dict with burn breakdown, totals, and line-item details.
     """
+    team_wise = salary_baseline or 18891.0
+    owner_pay = OWNER_TAKEHOME_MONTHLY
+
     if not xero_data:
         return {
             "available": False,
             "reason": "No Xero P&L data",
-            "total_recurring_burn": true_team_cost,
-            "team": true_team_cost,
+            "total_recurring_burn": team_wise + owner_pay,
+            "team": team_wise,
+            "owner_pay": owner_pay,
         }
 
     opex_lines = xero_data.get("opex_line_items") or []
@@ -193,9 +204,11 @@ def get_monthly_burn(
     subscriptions = SUBSCRIPTIONS_OVERRIDE
 
     # ── Totals ──
-    # Fixed recurring burn = what goes out every month regardless
+    # Fixed recurring burn = cash leaving the bank every month
+    # Team Wise + owner take-home (not gross — PAYG/super are lumpy quarterly)
     total_recurring_burn = (
-        true_team_cost
+        team_wise
+        + owner_pay
         + ad_spend
         + subscriptions
         + other_opex
@@ -211,7 +224,9 @@ def get_monthly_burn(
 
     return {
         "available": True,
-        "team": round(true_team_cost, 2),
+        "team": round(team_wise, 2),
+        "owner_pay": round(owner_pay, 2),
+        "owner_pay_note": "Take-home $1,700/wk x 4. PAYG + super excluded (quarterly)",
         "ad_spend": round(ad_spend, 2),
         "subscriptions": round(subscriptions, 2),
         "subscriptions_note": "Hardcoded override — Xero miscodes across accounts",
