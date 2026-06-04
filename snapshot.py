@@ -32,6 +32,7 @@ from team_model import build_team_model
 from deficiency_analysis import build_deficiency_analysis
 from hiring_model import compute_hiring_analysis
 from opex_pull import get_monthly_burn
+from team_roster import pull_team_roster
 import history_store
 
 logger = logging.getLogger(__name__)
@@ -181,6 +182,7 @@ def build_snapshot() -> dict:
         f_recognized = pool.submit(pull_recognized_revenue)
         f_sales = pool.submit(pull_sales_analytics)
         f_health = pool.submit(pull_client_health)
+        f_roster = pool.submit(pull_team_roster)
 
     stripe_result = f_stripe.result()
     ghl_result = f_ghl.result()
@@ -190,6 +192,7 @@ def build_snapshot() -> dict:
     recognized_result = f_recognized.result()
     sales_result = f_sales.result()
     health_result = f_health.result()
+    roster_result = f_roster.result()
 
     # Merge degraded lists
     degraded = (
@@ -201,6 +204,7 @@ def build_snapshot() -> dict:
         + recognized_result.get("degraded", [])
         + sales_result.get("degraded", [])
         + health_result.get("degraded", [])
+        + roster_result.get("degraded", [])
     )
 
     # Build costs block from actual sheet commission values
@@ -368,6 +372,7 @@ def build_snapshot() -> dict:
         "revenue_views": revenue_views,
         "client_reconciliation": reconciliation,
         "active_clients": derived_clients,
+        "team_roster": roster_result,
         "monthly_burn": burn,
         "degraded": degraded if degraded else [],
         "ok": len(degraded) == 0,

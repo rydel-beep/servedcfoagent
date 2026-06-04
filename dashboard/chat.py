@@ -230,6 +230,16 @@ def _build_context_block(snapshot_json: str) -> str:
     if cp:
         sections.append("CASH POSITION:\n" + json.dumps(cp, indent=2))
 
+    # Team roster (per-person salaries by department)
+    tr = snap.get("team_roster")
+    if tr and tr.get("roster"):
+        tr_summary = {
+            "totals": tr.get("totals"),
+            "by_department": tr.get("by_department"),
+            "headcount": len(tr["roster"]),
+        }
+        sections.append("TEAM ROSTER (SALARY tab):\n" + json.dumps(tr_summary, indent=2))
+
     # Hiring context
     hc = snap.get("hiring_context")
     if hc:
