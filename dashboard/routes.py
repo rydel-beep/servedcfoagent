@@ -169,6 +169,9 @@ def api_hiring_scenario():
     deficiencies = da.get("deficiencies") or []
     binding = deficiencies[0].get("label") if deficiencies else None
 
+    burn = snap.get("monthly_burn") or {}
+    total_burn = burn.get("total_recurring_burn")
+
     result = compute_hiring_analysis(
         roles=roles,
         monthly_net_income=ctx.get("monthly_net_income", 0),
@@ -187,6 +190,7 @@ def api_hiring_scenario():
         forward_mrr=snap.get("forward_mrr"),
         cash_position=snap.get("cash_position"),
         raises=data.get("raises"),
+        total_monthly_burn=total_burn,
     )
     return jsonify(result)
 

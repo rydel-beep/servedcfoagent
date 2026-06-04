@@ -200,6 +200,31 @@ def _extract_line_item(report_rows: list[dict], keyword: str) -> float | None:
     return None
 
 
+def _extract_section_lines(report_rows: list[dict], section_title: str) -> list[dict]:
+    """Extract all line items from a named section. Returns list of {label, amount}."""
+    items = []
+    for section in report_rows:
+        if section.get("RowType") != "Section":
+            continue
+        title = section.get("Title", "").strip()
+        if section_title.lower() not in title.lower():
+            continue
+        for row in section.get("Rows", []):
+            if row.get("RowType") != "Row":
+                continue
+            cells = row.get("Cells", [])
+            if len(cells) < 2:
+                continue
+            label = cells[0].get("Value", "").strip()
+            try:
+                amount = float(cells[1].get("Value", 0))
+            except (ValueError, TypeError):
+                continue
+            if label:
+                items.append({"label": label, "amount": amount})
+    return items
+
+
 def _parse_pnl(data: dict) -> dict:
     """Parse Xero P&L response into structured profit data."""
     reports = data.get("Reports", [])
@@ -240,6 +265,10 @@ def _parse_pnl(data: dict) -> dict:
     elif gross_profit is not None:
         net_profit = round(gp + oi, 2)
 
+    # Extract all line items for categorised burn breakdown
+    cogs_lines = _extract_section_lines(rows, "Cost of Sales") or _extract_section_lines(rows, "Direct Costs")
+    opex_lines = _extract_section_lines(rows, "Operating Expenses") or _extract_section_lines(rows, "Expense")
+
     return {
         "revenue": revenue,
         "cogs": abs(cogs) if cogs is not None else None,
@@ -250,6 +279,8 @@ def _parse_pnl(data: dict) -> dict:
         "net_profit": net_profit,
         "xero_wages": xero_wages,
         "xero_ad_spend": abs(xero_ad_spend) if xero_ad_spend is not None else None,
+        "cogs_line_items": cogs_lines,
+        "opex_line_items": opex_lines,
     }
 
 

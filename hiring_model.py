@@ -223,6 +223,7 @@ def compute_hiring_analysis(
     forward_mrr: dict | None = None,
     cash_position: dict | None = None,
     raises: list[dict] | None = None,
+    total_monthly_burn: float | None = None,
 ) -> dict:
     """Compute hiring affordability for one or more proposed roles.
 
@@ -368,8 +369,8 @@ def compute_hiring_analysis(
         expiry_schedule = forward_mrr.get("expiry_schedule") or []
         renewal_info = forward_mrr.get("renewal_rate_historical") or {}
 
-        # Total costs (current + proposed hires/raises)
-        total_costs = (monthly_cogs or 0) + (monthly_opex or 0)
+        # Total costs: use full-outflow burn if available, else COGS + OpEx
+        total_costs = total_monthly_burn or ((monthly_cogs or 0) + (monthly_opex or 0))
 
         # Cash projection starting point
         cp = cash_position or {}

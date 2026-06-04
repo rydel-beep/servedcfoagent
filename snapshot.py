@@ -31,6 +31,7 @@ from xero_wages_categoriser import (
 from team_model import build_team_model
 from deficiency_analysis import build_deficiency_analysis
 from hiring_model import compute_hiring_analysis
+from opex_pull import get_monthly_burn
 import history_store
 
 logger = logging.getLogger(__name__)
@@ -257,6 +258,13 @@ def build_snapshot() -> dict:
     if profit:
         profit["payroll"] = payroll
 
+    # ── Full-outflow monthly burn breakdown ─────────────────────────────────
+    burn = get_monthly_burn(
+        xero_data=xero_data,
+        true_team_cost=true_team_cost,
+        salary_baseline=payroll_baseline,
+    )
+
     # Build revenue views cross-reference
     stripe_data = stripe_result.get("stripe")
     stripe_rev = None
@@ -360,6 +368,7 @@ def build_snapshot() -> dict:
         "revenue_views": revenue_views,
         "client_reconciliation": reconciliation,
         "active_clients": derived_clients,
+        "monthly_burn": burn,
         "degraded": degraded if degraded else [],
         "ok": len(degraded) == 0,
     }
@@ -414,14 +423,43 @@ def build_snapshot() -> dict:
     # ── Cash-on-hand (Rydel-confirmed override or Xero-derived) ───────────────
     from config import (CASH_ON_HAND_OVERRIDE, CASH_STRIPE_INCOMING,
                         CASH_DEPLOYABLE_BUFFER, CASH_TAX_RESERVED)
+
+    cash_in_bank = CASH_ON_HAND_OVERRIDE
+    tax_reserved = CASH_TAX_RESERVED
+    total_burn = burn.get("total_recurring_burn") or true_team_cost
+    cogs_ratio = burn.get("cogs_ratio_pct")
+
+    # Dual deployable cash
+    aggressive_deployable = round(cash_in_bank - tax_reserved, 2)
+
+    # Conservative: also subtract delivery-obligation reserve
+    # = upfront cash for undelivered work × COGS ratio
+    # Approximation: use Stripe incoming as proxy for cash committed to delivery
+    delivery_reserve = 0.0
+    if cogs_ratio and CASH_STRIPE_INCOMING > 0:
+        delivery_reserve = round(CASH_STRIPE_INCOMING * (cogs_ratio / 100), 2)
+
+    conservative_deployable = round(aggressive_deployable - delivery_reserve, 2)
+
+    # Runway on total burn
+    runway_months = round(cash_in_bank / total_burn, 1) if total_burn > 0 else None
+
     snapshot["cash_position"] = {
-        "cash_in_bank": CASH_ON_HAND_OVERRIDE,
+        "cash_in_bank": cash_in_bank,
         "stripe_incoming": CASH_STRIPE_INCOMING,
-        "deployable_buffer": CASH_DEPLOYABLE_BUFFER,
-        "tax_reserved": CASH_TAX_RESERVED,
-        "total_available": round(CASH_ON_HAND_OVERRIDE + CASH_STRIPE_INCOMING, 2),
+        "tax_reserved": tax_reserved,
+        "total_available": round(cash_in_bank + CASH_STRIPE_INCOMING, 2),
+        "aggressive_deployable": aggressive_deployable,
+        "aggressive_note": "Cash minus tax reserve — treats all upfront cash as available",
+        "conservative_deployable": conservative_deployable,
+        "conservative_note": "Also excludes delivery-obligation reserve (cost to deliver work already paid for)",
+        "delivery_reserve": delivery_reserve,
+        "delivery_reserve_note": f"Stripe incoming ${CASH_STRIPE_INCOMING:,.0f} x COGS ratio {cogs_ratio}%"
+            if cogs_ratio else "COGS ratio unavailable",
+        "cogs_ratio_pct": cogs_ratio,
+        "total_monthly_burn": round(total_burn, 2),
+        "runway_months": runway_months,
         "source": "override" if CASH_ON_HAND_OVERRIDE > 0 else "xero",
-        "note": "Cash in bank + Stripe incoming. Buffer deployable separately.",
     }
 
     # Hiring context — derives from financial_position (no double-count)

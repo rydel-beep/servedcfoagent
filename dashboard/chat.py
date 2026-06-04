@@ -219,7 +219,13 @@ def _build_context_block(snapshot_json: str) -> str:
         fwd_summary = {k: v for k, v in fwd.items() if k != "clients"}
         sections.append("FORWARD RECOGNIZED MRR (churn-adjusted):\n" + json.dumps(fwd_summary, indent=2))
 
-    # Cash position
+    # Monthly burn breakdown (full-outflow, not team-only)
+    burn = snap.get("monthly_burn")
+    if burn and burn.get("available"):
+        burn_summary = {k: v for k, v in burn.items() if k != "line_details"}
+        sections.append("MONTHLY BURN (full-outflow breakdown):\n" + json.dumps(burn_summary, indent=2))
+
+    # Cash position (includes dual deployable, runway on total burn)
     cp = snap.get("cash_position")
     if cp:
         sections.append("CASH POSITION:\n" + json.dumps(cp, indent=2))

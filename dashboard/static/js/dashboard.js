@@ -519,23 +519,18 @@
     const content = $('#cash-position-content');
     const badge = $('#cash-badge');
     const stripe = snap.stripe || {};
-    const xero = snap.xero || {};
-    const payroll = get(snap, 'profit.payroll') || {};
     const cashPos = snap.cash_position || {};
+    const burn = snap.monthly_burn || {};
 
     const stripeCash = get(stripe, 'revenue.current.total_aud');
-    const payouts = get(stripe, 'payouts.total_paid_out');
-    const trueTeam = get(payroll, 'true_team_cost.true_team_cost_monthly');
-    const opex = xero.operating_expenses;
-    const rev = xero.revenue;
 
-    // Burn rate = true team cost (conservative) or full opex
-    const monthlyBurn = trueTeam || opex || null;
-    const cashInflow = stripeCash || rev || null;
+    // Use full-outflow burn (from opex_pull) or fall back to team-only
+    const totalBurn = cashPos.total_monthly_burn || burn.total_recurring_burn || null;
+    const cashInflow = stripeCash || null;
 
     let html = '<div class="cash-grid">';
 
-    // Cash in bank (real balance — from override or Xero)
+    // Cash in bank
     if (cashPos.cash_in_bank != null) {
       html += `<div class="cash-card">
         <div class="cash-card-label">Cash in Bank</div>
@@ -544,17 +539,23 @@
       </div>`;
     }
 
-    // Deployable cash (what you can actually spend)
-    if (cashPos.deployable_buffer != null) {
-      const deployable = cashPos.deployable_buffer;
+    // Dual deployable cash
+    if (cashPos.aggressive_deployable != null) {
       html += `<div class="cash-card">
-        <div class="cash-card-label">Deployable Cash</div>
-        <div class="cash-card-value">${fmt$(deployable)}</div>
-        <div class="cash-card-sub">available for spending</div>
+        <div class="cash-card-label">Aggressive War Chest</div>
+        <div class="cash-card-value" style="color:var(--accent)">${fmt$(cashPos.aggressive_deployable)}</div>
+        <div class="cash-card-sub">cash minus tax reserve</div>
+      </div>`;
+    }
+    if (cashPos.conservative_deployable != null) {
+      html += `<div class="cash-card">
+        <div class="cash-card-label">Conservative War Chest</div>
+        <div class="cash-card-value">${fmt$(cashPos.conservative_deployable)}</div>
+        <div class="cash-card-sub">also excludes delivery reserve (${fmt$(cashPos.delivery_reserve)})</div>
       </div>`;
     }
 
-    // Tax/BAS reserved
+    // Tax reserved
     if (cashPos.tax_reserved != null) {
       html += `<div class="cash-card">
         <div class="cash-card-label">Tax Reserved</div>
@@ -579,47 +580,40 @@
       <div class="cash-card-sub">collected from clients</div>
     </div>`;
 
-    // Monthly burn
-    html += `<div class="cash-card">
-      <div class="cash-card-label">Monthly Burn</div>
-      <div class="cash-card-value" style="color:var(--red)">${fmt$(monthlyBurn)}</div>
-      <div class="cash-card-sub">${trueTeam ? 'team cost (fixed)' : 'total opex'}</div>
-    </div>`;
+    // Total monthly burn with breakdown
+    if (totalBurn != null) {
+      html += `<div class="cash-card" style="grid-column: span 2;">
+        <div class="cash-card-label">Total Monthly Burn</div>
+        <div class="cash-card-value" style="color:var(--red)">${fmt$(totalBurn)}</div>
+        <div class="cash-card-sub" style="line-height:1.6">`;
+      if (burn.available) {
+        html += `Team ${fmt$(burn.team)} · Ad ${fmt$(burn.ad_spend)} · Delivery ${fmt$(burn.cogs_delivery)} · Subs ${fmt$(burn.subscriptions)} · Other ${fmt$(burn.other_opex)}`;
+      }
+      html += `</div></div>`;
+    }
 
-    // Net cash flow
-    if (cashInflow != null && monthlyBurn != null) {
-      const netFlow = cashInflow - monthlyBurn;
+    // Net cash flow (revenue minus TOTAL burn)
+    if (cashInflow != null && totalBurn != null) {
+      const netFlow = cashInflow - totalBurn;
       html += `<div class="cash-card">
         <div class="cash-card-label">Net Cash Flow</div>
         <div class="cash-card-value" style="color:${netFlow >= 0 ? 'var(--green)' : 'var(--red)'}">${netFlow >= 0 ? '+' : ''}${fmt$(netFlow)}</div>
-        <div class="cash-card-sub">revenue minus burn</div>
+        <div class="cash-card-sub">Stripe cash minus total burn</div>
       </div>`;
     }
 
     html += '</div>';
 
-    // Runway indicator — use real bank balance if available
-    const runwayBase = cashPos.cash_in_bank || null;
-    if (runwayBase != null && monthlyBurn != null && monthlyBurn > 0) {
-      const runwayMonths = runwayBase / monthlyBurn;
+    // Runway on total burn
+    const runwayMonths = cashPos.runway_months || null;
+    if (runwayMonths != null && totalBurn != null) {
       const barPct = Math.min(runwayMonths / 12 * 100, 100);
       const color = runwayMonths >= 6 ? 'var(--green)' : runwayMonths >= 3 ? 'var(--amber)' : 'var(--red)';
       html += `<div class="runway-bar-bg"><div class="runway-bar-fill" style="width:${barPct}%;background:${color}"></div></div>`;
-      html += `<div class="runway-note">Cash runway: <strong style="color:${color}">${runwayMonths.toFixed(1)} months</strong> at current burn (${fmt$(monthlyBurn)}/mo). ${runwayMonths >= 6 ? 'Comfortable.' : runwayMonths >= 3 ? 'Monitor closely.' : 'Critical — under 3 months.'}</div>`;
+      html += `<div class="runway-note">Cash runway: <strong style="color:${color}">${runwayMonths.toFixed ? runwayMonths.toFixed(1) : runwayMonths} months</strong> at total burn (${fmt$(totalBurn)}/mo). ${runwayMonths >= 6 ? 'Comfortable.' : runwayMonths >= 3 ? 'Monitor closely.' : 'Critical — under 3 months.'}</div>`;
 
-      badge.textContent = runwayMonths.toFixed(1) + 'mo runway';
+      badge.textContent = (runwayMonths.toFixed ? runwayMonths.toFixed(1) : runwayMonths) + 'mo runway';
       badge.style.background = runwayMonths >= 6 ? 'var(--green-dim)' : runwayMonths >= 3 ? 'var(--amber-dim)' : 'var(--red-dim)';
-      badge.style.color = color;
-    } else if (cashInflow != null && monthlyBurn != null && monthlyBurn > 0) {
-      // Fallback: revenue coverage ratio (no bank balance available)
-      const ratio = cashInflow / monthlyBurn;
-      const barPct = Math.min(ratio / 3 * 100, 100);
-      const color = ratio >= 1.5 ? 'var(--green)' : ratio >= 1 ? 'var(--amber)' : 'var(--red)';
-      html += `<div class="runway-bar-bg"><div class="runway-bar-fill" style="width:${barPct}%;background:${color}"></div></div>`;
-      html += `<div class="runway-note">Revenue covers <strong style="color:${color}">${ratio.toFixed(1)}x</strong> monthly burn. ${ratio >= 1.5 ? 'Self-funding.' : ratio >= 1 ? 'Tight — watch closely.' : 'Revenue below burn rate.'}</div>`;
-
-      badge.textContent = ratio.toFixed(1) + 'x coverage';
-      badge.style.background = ratio >= 1.5 ? 'var(--green-dim)' : ratio >= 1 ? 'var(--amber-dim)' : 'var(--red-dim)';
       badge.style.color = color;
     }
 
