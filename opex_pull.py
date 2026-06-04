@@ -61,6 +61,14 @@ _COGS_CATEGORY = {
     "contractors no gst": "cogs_mixed",  # contains team Wise payments + subcontractors
 }
 
+# COGS lines where only part is recurring (rest is one-off investment).
+# {label_lower: recurring_monthly_amount}
+_COGS_RECURRING_OVERRIDE = {
+    # $1,500/mo recurring (email platform) + ~$1,669 other client tools.
+    # The $4,600 one-off email platform setup is excluded from forward burn.
+    "client reporting tools": 3169.0,  # $7,769 - $4,600 one-off = $3,169 recurring
+}
+
 
 def get_monthly_burn(
     xero_data: dict | None,
@@ -153,6 +161,27 @@ def get_monthly_burn(
         amount = abs(line["amount"])
         key = label.lower()
         cat = _COGS_CATEGORY.get(key, "cogs_delivery")
+
+        # Handle COGS recurring overrides (partial one-off)
+        if key in _COGS_RECURRING_OVERRIDE and cat != "cogs_mixed":
+            recurring_amt = _COGS_RECURRING_OVERRIDE[key]
+            one_off_amt = max(0, amount - recurring_amt)
+            cogs_delivery += recurring_amt
+            if one_off_amt > 0:
+                one_off += one_off_amt
+                line_details.append({
+                    "label": label, "amount": round(recurring_amt, 2),
+                    "category": "cogs_delivery", "note": "recurring portion",
+                })
+                line_details.append({
+                    "label": f"{label} (one-off)", "amount": round(one_off_amt, 2),
+                    "category": "one_off", "note": "excluded from forward burn",
+                })
+            else:
+                line_details.append({
+                    "label": label, "amount": round(amount, 2), "category": cat,
+                })
+            continue
 
         if cat == "cogs_mixed":
             # Contractors NO GST: split into team Wise + subcontractors
