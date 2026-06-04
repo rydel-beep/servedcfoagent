@@ -185,6 +185,8 @@ def api_hiring_scenario():
         growth_rate_pct=growth_rate,
         binding_constraint=binding,
         forward_mrr=snap.get("forward_mrr"),
+        cash_position=snap.get("cash_position"),
+        raises=data.get("raises"),
     )
     return jsonify(result)
 

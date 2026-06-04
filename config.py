@@ -87,6 +87,16 @@ elif os.path.isdir("/data"):
 else:
     XERO_TOKEN_FILE = "state/xero_tokens.json"
 
+# ── Cash-on-Hand Override ────────────────────────────────────────────────────
+# Xero bank balances can lag due to reconciliation timing. This override lets
+# Rydel set the real number. Set to 0 or empty to use Xero-derived figure.
+# Confirmed 2026-06-04: bank $140,007.29, Stripe incoming $18k,
+# buffer $61k ($40k deployable, $20k tax reserved).
+CASH_ON_HAND_OVERRIDE = float(os.getenv("CASH_ON_HAND_OVERRIDE", "140007.29"))
+CASH_STRIPE_INCOMING = float(os.getenv("CASH_STRIPE_INCOMING", "18000"))
+CASH_DEPLOYABLE_BUFFER = float(os.getenv("CASH_DEPLOYABLE_BUFFER", "40000"))
+CASH_TAX_RESERVED = float(os.getenv("CASH_TAX_RESERVED", "20000"))
+
 # ── Snapshot ─────────────────────────────────────────────────────────────────
 SNAPSHOT_FILE = os.getenv("SNAPSHOT_FILE", "snapshot_state.json")
 CFO_REFRESH_KEY = os.getenv("CFO_REFRESH_KEY", "")

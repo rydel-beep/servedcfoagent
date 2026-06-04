@@ -25,10 +25,19 @@ logger = logging.getLogger(__name__)
 _DEPT_TO_FUNCTION = {
     "C-LEVEL": "leadership",
     "PAID ADS": "delivery_ads",
-    "PR": "delivery_other",
+    "PR": "delivery_pr",
     "MEDIA": "delivery_content",
     "TECH": "delivery_tech",
     "SMM": "delivery_smm",
+}
+
+# Per-person overrides where department tag is wrong (Rydel-confirmed 2026-06-04)
+_PERSON_FUNCTION_OVERRIDE = {
+    "tristan borebor": "delivery_tech",
+    "ryan piolo dulay": "admin",
+    # Miguel Delmendo → leadership (matches C-LEVEL, no override needed)
+    # KC Garces → leadership (matches C-LEVEL, no override needed)
+    # Rydel Limjoco → leadership (matches C-LEVEL, no override needed)
 }
 
 
@@ -66,7 +75,11 @@ def build_team_model() -> dict:
         if status.lower() in ("inactive", "terminated"):
             continue
 
-        function = _DEPT_TO_FUNCTION.get(dept, "other")
+        # Check person-level override first (Rydel-confirmed assignments)
+        first = (row[1] or "").strip()
+        last = (row[0] or "").strip()
+        full_name = f"{first} {last}".lower().strip()
+        function = _PERSON_FUNCTION_OVERRIDE.get(full_name, _DEPT_TO_FUNCTION.get(dept, "other"))
 
         roles.append({
             "role": role,

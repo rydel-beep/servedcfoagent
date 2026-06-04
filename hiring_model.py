@@ -32,6 +32,51 @@ def _safe_round(val, decimals=2):
     return round(val, decimals)
 
 
+def _graded_sustainability(team_cost_pct: float | None, cash_balance: float | None, monthly_net: float | None) -> dict:
+    """Return graded sustainability status, not binary.
+
+    Grades:
+    - healthy: team ratio < 50% AND cash positive
+    - tight: team ratio 50-80% OR cash declining but positive
+    - unsustainable: team ratio > 80% OR cash negative OR net deeply negative
+    """
+    if team_cost_pct is not None and team_cost_pct > 80:
+        return {
+            "grade": "unsustainable",
+            "color": "red",
+            "reason": f"Team cost is {team_cost_pct}% of MRR",
+        }
+    if cash_balance is not None and cash_balance < 0:
+        return {
+            "grade": "unsustainable",
+            "color": "red",
+            "reason": f"Cash balance negative (${cash_balance:,.0f})",
+        }
+    if monthly_net is not None and monthly_net < -5000:
+        return {
+            "grade": "unsustainable",
+            "color": "red",
+            "reason": f"Net loss ${abs(monthly_net):,.0f}/mo",
+        }
+    if team_cost_pct is not None and team_cost_pct > 50:
+        return {
+            "grade": "tight",
+            "color": "amber",
+            "reason": f"Team cost is {team_cost_pct}% of MRR",
+        }
+    if monthly_net is not None and monthly_net < 0:
+        return {
+            "grade": "tight",
+            "color": "amber",
+            "reason": f"Slightly negative (${monthly_net:,.0f}/mo)",
+        }
+    return {
+        "grade": "healthy",
+        "color": "green",
+        "reason": "Team ratio and cash position healthy",
+    }
+
+
 def _net_status(monthly_net: float | None) -> dict:
     """Return status dict for a monthly net figure."""
     if monthly_net is None:
@@ -176,6 +221,8 @@ def compute_hiring_analysis(
     growth_rate_pct: float | None = None,
     binding_constraint: str | None = None,
     forward_mrr: dict | None = None,
+    cash_position: dict | None = None,
+    raises: list[dict] | None = None,
 ) -> dict:
     """Compute hiring affordability for one or more proposed roles.
 
@@ -243,6 +290,22 @@ def compute_hiring_analysis(
         )
         per_role.append(analysis)
 
+    # ── Raises for existing employees ──
+    raise_details = []
+    total_raise_cost = 0.0
+    if raises:
+        for ra in raises:
+            added = float(ra.get("monthly_increase", 0))
+            total_raise_cost += added
+            total_added_cost += added
+            raise_details.append({
+                "role": ra.get("role", "Existing employee"),
+                "current_salary": _safe_round(ra.get("current_salary")),
+                "new_salary": _safe_round(ra.get("new_salary")),
+                "monthly_increase": round(added, 2),
+                "is_spof": bool(ra.get("is_spof", False)),
+            })
+
     # ── Combined impact ──
     new_team_cost = true_team_cost + total_added_cost
     new_monthly_net = net_income - total_added_cost
@@ -305,10 +368,15 @@ def compute_hiring_analysis(
         expiry_schedule = forward_mrr.get("expiry_schedule") or []
         renewal_info = forward_mrr.get("renewal_rate_historical") or {}
 
-        # Total costs (current + proposed hires)
+        # Total costs (current + proposed hires/raises)
         total_costs = (monthly_cogs or 0) + (monthly_opex or 0)
 
-        # Forward net per month (recognized revenue - costs - hire cost)
+        # Cash projection starting point
+        cp = cash_position or {}
+        starting_cash = cp.get("total_available") or cp.get("cash_in_bank") or 0
+        running_cash = starting_cash
+
+        # Forward net per month with graded sustainability + cash projection
         fwd_forecast = []
         for fm in fwd_months[:6]:  # cap at 6 months
             fwd_rev = fm.get("recognized_mrr") or 0
@@ -318,22 +386,49 @@ def compute_hiring_analysis(
                 _safe_round(new_team_cost / fwd_rev * 100, 1)
                 if fwd_rev > 0 else None
             )
+
+            # Cash projection: starting cash + cumulative net flows
+            running_cash += fwd_net
+            grade = _graded_sustainability(team_pct, running_cash, fwd_net)
+
             fwd_forecast.append({
                 "month": fm.get("month"),
                 "recognized_mrr": _safe_round(fwd_rev),
                 "clients": fm.get("clients"),
                 "net_before_hire": _safe_round(fwd_net_before),
                 "net_after_hire": _safe_round(fwd_net),
-                "can_sustain": fwd_net > 0,
+                "cash_balance": _safe_round(running_cash),
                 "team_cost_pct": team_pct,
+                "sustainability": grade,
             })
 
         # When does the hire become unsustainable (churn cliff)?
         sustainable_until = None
         for ff in fwd_forecast:
-            if not ff["can_sustain"]:
+            if ff["sustainability"]["grade"] == "unsustainable":
                 sustainable_until = ff["month"]
                 break
+
+        # Cash runway: when does cash go negative?
+        cash_runway_month = None
+        for ff in fwd_forecast:
+            if ff["cash_balance"] is not None and ff["cash_balance"] < 0:
+                cash_runway_month = ff["month"]
+                break
+
+        # Count healthy months
+        healthy_count = sum(
+            1 for ff in fwd_forecast
+            if ff["sustainability"]["grade"] == "healthy"
+        )
+        tight_count = sum(
+            1 for ff in fwd_forecast
+            if ff["sustainability"]["grade"] == "tight"
+        )
+        unsustainable_count = sum(
+            1 for ff in fwd_forecast
+            if ff["sustainability"]["grade"] == "unsustainable"
+        )
 
         # Contribution margin: how many clients fund this hire?
         clients_to_fund = None
@@ -343,10 +438,9 @@ def compute_hiring_analysis(
         elif avg_per_client and avg_per_client > 0:
             clients_to_fund = _safe_round(total_added_cost / avg_per_client, 1)
 
-        # New clients needed to replace churn AND fund hire
+        # New clients needed to replace churn
         new_clients_needed_monthly = None
         if avg_per_client and avg_per_client > 0:
-            # Average monthly churn from expiry schedule
             total_expiring = sum(e.get("contracts_expiring", 0) for e in expiry_schedule[:6])
             avg_monthly_churn = total_expiring / 6 if expiry_schedule else 0
             new_clients_needed_monthly = _safe_round(avg_monthly_churn, 1)
@@ -357,9 +451,17 @@ def compute_hiring_analysis(
             "avg_monthly_per_client": _safe_round(avg_per_client),
             "active_clients": active_clients,
             "clients_to_fund_hire": clients_to_fund,
+            "starting_cash": _safe_round(starting_cash),
             "forward_forecast": fwd_forecast,
             "sustainable_until": sustainable_until,
+            "cash_runway_month": cash_runway_month,
             "churn_warning": sustainable_until is not None,
+            "summary": {
+                "healthy_months": healthy_count,
+                "tight_months": tight_count,
+                "unsustainable_months": unsustainable_count,
+                "total_months": len(fwd_forecast),
+            },
             "renewal_rate": renewal_info.get("note"),
             "new_clients_to_replace_churn_monthly": new_clients_needed_monthly,
             "verdict": _forward_verdict(
@@ -368,7 +470,7 @@ def compute_hiring_analysis(
             ),
         }
 
-    return json_safe({
+    result_dict = {
         "current": current,
         "per_role": per_role,
         "combined": combined,
@@ -377,4 +479,9 @@ def compute_hiring_analysis(
         "affordable_at_month": affordable_at_month,
         "constraint_context": constraint_context,
         "note": "Analysis only — the hire decision is yours.",
-    })
+    }
+    if raise_details:
+        result_dict["raises"] = raise_details
+        result_dict["combined"]["total_raise_cost"] = round(total_raise_cost, 2)
+
+    return json_safe(result_dict)

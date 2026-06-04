@@ -219,6 +219,11 @@ def _build_context_block(snapshot_json: str) -> str:
         fwd_summary = {k: v for k, v in fwd.items() if k != "clients"}
         sections.append("FORWARD RECOGNIZED MRR (churn-adjusted):\n" + json.dumps(fwd_summary, indent=2))
 
+    # Cash position
+    cp = snap.get("cash_position")
+    if cp:
+        sections.append("CASH POSITION:\n" + json.dumps(cp, indent=2))
+
     # Hiring context
     hc = snap.get("hiring_context")
     if hc:

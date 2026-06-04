@@ -2396,6 +2396,12 @@
       html += '<div class="kpi"><div class="kpi-label">Monthly Net</div><div class="kpi-value' + (hNet < 0 ? ' critical' : '') + '">' + fmt$(hNet) + '</div><div class="kpi-sub">/mo (' + (headline.basis || '?') + ')</div></div>';
     }
 
+    // Cash on hand
+    var cashPos = snap.cash_position || {};
+    if (cashPos.cash_in_bank != null) {
+      html += '<div class="kpi"><div class="kpi-label">Cash on Hand</div><div class="kpi-value">' + fmt$(cashPos.cash_in_bank) + '</div><div class="kpi-sub">' + (cashPos.source === 'override' ? 'confirmed' : 'xero') + '</div></div>';
+    }
+
     // Team cost ratio
     var fpCosts = fp.costs || {};
     if (fpCosts.team_cost_pct_of_mrr != null) {
@@ -2557,6 +2563,20 @@
       html += '</div>';
     }
 
+    // ── Raises ──
+    if (data.raises && data.raises.length > 0) {
+      html += '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;line-height:1.7;margin-bottom:10px;">';
+      html += '<div style="font-weight:700;margin-bottom:6px;color:var(--text);">Raises</div>';
+      for (var ri = 0; ri < data.raises.length; ri++) {
+        var ra = data.raises[ri];
+        html += '<div style="padding:4px 0;' + (ri > 0 ? 'border-top:1px solid var(--border);margin-top:4px;' : '') + '">';
+        html += '<strong>' + esc(ra.role) + '</strong>: ' + fmt$(ra.current_salary) + ' &rarr; ' + fmt$(ra.new_salary) + ' (+' + fmt$(ra.monthly_increase) + '/mo)';
+        if (ra.is_spof) html += ' <span style="color:var(--amber);font-size:10px;">SPOF — retention critical</span>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
     // ── Combined impact ──
     html += '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;line-height:1.7;margin-bottom:10px;">';
     html += '<div style="font-weight:700;margin-bottom:6px;color:var(--text);">Combined Impact (' + c.role_count + ' role' + (c.role_count > 1 ? 's' : '') + ')</div>';
@@ -2613,6 +2633,9 @@
       html += '<div>Current recognized MRR: <strong>' + fmt$(fwd.current_recognized_mrr) + '/mo</strong> (' + fwd.active_clients + ' clients)</div>';
       html += '<div>MTM floor (recurring): <strong>' + fmt$(fwd.mtm_floor) + '/mo</strong></div>';
       html += '<div>Avg contribution/client: <strong>' + fmt$(fwd.avg_monthly_per_client) + '/mo</strong></div>';
+      if (fwd.starting_cash != null) {
+        html += '<div>Starting cash: <strong>' + fmt$(fwd.starting_cash) + '</strong></div>';
+      }
       if (fwd.clients_to_fund_hire != null) {
         html += '<div>Clients to fund this hire: <strong>' + fwd.clients_to_fund_hire + '</strong></div>';
       }
@@ -2620,36 +2643,53 @@
         html += '<div>Avg churn rate: <strong>~' + fwd.new_clients_to_replace_churn_monthly + ' clients/mo</strong> expiring</div>';
       }
 
-      // Churn warning
-      if (fwd.churn_warning && fwd.sustainable_until) {
-        html += '<div style="color:var(--red);margin-top:4px;font-weight:600;">&#9888; Hire becomes unsustainable by ' + esc(fwd.sustainable_until) + ' due to contract expirations (0% historical renewal)</div>';
+      // Sustainability summary
+      if (fwd.summary) {
+        var s = fwd.summary;
+        html += '<div style="margin-top:4px;">';
+        if (s.unsustainable_months > 0) {
+          html += '<span style="color:var(--red);font-weight:600;">&#9888; ' + s.healthy_months + ' healthy, ' + s.tight_months + ' tight, ' + s.unsustainable_months + ' unsustainable out of ' + s.total_months + ' months</span>';
+        } else if (s.tight_months > 0) {
+          html += '<span style="color:var(--yellow);font-weight:600;">' + s.healthy_months + ' healthy, ' + s.tight_months + ' tight out of ' + s.total_months + ' months</span>';
+        } else {
+          html += '<span style="color:var(--green);font-weight:600;">Healthy across all ' + s.total_months + ' months</span>';
+        }
+        html += '</div>';
       }
 
-      // Forward forecast table
+      // Cash runway warning
+      if (fwd.cash_runway_month) {
+        html += '<div style="color:var(--red);margin-top:4px;font-weight:600;">&#9888; Cash runs out by ' + esc(fwd.cash_runway_month) + '</div>';
+      }
+
+      // Forward forecast table with graded sustainability + cash balance
       if (fwd.forward_forecast && fwd.forward_forecast.length > 0) {
         html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px;">';
         html += '<tr style="color:var(--text-muted);border-bottom:1px solid var(--border);">';
         html += '<th style="text-align:left;padding:3px 4px;">Month</th>';
         html += '<th style="text-align:right;padding:3px 4px;">Rec. MRR</th>';
-        html += '<th style="text-align:center;padding:3px 4px;">Clients</th>';
-        html += '<th style="text-align:right;padding:3px 4px;">Net (no hire)</th>';
+        html += '<th style="text-align:center;padding:3px 4px;">Cl.</th>';
         html += '<th style="text-align:right;padding:3px 4px;">Net (w/ hire)</th>';
+        html += '<th style="text-align:right;padding:3px 4px;">Cash Bal.</th>';
         html += '<th style="text-align:center;padding:3px 4px;">Team %</th>';
-        html += '<th style="text-align:center;padding:3px 4px;">Sustain?</th>';
+        html += '<th style="text-align:center;padding:3px 4px;">Status</th>';
         html += '</tr>';
         for (var ffi = 0; ffi < fwd.forward_forecast.length; ffi++) {
           var ff = fwd.forward_forecast[ffi];
           var ffNetColor = ff.net_after_hire >= 0 ? 'var(--green)' : 'var(--red)';
-          var tcPct = ff.team_cost_pct != null ? ff.team_cost_pct + '%' : '-';
-          var tcColor = ff.team_cost_pct != null && ff.team_cost_pct > 55 ? 'color:var(--red);' : ff.team_cost_pct != null && ff.team_cost_pct > 45 ? 'color:var(--yellow);' : '';
+          var cashColor = ff.cash_balance != null && ff.cash_balance < 0 ? 'var(--red)' : 'var(--text)';
+          var sus = ff.sustainability || {};
+          var gradeColor = sus.grade === 'healthy' ? 'var(--green)' : sus.grade === 'tight' ? 'var(--yellow)' : 'var(--red)';
+          var gradeIcon = sus.grade === 'healthy' ? '&#10003;' : sus.grade === 'tight' ? '&#9888;' : '&#10007;';
+          var gradeLabel = sus.grade || '?';
           html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">';
           html += '<td style="padding:3px 4px;font-size:10px;">' + esc(ff.month) + '</td>';
           html += '<td style="text-align:right;padding:3px 4px;">' + fmt$(ff.recognized_mrr) + '</td>';
           html += '<td style="text-align:center;padding:3px 4px;">' + (ff.clients || '-') + '</td>';
-          html += '<td style="text-align:right;padding:3px 4px;">' + fmt$(ff.net_before_hire) + '</td>';
           html += '<td style="text-align:right;padding:3px 4px;color:' + ffNetColor + ';">' + fmt$(ff.net_after_hire) + '</td>';
-          html += '<td style="text-align:center;padding:3px 4px;' + tcColor + '">' + tcPct + '</td>';
-          html += '<td style="text-align:center;padding:3px 4px;">' + (ff.can_sustain ? '<span style="color:var(--green);">&#10003;</span>' : '<span style="color:var(--red);">&#10007;</span>') + '</td>';
+          html += '<td style="text-align:right;padding:3px 4px;color:' + cashColor + ';">' + fmt$(ff.cash_balance) + '</td>';
+          html += '<td style="text-align:center;padding:3px 4px;">' + (ff.team_cost_pct != null ? ff.team_cost_pct + '%' : '-') + '</td>';
+          html += '<td style="text-align:center;padding:3px 4px;color:' + gradeColor + ';" title="' + esc(sus.reason || '') + '">' + gradeIcon + ' ' + gradeLabel + '</td>';
           html += '</tr>';
         }
         html += '</table>';
@@ -2681,29 +2721,74 @@
     return html;
   }
 
+  // ── Raise Form Handler ──────────────────────────
+  var _raiseIdCounter = 0;
+
+  function _addRaiseRow() {
+    var list = document.getElementById('raise-list');
+    if (!list) return;
+    _raiseIdCounter++;
+    var id = _raiseIdCounter;
+    var row = document.createElement('div');
+    row.className = 'raise-row';
+    row.id = 'raise-row-' + id;
+    row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px;';
+    row.innerHTML =
+      '<input type="text" class="raise-role-input" placeholder="Role" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;width:120px;">' +
+      '<input type="number" class="raise-current-input" placeholder="Current $/mo" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;width:100px;">' +
+      '<input type="number" class="raise-new-input" placeholder="New $/mo" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;width:100px;">' +
+      '<button class="raise-remove-btn" data-row="raise-row-' + id + '" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:2px 6px;opacity:0.6;" title="Remove">&times;</button>';
+    list.appendChild(row);
+    row.querySelector('.raise-remove-btn').addEventListener('click', function() {
+      var target = document.getElementById(this.getAttribute('data-row'));
+      if (target) target.remove();
+    });
+  }
+
+  function _collectRaises() {
+    var rows = document.querySelectorAll('.raise-row');
+    var raises = [];
+    for (var i = 0; i < rows.length; i++) {
+      var role = rows[i].querySelector('.raise-role-input').value.trim();
+      var current = parseFloat(rows[i].querySelector('.raise-current-input').value) || 0;
+      var newSal = parseFloat(rows[i].querySelector('.raise-new-input').value) || 0;
+      var increase = newSal - current;
+      if (increase > 0) {
+        raises.push({ role: role || 'Employee', current_salary: current, new_salary: newSal, monthly_increase: increase });
+      }
+    }
+    return raises;
+  }
+
   function initHiringForm() {
     var addBtn = document.getElementById('hire-add-role');
+    var raiseBtn = document.getElementById('raise-add');
     var submitBtn = document.getElementById('hire-submit');
-    if (!addBtn || !submitBtn) return;
+    if (!submitBtn) return;
 
     // Start with one empty row
     _addHireRoleRow();
 
-    addBtn.addEventListener('click', function() { _addHireRoleRow(); });
+    if (addBtn) addBtn.addEventListener('click', function() { _addHireRoleRow(); });
+    if (raiseBtn) raiseBtn.addEventListener('click', function() { _addRaiseRow(); });
 
     submitBtn.addEventListener('click', function() {
       var roles = _collectHireRoles();
+      var raises = _collectRaises();
       var resultDiv = document.getElementById('hiring-result');
-      if (roles.length === 0) {
-        resultDiv.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Add at least one role with a cost</div>';
+      if (roles.length === 0 && raises.length === 0) {
+        resultDiv.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Add at least one hire or raise</div>';
         return;
       }
       resultDiv.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Analyzing...</div>';
 
+      var payload = { roles: roles };
+      if (raises.length > 0) payload.raises = raises;
+
       fetch('/dashboard/api/hiring-scenario', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roles: roles }),
+        body: JSON.stringify(payload),
       })
       .then(function(r) { return r.json(); })
       .then(function(data) {

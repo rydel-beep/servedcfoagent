@@ -411,6 +411,19 @@ def build_snapshot() -> dict:
         snapshot["forward_mrr"] = None
         degraded.append({"metric": "forward_mrr", "reason": f"Build failed: {e}"})
 
+    # ── Cash-on-hand (Rydel-confirmed override or Xero-derived) ───────────────
+    from config import (CASH_ON_HAND_OVERRIDE, CASH_STRIPE_INCOMING,
+                        CASH_DEPLOYABLE_BUFFER, CASH_TAX_RESERVED)
+    snapshot["cash_position"] = {
+        "cash_in_bank": CASH_ON_HAND_OVERRIDE,
+        "stripe_incoming": CASH_STRIPE_INCOMING,
+        "deployable_buffer": CASH_DEPLOYABLE_BUFFER,
+        "tax_reserved": CASH_TAX_RESERVED,
+        "total_available": round(CASH_ON_HAND_OVERRIDE + CASH_STRIPE_INCOMING, 2),
+        "source": "override" if CASH_ON_HAND_OVERRIDE > 0 else "xero",
+        "note": "Cash in bank + Stripe incoming. Buffer deployable separately.",
+    }
+
     # Hiring context — derives from financial_position (no double-count)
     headline_net = (fin_pos.get("headline") or {}).get("monthly_net") or 0
     avg_cash_per_close = None
