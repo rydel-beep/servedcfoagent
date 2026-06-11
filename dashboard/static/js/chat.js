@@ -41,11 +41,14 @@
     div.className = 'chat-msg ' + role;
     if (role === 'assistant' && typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
       div.innerHTML = DOMPurify.sanitize(marked.parse(text));
+    } else if (role === 'typing') {
+      div.className = 'chat-msg loading';
+      div.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span>';
     } else {
       div.textContent = text;
     }
     messages.appendChild(div);
-    messages.scrollTop = messages.scrollHeight;
+    messages.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' });
     return div;
   }
 
@@ -67,7 +70,7 @@
     input.style.height = 'auto';
     isSending = true;
 
-    var loading = addMessage('Thinking...', 'loading');
+    var loading = addMessage('', 'typing');
 
     try {
       var resp = await fetch('/dashboard/api/chat', {

@@ -29,8 +29,17 @@ bp = Blueprint(
 @bp.route("/")
 @require_auth
 def index():
-    """Serve the main dashboard page."""
-    return render_template("dashboard.html")
+    """Serve the main dashboard page with the last snapshot inlined.
+
+    Instant paint: the page renders from the embedded snapshot immediately,
+    then the client refreshes from /api/snapshot in the background.
+    """
+    import json as _json
+    from snapshot import load_persisted
+    snap = load_persisted()
+    # </ must not appear inside an inline <script> block
+    boot = _json.dumps(snap).replace("</", "<\\/") if snap else "null"
+    return render_template("dashboard.html", boot_snapshot=boot)
 
 
 @bp.route("/login", methods=["GET"])

@@ -37,3 +37,12 @@
   charges collected (GROSS). Both now shown, labeled, with window definitions.
 - **Scheduled refresh**: daemon thread every 6h (REFRESH_INTERVAL_HOURS) — snapshot had
   gone 4 days stale with only startup/manual refresh.
+
+## Stage D decisions (2026-06-11)
+- **Jarvis streaming deferred**: chat.py calls Anthropic non-streaming via requests; converting
+  to SSE is a risky surgery on an auth-gated endpoint under the time cap. Shipped the animated
+  typing indicator + smooth autoscroll instead. Streaming is the top Stage-D+1 candidate.
+- **Ad-spend slider**: does not exist in the codebase (Stage 0 inventory); the non-regression
+  contract lists it but there is nothing to regress. Noted as ABSENT, not broken.
+- **Window toggle**: verified purely client-side (precomputed sales.windows[]) — no refetch,
+  so toggle latency is render-only (<100ms by construction).

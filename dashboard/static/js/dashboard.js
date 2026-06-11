@@ -242,6 +242,26 @@
     }
   }
 
+  // ── Lazy render: below-the-fold heavies wait until scrolled near ──
+  var _lazySeen = {};
+  var _lazyPending = {};
+  var _lazyObserver = ('IntersectionObserver' in window) ? new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (!entry.isIntersecting) return;
+      var id = entry.target.id;
+      _lazySeen[id] = true;
+      if (_lazyPending[id]) { var fn = _lazyPending[id]; delete _lazyPending[id]; fn(); }
+      _lazyObserver.unobserve(entry.target);
+    });
+  }, { rootMargin: '400px' }) : null;
+
+  function lazyRender(sectionId, fn) {
+    var el = document.getElementById(sectionId);
+    if (!el || !_lazyObserver || _lazySeen[sectionId]) { fn(); return; }
+    _lazyPending[sectionId] = fn;
+    _lazyObserver.observe(el);
+  }
+
   // ── Render ───────────────────────────────────────────────
   function render(snap) {
     if (!snap) return;
@@ -269,14 +289,14 @@
     renderSetterDeepDive(snap);
     renderPipeline(snap);
     renderDQLoss(snap);
-    renderOfferChart(snap);
+    lazyRender('section-offers', function() { renderOfferChart(snap); });
     renderLeadSourceROI(snap);
     renderCommissions(snap);
     renderCommissionDetail(snap);
     renderMetrics(snap);
     renderSetters(snap);
     renderClosers(snap);
-    renderCohortRetention(snap);
+    lazyRender('section-cohort', function() { renderCohortRetention(snap); });
     renderForwardProjection(snap);
     renderDeficiency(snap);
     renderTeamModel(snap);
@@ -3700,7 +3720,16 @@
     if (banner) banner.style.display = show ? 'flex' : 'none';
   }
 
+  function _setUpdating(on) {
+    var txt = $('#status-text');
+    if (!txt) return;
+    if (on) { txt.dataset.prev = txt.textContent; txt.textContent = 'Updating\u2026'; }
+    else if (currentSnap) renderStatus(currentSnap);
+  }
+
   async function loadAll() {
+    var hadSnap = !!currentSnap;
+    if (hadSnap) _setUpdating(true);
     const [snap, history] = await Promise.all([fetchSnapshot(), fetchHistory()]);
     if (history) historyData = history;
     if (snap) {
@@ -3709,6 +3738,7 @@
     } else if (!currentSnap) {
       _showError(true);
     }
+    if (hadSnap) _setUpdating(false);
     if (historyData && historyData.length > 1) {
       $('#reps-sparkline-status').textContent = historyData.length + ' days of history';
     }
@@ -3723,6 +3753,10 @@
     initMetricTips();
     var retry = document.getElementById('error-retry');
     if (retry) retry.addEventListener('click', function() { _showError(false); loadAll(); });
+    // Instant paint: render the server-inlined snapshot before any fetch
+    if (window.__SNAP__) {
+      try { render(window.__SNAP__); } catch (e) { console.error('boot render failed:', e); }
+    }
     await loadAll();
   })();
 
