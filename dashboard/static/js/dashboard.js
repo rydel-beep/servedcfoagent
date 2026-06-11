@@ -93,6 +93,187 @@
   }
 
 
+  // ── Stage E: KPI trends, chat chips, command palette, count-ups ──
+
+  function _historySeries(field) {
+    if (!historyData) return [];
+    return historyData.map(function(h) { return h[field]; }).filter(function(v) { return v != null; });
+  }
+
+  function renderKpiTrends() {
+    if (!historyData || historyData.length < 2) return;
+    var last = historyData[historyData.length - 1];
+    var prev = historyData[historyData.length - 2];
+    var defs = [
+      { sub: 'sub-sheet-mrr', field: 'mrr', fmt: fmt$ },
+      { kpi: 'kpi-cash', field: 'stripe_collected_30d', fmt: fmt$ },
+      { sub: 'sub-clients', field: 'active_clients', fmt: function(v) { return String(Math.round(v)); } },
+    ];
+    defs.forEach(function(d) {
+      var series = _historySeries(d.field);
+      if (series.length < 2) return;
+      var delta = (last[d.field] != null && prev[d.field] != null) ? last[d.field] - prev[d.field] : null;
+      var holder = d.sub ? document.getElementById(d.sub) : document.querySelector('#' + d.kpi + ' .kpi-sub');
+      if (!holder) return;
+      var old = holder.querySelector('.kpi-trend');
+      if (old) old.remove();
+      var span = document.createElement('span');
+      span.className = 'kpi-trend';
+      var spark = sparklineSVG(series.slice(-14), 'rgba(91,155,208,0.8)');
+      span.innerHTML = ' ' + spark + (delta ? ' ' + fmtDelta(delta, d.fmt) + ' <span style="color:var(--text-muted)">1d</span>' : '');
+      holder.appendChild(span);
+    });
+  }
+
+  // Context-aware Jarvis suggested questions
+  function renderChatChips(snap) {
+    var wrap = document.getElementById('chat-chips');
+    if (!wrap) return;
+    var chips = ["What's our real runway?"];
+    var ch = snap.client_health || {};
+    if ((ch.revenue_at_risk_30d || 0) > 0 || (ch.mrr_delta || 0) < -1000) {
+      chips.push('What if 50% of expiring clients re-sign?');
+    }
+    var hc = snap.hiring_context || {};
+    if ((hc.monthly_net_income || 0) > 3000) {
+      chips.push('Can I afford the creative hire?');
+    } else {
+      chips.push('What has to change before I can hire?');
+    }
+    var def = (snap.deficiency_analysis || {}).binding_constraint;
+    if (def && def.name) chips.push('How do I fix ' + def.name.toLowerCase() + '?');
+    chips.push('What moved since yesterday?');
+    wrap.innerHTML = chips.slice(0, 4).map(function(c) {
+      return '<button class="chat-chip" data-q="' + esc(c) + '">' + esc(c) + '</button>';
+    }).join('');
+  }
+
+  // Number count-up on first load only — subtle, 500ms
+  var _countedUp = false;
+  function countUpKpis() {
+    if (_countedUp) return;
+    _countedUp = true;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    document.querySelectorAll('.kpi-value, .brief-cash-value').forEach(function(el) {
+      var text = el.textContent || '';
+      var m = text.match(/^\$?([\d,]+)/);
+      if (!m) return;
+      var target = parseInt(m[1].replace(/,/g, ''), 10);
+      if (!target || target < 10) return;
+      var prefix = text.startsWith('$') ? '$' : '';
+      var suffix = text.slice(m[0].length);
+      var start = null;
+      function step(ts) {
+        if (!start) start = ts;
+        var p = Math.min((ts - start) / 500, 1);
+        var eased = 1 - Math.pow(1 - p, 3);
+        el.textContent = prefix + Math.round(target * eased).toLocaleString('en-AU') + suffix;
+        if (p < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
+  // ── Cmd+K command palette ──
+  var _paletteOpen = false;
+  var _paletteItems = [];
+
+  function _buildPaletteItems() {
+    var items = [];
+    document.querySelectorAll('.nav-link').forEach(function(a) {
+      items.push({ label: 'Go to ' + a.textContent, hint: 'section', run: function() { a.click(); } });
+    });
+    items.push({ label: 'Refresh data', hint: 'action', run: function() { var b = $('#btn-refresh'); if (b) b.click(); } });
+    items.push({ label: 'Download CFO briefing PDF', hint: 'action', run: function() { var b = $('#btn-briefing-pdf'); if (b) b.click(); } });
+    items.push({ label: 'Export sales summary', hint: 'action', run: function() { var b = $('#btn-export-sales'); if (b) b.click(); } });
+    items.push({ label: 'Ask Jarvis\u2026', hint: '/ to chat', run: function() { var b = $('#btn-chat-toggle'); if (b) b.click(); } });
+    return items;
+  }
+
+  function _ensurePalette() {
+    if (document.getElementById('cmdk-overlay')) return;
+    var overlay = document.createElement('div');
+    overlay.id = 'cmdk-overlay';
+    overlay.className = 'cmdk-overlay';
+    overlay.innerHTML = '<div class="cmdk"><input id="cmdk-input" class="cmdk-input" placeholder="Jump to a section or run a command\u2026" autocomplete="off"><div id="cmdk-list" class="cmdk-list"></div><div class="cmdk-hint">\u2191\u2193 navigate \u00b7 Enter run \u00b7 Esc close \u00b7 shortcuts: g c cash, g f funnel, / chat</div></div>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) togglePalette(false); });
+    var input = document.getElementById('cmdk-input');
+    var sel = 0;
+    function refresh() {
+      var q = input.value.toLowerCase();
+      var list = document.getElementById('cmdk-list');
+      var matches = _paletteItems.filter(function(it) { return it.label.toLowerCase().indexOf(q) !== -1; });
+      if (sel >= matches.length) sel = Math.max(0, matches.length - 1);
+      list.innerHTML = matches.map(function(it, i) {
+        return '<div class="cmdk-item' + (i === sel ? ' active' : '') + '" data-i="' + i + '">' + esc(it.label) + '<span class="cmdk-item-hint">' + esc(it.hint) + '</span></div>';
+      }).join('') || '<div class="cmdk-empty">No matches</div>';
+      list.querySelectorAll('.cmdk-item').forEach(function(el) {
+        el.addEventListener('click', function() {
+          var it = matches[parseInt(this.dataset.i)];
+          togglePalette(false);
+          if (it) it.run();
+        });
+      });
+      return matches;
+    }
+    input.addEventListener('input', function() { sel = 0; refresh(); });
+    input.addEventListener('keydown', function(e) {
+      var matches = _paletteItems.filter(function(it) { return it.label.toLowerCase().indexOf(input.value.toLowerCase()) !== -1; });
+      if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, matches.length - 1); refresh(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); refresh(); }
+      else if (e.key === 'Enter') { e.preventDefault(); var it = matches[sel]; togglePalette(false); if (it) it.run(); }
+      else if (e.key === 'Escape') { togglePalette(false); }
+    });
+    overlay._refresh = refresh;
+  }
+
+  function togglePalette(open) {
+    _ensurePalette();
+    var overlay = document.getElementById('cmdk-overlay');
+    _paletteOpen = open != null ? open : !_paletteOpen;
+    overlay.classList.toggle('open', _paletteOpen);
+    if (_paletteOpen) {
+      _paletteItems = _buildPaletteItems();
+      var input = document.getElementById('cmdk-input');
+      input.value = '';
+      overlay._refresh();
+      setTimeout(function() { input.focus(); }, 30);
+    }
+  }
+
+  function initKeyboardShortcuts() {
+    var gPending = false, gTimer = null;
+    document.addEventListener('keydown', function(e) {
+      var tag = (document.activeElement || {}).tagName;
+      var typing = tag === 'INPUT' || tag === 'TEXTAREA' || _paletteOpen;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault(); togglePalette(); return;
+      }
+      if (typing) return;
+      if (e.key === '/') {
+        e.preventDefault();
+        var b = $('#btn-chat-toggle'); if (b) b.click();
+        return;
+      }
+      if (e.key === 'g') {
+        gPending = true;
+        clearTimeout(gTimer);
+        gTimer = setTimeout(function() { gPending = false; }, 800);
+        return;
+      }
+      if (gPending) {
+        gPending = false;
+        var map = { c: 'section-cash-position', f: 'section-funnel', b: 'section-brief', t: 'section-team', m: 'section-trend' };
+        var target = map[e.key.toLowerCase()];
+        if (target) {
+          var el = document.getElementById(target);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+    });
+  }
+
   // ── Morning Brief: the 60-second read ────────────────────
   function renderMorningBrief(snap) {
     var body = document.getElementById('brief-body');
@@ -152,7 +333,8 @@
       html += '<div class="brief-movers">';
       html += '<span class="brief-stat-label" style="margin:0;align-self:center;">Since yesterday</span>';
       movers.forEach(function(m) {
-        html += '<span class="brief-mover">' + esc(m.label) + ' ' + fmtDelta(m.delta, m.fmt) + '</span>';
+        var anomaly = m.rel > 0.15 ? ' anomaly' : '';
+        html += '<span class="brief-mover' + anomaly + '">' + (anomaly ? '<span class="anomaly-dot"></span>' : '') + esc(m.label) + ' ' + fmtDelta(m.delta, m.fmt) + '</span>';
       });
       html += '</div>';
     }
@@ -306,6 +488,10 @@
     if (snap.generated_at) {
       $('#chat-context').textContent = timeAgo(snap.generated_at);
     }
+
+    renderKpiTrends();
+    renderChatChips(snap);
+    countUpKpis();
 
     // Render-integrity check: detect duplicated elements
     checkRenderIntegrity();
@@ -3751,6 +3937,7 @@
     initRosterControls();
     initForwardSlider();
     initMetricTips();
+    initKeyboardShortcuts();
     var retry = document.getElementById('error-retry');
     if (retry) retry.addEventListener('click', function() { _showError(false); loadAll(); });
     // Instant paint: render the server-inlined snapshot before any fetch

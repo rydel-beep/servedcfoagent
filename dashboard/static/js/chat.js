@@ -98,6 +98,18 @@
 
   sendBtn.addEventListener('click', send);
 
+  // Suggested-question chips (rendered by dashboard.js, handled here)
+  var chipsWrap = document.getElementById('chat-chips');
+  if (chipsWrap) {
+    chipsWrap.addEventListener('click', function(e) {
+      var chip = e.target.closest('.chat-chip');
+      if (!chip) return;
+      input.value = chip.dataset.q || chip.textContent;
+      if (!isOpen) toggle();
+      send();
+    });
+  }
+
   input.addEventListener('keydown', function(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
