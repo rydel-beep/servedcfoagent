@@ -99,9 +99,18 @@ def pull_stripe() -> dict:
         txn_count_current = None
         degraded.append({"metric": "revenue_current", "reason": "Stripe MCP get_stripe_revenue failed"})
 
+    # ── MCP window honesty check ─────────────────────────────────────────
+    # The MCP is known to ignore the `days` argument and always return a
+    # trailing-30d window (verified 2026-06-11: days=7/28/60/90 all return
+    # period_days=30). If the 60d call came back as a 30d window, computing
+    # previous = combined - current would fabricate $0 — refuse instead.
+    combined_window_honored = bool(
+        rev_combined and rev_combined.get("period_days") == WINDOW_PREVIOUS
+    )
+
     # ── Revenue (previous window = combined - current) ───────────────────
     if (
-        rev_combined
+        combined_window_honored
         and rev_combined.get("total_aud") is not None
         and revenue_current is not None
     ):
@@ -109,7 +118,12 @@ def pull_stripe() -> dict:
     else:
         revenue_previous = None
         if revenue_current is not None:
-            degraded.append({"metric": "revenue_previous", "reason": "Stripe MCP 60-day revenue call failed"})
+            reason = (
+                "Stripe MCP ignores the days parameter (always returns trailing 30d) — "
+                "prior-period revenue cannot be computed. Fix the MCP service to honor days."
+                if rev_combined else "Stripe MCP 60-day revenue call failed"
+            )
+            degraded.append({"metric": "revenue_previous", "reason": reason})
 
     # ── Subscriptions ────────────────────────────────────────────────────
     subs_data = r.get("subs")
@@ -201,10 +215,16 @@ def pull_stripe() -> dict:
                 "current": {
                     "total_aud": revenue_current,
                     "transaction_count": txn_count_current,
+                    "basis": "GROSS — charges collected before Stripe fees. FLOW (per period).",
                     "period": {
                         "label": f"trailing {WINDOW_CURRENT} days",
                         "start": str(current_start),
                         "end": str(today),
+                        "definition": (
+                            f"Succeeded charges, trailing {WINDOW_CURRENT}d ending today "
+                            f"(Sydney). Gross of fees. Differs from Stripe's payout view, "
+                            f"which is net-of-fees and lags collection."
+                        ),
                     },
                 },
                 "previous": {
@@ -219,7 +239,11 @@ def pull_stripe() -> dict:
             "subscriptions": subscriptions,
             "customer_count": customer_count,
             "failed_charges_count": failed_charges_count,
-            "payouts": payouts,
+            "payouts": payouts if payouts is None else {
+                **payouts,
+                "basis": "NET — banked after Stripe fees; lags collection. FLOW (per period).",
+                "period": {"label": f"trailing {WINDOW_CURRENT} days"},
+            },
         },
         "degraded": degraded,
     }

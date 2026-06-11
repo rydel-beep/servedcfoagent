@@ -212,6 +212,17 @@ def _build_context_block(snapshot_json: str) -> str:
     if fp:
         sections.append("FINANCIAL POSITION (dual-basis):\n" + json.dumps(fp, indent=2))
 
+    # Canonical metrics — the single source of truth for every headline number.
+    # Each entry is tagged FLOW (per-period) or BALANCE (point-in-time);
+    # never sum a FLOW with a BALANCE. Quote these values, do not recompute.
+    metrics = snap.get("metrics")
+    if metrics:
+        sections.append(
+            "CANONICAL METRICS (use these exact values; FLOW = per-period, "
+            "BALANCE = point-in-time — never sum across kinds):\n"
+            + json.dumps(metrics, indent=2)
+        )
+
     # Forward recognized MRR (churn-adjusted, from RECOGNIZED tab)
     fwd = snap.get("forward_mrr")
     if fwd:

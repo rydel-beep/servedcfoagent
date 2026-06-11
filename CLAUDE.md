@@ -18,8 +18,10 @@ All work stays inside `served-cfo-agent/`. Never touch sibling repos.
 - Triple-check validation: row-count sanity + cross-source range band + reconciliation
   against any pre-computed cell.
 - Minimum viable diffs. Show diffs before committing.
-- Real names allowed in CLAUDE.md and internal docs only. NEVER in snapshot JSON or
-  history files (aggregate-only).
+- Real names allowed in CLAUDE.md, internal docs, and the auth-locked snapshot JSON
+  (the roster editor requires them; /cfo/snapshot requires X-CFO-KEY or dashboard auth
+  as of 2026-06-11). NEVER in unauthenticated outputs, exports, or history files
+  (history stays aggregate-only).
 - Diagnose first, fix second. Phase gates between investigation and implementation.
 
 ## Xero account identification (parser discipline)

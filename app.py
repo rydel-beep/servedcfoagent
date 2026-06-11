@@ -100,6 +100,39 @@ def _get_snapshot() -> dict | None:
     return _current_snapshot
 
 
+# ── Scheduled refresh ────────────────────────────────────────────────────────
+# Before this, the snapshot only refreshed on process restart or a manual
+# POST /cfo/refresh — observed going 4 days stale in production. A daemon
+# thread now re-pulls every REFRESH_INTERVAL_HOURS (default 6).
+_REFRESH_INTERVAL_HOURS = float(os.environ.get("REFRESH_INTERVAL_HOURS", "6"))
+
+
+def _scheduled_refresh_loop() -> None:
+    import threading as _t  # noqa: F401  (documents intent; thread started below)
+    global _current_snapshot
+    while True:
+        time.sleep(_REFRESH_INTERVAL_HOURS * 3600)
+        try:
+            if _snapshot_needs_refresh(_get_snapshot()):
+                logger.info("Scheduled refresh triggered (interval %.1fh)", _REFRESH_INTERVAL_HOURS)
+                snap = build_snapshot()
+                _current_snapshot = snap
+                logger.info("Scheduled refresh complete — ok=%s, degraded=%d",
+                            snap.get("ok"), len(snap.get("degraded", [])))
+            else:
+                logger.info("Scheduled refresh skipped — snapshot still fresh")
+        except Exception as e:
+            # Includes ConsistencyError: keep serving the last good snapshot.
+            logger.error("Scheduled refresh failed: %s — keeping previous snapshot", e)
+
+
+def _start_scheduled_refresh() -> None:
+    import threading
+    t = threading.Thread(target=_scheduled_refresh_loop, daemon=True, name="cfo-scheduled-refresh")
+    t.start()
+    logger.info("Scheduled refresh thread started (every %.1fh)", _REFRESH_INTERVAL_HOURS)
+
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"})
@@ -353,6 +386,7 @@ def _deferred_startup():
     """Run startup refresh in a background thread so the worker can start serving."""
     with app.app_context():
         _startup_refresh()
+        _start_scheduled_refresh()
 
 _startup_thread = threading.Thread(target=_deferred_startup, daemon=True)
 _startup_thread.start()

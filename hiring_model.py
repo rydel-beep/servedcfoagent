@@ -369,8 +369,15 @@ def compute_hiring_analysis(
         expiry_schedule = forward_mrr.get("expiry_schedule") or []
         renewal_info = forward_mrr.get("renewal_rate_historical") or {}
 
-        # Total costs: use full-outflow burn if available, else COGS + OpEx
-        total_costs = total_monthly_burn or ((monthly_cogs or 0) + (monthly_opex or 0))
+        # Total costs: use full-outflow burn if available, else COGS + OpEx.
+        # The fallback excludes owner pay and super — record which basis was
+        # used so a fallback can never masquerade as the true burn.
+        if total_monthly_burn:
+            total_costs = total_monthly_burn
+            burn_basis = "full_outflow_burn"
+        else:
+            total_costs = (monthly_cogs or 0) + (monthly_opex or 0)
+            burn_basis = "cogs_plus_opex_fallback (excludes owner pay + super — treat as understated)"
 
         # Cash projection starting point — use cash_in_bank ONLY
         # (total_available double-counts Stripe incoming which arrives over time)
@@ -448,6 +455,7 @@ def compute_hiring_analysis(
             new_clients_needed_monthly = _safe_round(avg_monthly_churn, 1)
 
         forward_lens = {
+            "burn_basis": burn_basis,
             "current_recognized_mrr": _safe_round(fwd_current),
             "mtm_floor": _safe_round(mtm_floor),
             "avg_monthly_per_client": _safe_round(avg_per_client),

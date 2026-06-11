@@ -428,12 +428,31 @@ def build_snapshot() -> dict:
 
     # ── Cash-on-hand (Rydel-confirmed override or Xero-derived) ───────────────
     from config import (CASH_ON_HAND_OVERRIDE, CASH_STRIPE_INCOMING,
-                        CASH_DEPLOYABLE_BUFFER, CASH_TAX_RESERVED)
+                        CASH_DEPLOYABLE_BUFFER, CASH_TAX_RESERVED,
+                        CASH_CONFIRMED_DATE)
 
     cash_in_bank = CASH_ON_HAND_OVERRIDE
     tax_reserved = CASH_TAX_RESERVED
     total_burn = burn.get("total_recurring_burn") or true_team_cost
     cogs_ratio = burn.get("cogs_ratio_pct")
+
+    # Staleness of the manually confirmed cash figures
+    cash_confirmed_age_days = None
+    try:
+        from datetime import date
+        confirmed = date.fromisoformat(CASH_CONFIRMED_DATE)
+        cash_confirmed_age_days = (ts.date() - confirmed).days
+        if cash_confirmed_age_days > 7:
+            degraded.append({
+                "metric": "cash_override_stale",
+                "reason": (
+                    f"Cash-on-hand override last confirmed {CASH_CONFIRMED_DATE} "
+                    f"({cash_confirmed_age_days}d ago) — reconfirm bank balance and Stripe "
+                    f"in-transit, then update CASH_CONFIRMED_DATE"
+                ),
+            })
+    except ValueError:
+        logger.warning("CASH_CONFIRMED_DATE %r is not YYYY-MM-DD", CASH_CONFIRMED_DATE)
 
     # Dual deployable cash
     aggressive_deployable = round(cash_in_bank - tax_reserved, 2)
@@ -451,10 +470,17 @@ def build_snapshot() -> dict:
     runway_months = round(cash_in_bank / total_burn, 1) if total_burn > 0 else None
 
     snapshot["cash_position"] = {
+        # BALANCES (point-in-time levels) — never sum these with period flows.
         "cash_in_bank": cash_in_bank,
+        "cash_in_bank_note": "BALANCE — landed in bank. Owner-confirmed override.",
         "stripe_incoming": CASH_STRIPE_INCOMING,
+        "stripe_incoming_note": (
+            "BALANCE — in transit: Stripe balance + pending payout, collected but "
+            "not yet banked. Manually confirmed (no balance feed from Stripe MCP)."
+        ),
         "tax_reserved": tax_reserved,
         "total_available": round(cash_in_bank + CASH_STRIPE_INCOMING, 2),
+        "total_available_note": "True near-term cash = bank (landed) + Stripe in-transit. Both balances.",
         "aggressive_deployable": aggressive_deployable,
         "aggressive_note": "Cash minus tax reserve — treats all upfront cash as available",
         "conservative_deployable": conservative_deployable,
@@ -463,9 +489,12 @@ def build_snapshot() -> dict:
         "delivery_reserve_note": f"Stripe incoming ${CASH_STRIPE_INCOMING:,.0f} x COGS ratio {cogs_ratio}%"
             if cogs_ratio else "COGS ratio unavailable",
         "cogs_ratio_pct": cogs_ratio,
+        # FLOW (per-period)
         "total_monthly_burn": round(total_burn, 2),
         "runway_months": runway_months,
         "source": "override" if CASH_ON_HAND_OVERRIDE > 0 else "xero",
+        "confirmed_date": CASH_CONFIRMED_DATE,
+        "confirmed_age_days": cash_confirmed_age_days,
     }
 
     # Hiring context — derives from financial_position (no double-count)
@@ -494,6 +523,30 @@ def build_snapshot() -> dict:
             degraded.append({"metric": "integrity_check", "reason": w})
         snapshot["degraded"] = degraded
         snapshot["ok"] = False
+
+    # ── Per-source freshness (all pulled at build time; None = pull failed) ──
+    snapshot["source_freshness"] = {
+        name: (ts.isoformat() if ok_flag else None)
+        for name, ok_flag in {
+            "stripe": bool(stripe_data),
+            "ghl": bool(ghl_result.get("ghl")),
+            "sheets": bool(sheets_data),
+            "xero": bool(xero_data),
+            "sales": bool(sales_result.get("sales")),
+            "client_health": bool(health_result.get("client_health")),
+            "team_roster": bool(roster_result.get("roster")),
+        }.items()
+    }
+
+    # ── Canonical metrics + cross-surface consistency gate ────────────────
+    # One labelled value per headline metric; every consumer displays these.
+    # assert_consistency fails the build LOUDLY rather than shipping numbers
+    # that contradict each other across panels.
+    from metrics_engine import build_canonical_metrics, assert_consistency
+    snapshot["metrics"] = build_canonical_metrics(snapshot)
+    snapshot["degraded"] = degraded if degraded else []
+    snapshot["ok"] = len(degraded) == 0
+    assert_consistency(snapshot)
 
     _persist(snapshot)
 

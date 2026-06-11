@@ -96,6 +96,9 @@ CASH_ON_HAND_OVERRIDE = float(os.getenv("CASH_ON_HAND_OVERRIDE", "140007.29"))
 CASH_STRIPE_INCOMING = float(os.getenv("CASH_STRIPE_INCOMING", "18000"))
 CASH_DEPLOYABLE_BUFFER = float(os.getenv("CASH_DEPLOYABLE_BUFFER", "40000"))
 CASH_TAX_RESERVED = float(os.getenv("CASH_TAX_RESERVED", "20000"))
+# Date the override figures were last confirmed by Rydel (YYYY-MM-DD).
+# The snapshot flags the cash position as stale when this is > 7 days old.
+CASH_CONFIRMED_DATE = os.getenv("CASH_CONFIRMED_DATE", "2026-06-04")
 
 # ── Snapshot ─────────────────────────────────────────────────────────────────
 SNAPSHOT_FILE = os.getenv("SNAPSHOT_FILE", "snapshot_state.json")
