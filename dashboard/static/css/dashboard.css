@@ -1,53 +1,123 @@
-/* Jarvis Dashboard v3 — Full executive theme */
+/* ════════════════════════════════════════════════════════════════════════
+   SERVED CFO — Design System (Stage B)
+   One token set. Brand: deep harbour navy with Served blue. Status colors
+   are semantic only — green=healthy, amber=tight, red=unsustainable.
+   Type: Fraunces (display) over Archivo (UI; true tabular figures).
+   ════════════════════════════════════════════════════════════════════════ */
 :root {
-  --bg: #0B0F19;
-  --bg-card: #111827;
-  --bg-card-hover: #1a2332;
-  --border: rgba(255,255,255,0.06);
-  --border-hover: rgba(255,255,255,0.12);
-  --text: #F1F5F9;
-  --text-secondary: #94A3B8;
-  --text-muted: #64748B;
-  --accent: #3B82F6;
-  --accent-dim: rgba(59,130,246,0.15);
-  --green: #22C55E;
-  --green-dim: rgba(34,197,94,0.12);
-  --amber: #F59E0B;
-  --amber-dim: rgba(245,158,11,0.12);
-  --red: #EF4444;
-  --red-dim: rgba(239,68,68,0.12);
-  --purple: #A855F7;
-  --purple-dim: rgba(168,85,247,0.12);
-  --radius: 10px;
-  --radius-sm: 6px;
+  /* Surfaces — navy-anchored, no pure black, no pure white */
+  --bg: #0A1220;            /* page: deep harbour navy */
+  --bg-raised: #0E1828;     /* atmosphere mid-tone */
+  --bg-card: #111E30;       /* card surface */
+  --bg-card-hover: #16263C;
+  --bg-inset: rgba(238,244,250,0.025);   /* tinted inset wells */
+  --bg-inset-strong: rgba(238,244,250,0.05);
+
+  /* Brand */
+  --brand: #2E6EA6;
+  --brand-bright: #5B9BD0;  /* brand lifted for dark-surface legibility */
+  --brand-navy: #1A3A5C;
+  --brand-tint: #EEF4FA;
+  --brand-muted: #7A9ABF;
+
+  /* Borders */
+  --border: rgba(122,154,191,0.14);
+  --border-hover: rgba(122,154,191,0.28);
+
+  /* Text tiers — contrast-checked on --bg-card, no pure-white glare */
+  --text: #E8EFF6;          /* primary  ~13.2:1 */
+  --text-secondary: #A7BCD2; /* secondary ~7.1:1 */
+  --text-muted: #71889F;    /* tertiary  ~4.6:1 */
+
+  /* Accent (interactive) = brand */
+  --accent: var(--brand-bright);
+  --accent-dim: rgba(91,155,208,0.14);
+
+  /* Status — semantic ONLY, never decorative */
+  --green: #34C98E;
+  --green-dim: rgba(52,201,142,0.11);
+  --amber: #E8B445;
+  --amber-dim: rgba(232,180,69,0.11);
+  --red: #E8616B;
+  --red-dim: rgba(232,97,107,0.11);
+  --purple: #9D8CFF;
+  --purple-dim: rgba(157,140,255,0.11);
+
+  /* Type scale */
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-ui: 'Archivo', -apple-system, 'Segoe UI', sans-serif;
+  --fs-micro: 10px;
+  --fs-caption: 11px;
+  --fs-body: 13px;
+  --fs-emphasis: 14px;
+  --fs-value-sm: 16px;
+  --fs-value: 21px;
+  --fs-value-lg: 26px;
+  --fs-hero: 34px;
+
+  /* Spacing scale (4px base) */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px;
+
+  /* Radii + elevation */
+  --radius: 12px;
+  --radius-sm: 7px;
+  --shadow-1: 0 1px 2px rgba(4,9,18,0.5);
+  --shadow-2: 0 4px 16px rgba(4,9,18,0.45);
+  --shadow-3: 0 12px 40px rgba(4,9,18,0.55);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
   min-height: 100vh;
-  background: var(--bg);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background:
+    radial-gradient(1200px 500px at 70% -10%, rgba(46,110,166,0.16), transparent 60%),
+    radial-gradient(900px 420px at -10% 8%, rgba(26,58,92,0.35), transparent 55%),
+    var(--bg);
+  background-attachment: fixed;
+  font-family: var(--font-ui);
   color: var(--text);
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Number craft: every figure renders in tabular numerals */
+.kpi-value, .kpi-sub, .cash-card-value, .stripe-card-value, .metric-value,
+.wf-value, .wf-detail-value, .mp-value, .perf-metric-value, .perf-stage-count,
+.health-stat-value, .churn-stat-value, .comm-stat-value, .pipeline-stat-value,
+.client-mrr, .client-delta, .leak-impact, .rev-amount, .churn-revenue,
+.recon-value, .comm-amount, .funnel-num, .data-table td, .cohort-table td,
+.alert-metric-value, .deep-stage-count, .roster-readout-value {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* Focus visibility for keyboard users */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* ── Header ─────────────────────────────── */
 .header {
   position: sticky; top: 0; z-index: 100;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 24px; height: 52px;
-  background: rgba(11,15,25,0.92);
-  backdrop-filter: blur(12px);
+  padding: 0 24px; height: 54px;
+  background: rgba(10,18,32,0.88);
+  backdrop-filter: blur(14px) saturate(1.2);
   border-bottom: 1px solid var(--border);
 }
 .header-left { display: flex; align-items: center; gap: 10px; }
 .header-right { display: flex; align-items: center; gap: 8px; }
 
 .wordmark {
-  font-size: 15px; font-weight: 700; letter-spacing: 2px;
-  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 17px; font-weight: 600; letter-spacing: 1.5px;
+  color: var(--brand-tint);
+  font-variation-settings: 'opsz' 28;
 }
 .wordmark-sub {
   font-size: 11px; color: var(--text-muted); letter-spacing: 0.5px;
@@ -57,7 +127,7 @@ body {
 .reactor {
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 6px var(--accent), 0 0 12px rgba(59,130,246,0.2);
+  box-shadow: 0 0 6px var(--accent), 0 0 12px rgba(91,155,208,0.25);
   animation: pulse 3s ease-in-out infinite;
 }
 @keyframes pulse {
@@ -90,10 +160,10 @@ body {
 
 /* ── Section Navigation ─────────────────── */
 .section-nav {
-  position: sticky; top: 52px; z-index: 90;
+  position: sticky; top: 54px; z-index: 90;
   display: flex; align-items: center; gap: 2px;
   padding: 6px 24px;
-  background: rgba(11,15,25,0.88);
+  background: rgba(10,18,32,0.88);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
@@ -111,10 +181,10 @@ body {
 
 /* ── Global Window Selector ─────────────── */
 .global-window-bar {
-  position: sticky; top: 88px; z-index: 85;
+  position: sticky; top: 90px; z-index: 85;
   display: flex; align-items: center; gap: 4px;
   padding: 6px 24px;
-  background: rgba(11,15,25,0.85);
+  background: rgba(10,18,32,0.85);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
 }
@@ -187,23 +257,25 @@ body {
   overflow: hidden;
 }
 .kpi {
-  flex: 1; padding: 18px 20px;
-  display: flex; flex-direction: column; gap: 4px;
+  flex: 1; padding: var(--sp-5) var(--sp-5);
+  display: flex; flex-direction: column; gap: 5px;
+  transition: background 0.2s;
 }
+.kpi:hover { background: var(--bg-inset); }
 .kpi-divider {
   width: 1px; background: var(--border); align-self: stretch;
 }
 .kpi-label {
-  font-size: 10px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 1px; color: var(--text-muted);
+  font-size: var(--fs-micro); font-weight: 600; text-transform: uppercase;
+  letter-spacing: 1.2px; color: var(--text-muted);
 }
 .kpi-value {
-  font-size: 24px; font-weight: 600; letter-spacing: -0.5px;
+  font-size: var(--fs-value-lg); font-weight: 600; letter-spacing: -0.4px;
   color: var(--text);
   animation: fadeIn 0.3s ease-out;
 }
 .kpi-sub {
-  font-size: 11px; color: var(--text-muted);
+  font-size: var(--fs-caption); color: var(--text-muted);
 }
 
 .kpi-value.healthy { color: var(--green); }
@@ -223,22 +295,25 @@ body {
 
 /* ── Panel ─────────────────────────────── */
 .panel {
-  background: var(--bg-card);
+  background: linear-gradient(180deg, rgba(238,244,250,0.015) 0%, transparent 38%), var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 20px;
+  padding: var(--sp-6);
   min-height: 0;
-  margin-bottom: 16px;
+  margin-bottom: var(--sp-5);
+  box-shadow: var(--shadow-1);
+  transition: border-color 0.2s, box-shadow 0.25s;
 }
-.panel-muted { background: rgba(17,24,39,0.5); }
+.panel:hover { border-color: var(--border-hover); box-shadow: var(--shadow-2); }
+.panel-muted { background: rgba(17,30,48,0.55); }
 
 .panel-header {
   display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: var(--sp-4);
 }
 .panel-title {
-  font-size: 12px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 1.2px; color: var(--text-secondary);
+  font-size: var(--fs-caption); font-weight: 600; text-transform: uppercase;
+  letter-spacing: 1.6px; color: var(--text-muted);
 }
 .panel-sub {
   font-size: 11px; color: var(--text-muted);
@@ -1349,4 +1424,108 @@ body {
   .header { padding: 0 16px; }
   .main { padding: 12px 16px 32px; }
   .kpi-value { font-size: 20px; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   STAGE B OVERLAY — unified card anatomy, rhythm, chart chrome.
+   Later rules win the cascade; selectors unchanged.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* Page rhythm: data leads, chrome recedes */
+.main { max-width: 1320px; padding: var(--sp-6) var(--sp-6) 64px; }
+.grid-2 { gap: var(--sp-5); margin-bottom: var(--sp-5); }
+
+/* ── One card pattern ──
+   Every stat tile shares identical anatomy: quiet uppercase label,
+   large tabular value, muted context line. */
+.cash-card, .stripe-card, .perf-metric, .mp-card, .wf-detail {
+  padding: var(--sp-4);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+.cash-card:hover, .stripe-card:hover, .perf-metric:hover, .mp-card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-1);
+}
+.cash-card-label, .stripe-card-label, .perf-metric-label, .mp-label, .wf-detail-label {
+  font-size: var(--fs-micro); font-weight: 600; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--text-muted); margin-bottom: 6px;
+}
+.cash-card-value, .stripe-card-value, .perf-metric-value {
+  font-size: var(--fs-value); font-weight: 600; letter-spacing: -0.3px;
+}
+.wf-detail-value { font-size: var(--fs-value-sm); font-weight: 600; }
+.cash-card-sub, .stripe-card-sub, .perf-metric-sub, .mp-benchmark {
+  font-size: var(--fs-caption); color: var(--text-muted); margin-top: 4px; line-height: 1.45;
+}
+
+/* Status colors carry meaning on values, never on chrome */
+.mp-value { font-size: var(--fs-value-lg); font-weight: 650; letter-spacing: -0.4px; }
+
+/* Section sub-headings recede uniformly */
+.dq-section-title, .recon-section-title, .rep-heading, .comm-detail-title {
+  font-size: var(--fs-micro); letter-spacing: 1.2px; color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Tables: calm rows, numerals aligned */
+.data-table th { padding: 7px 10px; letter-spacing: 0.8px; }
+.data-table td { padding: 9px 10px; }
+.data-table td:not(:first-child), .data-table th:not(:first-child) { text-align: right; }
+.roster-table td.col-num, .roster-edit-input.num { font-family: var(--font-ui); }
+
+/* Deltas: explicit sign + semantic color (applied via fmtDelta) */
+.delta-up { color: var(--green); }
+.delta-down { color: var(--red); }
+.delta-flat { color: var(--text-muted); }
+
+/* Bars share one treatment: soft track, saturated fill */
+.wf-bar-bg, .funnel-bar-bg, .pipeline-stage-bar-bg, .dq-bar-bg,
+.deep-stage-bar-bg, .rev-bar-bg, .runway-bar-bg {
+  background: rgba(238,244,250,0.045);
+}
+.wf-bar-fill.revenue { background: var(--brand-bright); opacity: 0.75; }
+.pipeline-stage-bar { background: var(--brand-bright); }
+.funnel-bar-fill { background: var(--brand-bright); }
+.deep-stage-bar { background: var(--brand-bright); }
+.rev-bar-fill.stripe { background: var(--brand-bright); }
+
+/* Chart canvas breathing room */
+.chart-wrap { height: 240px; }
+
+/* Buttons + inputs: one interactive language */
+.window-tab, .global-window-btn, .roster-btn, .icon-btn {
+  font-family: var(--font-ui);
+}
+.window-tab.active, .global-window-btn.active {
+  color: var(--brand-tint); border-color: var(--brand);
+  background: linear-gradient(180deg, rgba(91,155,208,0.22), rgba(46,110,166,0.16));
+}
+
+/* Chat: brand voice */
+.chat-msg.user { background: var(--brand); }
+.chat-title { font-family: var(--font-display); font-size: 15px; letter-spacing: 0.4px; }
+.chat-send { background: var(--brand); }
+.chat-send:hover { background: var(--brand-bright); opacity: 1; }
+
+/* Exec panel: the one allowed flourish — display-serif verdict line */
+.exec-panel { border-left: 3px solid var(--brand); }
+.verdict-headline {
+  font-family: var(--font-display);
+  font-size: 17px; line-height: 1.55; color: var(--text);
+  font-variation-settings: 'opsz' 18;
+}
+
+/* Scrollbars on dark */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(122,154,191,0.18); border-radius: 5px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: rgba(122,154,191,0.3); }
+
+/* Reduced motion: respect the preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }

@@ -8,22 +8,59 @@
   let refreshCooldown = false;
 
   // ── Helpers ──────────────────────────────────────────────
+  // Number craft: currency 0dp, thousands-separated; raw floats never render.
   function fmt$(v) {
     if (v == null) return '—';
     const n = Number(v);
-    if (isNaN(n)) return '—';
-    if (Math.abs(n) >= 1000) return '$' + n.toLocaleString('en-AU', {maximumFractionDigits: 0});
-    return '$' + n.toLocaleString('en-AU', {maximumFractionDigits: 2});
+    if (isNaN(n) || !isFinite(n)) return '—';
+    return '$' + n.toLocaleString('en-AU', {maximumFractionDigits: 0});
   }
-  function fmtPct(v) { return v != null ? v + '%' : '—'; }
-  function fmtX(v) { return v != null ? v + '\u00d7' : '—'; }
-  function fmtDays(v) { return v != null ? Math.round(v) + 'd' : '—'; }
+  function fmtPct(v) { return v != null && isFinite(Number(v)) ? v + '%' : '—'; }
+  function fmtX(v) { return v != null && isFinite(Number(v)) ? v + '\u00d7' : '—'; }
+  function fmtDays(v) { return v != null && isFinite(Number(v)) ? Math.round(v) + 'd' : '—'; }
   function fmtK(v) {
     if (v == null) return '—';
     const n = Number(v);
-    if (isNaN(n)) return '—';
+    if (isNaN(n) || !isFinite(n)) return '—';
     if (Math.abs(n) >= 1000) return '$' + (n/1000).toFixed(1) + 'k';
     return '$' + n.toFixed(0);
+  }
+  function fmtDelta(v, formatter) {
+    if (v == null || isNaN(Number(v)) || !isFinite(Number(v))) return '';
+    const f = formatter || fmt$;
+    const n = Number(v);
+    const cls = n > 0 ? 'delta-up' : (n < 0 ? 'delta-down' : 'delta-flat');
+    const sign = n > 0 ? '+' : (n < 0 ? '−' : '');
+    return '<span class="' + cls + '">' + sign + f(Math.abs(n)) + '</span>';
+  }
+
+  // ── Chart system: one consistent style for every chart ──
+  const CHART = {
+    brand: '#5B9BD0',
+    brandSoft: 'rgba(91,155,208,0.6)',
+    brandFillTop: 'rgba(91,155,208,0.12)',
+    green: '#34C98E',
+    amber: '#E8B445',
+    red: '#E8616B',
+    grid: 'rgba(122,154,191,0.10)',
+    tick: '#71889F',
+  };
+  if (window.Chart) {
+    Chart.defaults.font.family = "'Archivo', -apple-system, sans-serif";
+    Chart.defaults.font.size = 11;
+    Chart.defaults.color = CHART.tick;
+    Chart.defaults.borderColor = CHART.grid;
+    Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(14,24,40,0.95)';
+    Chart.defaults.plugins.tooltip.borderColor = 'rgba(122,154,191,0.28)';
+    Chart.defaults.plugins.tooltip.borderWidth = 1;
+    Chart.defaults.plugins.tooltip.titleColor = '#E8EFF6';
+    Chart.defaults.plugins.tooltip.bodyColor = '#A7BCD2';
+    Chart.defaults.plugins.tooltip.padding = 10;
+    Chart.defaults.plugins.tooltip.cornerRadius = 8;
+    Chart.defaults.plugins.tooltip.displayColors = false;
+    Chart.defaults.plugins.legend.labels.boxWidth = 10;
+    Chart.defaults.plugins.legend.labels.boxHeight = 10;
+    Chart.defaults.plugins.legend.labels.usePointStyle = true;
   }
 
   function statusClass(status) {
@@ -1178,8 +1215,8 @@
 
     const pointRadius = trend.map((_, i) => i === currentIdx ? 5 : 2);
     const pointBg = trend.map((_, i) => {
-      if (i === currentIdx) return '#3B82F6';
-      if (i < currentIdx) return 'rgba(59,130,246,0.6)';
+      if (i === currentIdx) return CHART.brand;
+      if (i < currentIdx) return CHART.brandSoft;
       return 'rgba(148,163,184,0.4)';
     });
 
@@ -1223,11 +1260,11 @@
           borderColor: function(context) {
             const chart = context.chart;
             const {ctx: c, chartArea} = chart;
-            if (!chartArea) return '#3B82F6';
+            if (!chartArea) return CHART.brand;
             const gradient = c.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
             const splitPct = currentIdx >= 0 ? currentIdx / (trend.length - 1) : 1;
-            gradient.addColorStop(0, 'rgba(59,130,246,0.8)');
-            gradient.addColorStop(Math.min(splitPct, 0.99), 'rgba(59,130,246,0.8)');
+            gradient.addColorStop(0, 'rgba(91,155,208,0.85)');
+            gradient.addColorStop(Math.min(splitPct, 0.99), 'rgba(91,155,208,0.85)');
             gradient.addColorStop(Math.min(splitPct + 0.01, 1), 'rgba(148,163,184,0.35)');
             gradient.addColorStop(1, 'rgba(148,163,184,0.35)');
             return gradient;
@@ -1241,10 +1278,10 @@
             above: function(context) {
               const chart = context.chart;
               const {ctx: c, chartArea} = chart;
-              if (!chartArea) return 'rgba(59,130,246,0.05)';
+              if (!chartArea) return 'rgba(91,155,208,0.05)';
               const gradient = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-              gradient.addColorStop(0, 'rgba(59,130,246,0.12)');
-              gradient.addColorStop(1, 'rgba(59,130,246,0)');
+              gradient.addColorStop(0, 'rgba(91,155,208,0.12)');
+              gradient.addColorStop(1, 'rgba(91,155,208,0)');
               return gradient;
             },
           },
@@ -1253,11 +1290,11 @@
         // Projection: base (dashed blue)
         ...(projection && projection.months_forward ? [{
           data: baseData,
-          borderColor: 'rgba(59,130,246,0.5)',
+          borderColor: 'rgba(91,155,208,0.5)',
           borderWidth: 2,
           borderDash: [6, 3],
           pointRadius: 3,
-          pointBackgroundColor: 'rgba(59,130,246,0.5)',
+          pointBackgroundColor: 'rgba(91,155,208,0.5)',
           pointBorderWidth: 0,
           fill: false,
           tension: 0.3,
@@ -1829,7 +1866,7 @@
     }
 
     const colors = [
-      'rgba(59,130,246,0.7)', 'rgba(34,197,94,0.7)',
+      'rgba(91,155,208,0.75)', 'rgba(52,201,142,0.7)',
       'rgba(245,158,11,0.7)', 'rgba(239,68,68,0.7)',
       'rgba(168,85,247,0.7)', 'rgba(236,72,153,0.7)',
     ];
@@ -2819,6 +2856,61 @@
     _renderForwardTable(snap, resignPct);
   }
 
+  // Shared forward model: identical math for table and chart (display-side
+  // re-sign adjustment over engine-provided forward months; engines untouched).
+  function _computeForwardModel(fwdMonths, fwd, totalBurn, startingCash, resignPct) {
+    var runningCash = startingCash;
+    var rows = [];
+    for (var i = 0; i < fwdMonths.length; i++) {
+      var fm = fwdMonths[i];
+      var baseMrr = fm.recognized_mrr || 0;
+      var baseClients = fm.clients || 0;
+      var resignUplift = 0;
+      var resignClients = 0;
+      if (resignPct > 0 && i > 0) {
+        var prevMrr = fwdMonths[i - 1].recognized_mrr || 0;
+        var drop = prevMrr - baseMrr;
+        if (drop > 0) {
+          resignUplift = drop * (resignPct / 100);
+          var avgPerClient = fwd.avg_monthly_per_client || 2200;
+          resignClients = avgPerClient > 0 ? Math.round(resignUplift / avgPerClient) : 0;
+        }
+      }
+      if (i > 0 && rows[i - 1]) {
+        resignUplift += rows[i - 1].cumulativeResign || 0;
+        resignClients += rows[i - 1].cumulativeResignClients || 0;
+      }
+      var adjustedMrr = baseMrr + resignUplift;
+      var adjustedClients = baseClients + resignClients;
+      var netCash = adjustedMrr - totalBurn;
+      runningCash = runningCash + netCash;
+      var teamCostPct = adjustedMrr > 0 ? Math.round(totalBurn / adjustedMrr * 100) : null;
+      var grade = 'healthy';
+      var gradeReason = '';
+      if (runningCash < 0) { grade = 'unsustainable'; gradeReason = 'Cash negative'; }
+      else if (teamCostPct !== null && teamCostPct > 80) { grade = 'unsustainable'; gradeReason = 'Burn > 80% of MRR'; }
+      else if (netCash < -5000) { grade = 'unsustainable'; gradeReason = 'Net loss > $5k/mo'; }
+      else if (teamCostPct !== null && teamCostPct > 50) { grade = 'tight'; gradeReason = 'Burn > 50% of MRR'; }
+      else if (netCash < 0) { grade = 'tight'; gradeReason = 'Slightly negative'; }
+      else { gradeReason = 'Healthy'; }
+      rows.push({
+        month: fm.month,
+        baseMrr: baseMrr,
+        adjustedMrr: adjustedMrr,
+        clients: adjustedClients,
+        resignUplift: resignUplift,
+        cumulativeResign: resignUplift,
+        cumulativeResignClients: resignClients,
+        net: netCash,
+        cashBalance: runningCash,
+        teamCostPct: teamCostPct,
+        grade: grade,
+        gradeReason: gradeReason,
+      });
+    }
+    return rows;
+  }
+
   function _renderForwardTable(snap, resignPct) {
     var body = document.getElementById('forward-projection-body');
     if (!body) return;
@@ -2837,78 +2929,7 @@
       expiryByMonth[e.month] = e;
     });
 
-    // Build the forward model with re-sign adjustment
-    var runningCash = startingCash;
-    var rows = [];
-    var monthNames = {
-      'January': '01', 'February': '02', 'March': '03', 'April': '04',
-      'May': '05', 'June': '06', 'July': '07', 'August': '08',
-      'September': '09', 'October': '10', 'November': '11', 'December': '12'
-    };
-
-    for (var i = 0; i < fwdMonths.length; i++) {
-      var fm = fwdMonths[i];
-      var baseMrr = fm.recognized_mrr || 0;
-      var baseClients = fm.clients || 0;
-
-      // Calculate re-sign uplift: what MRR would have been lost this month?
-      // The delta from prior month (if negative) is the churn; re-sign recovers a fraction
-      var resignUplift = 0;
-      var resignClients = 0;
-      if (resignPct > 0 && i > 0) {
-        // Accumulate all expiring MRR up to and including this month
-        // The sheet already handles churn by zeroing out cells past end date
-        // So delta = current - prior captures the drop
-        var prevMrr = fwdMonths[i - 1].recognized_mrr || 0;
-        var drop = prevMrr - baseMrr;
-        if (drop > 0) {
-          resignUplift = drop * (resignPct / 100);
-          // Approximate clients retained
-          var avgPerClient = fwd.avg_monthly_per_client || 2200;
-          resignClients = avgPerClient > 0 ? Math.round(resignUplift / avgPerClient) : 0;
-        }
-      }
-      // Cumulative: carry forward prior re-sign uplifts
-      if (i > 0 && rows[i - 1]) {
-        resignUplift += rows[i - 1].cumulativeResign || 0;
-        resignClients += rows[i - 1].cumulativeResignClients || 0;
-      }
-
-      var adjustedMrr = baseMrr + resignUplift;
-      var adjustedClients = baseClients + resignClients;
-
-      // Net = recognized revenue - total burn (recognized net, only view we have)
-      var netCash = adjustedMrr - totalBurn;
-      runningCash = runningCash + netCash;
-
-      // Team cost as % of MRR
-      var teamCostPct = adjustedMrr > 0 ? Math.round(totalBurn / adjustedMrr * 100) : null;
-
-      // Graded sustainability
-      var grade = 'healthy';
-      var gradeReason = '';
-      if (runningCash < 0) { grade = 'unsustainable'; gradeReason = 'Cash negative'; }
-      else if (teamCostPct !== null && teamCostPct > 80) { grade = 'unsustainable'; gradeReason = 'Burn > 80% of MRR'; }
-      else if (netCash < -5000) { grade = 'unsustainable'; gradeReason = 'Net loss > $5k/mo'; }
-      else if (teamCostPct !== null && teamCostPct > 50) { grade = 'tight'; gradeReason = 'Burn > 50% of MRR'; }
-      else if (netCash < 0) { grade = 'tight'; gradeReason = 'Slightly negative'; }
-      else { gradeReason = 'Healthy'; }
-
-      rows.push({
-        month: fm.month,
-        baseMrr: baseMrr,
-        adjustedMrr: adjustedMrr,
-        clients: adjustedClients,
-        resignUplift: resignUplift,
-        cumulativeResign: resignUplift,
-        cumulativeResignClients: resignClients,
-        net: netCash,
-        cashBalance: runningCash,
-        teamCostPct: teamCostPct,
-        grade: grade,
-        gradeReason: gradeReason,
-      });
-    }
+    var rows = _computeForwardModel(fwdMonths, fwd, totalBurn, startingCash, resignPct);
 
     // Summary stats
     var healthyCount = rows.filter(function(r) { return r.grade === 'healthy'; }).length;
@@ -2953,6 +2974,9 @@
       html += 'Every 25% improvement = ~' + fmt$(Math.round(retentionValue * 25 / resignPct)) + '/mo.';
       html += '</div>';
     }
+
+    // Comparative forward cash chart: 0% churn-cliff baseline vs selected re-sign
+    html += '<div class="chart-wrap" style="height:190px;margin:4px 0 14px;"><canvas id="forward-chart"></canvas></div>';
 
     // Forward table
     html += '<table class="data-table" style="width:100%;font-size:11px;">';
@@ -3007,6 +3031,77 @@
     html += '<div style="margin-top:6px;font-size:10px;color:var(--text-muted);">Renewal rate: 0% historical (0/12). Cash bal. = prior + (rec. MRR − burn). Source: RECOGNIZED tab, live pull.</div>';
 
     body.innerHTML = html;
+    _drawForwardChart(fwdMonths, fwd, totalBurn, startingCash, resignPct, rows);
+  }
+
+  var _forwardChart = null;
+  function _drawForwardChart(fwdMonths, fwd, totalBurn, startingCash, resignPct, rows) {
+    var canvas = document.getElementById('forward-chart');
+    if (!canvas || !window.Chart) return;
+    if (_forwardChart) { _forwardChart.destroy(); _forwardChart = null; }
+
+    var labels = rows.map(function(r) {
+      return r.month.split(' ')[0].substring(0, 3);
+    });
+    var selectedSeries = rows.map(function(r) { return Math.round(r.cashBalance); });
+    var datasets = [];
+
+    if (resignPct > 0) {
+      var baseline = _computeForwardModel(fwdMonths, fwd, totalBurn, startingCash, 0);
+      datasets.push({
+        label: '0% re-sign (churn cliff)',
+        data: baseline.map(function(r) { return Math.round(r.cashBalance); }),
+        borderColor: 'rgba(113,136,159,0.7)',
+        borderDash: [5, 4],
+        borderWidth: 1.5,
+        pointRadius: 0,
+        tension: 0.3,
+        fill: false,
+      });
+    }
+    datasets.push({
+      label: resignPct > 0 ? resignPct + '% re-sign' : 'Cash balance (0% re-sign)',
+      data: selectedSeries,
+      borderColor: CHART.brand,
+      backgroundColor: CHART.brandFillTop,
+      borderWidth: 2,
+      pointRadius: 2.5,
+      pointBackgroundColor: CHART.brand,
+      tension: 0.3,
+      fill: true,
+    });
+
+    _forwardChart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: { labels: labels, datasets: datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: true, position: 'top', align: 'end' },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) { return ctx.dataset.label + ': ' + fmt$(ctx.parsed.y); }
+            }
+          }
+        },
+        scales: {
+          y: {
+            grid: {
+              color: function(ctx) {
+                return ctx.tick && ctx.tick.value === 0 ? 'rgba(232,97,107,0.55)' : CHART.grid;
+              },
+              lineWidth: function(ctx) {
+                return ctx.tick && ctx.tick.value === 0 ? 1.5 : 1;
+              }
+            },
+            ticks: { callback: function(v) { return fmtK(v); } }
+          },
+          x: { grid: { display: false } }
+        }
+      }
+    });
   }
 
   function initForwardSlider() {
