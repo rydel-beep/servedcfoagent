@@ -129,6 +129,14 @@ def api_history():
             ],
             "mrr": ch.get("current_mrr"),
             "clients": ch.get("total_clients"),
+            # Brief "movers": engine values only, no recomputation
+            "cash_in_bank": (snap.get("cash_position") or {}).get("cash_in_bank"),
+            "runway_months": (snap.get("cash_position") or {}).get("runway_months"),
+            "total_monthly_burn": (snap.get("cash_position") or {}).get("total_monthly_burn"),
+            "active_clients": (snap.get("active_clients") or {}).get("active_count"),
+            "next_mrr": ch.get("next_mrr"),
+            "stripe_collected_30d": (((snap.get("stripe") or {}).get("revenue") or {}).get("current") or {}).get("total_aud"),
+            "failed_charges": (snap.get("stripe") or {}).get("failed_charges_count"),
         })
 
     return jsonify(result)

@@ -92,6 +92,133 @@
     return d.innerHTML;
   }
 
+
+  // ── Morning Brief: the 60-second read ────────────────────
+  function renderMorningBrief(snap) {
+    var body = document.getElementById('brief-body');
+    if (!body || !snap) return;
+
+    var cp = snap.cash_position || {};
+    var ch = snap.client_health || {};
+    var def = snap.deficiency_analysis || {};
+    var verdicts = snap.verdicts || {};
+
+    var dateEl = document.getElementById('brief-date');
+    if (dateEl && snap.generated_at) {
+      dateEl.textContent = new Date(snap.generated_at).toLocaleDateString('en-AU',
+        { weekday: 'long', day: 'numeric', month: 'long' });
+    }
+
+    var html = '';
+
+    // Hero grid: cash+runway / MRR+trajectory / clients
+    html += '<div class="brief-grid">';
+
+    var runway = cp.runway_months;
+    var runwayColor = runway == null ? 'var(--text-muted)' : runway < 3 ? 'var(--red)' : runway < 6 ? 'var(--amber)' : 'var(--green)';
+    html += '<div>';
+    html += '<div class="brief-stat-label">Cash on hand <span class="info-icon" data-metric="cash_in_bank">&#9432;</span></div>';
+    html += '<div class="brief-cash-value">' + fmt$(cp.cash_in_bank) + '</div>';
+    html += '<div class="brief-stat-sub" style="color:' + runwayColor + ';">' +
+      (runway != null ? runway + ' months runway' : 'runway unknown') +
+      ' at ' + fmt$(cp.total_monthly_burn) + '/mo burn' +
+      (cp.stripe_incoming ? ' &middot; +' + fmt$(cp.stripe_incoming) + ' in transit' : '') + '</div>';
+    html += '</div>';
+
+    var delta = ch.mrr_delta;
+    var arrow = delta == null ? '' : delta > 500 ? '<span class="brief-arrow" style="color:var(--green);">&#8599;</span>'
+      : delta < -500 ? '<span class="brief-arrow" style="color:var(--red);">&#8600;</span>'
+      : '<span class="brief-arrow" style="color:var(--text-muted);">&#8594;</span>';
+    html += '<div>';
+    html += '<div class="brief-stat-label">MRR <span class="info-icon" data-metric="current_mrr">&#9432;</span></div>';
+    html += '<div class="brief-stat-value">' + fmt$(ch.current_mrr) + arrow + '</div>';
+    html += '<div class="brief-stat-sub">next month ' + fmt$(ch.next_mrr) +
+      (delta != null ? ' (' + fmtDelta(delta) + ')' : '') + '</div>';
+    html += '</div>';
+
+    var ac = snap.active_clients || {};
+    html += '<div>';
+    html += '<div class="brief-stat-label">Active clients</div>';
+    html += '<div class="brief-stat-value">' + (ac.active_count != null ? ac.active_count : '—') + '</div>';
+    var risk30 = ch.revenue_at_risk_30d;
+    html += '<div class="brief-stat-sub">' + (risk30 ? fmt$(risk30) + ' MRR at risk in 30d' : 'no near-term renewal risk flagged') + '</div>';
+    html += '</div>';
+
+    html += '</div>';
+
+    // Top movers since yesterday (history-driven)
+    var movers = _computeMovers();
+    if (movers.length > 0) {
+      html += '<div class="brief-movers">';
+      html += '<span class="brief-stat-label" style="margin:0;align-self:center;">Since yesterday</span>';
+      movers.forEach(function(m) {
+        html += '<span class="brief-mover">' + esc(m.label) + ' ' + fmtDelta(m.delta, m.fmt) + '</span>';
+      });
+      html += '</div>';
+    }
+
+    // Binding constraint, named in one sentence
+    var bc = def.binding_constraint;
+    if (bc && bc.name) {
+      html += '<div class="brief-constraint"><strong>' + esc(bc.name) + '</strong> is the binding constraint — ' +
+        esc(bc.impact || '') + (bc.current ? ' (now ' + esc(String(bc.current)) + ', target ' + esc(String(bc.target || '?')) + ')' : '') + '.</div>';
+    }
+
+    // The single recommended focus
+    var focus = (bc && bc.fix) ? bc.fix : ((verdicts.top_leaks && verdicts.top_leaks[0]) ? verdicts.top_leaks[0].read : null);
+    if (focus) {
+      html += '<div class="brief-focus"><strong>Today\u2019s focus:</strong> ' + esc(focus) + '</div>';
+    }
+
+    body.innerHTML = html;
+  }
+
+  function _computeMovers() {
+    if (!historyData || historyData.length < 2) return [];
+    var curr = historyData[historyData.length - 1];
+    var prev = historyData[historyData.length - 2];
+    if (!curr || !prev) return [];
+    var candidates = [
+      { label: 'MRR', a: prev.mrr, b: curr.mrr, fmt: fmt$ },
+      { label: 'Cash', a: prev.cash_in_bank, b: curr.cash_in_bank, fmt: fmt$ },
+      { label: 'Collected 30d', a: prev.stripe_collected_30d, b: curr.stripe_collected_30d, fmt: fmt$ },
+      { label: 'Clients', a: prev.active_clients, b: curr.active_clients, fmt: function(v) { return String(Math.round(v)); } },
+      { label: 'Closes', a: prev.funnel && prev.funnel.closes, b: curr.funnel && curr.funnel.closes, fmt: function(v) { return String(Math.round(v)); } },
+      { label: 'Failed charges', a: prev.failed_charges, b: curr.failed_charges, fmt: function(v) { return String(Math.round(v)); } },
+    ];
+    return candidates
+      .filter(function(c) { return c.a != null && c.b != null && c.b - c.a !== 0; })
+      .map(function(c) {
+        var rel = c.a !== 0 ? Math.abs((c.b - c.a) / c.a) : 1;
+        return { label: c.label, delta: c.b - c.a, fmt: c.fmt, rel: rel };
+      })
+      .sort(function(x, y) { return y.rel - x.rel; })
+      .slice(0, 3);
+  }
+
+  // ── Metric definition tooltips (canonical definitions from metrics engine) ──
+  function initMetricTips() {
+    var tip = document.getElementById('metric-tip');
+    if (!tip) return;
+    document.addEventListener('mouseover', function(e) {
+      var icon = e.target.closest && e.target.closest('.info-icon');
+      if (!icon || !currentSnap || !currentSnap.metrics) return;
+      var m = currentSnap.metrics[icon.dataset.metric];
+      if (!m) return;
+      var kindLabel = m.kind === 'FLOW' ? 'FLOW \u00b7 ' + (m.window || 'per period') : 'BALANCE \u00b7 point-in-time';
+      tip.innerHTML = '<span class="tip-kind">' + kindLabel + '</span><br>' + esc(m.definition || '');
+      tip.style.display = 'block';
+      var r = icon.getBoundingClientRect();
+      var top = r.bottom + 8;
+      var left = Math.min(r.left, window.innerWidth - 320);
+      tip.style.top = top + 'px';
+      tip.style.left = Math.max(8, left) + 'px';
+    });
+    document.addEventListener('mouseout', function(e) {
+      if (e.target.closest && e.target.closest('.info-icon')) tip.style.display = 'none';
+    });
+  }
+
   // ── Fetch ────────────────────────────────────────────────
   async function fetchSnapshot() {
     try {
@@ -121,6 +248,7 @@
     currentSnap = snap;
 
     renderStatus(snap);
+    renderMorningBrief(snap);
     renderExecSummary(snap);
     renderActionItems(snap);
     renderKPIs(snap);
@@ -571,10 +699,14 @@
 
     // Cash in bank
     if (cashPos.cash_in_bank != null) {
+      const confirmedAge = cashPos.confirmed_age_days;
+      const confirmedStale = confirmedAge != null && confirmedAge > 7;
       html += `<div class="cash-card">
-        <div class="cash-card-label">Cash in Bank</div>
+        <div class="cash-card-label">Cash in Bank <span class="info-icon" data-metric="cash_in_bank">&#9432;</span></div>
         <div class="cash-card-value" style="color:var(--green)">${fmt$(cashPos.cash_in_bank)}</div>
-        <div class="cash-card-sub">${cashPos.source === 'override' ? 'confirmed balance' : 'from Xero'}</div>
+        <div class="cash-card-sub" ${confirmedStale ? 'style="color:var(--amber)"' : ''}>${cashPos.source === 'override'
+          ? 'confirmed ' + (cashPos.confirmed_date || '') + (confirmedStale ? ' \u26a0 reconfirm' : '')
+          : 'from Xero'}</div>
       </div>`;
     }
 
@@ -1066,6 +1198,11 @@
         } else {
           note.textContent = '';
         }
+        // Window badges reflect the selected window everywhere
+        ['win-badge-perf', 'win-badge-comm', 'win-badge-reps'].forEach(function(id) {
+          var el = document.getElementById(id);
+          if (el) el.textContent = currentWindow + 'd';
+        });
         // Re-render window-aware sections
         if (currentSnap) {
           activeWindow = currentWindow;
@@ -1818,7 +1955,7 @@
     const windowData = currentWindow !== 30 ? windows.find(w => w.window_days === currentWindow) : null;
     const f = windowData || get(snap, 'sales.funnel') || {};
     const funnelLabel = $('#funnel-window-label');
-    if (funnelLabel) funnelLabel.textContent = 'trailing ' + currentWindow + 'd';
+    if (funnelLabel) funnelLabel.textContent = currentWindow + 'd';
     const stages = [
       { label: 'Leads', count: windowData ? f.leads : f.leads_in, pct: null },
       { label: 'Sets', count: windowData ? f.sets : f.sets, pct: windowData ? f.lead_to_set_pct : f.lead_to_set_pct },
@@ -3305,8 +3442,24 @@
     var deltaColor = totalDelta > 0 ? 'var(--red)' : totalDelta < 0 ? 'var(--green)' : 'var(--text-muted)';
     var deltaSign = totalDelta > 0 ? '+' : '';
 
+    // Count scratch edits vs actual so modeling state is always explicit
+    var changeCount = 0;
+    if (_rosterScratch && _rosterActual) {
+      var maxLen = Math.max(_rosterScratch.length, _rosterActual.length);
+      for (var ci = 0; ci < maxLen; ci++) {
+        var sp = _rosterScratch[ci], ap = _rosterActual[ci];
+        if (!sp || !ap) { changeCount++; continue; }
+        if ((sp.salary_aud || 0) !== (ap.salary_aud || 0) ||
+            (sp.salary_php || 0) !== (ap.salary_php || 0) ||
+            (sp.first_name || '') !== (ap.first_name || '')) changeCount++;
+      }
+    }
+
     var html = '<div class="roster-readout">';
-    html += '<div style="font-weight:600;color:var(--text);margin-bottom:8px;font-size:12px;">Modeled Impact</div>';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">';
+    html += '<span style="font-weight:600;color:var(--text);font-size:12px;">Modeled Impact</span>';
+    html += '<span style="font-size:11px;color:var(--amber);">\u26a0 ' + changeCount + ' change' + (changeCount === 1 ? '' : 's') + ' from actual \u2014 <a href="#" onclick="document.getElementById(\'roster-reset\').click();return false;" style="color:var(--accent);">reset</a></span>';
+    html += '</div>';
     html += '<div class="roster-readout-grid">';
 
     html += '<div><div class="roster-readout-label">Actual team</div><div class="roster-readout-value">' + fmt$(Math.round(actualAud)) + '</div></div>';
@@ -3542,18 +3695,35 @@
   });
 
   // ── Init ─────────────────────────────────────────────────
+  function _showError(show) {
+    var banner = document.getElementById('error-banner');
+    if (banner) banner.style.display = show ? 'flex' : 'none';
+  }
+
+  async function loadAll() {
+    const [snap, history] = await Promise.all([fetchSnapshot(), fetchHistory()]);
+    if (history) historyData = history;
+    if (snap) {
+      _showError(false);
+      render(snap);
+    } else if (!currentSnap) {
+      _showError(true);
+    }
+    if (historyData && historyData.length > 1) {
+      $('#reps-sparkline-status').textContent = historyData.length + ' days of history';
+    }
+  }
+
   (async function init() {
     initNavigation();
     initGlobalWindowSelector();
     initHiringForm();
     initRosterControls();
     initForwardSlider();
-    const [snap, history] = await Promise.all([fetchSnapshot(), fetchHistory()]);
-    if (history) historyData = history;
-    if (snap) render(snap);
-    if (historyData && historyData.length > 1) {
-      $('#reps-sparkline-status').textContent = historyData.length + ' days of history';
-    }
+    initMetricTips();
+    var retry = document.getElementById('error-retry');
+    if (retry) retry.addEventListener('click', function() { _showError(false); loadAll(); });
+    await loadAll();
   })();
 
   // Auto-refresh every 10 minutes

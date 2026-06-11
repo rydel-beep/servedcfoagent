@@ -41,21 +41,20 @@
   </div>
 </header>
 
-<!-- Section Navigation -->
+<!-- Section Navigation — ordered by decision priority -->
 <nav class="section-nav" id="section-nav">
-  <a href="#section-exec" class="nav-link">Summary</a>
-  <a href="#section-kpis" class="nav-link">KPIs</a>
-  <a href="#section-trend" class="nav-link">MRR</a>
-  <a href="#section-month-perf" class="nav-link">Performance</a>
-  <a href="#section-waterfall" class="nav-link">P&L</a>
+  <a href="#section-brief" class="nav-link">Brief</a>
   <a href="#section-cash-position" class="nav-link">Cash</a>
-  <a href="#section-funnel" class="nav-link">Funnel</a>
-  <a href="#section-pipeline" class="nav-link">Pipeline</a>
-  <a href="#section-health" class="nav-link">Clients</a>
-  <a href="#section-reps" class="nav-link">Reps</a>
   <a href="#section-forward" class="nav-link">Forward</a>
-  <a href="#section-deficiency" class="nav-link">Growth</a>
+  <a href="#section-trend" class="nav-link">MRR</a>
+  <a href="#section-churn" class="nav-link">Churn</a>
+  <a href="#section-month-perf" class="nav-link">Economics</a>
+  <a href="#section-waterfall" class="nav-link">P&L</a>
+  <a href="#section-funnel" class="nav-link">Funnel</a>
+  <a href="#section-health" class="nav-link">Clients</a>
   <a href="#section-team" class="nav-link">Team</a>
+  <a href="#section-pipeline" class="nav-link">Pipeline</a>
+  <a href="#section-reps" class="nav-link">Reps</a>
   <a href="#section-quality" class="nav-link">DQ</a>
 </nav>
 
@@ -72,13 +71,22 @@
 
 <main class="main" id="main">
 
+  <!-- ═══ Morning Brief: the 60-second read ═══ -->
+  <section class="panel brief-panel" id="section-brief">
+    <div class="panel-header">
+      <h2 class="panel-title">Morning Brief</h2>
+      <span class="panel-sub" id="brief-date"></span>
+    </div>
+    <div id="brief-body"><div class="skeleton skeleton-hero"></div></div>
+  </section>
+
   <!-- Executive Summary -->
   <section class="panel exec-panel" id="section-exec">
     <div class="panel-header">
       <h2 class="panel-title">Executive Summary</h2>
       <span class="panel-sub" id="exec-date"></span>
     </div>
-    <div class="exec-body" id="exec-body">Loading...</div>
+    <div class="exec-body" id="exec-body"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
   </section>
 
   <!-- Action Items -->
@@ -93,7 +101,7 @@
   <!-- KPI Strip -->
   <section class="kpi-strip" id="section-kpis">
     <div class="kpi" id="kpi-mrr">
-      <div class="kpi-label">Total MRR</div>
+      <div class="kpi-label">Total MRR <span class="info-icon" data-metric="current_mrr">&#9432;</span></div>
       <div class="kpi-value" id="val-sheet-mrr">—</div>
       <div class="kpi-sub" id="sub-sheet-mrr"></div>
     </div>
@@ -105,13 +113,13 @@
     </div>
     <div class="kpi-divider"></div>
     <div class="kpi" id="kpi-cash">
-      <div class="kpi-label">Cash Collected</div>
+      <div class="kpi-label">Cash Collected <span class="info-icon" data-metric="stripe_cash_collected_30d">&#9432;</span></div>
       <div class="kpi-value" id="val-cash">—</div>
-      <div class="kpi-sub">trailing 30d</div>
+      <div class="kpi-sub"><span class="win-badge">30d</span> gross</div>
     </div>
     <div class="kpi-divider"></div>
     <div class="kpi" id="kpi-margin">
-      <div class="kpi-label">Gross Margin</div>
+      <div class="kpi-label">Gross Margin <span class="info-icon" data-metric="gross_margin_pct">&#9432;</span></div>
       <div class="kpi-value" id="val-margin">—</div>
       <div class="kpi-sub" id="sub-margin"></div>
     </div>
@@ -129,10 +137,48 @@
     </div>
     <div class="kpi-divider"></div>
     <div class="kpi" id="kpi-clients">
-      <div class="kpi-label">Active Clients</div>
+      <div class="kpi-label">Active Clients <span class="info-icon" data-metric="active_client_count">&#9432;</span></div>
       <div class="kpi-value" id="val-clients">—</div>
       <div class="kpi-sub" id="sub-clients"></div>
     </div>
+  </section>
+
+  <!-- Two-column: Cash Position + Stripe Health -->
+  <div class="grid-2">
+
+    <!-- Cash Position / Runway -->
+    <section class="panel" id="section-cash-position">
+      <div class="panel-header">
+        <h2 class="panel-title">Cash Position <span class="win-badge live">LIVE</span></h2>
+        <div class="panel-badge" id="cash-badge"></div>
+      </div>
+      <div id="cash-position-content"><div class="skeleton skeleton-block"></div></div>
+    </section>
+
+    <!-- Stripe Health -->
+    <section class="panel" id="section-stripe-health">
+      <div class="panel-header">
+        <h2 class="panel-title">Stripe Health <span class="win-badge">30d</span></h2>
+        <div class="panel-badge" id="stripe-badge"></div>
+      </div>
+      <div id="stripe-health-content"><div class="skeleton skeleton-block"></div></div>
+    </section>
+
+  </div>
+
+  <!-- Forward Projection (full width) -->
+  <section class="panel" id="section-forward">
+    <div class="panel-header">
+      <h2 class="panel-title">Forward Projection <span class="win-badge">6mo</span></h2>
+      <span class="panel-sub">recognized MRR + cash trajectory</span>
+    </div>
+    <div class="control-group">
+      <label class="control-label" for="resign-slider">Re-sign rate</label>
+      <input type="range" id="resign-slider" min="0" max="100" step="5" value="0">
+      <span id="resign-pct" class="control-readout">0%</span>
+      <span class="control-hint">of expiring clients renew &mdash; drag to see retention value vs the 0% churn cliff</span>
+    </div>
+    <div id="forward-projection-body"><div class="skeleton skeleton-block"></div></div>
   </section>
 
   <!-- MRR Trend (full width) -->
@@ -144,62 +190,6 @@
     <div class="chart-wrap chart-wide">
       <canvas id="chart-mrr-trend"></canvas>
     </div>
-  </section>
-
-  <!-- Month Performance (full width) -->
-  <section class="panel" id="section-month-perf">
-    <div class="panel-header">
-      <h2 class="panel-title">Month Performance</h2>
-      <div class="panel-badge" id="month-perf-badge"></div>
-    </div>
-    <div class="month-perf-grid" id="month-perf-grid"></div>
-    <div class="month-perf-reads" id="month-perf-reads"></div>
-  </section>
-
-  <!-- Performance Analysis (full width) -->
-  <section class="panel" id="section-perf-analysis">
-    <div class="panel-header">
-      <h2 class="panel-title">Performance Analysis</h2>
-      <div class="window-tabs" id="window-tabs"></div>
-    </div>
-    <div id="perf-analysis-content"></div>
-  </section>
-
-  <!-- Profit Waterfall (full width) -->
-  <section class="panel" id="section-waterfall">
-    <div class="panel-header">
-      <h2 class="panel-title">Profit Waterfall</h2>
-      <span class="panel-sub" id="waterfall-period"></span>
-    </div>
-    <div id="waterfall-content"></div>
-  </section>
-
-  <!-- Two-column: Cash Position + Stripe Health -->
-  <div class="grid-2">
-
-    <!-- Cash Position / Runway -->
-    <section class="panel" id="section-cash-position">
-      <div class="panel-header">
-        <h2 class="panel-title">Cash Position</h2>
-        <div class="panel-badge" id="cash-badge"></div>
-      </div>
-      <div id="cash-position-content"></div>
-    </section>
-
-    <!-- Stripe Health -->
-    <section class="panel" id="section-stripe-health">
-      <div class="panel-header">
-        <h2 class="panel-title">Stripe Health</h2>
-        <div class="panel-badge" id="stripe-badge"></div>
-      </div>
-      <div id="stripe-health-content"></div>
-    </section>
-
-  </div>
-
-  <!-- Speed-to-Lead Alert -->
-  <section class="panel alert-panel" id="section-speed-to-lead" style="display:none;">
-    <div id="speed-to-lead-content"></div>
   </section>
 
   <!-- Two-column: Revenue Views + Churn Risk -->
@@ -218,7 +208,7 @@
     <!-- Churn Risk -->
     <section class="panel" id="section-churn">
       <div class="panel-header">
-        <h2 class="panel-title">Churn Risk</h2>
+        <h2 class="panel-title">Churn Risk <span class="win-badge live">LIVE</span></h2>
         <div class="panel-badge" id="churn-badge"></div>
       </div>
       <div class="churn-summary" id="churn-summary"></div>
@@ -227,111 +217,24 @@
 
   </div>
 
-  <!-- Client Reconciliation (full width, only shows if issues) -->
-  <section class="panel" id="section-reconciliation" style="display:none;">
+  <!-- Month Performance (full width) -->
+  <section class="panel" id="section-month-perf">
     <div class="panel-header">
-      <h2 class="panel-title">Client Reconciliation</h2>
-      <div class="panel-badge" id="recon-badge"></div>
+      <h2 class="panel-title">Month Performance</h2>
+      <div class="panel-badge" id="month-perf-badge"></div>
     </div>
-    <div id="recon-content"></div>
+    <div class="month-perf-grid" id="month-perf-grid"></div>
+    <div class="month-perf-reads" id="month-perf-reads"></div>
   </section>
 
-  <!-- Two-column: Client Health + Verdicts -->
-  <div class="grid-2">
-
-    <!-- Client Health -->
-    <section class="panel" id="section-health">
-      <div class="panel-header">
-        <h2 class="panel-title">Client Health</h2>
-        <div class="panel-badge" id="health-badge"></div>
-      </div>
-      <div class="health-summary" id="health-summary"></div>
-      <div class="client-list" id="client-list"></div>
-    </section>
-
-    <!-- Verdicts -->
-    <section class="panel" id="section-verdicts">
-      <div class="panel-header">
-        <h2 class="panel-title">Verdicts</h2>
-      </div>
-      <div class="verdict-headline" id="verdict-headline">Loading...</div>
-      <div class="leaks-list" id="leaks-list"></div>
-      <div class="wins-row" id="wins-row"></div>
-    </section>
-
-  </div>
-
-  <!-- Two-column: Funnel + Setter Deep Dive -->
-  <div class="grid-2">
-
-    <!-- Sales Funnel -->
-    <section class="panel" id="section-funnel">
-      <div class="panel-header">
-        <h2 class="panel-title">Sales Funnel</h2>
-        <span class="panel-sub" id="funnel-window-label">trailing 30d</span>
-      </div>
-      <div class="funnel-visual" id="funnel-bars"></div>
-      <div class="funnel-stats" id="funnel-stats"></div>
-    </section>
-
-    <!-- Setter Deep Dive Funnel -->
-    <section class="panel" id="section-setter-deep">
-      <div class="panel-header">
-        <h2 class="panel-title">Setter Deep Dive</h2>
-        <span class="panel-sub">full pipeline breakdown</span>
-      </div>
-      <div id="setter-deep-content"></div>
-    </section>
-
-  </div>
-
-  <!-- Two-column: GHL Pipeline + DQ/Loss Intelligence -->
-  <div class="grid-2">
-
-    <!-- GHL Pipeline View -->
-    <section class="panel" id="section-pipeline">
-      <div class="panel-header">
-        <h2 class="panel-title">GHL Pipeline</h2>
-        <div class="panel-badge" id="pipeline-badge"></div>
-      </div>
-      <div id="pipeline-content"></div>
-    </section>
-
-    <!-- DQ & Loss Intelligence -->
-    <section class="panel" id="section-dq-loss">
-      <div class="panel-header">
-        <h2 class="panel-title">DQ & Loss Intelligence</h2>
-        <span class="panel-sub">why deals don't close</span>
-      </div>
-      <div id="dq-loss-content"></div>
-    </section>
-
-  </div>
-
-  <!-- Two-column: Offer Mix + Lead Source ROI -->
-  <div class="grid-2">
-
-    <!-- Offer Mix -->
-    <section class="panel" id="section-offers">
-      <div class="panel-header">
-        <h2 class="panel-title">Offer Mix</h2>
-      </div>
-      <div class="chart-wrap">
-        <canvas id="chart-offers" height="220"></canvas>
-      </div>
-    </section>
-
-    <!-- Lead Source ROI -->
-    <section class="panel" id="section-lead-roi">
-      <div class="panel-header">
-        <h2 class="panel-title">Lead Source ROI</h2>
-        <span class="panel-sub">cost-per-close by source</span>
-      </div>
-      <div id="lead-roi-table"></div>
-      <div class="lead-roi-note" id="lead-roi-note"></div>
-    </section>
-
-  </div>
+  <!-- Profit Waterfall (full width) -->
+  <section class="panel" id="section-waterfall">
+    <div class="panel-header">
+      <h2 class="panel-title">Profit Waterfall</h2>
+      <span class="panel-sub" id="waterfall-period"></span>
+    </div>
+    <div id="waterfall-content"></div>
+  </section>
 
   <!-- Two-column: Commission Tracker + Unit Economics -->
   <div class="grid-2">
@@ -339,12 +242,15 @@
     <!-- Commission Tracker -->
     <section class="panel" id="section-commissions">
       <div class="panel-header">
-        <h2 class="panel-title">Commission Tracker</h2>
+        <h2 class="panel-title">Commission Tracker <span class="win-badge" id="win-badge-comm">30d</span></h2>
         <span class="panel-sub">MTD owed</span>
       </div>
       <div class="commission-summary" id="commission-summary"></div>
       <div id="commission-detail"></div>
-      <div id="commission-detail-expanded"></div>
+      <details class="disclosure" id="commission-disclosure">
+        <summary>Per-deal commission detail</summary>
+        <div id="commission-detail-expanded"></div>
+      </details>
     </section>
 
     <section class="panel" id="section-metrics">
@@ -381,63 +287,68 @@
 
   </div>
 
-  <!-- Rep Performance (full width) -->
-  <section class="panel" id="section-reps">
+  <!-- Performance Analysis (full width) -->
+  <section class="panel" id="section-perf-analysis">
     <div class="panel-header">
-      <h2 class="panel-title">Rep Performance</h2>
-      <span class="panel-sub" id="reps-sparkline-status"></span>
+      <h2 class="panel-title">Performance Analysis <span class="win-badge" id="win-badge-perf">30d</span></h2>
+      <div class="window-tabs" id="window-tabs"></div>
     </div>
-    <div class="grid-2" style="gap:20px;">
-      <div class="rep-section">
-        <h3 class="rep-heading">Setters</h3>
-        <table class="data-table" id="table-setters">
-          <thead><tr><th>Name</th><th>Dials</th><th>Sets</th><th>D/S</th><th>Show%</th><th>Trend</th></tr></thead>
-          <tbody></tbody>
-        </table>
+    <div id="perf-analysis-content"></div>
+  </section>
+
+  <!-- Speed-to-Lead Alert -->
+  <section class="panel alert-panel" id="section-speed-to-lead" style="display:none;">
+    <div id="speed-to-lead-content"></div>
+  </section>
+
+  <!-- Two-column: Funnel + Setter Deep Dive -->
+  <div class="grid-2">
+
+    <!-- Sales Funnel -->
+    <section class="panel" id="section-funnel">
+      <div class="panel-header">
+        <h2 class="panel-title">Sales Funnel</h2>
+        <span class="panel-sub"><span class="win-badge" id="funnel-window-label">30d</span></span>
       </div>
-      <div class="rep-section">
-        <h3 class="rep-heading">Closers</h3>
-        <table class="data-table" id="table-closers">
-          <thead><tr><th>Name</th><th>Shows</th><th>Closes</th><th>Rate</th><th>Comm</th><th>Trend</th></tr></thead>
-          <tbody></tbody>
-        </table>
+      <div class="funnel-visual" id="funnel-bars"></div>
+      <div class="funnel-stats" id="funnel-stats"></div>
+    </section>
+
+    <!-- Setter Deep Dive Funnel -->
+    <section class="panel" id="section-setter-deep">
+      <div class="panel-header">
+        <h2 class="panel-title">Setter Deep Dive</h2>
+        <span class="panel-sub">full pipeline breakdown</span>
       </div>
-    </div>
-  </section>
+      <div id="setter-deep-content"></div>
+    </section>
 
-  <!-- Cohort Retention (full width) -->
-  <section class="panel" id="section-cohort">
-    <div class="panel-header">
-      <h2 class="panel-title">Cohort Retention</h2>
-      <span class="panel-sub">clients by sign-up month</span>
-    </div>
-    <div id="cohort-grid"></div>
-  </section>
+  </div>
 
-  <!-- Forward Projection (full width) -->
-  <section class="panel" id="section-forward">
-    <div class="panel-header">
-      <h2 class="panel-title">Forward Projection</h2>
-      <span class="panel-sub">recognized MRR + cash trajectory (6 months)</span>
-    </div>
-    <div style="display:flex;align-items:center;gap:12px;padding:8px 0 4px 0;">
-      <label style="font-size:11px;color:var(--text-muted);white-space:nowrap;">Re-sign rate:</label>
-      <input type="range" id="resign-slider" min="0" max="100" step="5" value="0"
-        style="flex:1;max-width:240px;accent-color:var(--accent);cursor:pointer;">
-      <span id="resign-pct" style="font-size:12px;font-weight:600;color:var(--text);min-width:36px;">0%</span>
-      <span style="font-size:10px;color:var(--text-muted);">of expiring clients renew</span>
-    </div>
-    <div id="forward-projection-body"></div>
-  </section>
+  <!-- Two-column: Client Health + Verdicts -->
+  <div class="grid-2">
 
-  <!-- Strategic: Deficiency Analysis -->
-  <section class="panel" id="section-deficiency">
-    <div class="panel-header">
-      <h2 class="panel-title">Growth Constraints</h2>
-      <span class="panel-sub">ranked by impact</span>
-    </div>
-    <div id="deficiency-body"></div>
-  </section>
+    <!-- Client Health -->
+    <section class="panel" id="section-health">
+      <div class="panel-header">
+        <h2 class="panel-title">Client Health <span class="win-badge live">LIVE</span></h2>
+        <div class="panel-badge" id="health-badge"></div>
+      </div>
+      <div class="health-summary" id="health-summary"></div>
+      <div class="client-list" id="client-list"></div>
+    </section>
+
+    <!-- Verdicts -->
+    <section class="panel" id="section-verdicts">
+      <div class="panel-header">
+        <h2 class="panel-title">Verdicts</h2>
+      </div>
+      <div class="verdict-headline" id="verdict-headline">Loading...</div>
+      <div class="leaks-list" id="leaks-list"></div>
+      <div class="wins-row" id="wins-row"></div>
+    </section>
+
+  </div>
 
   <!-- Strategic: Team Model -->
   <section class="panel" id="section-team">
@@ -485,6 +396,108 @@
     </div>
   </section>
 
+  <!-- Strategic: Deficiency Analysis -->
+  <section class="panel" id="section-deficiency">
+    <div class="panel-header">
+      <h2 class="panel-title">Growth Constraints</h2>
+      <span class="panel-sub">ranked by impact</span>
+    </div>
+    <div id="deficiency-body"></div>
+  </section>
+
+  <!-- Two-column: GHL Pipeline + DQ/Loss Intelligence -->
+  <div class="grid-2">
+
+    <!-- GHL Pipeline View -->
+    <section class="panel" id="section-pipeline">
+      <div class="panel-header">
+        <h2 class="panel-title">GHL Pipeline <span class="win-badge live">LIVE</span></h2>
+        <div class="panel-badge" id="pipeline-badge"></div>
+      </div>
+      <div id="pipeline-content"></div>
+    </section>
+
+    <!-- DQ & Loss Intelligence -->
+    <section class="panel" id="section-dq-loss">
+      <div class="panel-header">
+        <h2 class="panel-title">DQ & Loss Intelligence</h2>
+        <span class="panel-sub">why deals don't close</span>
+      </div>
+      <div id="dq-loss-content"></div>
+    </section>
+
+  </div>
+
+  <!-- Two-column: Offer Mix + Lead Source ROI -->
+  <div class="grid-2">
+
+    <!-- Offer Mix -->
+    <section class="panel" id="section-offers">
+      <div class="panel-header">
+        <h2 class="panel-title">Offer Mix</h2>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="chart-offers" height="220"></canvas>
+      </div>
+    </section>
+
+    <!-- Lead Source ROI -->
+    <section class="panel" id="section-lead-roi">
+      <div class="panel-header">
+        <h2 class="panel-title">Lead Source ROI</h2>
+        <span class="panel-sub">cost-per-close by source</span>
+      </div>
+      <div id="lead-roi-table"></div>
+      <div class="lead-roi-note" id="lead-roi-note"></div>
+    </section>
+
+  </div>
+
+  <!-- Rep Performance (full width) -->
+  <section class="panel" id="section-reps">
+    <div class="panel-header">
+      <h2 class="panel-title">Rep Performance <span class="win-badge" id="win-badge-reps">30d</span></h2>
+      <span class="panel-sub" id="reps-sparkline-status"></span>
+    </div>
+    <div class="grid-2" style="gap:20px;">
+      <div class="rep-section">
+        <h3 class="rep-heading">Setters</h3>
+        <div class="table-scroll">
+        <table class="data-table" id="table-setters">
+          <thead><tr><th>Name</th><th>Dials</th><th>Sets</th><th>D/S</th><th>Show%</th><th>Trend</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        </div>
+      </div>
+      <div class="rep-section">
+        <h3 class="rep-heading">Closers</h3>
+        <div class="table-scroll">
+        <table class="data-table" id="table-closers">
+          <thead><tr><th>Name</th><th>Shows</th><th>Closes</th><th>Rate</th><th>Comm</th><th>Trend</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Cohort Retention (full width, collapsed by default) -->
+  <section class="panel" id="section-cohort">
+    <details class="disclosure">
+      <summary class="disclosure-title">Cohort Retention <span class="panel-sub">clients by sign-up month</span></summary>
+      <div id="cohort-grid" class="table-scroll"></div>
+    </details>
+  </section>
+
+  <!-- Client Reconciliation (full width, only shows if issues) -->
+  <section class="panel" id="section-reconciliation" style="display:none;">
+    <div class="panel-header">
+      <h2 class="panel-title">Client Reconciliation</h2>
+      <div class="panel-badge" id="recon-badge"></div>
+    </div>
+    <div id="recon-content"></div>
+  </section>
+
   <!-- Data Quality -->
   <section class="panel panel-muted" id="section-quality">
     <div class="panel-header clickable" id="toggle-quality">
@@ -498,6 +511,15 @@
   </section>
 
 </main>
+
+<!-- Global error state -->
+<div class="error-banner" id="error-banner" style="display:none;">
+  <span id="error-banner-text">Couldn't load the dashboard data.</span>
+  <button id="error-retry" class="roster-btn roster-btn-accent">Retry</button>
+</div>
+
+<!-- Metric definition tooltip (single instance, repositioned on hover) -->
+<div class="metric-tip" id="metric-tip" style="display:none;"></div>
 
 <!-- Sales Summary Export Modal -->
 <div class="modal-overlay" id="export-overlay"></div>
