@@ -901,8 +901,12 @@ def test_flask_app():
     body = resp.get_json()
     print(f"  POST /cfo/refresh: 200, ok={body.get('ok')}, degraded={body.get('degraded_count')}")
 
-    # Snapshot after refresh
+    # Snapshot after refresh — unauthenticated must be rejected (contains payroll + cash)
     resp = client.get("/cfo/snapshot")
+    assert resp.status_code == 401, "SECURITY: /cfo/snapshot must require auth"
+    print("  GET /cfo/snapshot (no auth): 401")
+
+    resp = client.get("/cfo/snapshot", headers={"X-CFO-KEY": "test-key-123"})
     assert resp.status_code == 200
     snap = resp.get_json()
     # Verify no PII

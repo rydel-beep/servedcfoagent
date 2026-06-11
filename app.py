@@ -5,7 +5,7 @@ Flask application for the CFO agent.
 
 Endpoints:
   GET  /health         — liveness check
-  GET  /cfo/snapshot   — public, unauthenticated, returns latest snapshot JSON
+  GET  /cfo/snapshot   — protected (X-CFO-KEY header or dashboard cookie), returns latest snapshot JSON
   POST /cfo/refresh    — protected by X-CFO-KEY header, triggers a fresh pull
 """
 from __future__ import annotations
@@ -105,8 +105,22 @@ def health():
     return jsonify({"status": "ok"})
 
 
+def _snapshot_request_authorized() -> bool:
+    """Allow X-CFO-KEY header (machine consumers) or a valid dashboard cookie (owner)."""
+    key = request.headers.get("X-CFO-KEY", "")
+    if CFO_REFRESH_KEY and key == CFO_REFRESH_KEY:
+        return True
+    from dashboard.auth import COOKIE_NAME, DASHBOARD_TOKEN
+    cookie_token = request.cookies.get(COOKIE_NAME)
+    return bool(DASHBOARD_TOKEN) and cookie_token == DASHBOARD_TOKEN
+
+
 @app.route("/cfo/snapshot", methods=["GET"])
 def get_snapshot():
+    # The snapshot contains payroll, cash balances, and the full financial picture.
+    # It was public in the daily-pulse era; locked 2026-06-11.
+    if not _snapshot_request_authorized():
+        return jsonify({"error": "Unauthorized"}), 401
     snap = _get_snapshot()
     if snap is None:
         return jsonify({"error": "No snapshot available yet. POST /cfo/refresh to generate one."}), 404

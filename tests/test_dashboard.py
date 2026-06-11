@@ -88,6 +88,31 @@ def test_api_snapshot_returns_json():
     print(f"  API snapshot: {resp.status_code}")
 
 
+def test_cfo_snapshot_locked_without_auth():
+    """GET /cfo/snapshot with no credentials must return 401 — it contains payroll and cash."""
+    client = _get_app()
+    resp = client.get("/cfo/snapshot")
+    assert resp.status_code == 401, f"SECURITY: /cfo/snapshot open without auth ({resp.status_code})"
+    print("  /cfo/snapshot unauthenticated → 401")
+
+
+def test_cfo_snapshot_allows_cfo_key():
+    """GET /cfo/snapshot with X-CFO-KEY header is authorized (200 or 404 if no snapshot)."""
+    client = _get_app()
+    resp = client.get("/cfo/snapshot", headers={"X-CFO-KEY": "test-key-123"})
+    assert resp.status_code in (200, 404), f"X-CFO-KEY rejected: {resp.status_code}"
+    print(f"  /cfo/snapshot with X-CFO-KEY → {resp.status_code}")
+
+
+def test_cfo_snapshot_allows_dashboard_cookie():
+    """GET /cfo/snapshot with a valid dashboard cookie is authorized."""
+    client = _get_app()
+    client.post("/dashboard/login", data={"token": "test-dash-token"})
+    resp = client.get("/cfo/snapshot")
+    assert resp.status_code in (200, 404), f"Dashboard cookie rejected: {resp.status_code}"
+    print(f"  /cfo/snapshot with dashboard cookie → {resp.status_code}")
+
+
 def test_chat_no_api_key_returns_fallback():
     """Chat endpoint without ANTHROPIC_API_KEY returns graceful fallback."""
     import dashboard.chat as chat_mod
