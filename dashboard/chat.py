@@ -135,6 +135,24 @@ STRATEGIC CAPABILITY — you can now reason about hiring, team structure, and gr
 Answer Rydel's question. Lead with the answer. Be sharp."""
 
 
+VOICE_ADDENDUM = """
+
+VOICE MODE — this reply will be SPOKEN ALOUD by text-to-speech. All the rules above
+still apply (metric definitions, answer the literal question, reconcile with the
+thread, honesty over comfort). Additionally:
+
+- Spoken register: short sentences. No markdown, no bullets, no symbols, no tables,
+  no headers. Contractions are fine.
+- Write numbers for the EAR: "ninety-one thousand dollars", "three point six months".
+  Round large figures to speech precision (nearest thousand). Never read long decimals.
+- Length: at most 4 sentences. Lead with the answer. Name the constraint if relevant.
+  One recommended move, not five.
+- Persona: composed, dry, capable — Jarvis. Address him as Rydel occasionally, not
+  every reply. Never let the persona soften a bad number; if the picture is red, say so
+  plainly.
+"""
+
+
 def _build_context_block(snapshot_json: str) -> str:
     """Build a focused context block from the snapshot for the system prompt.
 
@@ -295,8 +313,12 @@ def _sanitize_history(history: list) -> list:
     return clean
 
 
-def chat(history: list, snapshot_json: str, token: str) -> dict:
-    """Send a multi-turn chat message with snapshot context and conversation history."""
+def chat(history: list, snapshot_json: str, token: str, voice: bool = False) -> dict:
+    """Send a multi-turn chat message with snapshot context and conversation history.
+
+    voice=True swaps in the spoken register (same brain, same discipline, same
+    memory thread — the reply is destined for text-to-speech).
+    """
     if not ANTHROPIC_API_KEY:
         return {
             "reply": None,
@@ -313,19 +335,31 @@ def chat(history: list, snapshot_json: str, token: str) -> dict:
     if not messages:
         return {"reply": None, "error": "Empty message"}
 
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        context_block = _build_context_block(snapshot_json)
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1000,
-            temperature=0.5,
-            system=SYSTEM_PROMPT.format(context_block=context_block),
-            messages=messages,
-        )
-        reply = response.content[0].text if response.content else ""
-        return {"reply": reply, "error": None}
-    except Exception as e:
-        logger.error("Chat API error: %s", e)
-        return {"reply": None, "error": f"Chat API error: {str(e)[:200]}"}
+    system = SYSTEM_PROMPT.format(context_block=_build_context_block(snapshot_json))
+    if voice:
+        system += VOICE_ADDENDUM
+
+    last_err: Exception | None = None
+    for attempt in range(3):
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+            response = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=300 if voice else 1000,
+                temperature=0.5,
+                system=system,
+                messages=messages,
+            )
+            reply = response.content[0].text if response.content else ""
+            return {"reply": reply, "error": None}
+        except Exception as e:
+            last_err = e
+            # 529 = Anthropic transiently overloaded — retry with backoff
+            if "529" in str(e) or "overloaded" in str(e).lower():
+                logger.warning("Chat API overloaded (attempt %d) — retrying", attempt + 1)
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            break
+    logger.error("Chat API error: %s", last_err)
+    return {"reply": None, "error": f"Chat API error: {str(last_err)[:200]}"}

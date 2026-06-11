@@ -151,6 +151,75 @@ def api_history():
     return jsonify(result)
 
 
+@bp.route("/api/voice-status", methods=["GET"])
+@require_auth
+def api_voice_status():
+    """Voice layer health: ElevenLabs configured? usage vs caps. No key material."""
+    from dashboard.voice import tts_usage
+    return jsonify(tts_usage())
+
+
+@bp.route("/api/tts", methods=["GET", "POST"])
+@require_auth
+def api_tts():
+    """Stream ElevenLabs audio for the given text (server-proxied; key never
+    leaves the server). GET supports progressive playback via an <audio> src.
+    On any TTS failure returns JSON {fallback: true} so the client drops to
+    browser speechSynthesis — a TTS failure never blocks the answer."""
+    from dashboard.voice import stream_tts
+    from flask import Response
+
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        text = data.get("text", "")
+    else:
+        text = request.args.get("text", "")
+
+    try:
+        gen = stream_tts(text)
+        # Pull the first chunk eagerly so failures surface as JSON, not mid-stream
+        first = next(gen)
+    except (RuntimeError, StopIteration) as e:
+        reason = str(e) or "no audio"
+        return jsonify({"fallback": True, "reason": reason}), 503
+
+    def stream():
+        yield first
+        yield from gen
+
+    return Response(stream(), mimetype="audio/mpeg",
+                    headers={"Cache-Control": "no-store"})
+
+
+@bp.route("/api/brief", methods=["POST"])
+@require_auth
+def api_brief():
+    """Compose the spoken daily brief from the engines (text; client TTS's it)."""
+    from snapshot import load_persisted
+    from dashboard.voice import build_brief
+    import history_store
+
+    snap = load_persisted()
+    if snap is None:
+        return jsonify({"error": "No snapshot available"}), 404
+
+    entries = history_store.last_n_snapshots(2)
+    history = []
+    for entry in entries:
+        s = entry.get("snapshot", {})
+        ch = s.get("client_health") or {}
+        history.append({
+            "mrr": ch.get("current_mrr"),
+            "stripe_collected_30d": (((s.get("stripe") or {}).get("revenue") or {}).get("current") or {}).get("total_aud"),
+            "active_clients": (s.get("active_clients") or {}).get("active_count"),
+            "failed_charges": (s.get("stripe") or {}).get("failed_charges_count"),
+        })
+
+    token = request.cookies.get(COOKIE_NAME, "anon")
+    result = build_brief(snap, history, token)
+    return jsonify(result)
+
+
 @bp.route("/api/hiring-scenario", methods=["POST"])
 @require_auth
 def api_hiring_scenario():
@@ -276,5 +345,5 @@ def api_chat():
     snapshot_json = json.dumps(snap, indent=2) if snap else "{}"
 
     token = request.cookies.get(COOKIE_NAME, "anon")
-    result = chat_fn(history, snapshot_json, token)
+    result = chat_fn(history, snapshot_json, token, voice=bool(data.get("voice")))
     return jsonify(result)

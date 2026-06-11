@@ -448,6 +448,7 @@
   function render(snap) {
     if (!snap) return;
     currentSnap = snap;
+    window.__CURRENT_SNAP__ = snap;  // read-only handle for the voice layer
 
     renderStatus(snap);
     renderMorningBrief(snap);

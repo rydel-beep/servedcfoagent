@@ -60,14 +60,13 @@
     }
   }
 
-  async function send() {
-    var text = input.value.trim();
-    if (!text || isSending) return;
+  // Core send: shared by typed chat and the voice layer (one brain, one thread).
+  // Returns the reply text (or null). voiceFlag asks the server for the spoken register.
+  async function sendText(text, voiceFlag) {
+    if (!text || isSending) return null;
 
     addMessage(text, 'user');
     conversationHistory.push({ role: 'user', content: text });
-    input.value = '';
-    input.style.height = 'auto';
     isSending = true;
 
     var loading = addMessage('', 'typing');
@@ -76,7 +75,7 @@
       var resp = await fetch('/dashboard/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ history: conversationHistory }),
+        body: JSON.stringify({ history: conversationHistory, voice: !!voiceFlag }),
       });
       var data = await resp.json();
       loading.remove();
@@ -85,16 +84,39 @@
         addMessage(data.reply, 'assistant');
         conversationHistory.push({ role: 'assistant', content: data.reply });
         trimHistory();
+        return data.reply;
       } else if (data.error) {
         addMessage(data.error, 'error');
       }
+      return null;
     } catch (e) {
       loading.remove();
       addMessage('Failed to reach chat endpoint', 'error');
+      return null;
     } finally {
       isSending = false;
     }
   }
+
+  async function send() {
+    var text = input.value.trim();
+    if (!text || isSending) return;
+    input.value = '';
+    input.style.height = 'auto';
+    await sendText(text, false);
+  }
+
+  // Public hook for the voice layer (voice.js): same thread, same memory.
+  window.JarvisChat = {
+    ask: sendText,
+    addAssistantMessage: function(text) {
+      addMessage(text, 'assistant');
+      conversationHistory.push({ role: 'assistant', content: text });
+      trimHistory();
+    },
+    openPanel: function() { if (!isOpen) toggle(); },
+    isBusy: function() { return isSending; },
+  };
 
   sendBtn.addEventListener('click', send);
 

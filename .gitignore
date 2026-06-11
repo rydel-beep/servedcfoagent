@@ -6,3 +6,4 @@ __pycache__/
 .dashboard_token
 snapshot_state.json
 state/
+dashboard/static/audio/entrance.mp3

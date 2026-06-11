@@ -46,3 +46,14 @@
   contract lists it but there is nothing to regress. Noted as ABSENT, not broken.
 - **Window toggle**: verified purely client-side (precomputed sales.windows[]) — no refetch,
   so toggle latency is render-only (<100ms by construction).
+
+## Voice suite decisions (2026-06-11)
+- ELEVENLABS_API_KEY could not be verified locally (railway CLI unlinked). Built with the
+  full fallback chain; /api/voice-status reveals configuration post-deploy. If unset, voice
+  works on browser TTS until Rydel adds the key.
+- TTS playback uses GET /api/tts?text=... so the <audio> element streams progressively
+  (instant start) — POST also supported. Auth via the same dashboard cookie.
+- Default entrance sting synthesized in-build (pure-Python WAV) = royalty-free by authorship.
+  User slot dashboard/static/audio/entrance.mp3 is gitignored; no copyrighted audio bundled.
+- TTS caps in-memory (resets on deploy) — acceptable for a cost backstop, documented.
+- Stretch items (wake word, conversation mode) deferred per ship-priority.
