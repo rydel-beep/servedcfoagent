@@ -402,6 +402,7 @@
 
     // ── sfx: synthesized, peak-limited, polite by construction (Phase 3) ──
     function reactor() {
+      _markSfx();
       try {
         var c = ensure();
         var t0 = c.currentTime;
@@ -467,6 +468,7 @@
     }
 
     function chime(kind) {
+      _markSfx();
       try {
         var c = ensure();
         var t0 = c.currentTime;
@@ -475,6 +477,11 @@
         if (kind === 'ack') {
           o.frequency.setValueAtTime(1046, t0);
           o.frequency.exponentialRampToValueAtTime(1568, t0 + 0.1);
+        } else if (kind === 'clap') {
+          // lights-on: two quick snaps
+          o.frequency.setValueAtTime(1568, t0);
+          o.frequency.setValueAtTime(1046, t0 + 0.07);
+          o.frequency.setValueAtTime(1568, t0 + 0.14);
         } else {
           o.frequency.setValueAtTime(880, t0);
           o.frequency.exponentialRampToValueAtTime(1318, t0 + 0.12);
@@ -525,6 +532,7 @@
 
     function uiTick() {
       if (!uiOn()) return;
+      _markSfx();
       try {
         var c = ensure(); var t0 = c.currentTime;
         var o = c.createOscillator(); o.type = 'square'; o.frequency.value = 2200;
@@ -536,6 +544,7 @@
     }
     function uiConfirm() {
       if (!uiOn()) return;
+      _markSfx();
       try {
         var c = ensure(); var t0 = c.currentTime;
         [880, 1318].forEach(function(f, i) {
@@ -554,6 +563,7 @@
     }
     function uiError() {
       if (!uiOn()) return;
+      _markSfx();
       try {
         var c = ensure(); var t0 = c.currentTime;
         var o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 110;
@@ -565,6 +575,15 @@
       } catch (e) {}
     }
 
+    var _lastSfxAt = 0;
+    function _markSfx() { _lastSfxAt = performance.now(); }
+    function isOutputting() {
+      if (speakingFlag) return true;
+      if (musicEl && !musicEl.paused) return true;
+      if (humNodes) return true;
+      return performance.now() - _lastSfxAt < 400;
+    }
+
     function stopAll() { stopVoice(); stopMusic(); stopHum(); }
 
     return {
@@ -574,6 +593,7 @@
       fxParams: fxParams, fxEnabled: fxEnabled,
       startHum: startHum, stopHum: stopHum,
       uiTick: uiTick, uiConfirm: uiConfirm, uiComplete: uiComplete, uiError: uiError,
+      isOutputting: isOutputting,
       isSpeaking: function() { return speakingFlag; },
       analyser: function() { return voiceAnalyser; },
     };
@@ -664,7 +684,7 @@
 
   function setOrb(visual) {
     if (orb) orb.className = 'jarvis-orb ' + visual + (hasSTT ? '' : ' no-stt') +
-      (wakeArmed ? ' armed' : '') + (sessionActive ? ' session' : '');
+      ((wakeArmed || clapArmed) ? ' armed' : '') + (sessionActive ? ' session' : '');
   }
   function setSessionFx(on) {
     if (lsGet('edith-cinematic', '1') !== '1') on = false;
@@ -1254,7 +1274,7 @@
         porcupine.release(); porcupine = null;
       }
     } catch (e) {}
-    releaseMic();
+    if (!clapArmed) releaseMic();
   }
 
   document.addEventListener('visibilitychange', function() {
@@ -1269,6 +1289,205 @@
       else resumeWakeIfArmed();
     }
   });
+
+  // ═════════════════════════════════════════════════════════
+  //  DOUBLE-CLAP WAKE — on-device transient detection
+  //  A clap = broadband impulse: fast attack, spectrally flat,
+  //  decays <~120ms. Two of them 150–800ms apart = wake.
+  // ═════════════════════════════════════════════════════════
+  var clapArmed = false;
+  var clapRAF = null;
+  var clapFreqBuf = null;
+  var _noiseFloor = 0.01;
+  var _clapTimes = [];          // qualified clap timestamps
+  var _clapCooldownUntil = 0;
+  var _onset = null;            // in-flight transient awaiting decay check
+  var _prevRms = [0, 0, 0];
+  var _clapLoopCost = [];       // CPU measurement
+  var _calib = null;            // calibration overlay state
+
+  function clapSens() { return Math.min(3, Math.max(0.5, lsNum('edith-clap-sens', 1.5))); }
+  // higher slider = more sensitive: threshold = floor × (12 / sens)
+  function clapThreshold() { return Math.max(0.02, _noiseFloor * (12 / clapSens())); }
+
+  function spectralFlatness() {
+    if (!micAnalyser) return 0;
+    if (!clapFreqBuf) clapFreqBuf = new Uint8Array(micAnalyser.frequencyBinCount);
+    micAnalyser.getByteFrequencyData(clapFreqBuf);
+    var logSum = 0, sum = 0, n = 0;
+    for (var i = 4; i < clapFreqBuf.length; i++) {   // skip DC/sub bins
+      var v = clapFreqBuf[i] / 255 + 1e-4;
+      logSum += Math.log(v); sum += v; n++;
+    }
+    var gm = Math.exp(logSum / n), am = sum / n;
+    return am > 0 ? gm / am : 0;                      // 1 = white noise, ~0 = tonal
+  }
+
+  function clapLoop() {
+    if (!clapArmed) return;
+    clapRAF = requestAnimationFrame(clapLoop);
+    if (hiddenTab() || !micAnalyser) return;
+    var t0 = performance.now();
+
+    // HARD GATE: never listen for claps while EDITH outputs anything —
+    // Back in Black's drum hits must not self-trigger. Resume 250ms after.
+    if (audioManager.isOutputting()) { _gateUntil = performance.now() + 250; _onset = null; return; }
+    if (performance.now() < _gateUntil) return;
+    // state guard: claps act only from IDLE (and not mid-listen)
+    if (listening || state !== S.IDLE) { _onset = null; return; }
+
+    var rms = micRMS();
+    var now = performance.now();
+
+    // adaptive noise floor: slow EMA, never learns during a transient
+    if (!_onset && rms < clapThreshold()) {
+      _noiseFloor = _noiseFloor * 0.995 + rms * 0.005;
+      _noiseFloor = Math.max(0.002, Math.min(0.08, _noiseFloor));
+    }
+
+    if (_onset) {
+      // decay check: must fall back near floor within ~130ms, else reject (tonal/sustained)
+      if (now - _onset.at > 130) {
+        var decayed = rms < Math.max(_noiseFloor * 2.5, 0.015);
+        if (decayed && _onset.flat > 0.30) registerClap(_onset);
+        else if (_calib) calibBlip(_onset, false, decayed ? 'tonal' : 'no decay');
+        _onset = null;
+      }
+    } else {
+      var fastRise = _prevRms[0] < Math.max(_noiseFloor * 2, 0.012);
+      if (rms > clapThreshold() && fastRise) {
+        _onset = { at: now, peak: rms, flat: spectralFlatness() };
+      }
+    }
+    _prevRms.shift(); _prevRms.push(rms);
+
+    _clapLoopCost.push(performance.now() - t0);
+    if (_clapLoopCost.length > 400) _clapLoopCost.shift();
+  }
+  var _gateUntil = 0;
+  function hiddenTab() { return document.hidden; }
+
+  function registerClap(onset) {
+    var now = performance.now();
+    if (now < _clapCooldownUntil) return;
+    if (_calib) calibBlip(onset, true);
+    _clapTimes.push(now);
+    _clapTimes = _clapTimes.filter(function(t) { return now - t < 1200; });
+
+    if (_clapTimes.length >= 2) {
+      var gap = _clapTimes[_clapTimes.length - 1] - _clapTimes[_clapTimes.length - 2];
+      if (gap >= 150 && gap <= 800) {
+        // a third immediate transient cancels (applause ≠ command)
+        var first = _clapTimes[_clapTimes.length - 2], second = now;
+        setTimeout(function() {
+          var extras = _clapTimes.filter(function(t) { return t > second && t - second < 300; });
+          if (extras.length) { log('clap: cancelled (burst)'); if (_calib) calibFlash('cancelled — burst'); return; }
+          _clapCooldownUntil = performance.now() + 1500;
+          _clapTimes = [];
+          if (_calib && _calib.testOnly) { calibFlash('DOUBLE CLAP ✓ (test mode — not waking)'); return; }
+          if (_calib) calibFlash('DOUBLE CLAP ✓');
+          log('clap: double-clap wake (gap ' + Math.round(gap) + 'ms)');
+          audioManager.chime('clap');
+          wakeFired('double-clap');
+        }, 310);
+      }
+    }
+  }
+
+  async function armClap() {
+    if (clapArmed) return;
+    try { await ensureMic(); } catch (e) {
+      note('Mic blocked — clap wake needs it.', 6000);
+      lsSet('edith-clap', '0');
+      return;
+    }
+    clapArmed = true;
+    setOrb(state);
+    clapLoop();
+    log('clap detector armed (floor adapts; thresh=' + clapThreshold().toFixed(3) + ')');
+  }
+  function disarmClap() {
+    clapArmed = false;
+    if (clapRAF) cancelAnimationFrame(clapRAF);
+    clapRAF = null;
+    _onset = null; _clapTimes = [];
+    setOrb(state);
+    if (!wakeArmed) releaseMic();   // mic fully released when nothing needs it
+    if (_clapLoopCost.length) {
+      var avg = _clapLoopCost.reduce(function(a, b) { return a + b; }, 0) / _clapLoopCost.length;
+      log('clap detector CPU: avg ' + avg.toFixed(3) + 'ms/frame over ' + _clapLoopCost.length + ' frames');
+    }
+  }
+  window.__CLAP_CPU__ = function() {
+    if (!_clapLoopCost.length) return null;
+    var avg = _clapLoopCost.reduce(function(a, b) { return a + b; }, 0) / _clapLoopCost.length;
+    return { avg_ms_per_frame: Math.round(avg * 1000) / 1000, frames: _clapLoopCost.length };
+  };
+
+  // ── calibration overlay ──
+  function calibBlip(onset, ok, why) {
+    if (!_calib || !_calib.list) return;
+    var row = document.createElement('div');
+    row.className = 'calib-blip ' + (ok ? 'ok' : 'rej');
+    row.textContent = (ok ? '👏 clap' : '× ' + (why || 'rejected')) +
+      ' · peak ' + onset.peak.toFixed(3) + ' · flat ' + onset.flat.toFixed(2);
+    _calib.list.prepend(row);
+    while (_calib.list.children.length > 6) _calib.list.lastChild.remove();
+  }
+  function calibFlash(msg) {
+    if (!_calib || !_calib.flash) return;
+    _calib.flash.textContent = msg;
+    _calib.flash.classList.add('show');
+    setTimeout(function() { if (_calib) _calib.flash.classList.remove('show'); }, 1800);
+  }
+  function openCalibration() {
+    if (_calib) return;
+    var el = document.createElement('div');
+    el.className = 'calib-panel';
+    el.innerHTML =
+      '<div class="jh-title">👏 Clap calibration</div>' +
+      '<div class="jh-row ep-dim">Clap twice now. Tune sensitivity until YOUR claps register and desk thumps don\u2019t.</div>' +
+      '<canvas class="calib-meter" width="280" height="44"></canvas>' +
+      '<div class="calib-flash"></div>' +
+      '<div class="calib-list"></div>' +
+      '<div class="jh-row">Sensitivity <input type="range" id="calib-sens" min="0.5" max="3" step="0.1" value="' + clapSens() + '"> <span id="calib-sens-v">' + clapSens().toFixed(1) + '\u00d7</span></div>' +
+      '<div class="jh-row"><label><input type="checkbox" id="calib-testonly" checked> test only (don\u2019t wake)</label></div>' +
+      '<div class="jh-row ep-presets"><button class="ep-preset" id="calib-close">close</button></div>';
+    document.body.appendChild(el);
+    _calib = {
+      el: el,
+      list: el.querySelector('.calib-list'),
+      flash: el.querySelector('.calib-flash'),
+      testOnly: true,
+      meter: el.querySelector('.calib-meter').getContext('2d'),
+    };
+    el.querySelector('#calib-sens').addEventListener('input', function() {
+      lsSet('edith-clap-sens', this.value);
+      el.querySelector('#calib-sens-v').textContent = parseFloat(this.value).toFixed(1) + '\u00d7';
+    });
+    el.querySelector('#calib-testonly').addEventListener('change', function() { _calib.testOnly = this.checked; });
+    el.querySelector('#calib-close').addEventListener('click', closeCalibration);
+    if (!clapArmed) armClap();   // calibration needs the detector live
+    (function meterLoop() {
+      if (!_calib) return;
+      var g = _calib.meter;
+      g.clearRect(0, 0, 280, 44);
+      var rms = micRMS();
+      g.fillStyle = 'rgba(91,155,208,0.8)';
+      g.fillRect(0, 14, Math.min(rms * 1400, 280), 16);
+      var fx = Math.min(_noiseFloor * 1400, 280);
+      g.fillStyle = 'rgba(122,154,191,0.8)'; g.fillRect(fx, 6, 1.5, 32);
+      var tx = Math.min(clapThreshold() * 1400, 280);
+      g.fillStyle = 'rgba(232,180,69,0.95)'; g.fillRect(tx, 2, 2, 40);
+      requestAnimationFrame(meterLoop);
+    })();
+  }
+  function closeCalibration() {
+    if (!_calib) return;
+    _calib.el.remove();
+    _calib = null;
+    if (lsGet('edith-clap', '1') !== '1') disarmClap();
+  }
 
   // ═════════════════════════════════════════════════════════
   //  ORB + KEYBOARD
@@ -1325,6 +1544,7 @@
       '<div class="jh-title">EDITH</div>' +
       '<div class="jh-row"><b>Click orb / hold V or Space</b> talk &middot; <b>Esc</b> stop &middot; <b>B</b> brief</div>' +
       '<div class="jh-row"><label><input type="checkbox" id="ep-wake" ' + (lsGet('edith-wake', '1') === '1' ? 'checked' : '') + '> &#127908; Wake word: "' + wakePhrase() + '"' + (CFG.picovoiceKey ? '' : ' <span class="ep-dim">(browser mode)</span>') + '</label></div>' +
+      '<div class="jh-row"><label><input type="checkbox" id="ep-clap" ' + (lsGet('edith-clap', '1') === '1' ? 'checked' : '') + '> &#128079; Double-clap wake</label> <button class="ep-preset" id="ep-calib" style="margin-left:8px;">calibrate</button></div>' +
       '<div class="jh-row"><label><input type="checkbox" id="ep-convo" ' + (lsGet('edith-convo', '1') === '1' ? 'checked' : '') + '> Conversation mode</label></div>' +
       '<div class="jh-row"><label><input type="checkbox" id="ep-cine" ' + (lsGet('edith-cinematic', '1') === '1' ? 'checked' : '') + '> Cinematic mode</label></div>' +
       '<div class="jh-row"><label><input type="checkbox" id="ep-stark" ' + (lsGet('edith-stark', '1') === '1' ? 'checked' : '') + '> Stark mode (Shift+S)</label></div>' +
@@ -1393,6 +1613,11 @@
       lsSet('edith-wake', this.checked ? '1' : '0');
       if (this.checked) armWakeWord(); else disarmWakeWord();
     });
+    el.querySelector('#ep-clap').addEventListener('change', function() {
+      lsSet('edith-clap', this.checked ? '1' : '0');
+      if (this.checked) armClap(); else disarmClap();
+    });
+    el.querySelector('#ep-calib').addEventListener('click', openCalibration);
     el.querySelector('#ep-convo').addEventListener('change', function() { lsSet('edith-convo', this.checked ? '1' : '0'); });
     el.querySelector('#ep-cine').addEventListener('change', function() { lsSet('edith-cinematic', this.checked ? '1' : '0'); });
     el.querySelector('#ep-stark').addEventListener('change', function() {
