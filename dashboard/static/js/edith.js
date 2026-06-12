@@ -123,13 +123,13 @@
   //        → short plate convolver → wet/dry → analyser → out
   var PRESETS = {
     off:       { wet: 0.0,  hp: 0,    lp: 20000, comb: 0,    dbl: 0,    rev: 0 },
-    subtle:    { wet: 0.10, hp: 110,  lp: 9000,  comb: 0.08, dbl: 0.18, rev: 0.08 },
-    assistant: { wet: 0.15, hp: 120,  lp: 8000,  comb: 0.12, dbl: 0.25, rev: 0.12 },
-    system:    { wet: 0.28, hp: 160,  lp: 6500,  comb: 0.2,  dbl: 0.34, rev: 0.2 },
+    subtle:    { wet: 0.16, hp: 110,  lp: 9000,  comb: 0.10, dbl: 0.22, rev: 0.10 },
+    assistant: { wet: 0.24, hp: 130,  lp: 7800,  comb: 0.16, dbl: 0.32, rev: 0.15 },
+    system:    { wet: 0.38, hp: 170,  lp: 6200,  comb: 0.24, dbl: 0.42, rev: 0.24 },
   };
 
   function fxParams(presetName) {
-    var p = Object.assign({}, PRESETS[presetName] || PRESETS.subtle);
+    var p = Object.assign({}, PRESETS[presetName] || PRESETS.assistant);
     // advanced overrides (persisted)
     ['wet', 'hp', 'lp', 'comb', 'dbl', 'rev'].forEach(function(k) {
       var v = lsGet('edith-fx-' + k, null);
@@ -155,9 +155,18 @@
     var p = fxParams(presetName);
     var src = ctx.createMediaElementSource(audioEl);
 
+    // dry path connects to destination FIRST — if anything below throws,
+    // the voice still plays clean rather than going silent
+    var master = ctx.createGain(); master.gain.value = 1;
+    fxAnalyser = ctx.createAnalyser(); fxAnalyser.fftSize = 256;
+    master.connect(fxAnalyser);
+    fxAnalyser.connect(ctx.destination);
+
     var dry = ctx.createGain();
     var wetIn = ctx.createGain();
     src.connect(dry); src.connect(wetIn);
+    var dryGain = ctx.createGain(); dryGain.gain.value = 1 - p.wet * 0.5;
+    dry.connect(dryGain); dryGain.connect(master);
 
     // [1] comms bandpass
     var hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = p.hp || 1;
@@ -193,13 +202,9 @@
     dblMix.connect(wetOut);
     revMix.connect(wetOut);
 
-    // master wet/dry
+    // master wet
     var wetGain = ctx.createGain(); wetGain.gain.value = p.wet;
-    var dryGain = ctx.createGain(); dryGain.gain.value = 1 - p.wet * 0.5; // keep voice forward
-    wetOut.connect(wetGain); dry.connect(dryGain);
-
-    var master = ctx.createGain(); master.gain.value = 1;
-    wetGain.connect(master); dryGain.connect(master);
+    wetOut.connect(wetGain); wetGain.connect(master);
 
     // optional ~80ms bit-crush flicker on the very first word (boot greeting only)
     if (crushFirstWord) {
@@ -215,9 +220,6 @@
       setTimeout(function() { try { crushGain.gain.setTargetAtTime(0, ctx.currentTime, 0.02); } catch (e) {} }, 80);
     }
 
-    fxAnalyser = ctx.createAnalyser(); fxAnalyser.fftSize = 256;
-    master.connect(fxAnalyser);
-    fxAnalyser.connect(ctx.destination);
     return master;
   }
 
@@ -230,7 +232,7 @@
   function activePreset(context) {
     if (!fxEnabled()) return 'off';
     if (context === 'system') return 'system';
-    return lsGet('edith-fx-preset', 'subtle');
+    return lsGet('edith-fx-preset', 'assistant');
   }
 
   function speak(text, context, opts) {
@@ -252,7 +254,6 @@
         var url = '/dashboard/api/tts?text=' + encodeURIComponent(text);
         if (opts.voiceId) url += '&voice_id=' + encodeURIComponent(opts.voiceId);
         var audio = new Audio(url);
-        audio.crossOrigin = 'use-credentials';
         audio.volume = volume();
         currentAudio = audio;
         try { buildFxChain(audio, activePreset(context), !!opts.crushFirstWord); } catch (e) { /* play raw */ }
@@ -489,6 +490,9 @@
     if (/^\s*(hey\s+)?(edith|jarvis)[\s.,!?]*$/i.test(text)) {
       return wakeFired();
     }
+    // "Hey Edith, what's our cash?" — strip the wake phrase, answer the question
+    var stripped = text.replace(/^\s*(hey\s+)?(edith|jarvis)[\s.,!?]*/i, '');
+    if (stripped !== text && stripped.trim()) text = stripped.trim();
     if (SIGNOFF.test(text)) {
       sessionActive = false;
       await speak('Very good, Rydel.', 'reply');
@@ -660,9 +664,20 @@
     startListening();
   }
 
+  function miniHud() {
+    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) return;
+    var hud = document.createElement('div');
+    hud.className = 'edith-boot-hud mini';
+    hud.innerHTML = '<div class="ebh-sweep"></div><div class="ebh-scan"></div>';
+    document.body.appendChild(hud);
+    setTimeout(function() { hud.remove(); }, 1400);
+  }
+
   function wakeFired() {
     chime();
     if (!bootedThisSession) return bootSequence(true);
+    miniHud();
     if (orbState === 'speaking') { stopSpeaking(); }
     sessionActive = true;
     speak('Yes, Rydel?', 'reply').then(function() { startListening(); });
@@ -866,8 +881,8 @@
     el = document.createElement('div');
     el.id = 'edith-panel';
     el.className = 'jarvis-help edith-panel';
-    var wakeOn = lsGet('edith-wake', '0') === '1';
-    var p = fxParams(lsGet('edith-fx-preset', 'subtle'));
+    var wakeOn = lsGet('edith-wake', '1') === '1';
+    var p = fxParams(lsGet('edith-fx-preset', 'assistant'));
     el.innerHTML =
       '<div class="jh-title">EDITH</div>' +
       '<div class="jh-row"><b>Click orb / hold V or Space</b> talk &middot; <b>Esc</b> interrupt &middot; <b>B</b> brief</div>' +
@@ -881,7 +896,7 @@
       '<div class="jh-row"><label><input type="checkbox" id="ep-fx" ' + (fxEnabled() ? 'checked' : '') + '> AI processing</label></div>' +
       '<div class="jh-row ep-presets">' +
         ['subtle', 'assistant', 'system', 'off'].map(function(name) {
-          var cur = lsGet('edith-fx-preset', 'subtle');
+          var cur = lsGet('edith-fx-preset', 'assistant');
           return '<button class="ep-preset' + (cur === name ? ' active' : '') + '" data-p="' + name + '">' + name + '</button>';
         }).join('') +
       '</div>' +
@@ -994,7 +1009,7 @@
     initKeys();
     initEntranceTrigger();
     await refreshVoiceStatus();
-    if (lsGet('edith-wake', '0') === '1') armWakeWord();
+    if (lsGet('edith-wake', '1') === '1') armWakeWord();   // hands-free by default
   })();
 
 })();

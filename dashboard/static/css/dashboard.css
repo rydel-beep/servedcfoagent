@@ -2032,3 +2032,40 @@ body.boot-seq main > *:nth-child(n+6) { animation-delay: 0.5s; }
 }
 .ep-input:focus { outline: none; border-color: var(--accent); }
 .ep-dim { color: var(--text-muted); font-size: 10px; }
+
+/* ── EDITH HUD v2: more Iron-Man — double rings, radial grid, vignette ── */
+.edith-boot-hud {
+  background:
+    radial-gradient(ellipse at 50% 50%, transparent 30%, rgba(10,18,32,0.55) 100%);
+}
+.edith-boot-hud::before {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 70vmin; height: 70vmin; transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background:
+    repeating-conic-gradient(rgba(91,155,208,0.10) 0deg 1deg, transparent 1deg 12deg);
+  -webkit-mask: radial-gradient(circle, transparent 38%, #000 39%, #000 62%, transparent 63%);
+          mask: radial-gradient(circle, transparent 38%, #000 39%, #000 62%, transparent 63%);
+  animation: ebh-grid 2.8s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+@keyframes ebh-grid {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4) rotate(-40deg); }
+  30% { opacity: 1; }
+  80% { opacity: 0.8; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.15) rotate(25deg); }
+}
+.edith-boot-hud::after {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 30px; height: 30px; transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1.5px solid rgba(238,244,250,0.85);
+  box-shadow: 0 0 30px rgba(91,155,208,0.9), inset 0 0 20px rgba(91,155,208,0.5);
+  animation: ebh-sweep 2.1s cubic-bezier(0.3, 0.5, 0.2, 1) 0.18s forwards;
+}
+.edith-boot-hud .ebh-sweep {
+  box-shadow: 0 0 40px rgba(91,155,208,0.55);
+}
+.edith-boot-hud.mini::before { animation-duration: 1.2s; }
+.edith-boot-hud.mini::after { animation-duration: 0.9s; }
+.edith-boot-hud.mini { background: none; }
+.edith-boot-hud.mini .ebh-scan { animation-duration: 1.2s; }

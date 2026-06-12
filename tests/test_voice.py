@@ -206,7 +206,8 @@ def test_greeting_includes_weather_when_available(monkeypatch):
     monkeypatch.setattr(voice_mod, "get_newcastle_weather",
                         lambda: {"temp_c": 18.2, "condition": "clear", "high_c": 22.4})
     t = voice_mod.build_greeting(_fake_snap())["text"]
-    assert "18 and clear in Newcastle" in t and "high of 22" in t
+    assert "18 and clear in Newcastle" in t and "heading for 22" in t
+    assert "hope you're doing well" in t   # warm open before the numbers
 
 
 def test_greeting_time_of_day_sydney(monkeypatch):

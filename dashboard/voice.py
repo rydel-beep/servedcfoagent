@@ -350,22 +350,22 @@ def build_greeting(snap: dict) -> dict:
     headline from the engines + the open. Deterministic — no model, no wait."""
     now = now_sydney()
     tod = "morning" if now.hour < 12 else ("afternoon" if now.hour < 18 else "evening")
-    parts = [f"Good {tod}, Rydel."]
+    parts = [f"Good {tod}, Rydel. I hope you're doing well."]
 
     weather = get_newcastle_weather()
     if weather:
         t = round(weather["temp_c"])
-        line = f"{t} and {weather['condition']} in Newcastle"
-        if weather.get("high_c") is not None:
-            line += f" — high of {round(weather['high_c'])}"
+        line = f"It's {t} and {weather['condition']} in Newcastle"
+        if weather.get("high_c") is not None and round(weather["high_c"]) != t:
+            line += f", heading for {round(weather['high_c'])}"
         parts.append(line + ".")
 
     cp = (snap or {}).get("cash_position") or {}
     cash, runway = cp.get("cash_in_bank"), cp.get("runway_months")
     if cash is not None:
-        headline = f"Cash position {_fmt_aud_speech(cash)}"
+        headline = f"While you're here — cash position is {_fmt_aud_speech(cash)}"
         if runway is not None:
-            headline += f"; runway {runway} months"
+            headline += f", which is {runway} months of runway"
         parts.append(headline + ".")
 
     parts.append("What do you need?")
