@@ -2179,3 +2179,33 @@ body.boot-seq .panel, body.boot-seq .kpi-strip {
   font-size: 14px; letter-spacing: 5px; color: var(--brand-tint);
   text-shadow: 0 0 16px rgba(91,155,208,0.8);
 }
+
+/* ── Boot v2: dim layer, grid canvas, typed caption, ONLINE ticks ── */
+.ebh-dim {
+  position: absolute; inset: 0;
+  background: rgba(6,12,22,0.45);
+  animation: ebh-dim-in 3.4s ease-out forwards;
+}
+@keyframes ebh-dim-in { 0% { opacity: 0; } 12% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+.ebh-grid {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0.9; pointer-events: none;
+}
+.ebh-caption.typing::after {
+  content: '▌'; animation: cursor-blink 0.6s step-start infinite;
+}
+@keyframes cursor-blink { 50% { opacity: 0; } }
+
+/* cards flash a tiny ONLINE tick as they land in the cascade */
+body.boot-seq .panel { position: relative; }
+body.boot-seq .panel::after {
+  content: '● ONLINE';
+  position: absolute; top: 8px; right: 10px;
+  font-family: 'SF Mono', Menlo, monospace;
+  font-size: 8px; letter-spacing: 1px; color: var(--green);
+  opacity: 0; animation: online-tick 1.6s ease-out 0.5s;
+  pointer-events: none;
+}
+@keyframes online-tick {
+  0% { opacity: 0; } 15% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; }
+}

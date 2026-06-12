@@ -7,3 +7,5 @@ __pycache__/
 snapshot_state.json
 state/
 dashboard/static/audio/entrance.mp3
+dashboard/static/audio/*.mp3
+dashboard/static/audio/*.m4a

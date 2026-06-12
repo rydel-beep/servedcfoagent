@@ -1,26 +1,469 @@
-/* edith.js — EDITH voice suite.
-   One brain (the existing chat endpoint via window.JarvisChat), this file is
-   the I/O layer: wake word (on-device Porcupine WASM) → conversational
-   endpointing STT → chat → ElevenLabs TTS → AI-character effects graph →
-   speakers. No metric is computed here — engines only. */
+/* edith.js — EDITH voice suite, single-audio-authority rebuild.
+   One brain (the chat endpoint via window.JarvisChat). One AudioContext.
+   One mixer. One state machine. Every sound in this file is created and
+   started ONLY through audioManager — the iron rule: one voice at a time.
+   No metric is computed here — engines only. */
 (function() {
   'use strict';
 
   var CFG = window.__EDITH_CFG__ || {};
   var TEST_LINE = 'Good evening, Rydel. EDITH online. Cash position is ninety-one thousand dollars; runway three point six months.';
 
-  // ── tiny utils ───────────────────────────────────────────
+  // ── utils ────────────────────────────────────────────────
   function lsGet(k, d) { try { var v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function lsNum(k, d) { var v = parseFloat(lsGet(k, '')); return isNaN(v) ? d : v; }
   function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
-  function volume() { return lsGet('edith-muted', '0') === '1' ? 0 : lsNum('edith-vol', 1); }
+  function log() { try { console.log.apply(console, ['[EDITH]'].concat([].slice.call(arguments))); } catch (e) {} }
 
   var hasSTT = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
-  // ── DOM: orb, ring, captions, notes, ambience ────────────
-  var orb, ringEl, captionEl, noteEl, waveCanvas, hudRing;
-  var orbState = 'idle';
+  // ═════════════════════════════════════════════════════════
+  //  STATE MACHINE — guarded transitions; wrong-state triggers
+  //  are ignored and logged. This kills the double-greeting.
+  // ═════════════════════════════════════════════════════════
+  var S = { IDLE: 'idle', BOOTING: 'booting', GREETING: 'greeting',
+            LISTENING: 'listening', THINKING: 'thinking', SPEAKING: 'speaking' };
+  var ALLOWED = {
+    idle:      [S.BOOTING, S.LISTENING, S.SPEAKING],
+    booting:   [S.GREETING, S.IDLE],
+    greeting:  [S.LISTENING, S.IDLE, S.SPEAKING],
+    listening: [S.THINKING, S.IDLE, S.BOOTING, S.SPEAKING],
+    thinking:  [S.SPEAKING, S.IDLE, S.LISTENING],
+    speaking:  [S.LISTENING, S.IDLE, S.THINKING],
+  };
+  var state = S.IDLE;
+  function transition(to, why) {
+    if (state === to) return true;
+    if ((ALLOWED[state] || []).indexOf(to) === -1) {
+      log('transition BLOCKED', state, '→', to, '(' + (why || '') + ')');
+      return false;
+    }
+    log('state', state, '→', to, why ? '(' + why + ')' : '');
+    state = to;
+    setOrb(to === S.BOOTING || to === S.GREETING ? 'thinking' : to);
+    return true;
+  }
+
+  // ═════════════════════════════════════════════════════════
+  //  AUDIO MANAGER — the single authority. Mixer: master →
+  //  voice(1.0) / sfx(0.25) / music(0.5). One voice at a time.
+  // ═════════════════════════════════════════════════════════
+  var audioManager = (function() {
+    var ctx = null;
+    var master, chVoice, chSfx, chMusic, sfxLimiter, voiceAnalyser;
+    var currentUtterance = 0;     // token: stale playback discards itself
+    var currentEl = null;         // the live TTS <audio> element
+    var musicEl = null;
+    var speakingFlag = false;
+
+    function mixDefault(name) { return { master: 1.0, voice: 1.0, sfx: 0.25, music: 0.5 }[name]; }
+    function mixGet(name) { return Math.min(1.5, Math.max(0, lsNum('edith-mix-' + name, mixDefault(name)))); }
+
+    function ensure() {
+      if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return ctx; }
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      master = ctx.createGain();
+      master.gain.value = mixGet('master');
+      master.connect(ctx.destination);
+      chVoice = ctx.createGain(); chVoice.gain.value = mixGet('voice');
+      chMusic = ctx.createGain(); chMusic.gain.value = mixGet('music');
+      // sfx runs through a limiter so a synth can never blast full-scale
+      chSfx = ctx.createGain(); chSfx.gain.value = mixGet('sfx');
+      sfxLimiter = ctx.createDynamicsCompressor();
+      sfxLimiter.threshold.value = -14; sfxLimiter.knee.value = 6;
+      sfxLimiter.ratio.value = 12; sfxLimiter.attack.value = 0.002; sfxLimiter.release.value = 0.18;
+      voiceAnalyser = ctx.createAnalyser(); voiceAnalyser.fftSize = 256;
+      chVoice.connect(voiceAnalyser); voiceAnalyser.connect(master);
+      chSfx.connect(sfxLimiter); sfxLimiter.connect(master);
+      chMusic.connect(master);
+      return ctx;
+    }
+
+    function setMix(name, v) {
+      lsSet('edith-mix-' + name, String(v));
+      if (!ctx) return;
+      var node = { master: master, voice: chVoice, sfx: chSfx, music: chMusic }[name];
+      if (node) node.gain.setTargetAtTime(parseFloat(v), ctx.currentTime, 0.05);
+    }
+
+    // ── ducking automation: voice starts → sfx+music dip; release after ──
+    var duckTimer = null;
+    function duck() {
+      if (!ctx) return;
+      clearTimeout(duckTimer);
+      chMusic.gain.cancelScheduledValues(ctx.currentTime);
+      chMusic.gain.linearRampToValueAtTime(Math.min(mixGet('music'), 0.15), ctx.currentTime + 0.15);
+      chSfx.gain.linearRampToValueAtTime(Math.min(mixGet('sfx'), 0.1), ctx.currentTime + 0.15);
+    }
+    function release() {
+      if (!ctx) return;
+      clearTimeout(duckTimer);
+      duckTimer = setTimeout(function() {
+        if (!ctx || speakingFlag) return;
+        chMusic.gain.setTargetAtTime(mixGet('music'), ctx.currentTime, 0.2);
+        chSfx.gain.setTargetAtTime(mixGet('sfx'), ctx.currentTime, 0.2);
+      }, 400);
+    }
+
+    // ── the voice effects graph (Phase 2) — MANDATORY routing ──
+    // source → HP/LP → comb resonance → micro-double → plate → wet/dry → voice ch
+    var PRESETS = {
+      off:       { wet: 0.00, hp: 0,   lp: 20000, comb: 0,    dbl: 0,    rev: 0 },
+      subtle:    { wet: 0.15, hp: 120, lp: 8000,  comb: 0.12, dbl: 0.25, rev: 0.12 },
+      assistant: { wet: 0.28, hp: 140, lp: 7200,  comb: 0.18, dbl: 0.35, rev: 0.16 },
+      system:    { wet: 0.45, hp: 200, lp: 5800,  comb: 0.28, dbl: 0.48, rev: 0.24 },
+    };
+    function fxParams(presetName) {
+      var p = Object.assign({}, PRESETS[presetName] || PRESETS.subtle);
+      if (lsGet('edith-fx-custom', '0') === '1') {
+        ['wet', 'hp', 'lp', 'comb', 'dbl', 'rev'].forEach(function(k) {
+          var v = lsGet('edith-fx-' + k, null);
+          if (v != null) p[k] = parseFloat(v);
+        });
+      }
+      return p;
+    }
+    function fxEnabled() { return lsGet('edith-fx-on', '1') === '1'; }
+    function activePreset(context) {
+      if (!fxEnabled()) return 'off';
+      if (context === 'system') return 'system';
+      return lsGet('edith-fx-preset', 'subtle');
+    }
+    function makeImpulse(c, ms) {
+      var len = Math.max(1, Math.round(c.sampleRate * ms / 1000));
+      var buf = c.createBuffer(1, len, c.sampleRate);
+      var d = buf.getChannelData(0);
+      for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.2);
+      return buf;
+    }
+    function routeThroughFx(el, presetName, crushFirstWord) {
+      var c = ensure();
+      var p = fxParams(presetName);
+      var src = c.createMediaElementSource(el);
+      // dry path FIRST — an exception below can never mute the voice
+      var dryG = c.createGain(); dryG.gain.value = 1 - p.wet * 0.5;
+      src.connect(dryG); dryG.connect(chVoice);
+      try {
+        var hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = p.hp || 1;
+        var lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = p.lp;
+        src.connect(hp); hp.connect(lp);
+
+        var combDelay = c.createDelay(0.05); combDelay.delayTime.value = 0.005;
+        var combFb = c.createGain(); combFb.gain.value = Math.min(0.5, p.comb * 2.2);
+        var combMix = c.createGain(); combMix.gain.value = p.comb;
+        lp.connect(combDelay); combDelay.connect(combFb); combFb.connect(combDelay);
+        combDelay.connect(combMix);
+
+        var dbl = c.createDelay(0.06); dbl.delayTime.value = 0.014;
+        var lfo = c.createOscillator(); lfo.frequency.value = 0.7;
+        var lfoG = c.createGain(); lfoG.gain.value = 0.0006;
+        lfo.connect(lfoG); lfoG.connect(dbl.delayTime); lfo.start();
+        var dblMix = c.createGain(); dblMix.gain.value = p.dbl;
+        lp.connect(dbl); dbl.connect(dblMix);
+
+        var conv = c.createConvolver(); conv.buffer = makeImpulse(c, 120);
+        var revMix = c.createGain(); revMix.gain.value = p.rev;
+        lp.connect(conv); conv.connect(revMix);
+
+        var wet = c.createGain(); wet.gain.value = p.wet;
+        lp.connect(wet); combMix.connect(wet); dblMix.connect(wet); revMix.connect(wet);
+        wet.connect(chVoice);
+
+        if (crushFirstWord) {
+          var shaper = c.createWaveShaper();
+          var curve = new Float32Array(256);
+          for (var i = 0; i < 256; i++) curve[i] = Math.round(((i / 128) - 1) * 6) / 6;
+          shaper.curve = curve;
+          var crushG = c.createGain(); crushG.gain.value = 0.5;
+          lp.connect(shaper); shaper.connect(crushG); crushG.connect(chVoice);
+          setTimeout(function() { try { crushG.gain.setTargetAtTime(0, c.currentTime, 0.02); } catch (e) {} }, 80);
+        }
+        return true;
+      } catch (e) {
+        log('fx graph failed — playing clean:', e.message);
+        note('AI filter bypassed this line (' + (e.message || 'audio error').slice(0, 40) + ')');
+        return false;
+      }
+    }
+
+    // ── speak: THE IRON RULE — hard-stop anything current, then speak ──
+    // Fallback gating: browser TTS fires ONLY on confirmed ElevenLabs failure
+    // (HTTP/element error, or no first audio byte within FALLBACK_TIMEOUT_MS).
+    // A late-arriving ElevenLabs stream after fallback started is DISCARDED.
+    var FALLBACK_TIMEOUT_MS = 4000;
+
+    function speak(text, opts) {
+      opts = opts || {};
+      return new Promise(function(resolve) {
+        if (!text) return resolve();
+        stopVoice();                       // one voice at a time, no exceptions
+        var my = ++currentUtterance;       // stale playback self-discards
+        speakingFlag = true;
+        ensure();
+        duck();
+        startWave();
+        caption(text, true);
+
+        var settled = false;               // exactly ONE engine speaks
+        var done = function(engine) {
+          if (currentUtterance !== my) return;     // an interrupt already cleaned up
+          speakingFlag = false;
+          currentEl = null;
+          stopWave();
+          caption('');
+          release();
+          resolve(engine);
+        };
+
+        if (!voiceStatus) {
+          // resolve the status rather than guessing an engine
+          refreshVoiceStatus().then(function() {
+            if (currentUtterance !== my) return resolve();
+            speakingFlag = false;
+            speak(text, opts).then(resolve);
+          });
+          return;
+        }
+        if (!voiceStatus.elevenlabs_configured) {
+          fallbackBadge('ElevenLabs not configured');
+          browserSpeak(text, my).then(function() { done('fallback'); });
+          return;
+        }
+
+        var url = '/dashboard/api/tts?text=' + encodeURIComponent(text);
+        if (opts.voiceId) url += '&voice_id=' + encodeURIComponent(opts.voiceId);
+        var el = new Audio(url);
+        el.volume = 1;                     // gain lives in the mixer, not the element
+        currentEl = el;
+        var routed = routeThroughFx(el, activePreset(opts.context), !!opts.crushFirstWord);
+        if (!routed) log('utterance playing without fx');
+
+        var firstByte = false;
+        var fellBack = false;
+        var watchdog = setTimeout(function() {
+          if (firstByte || settled || currentUtterance !== my) return;
+          fellBack = true;
+          log('ElevenLabs first-byte timeout (' + FALLBACK_TIMEOUT_MS + 'ms) — confirmed failure');
+          try { el.pause(); } catch (e) {}
+          fallbackBadge('timeout');
+          browserSpeak(text, my).then(function() { settled = true; done('fallback'); });
+        }, FALLBACK_TIMEOUT_MS);
+
+        el.addEventListener('playing', function() {
+          if (fellBack) { try { el.pause(); } catch (e) {} return; }   // late success → discard
+          firstByte = true;
+          clearTimeout(watchdog);
+        });
+        el.addEventListener('ended', function() {
+          if (settled || fellBack) return;
+          settled = true; clearTimeout(watchdog);
+          done('elevenlabs');
+        });
+        el.addEventListener('error', function() {
+          if (settled || fellBack || currentUtterance !== my) return;
+          clearTimeout(watchdog);
+          if (el.currentTime > 0.4) { settled = true; done('elevenlabs'); return; }  // mostly played
+          fellBack = true;
+          fallbackBadge('stream error');
+          browserSpeak(text, my).then(function() { settled = true; done('fallback'); });
+        });
+        el.play().catch(function(err) {
+          if (settled || fellBack || currentUtterance !== my) return;
+          clearTimeout(watchdog);
+          if (err && err.name === 'NotAllowedError') {
+            settled = true;
+            note('Browser blocked audio without a click — tap anywhere, then ask again.', 8000);
+            done('blocked');
+            return;
+          }
+          fellBack = true;
+          fallbackBadge('play failed');
+          browserSpeak(text, my).then(function() { settled = true; done('fallback'); });
+        });
+      });
+    }
+
+    function browserSpeak(text, token) {
+      return new Promise(function(resolve) {
+        if (!window.speechSynthesis) { note('Voice unavailable — text only.'); return resolve(); }
+        var u = new SpeechSynthesisUtterance(text);
+        u.volume = Math.min(1, mixGet('voice') * mixGet('master'));
+        u.rate = 1.02; u.pitch = 1.05;
+        var voices = speechSynthesis.getVoices() || [];
+        // never the default: female en-AU/en-GB by name heuristics first
+        var v = voices.find(function(x) { return /karen|catherine|moira|serena|female/i.test(x.name) && /^en/i.test(x.lang); })
+             || voices.find(function(x) { return /en[-_](AU|GB)/i.test(x.lang); });
+        if (v) u.voice = v;
+        var guard = setInterval(function() {
+          if (token !== currentUtterance) { speechSynthesis.cancel(); clearInterval(guard); resolve(); }
+        }, 150);
+        u.onend = function() { clearInterval(guard); resolve(); };
+        u.onerror = function() { clearInterval(guard); resolve(); };
+        speechSynthesis.speak(u);
+      });
+    }
+
+    function stopVoice() {
+      currentUtterance++;
+      if (currentEl) { try { currentEl.pause(); } catch (e) {} currentEl = null; }
+      if (window.speechSynthesis) speechSynthesis.cancel();
+      speakingFlag = false;
+      stopWave();
+      release();
+    }
+
+    // ── music channel ──
+    function playMusic(url) {
+      stopMusic();
+      var c = ensure();
+      musicEl = new Audio(url);
+      musicEl.volume = 1;
+      try {
+        var src = c.createMediaElementSource(musicEl);
+        src.connect(chMusic);
+      } catch (e) { musicEl.volume = mixGet('music'); }   // raw fallback, still leveled
+      musicEl.play().catch(function(err) { log('music blocked/failed:', err && err.name); });
+      return musicEl;
+    }
+    function fadeOutMusic(seconds) {
+      if (!musicEl || !ctx) return stopMusic();
+      chMusic.gain.cancelScheduledValues(ctx.currentTime);
+      chMusic.gain.setTargetAtTime(0.0001, ctx.currentTime, (seconds || 2) / 4);
+      setTimeout(function() {
+        stopMusic();
+        if (ctx) chMusic.gain.setValueAtTime(mixGet('music'), ctx.currentTime);
+      }, (seconds || 2) * 1000);
+    }
+    function stopMusic() {
+      if (musicEl) { try { musicEl.pause(); } catch (e) {} musicEl = null; }
+    }
+
+    // ── sfx: synthesized, peak-limited, polite by construction (Phase 3) ──
+    function reactor() {
+      try {
+        var c = ensure();
+        var t0 = c.currentTime;
+        var out = c.createGain(); out.gain.value = 0.8; out.connect(chSfx);
+
+        // (a) low hum: detuned sine pair fading in
+        [55, 55.7].forEach(function(f) {
+          var o = c.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+          var g = c.createGain();
+          g.gain.setValueAtTime(0.0001, t0);
+          g.gain.linearRampToValueAtTime(0.25, t0 + 0.8);
+          g.gain.setTargetAtTime(0.0001, t0 + 1.7, 0.25);
+          o.connect(g); g.connect(out); o.start(t0); o.stop(t0 + 2.4);
+        });
+        // (b) the charge: saw 110→880 through an opening lowpass, slight stereo
+        [-0.3, 0.3].forEach(function(pan, idx) {
+          var o = c.createOscillator(); o.type = 'sawtooth';
+          o.frequency.setValueAtTime(110 * (idx ? 1.003 : 1), t0 + 0.2);
+          o.frequency.exponentialRampToValueAtTime(880, t0 + 1.4);
+          var f = c.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 4;
+          f.frequency.setValueAtTime(400, t0 + 0.2);
+          f.frequency.exponentialRampToValueAtTime(6000, t0 + 1.4);
+          var g = c.createGain();
+          g.gain.setValueAtTime(0.0001, t0 + 0.2);
+          g.gain.linearRampToValueAtTime(0.16, t0 + 1.0);
+          g.gain.setTargetAtTime(0.0001, t0 + 1.5, 0.12);
+          var p = c.createStereoPanner ? c.createStereoPanner() : null;
+          o.connect(f); f.connect(g);
+          if (p) { p.pan.value = pan; g.connect(p); p.connect(out); } else g.connect(out);
+          o.start(t0 + 0.2); o.stop(t0 + 1.8);
+        });
+        // (c) noise riser underneath
+        var nb = c.createBuffer(1, c.sampleRate * 1.4, c.sampleRate);
+        var nd = nb.getChannelData(0);
+        for (var i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+        var n = c.createBufferSource(); n.buffer = nb;
+        var nf = c.createBiquadFilter(); nf.type = 'bandpass'; nf.Q.value = 1.8;
+        nf.frequency.setValueAtTime(400, t0 + 0.2);
+        nf.frequency.exponentialRampToValueAtTime(5000, t0 + 1.5);
+        var ng = c.createGain();
+        ng.gain.setValueAtTime(0.0001, t0 + 0.2);
+        ng.gain.linearRampToValueAtTime(0.07, t0 + 1.2);
+        ng.gain.setTargetAtTime(0.0001, t0 + 1.5, 0.15);
+        n.connect(nf); nf.connect(ng); ng.connect(out); n.start(t0 + 0.2);
+        // (d) resolve: harmonic bloom + gentle high chime as ONLINE lands
+        [[440, 0.10], [554.4, 0.08], [659.3, 0.08], [880, 0.05]].forEach(function(pair) {
+          var o = c.createOscillator(); o.type = 'sine'; o.frequency.value = pair[0];
+          var g = c.createGain();
+          g.gain.setValueAtTime(0.0001, t0 + 1.45);
+          g.gain.linearRampToValueAtTime(pair[1], t0 + 1.6);
+          g.gain.setTargetAtTime(0.0001, t0 + 1.9, 0.3);
+          o.connect(g); g.connect(out); o.start(t0 + 1.45); o.stop(t0 + 2.5);
+        });
+        var ch = c.createOscillator(); ch.type = 'sine';
+        ch.frequency.setValueAtTime(1318, t0 + 1.5);
+        ch.frequency.exponentialRampToValueAtTime(2637, t0 + 1.62);
+        var chg = c.createGain();
+        chg.gain.setValueAtTime(0.0001, t0 + 1.5);
+        chg.gain.linearRampToValueAtTime(0.12, t0 + 1.56);
+        chg.gain.setTargetAtTime(0.0001, t0 + 1.7, 0.2);
+        ch.connect(chg); chg.connect(out); ch.start(t0 + 1.5); ch.stop(t0 + 2.3);
+      } catch (e) { log('reactor synth failed:', e.message); }
+    }
+
+    function chime(kind) {
+      try {
+        var c = ensure();
+        var t0 = c.currentTime;
+        var o = c.createOscillator(); o.type = 'sine';
+        var g = c.createGain();
+        if (kind === 'ack') {
+          o.frequency.setValueAtTime(1046, t0);
+          o.frequency.exponentialRampToValueAtTime(1568, t0 + 0.1);
+        } else {
+          o.frequency.setValueAtTime(880, t0);
+          o.frequency.exponentialRampToValueAtTime(1318, t0 + 0.12);
+        }
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.linearRampToValueAtTime(0.35, t0 + 0.03);
+        g.gain.setTargetAtTime(0.0001, t0 + 0.18, 0.08);
+        o.connect(g); g.connect(chSfx); o.start(t0); o.stop(t0 + 0.5);
+      } catch (e) {}
+    }
+
+    function stopAll() { stopVoice(); stopMusic(); }
+
+    return {
+      ensure: ensure, speak: speak, stopVoice: stopVoice, stopAll: stopAll,
+      playMusic: playMusic, fadeOutMusic: fadeOutMusic, stopMusic: stopMusic,
+      reactor: reactor, chime: chime, setMix: setMix, mixGet: mixGet,
+      fxParams: fxParams, fxEnabled: fxEnabled,
+      isSpeaking: function() { return speakingFlag; },
+      analyser: function() { return voiceAnalyser; },
+    };
+  })();
+
+  // ── shared voice status ──────────────────────────────────
+  var voiceStatus = null;
+  var lastSpokenText = '';
+  async function refreshVoiceStatus() {
+    try {
+      var resp = await fetch('/dashboard/api/voice-status');
+      if (resp.ok) voiceStatus = await resp.json();
+    } catch (e) { voiceStatus = null; }
+  }
+
+  function fallbackBadge(reason) {
+    note('voice fallback (' + reason + ')', 6000);
+  }
+
+  // speak wrapper: tracks transcript for the echo filter + latency metric
+  var _speakStartedAt = 0;
+  function say(text, context, opts) {
+    lastSpokenText = text;
+    _speakStartedAt = performance.now();
+    transition(S.SPEAKING, 'say');
+    return audioManager.speak(text, Object.assign({ context: context }, opts || {}));
+  }
+
+  // ═════════════════════════════════════════════════════════
+  //  UI: orb, captions, notes, wave, brackets
+  // ═════════════════════════════════════════════════════════
+  var orb, ringEl, captionEl, noteEl, waveCanvas;
 
   function buildUI() {
     orb = document.createElement('div');
@@ -35,29 +478,20 @@
     ringEl = orb.querySelector('.orb-progress circle');
 
     captionEl = document.createElement('div');
-    captionEl.id = 'jarvis-caption';
-    captionEl.className = 'jarvis-caption';
+    captionEl.id = 'jarvis-caption'; captionEl.className = 'jarvis-caption';
     document.body.appendChild(captionEl);
 
     noteEl = document.createElement('div');
-    noteEl.id = 'jarvis-note';
-    noteEl.className = 'jarvis-note';
+    noteEl.id = 'jarvis-note'; noteEl.className = 'jarvis-note';
     document.body.appendChild(noteEl);
 
     waveCanvas = document.createElement('canvas');
-    waveCanvas.id = 'edith-wave';
-    waveCanvas.className = 'edith-wave';
+    waveCanvas.id = 'edith-wave'; waveCanvas.className = 'edith-wave';
     waveCanvas.width = 180; waveCanvas.height = 28;
     document.body.appendChild(waveCanvas);
 
-    hudRing = document.createElement('div');
-    hudRing.id = 'edith-hud-ring';
-    hudRing.className = 'edith-hud-ring';
-    document.body.appendChild(hudRing);
-
     var brackets = document.createElement('div');
-    brackets.id = 'edith-brackets';
-    brackets.className = 'edith-brackets';
+    brackets.id = 'edith-brackets'; brackets.className = 'edith-brackets';
     brackets.innerHTML = '<i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i>';
     document.body.appendChild(brackets);
 
@@ -65,16 +499,15 @@
     if (!hasSTT) { orb.classList.add('no-stt'); note('Voice input needs Chrome — EDITH can still speak.', 6000); }
   }
 
+  function setOrb(visual) {
+    if (orb) orb.className = 'jarvis-orb ' + visual + (hasSTT ? '' : ' no-stt') +
+      (wakeArmed ? ' armed' : '') + (sessionActive ? ' session' : '');
+  }
   function setSessionFx(on) {
     if (lsGet('edith-cinematic', '1') !== '1') on = false;
     document.body.classList.toggle('edith-session', !!on);
   }
-
-  function setOrb(state) {
-    orbState = state;
-    if (orb) orb.className = 'jarvis-orb ' + state + (hasSTT ? '' : ' no-stt') + (wakeArmed ? ' armed' : '') + (sessionActive ? ' session' : '');
-  }
-  function setRing(p) { // 0..1 silence-countdown progress
+  function setRing(p) {
     if (!ringEl) return;
     var C = 2 * Math.PI * 26;
     ringEl.style.strokeDasharray = C;
@@ -99,277 +532,20 @@
     if (text) noteTimer = setTimeout(function() { noteEl.classList.remove('show'); }, ms || 4500);
   }
 
-  // ── Audio foundation: shared context, mic, analysers ─────
-  var actx = null;
-  function audioCtx() {
-    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
-    if (actx.state === 'suspended') actx.resume();
-    return actx;
-  }
-
-  var micStream = null, micAnalyser = null, micBuf = null;
-  async function ensureMic() {
-    if (micStream) return micStream;
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    var src = audioCtx().createMediaStreamSource(micStream);
-    micAnalyser = audioCtx().createAnalyser();
-    micAnalyser.fftSize = 512;
-    src.connect(micAnalyser);
-    micBuf = new Uint8Array(micAnalyser.fftSize);
-    return micStream;
-  }
-  function releaseMic() {
-    if (micStream) { micStream.getTracks().forEach(function(t) { t.stop(); }); micStream = null; micAnalyser = null; }
-  }
-  function micRMS() {
-    if (!micAnalyser) return 0;
-    micAnalyser.getByteTimeDomainData(micBuf);
-    var sum = 0;
-    for (var i = 0; i < micBuf.length; i++) { var d = (micBuf[i] - 128) / 128; sum += d * d; }
-    return Math.sqrt(sum / micBuf.length);
-  }
-
-  // ── PHASE 5: the AI voice character (effects graph) ──────
-  // source → bandpass → metallic comb → micro-doubling (chorus detune)
-  //        → short plate convolver → wet/dry → analyser → out
-  var PRESETS = {
-    off:       { wet: 0.0,  hp: 0,    lp: 20000, comb: 0,    dbl: 0,    rev: 0 },
-    subtle:    { wet: 0.16, hp: 110,  lp: 9000,  comb: 0.10, dbl: 0.22, rev: 0.10 },
-    assistant: { wet: 0.24, hp: 130,  lp: 7800,  comb: 0.16, dbl: 0.32, rev: 0.15 },
-    edith:     { wet: 0.52, hp: 220,  lp: 5400,  comb: 0.30, dbl: 0.50, rev: 0.26 },  // the movie comm-filter
-    system:    { wet: 0.62, hp: 260,  lp: 4800,  comb: 0.36, dbl: 0.56, rev: 0.32 },
-  };
-
-  function fxParams(presetName) {
-    var p = Object.assign({}, PRESETS[presetName] || PRESETS.edith);
-    // advanced overrides (persisted)
-    ['wet', 'hp', 'lp', 'comb', 'dbl', 'rev'].forEach(function(k) {
-      var v = lsGet('edith-fx-' + k, null);
-      if (v != null && lsGet('edith-fx-custom', '0') === '1') p[k] = parseFloat(v);
-    });
-    return p;
-  }
-
-  function makeImpulse(ctx, ms) {
-    var len = Math.max(1, Math.round(ctx.sampleRate * ms / 1000));
-    var buf = ctx.createBuffer(1, len, ctx.sampleRate);
-    var d = buf.getChannelData(0);
-    for (var i = 0; i < len; i++) {
-      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.2);
-    }
-    return buf;
-  }
-
-  var fxAnalyser = null; // post-processed signal drives the orb + wave strip
-
-  function buildFxChain(audioEl, presetName, crushFirstWord) {
-    var ctx = audioCtx();
-    var p = fxParams(presetName);
-    var src = ctx.createMediaElementSource(audioEl);
-
-    // dry path connects to destination FIRST — if anything below throws,
-    // the voice still plays clean rather than going silent
-    var master = ctx.createGain(); master.gain.value = 1;
-    fxAnalyser = ctx.createAnalyser(); fxAnalyser.fftSize = 256;
-    master.connect(fxAnalyser);
-    fxAnalyser.connect(ctx.destination);
-
-    var dry = ctx.createGain();
-    var wetIn = ctx.createGain();
-    src.connect(dry); src.connect(wetIn);
-    var dryGain = ctx.createGain(); dryGain.gain.value = 1 - p.wet * 0.5;
-    dry.connect(dryGain); dryGain.connect(master);
-
-    // [1] comms bandpass
-    var hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = p.hp || 1;
-    var lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = p.lp;
-    wetIn.connect(hp); hp.connect(lp);
-
-    // [2] metallic resonance: short feedback comb (5ms)
-    var combIn = ctx.createGain();
-    var combDelay = ctx.createDelay(0.05); combDelay.delayTime.value = 0.005;
-    var combFb = ctx.createGain(); combFb.gain.value = Math.min(0.55, p.comb * 2.4);
-    var combMix = ctx.createGain(); combMix.gain.value = p.comb;
-    lp.connect(combIn);
-    combIn.connect(combDelay); combDelay.connect(combFb); combFb.connect(combDelay);
-    combDelay.connect(combMix);
-
-    // [3] micro-doubling: 14ms delayed copy, LFO-modulated (~8 cents perceived)
-    var dbl = ctx.createDelay(0.06); dbl.delayTime.value = 0.014;
-    var lfo = ctx.createOscillator(); lfo.frequency.value = 0.7;
-    var lfoGain = ctx.createGain(); lfoGain.gain.value = 0.0006;
-    lfo.connect(lfoGain); lfoGain.connect(dbl.delayTime); lfo.start();
-    var dblMix = ctx.createGain(); dblMix.gain.value = p.dbl;
-    lp.connect(dbl); dbl.connect(dblMix);
-
-    // [4] short metallic plate (generated 120ms impulse)
-    var conv = ctx.createConvolver(); conv.buffer = makeImpulse(ctx, 120);
-    var revMix = ctx.createGain(); revMix.gain.value = p.rev;
-    lp.connect(conv); conv.connect(revMix);
-
-    // wet bus
-    var wetOut = ctx.createGain();
-    lp.connect(wetOut);            // filtered base
-    combMix.connect(wetOut);
-    dblMix.connect(wetOut);
-    revMix.connect(wetOut);
-
-    // master wet
-    var wetGain = ctx.createGain(); wetGain.gain.value = p.wet;
-    wetOut.connect(wetGain); wetGain.connect(master);
-
-    // optional ~80ms bit-crush flicker on the very first word (boot greeting only)
-    if (crushFirstWord) {
-      var shaper = ctx.createWaveShaper();
-      var curve = new Float32Array(256);
-      for (var i = 0; i < 256; i++) {
-        var x = (i / 128) - 1;
-        curve[i] = Math.round(x * 6) / 6; // coarse quantize
-      }
-      shaper.curve = curve;
-      var crushGain = ctx.createGain(); crushGain.gain.value = 0.5;
-      lp.connect(shaper); shaper.connect(crushGain); crushGain.connect(master);
-      setTimeout(function() { try { crushGain.gain.setTargetAtTime(0, ctx.currentTime, 0.02); } catch (e) {} }, 80);
-    }
-
-    return master;
-  }
-
-  // ── TTS playback (ElevenLabs stream → fx graph; fallback chain) ──
-  var currentAudio = null;
-  var voiceStatus = null;
-  var lastSpokenText = '';
-  var ttsFallbackNoted = false;
-
-  function fxEnabled() { return lsGet('edith-fx-on', '1') === '1'; }
-  function activePreset(context) {
-    if (!fxEnabled()) return 'off';
-    if (context === 'system') return 'system';
-    return lsGet('edith-fx-preset', 'edith');
-  }
-
-  function speak(text, context, opts) {
-    opts = opts || {};
-    return new Promise(function(resolve) {
-      if (!text) return resolve();
-      stopSpeaking();
-      setOrb('speaking');
-      caption(text, true);
-      startWave();
-
-      var useEleven = voiceStatus && voiceStatus.elevenlabs_configured;
-      if (!voiceStatus) {
-        // race guard: status fetch may still be in flight on early wakes —
-        // resolve it NOW rather than wrongly dropping to the browser voice
-        return refreshVoiceStatus().then(function() {
-          if (voiceStatus) return speak(text, context, opts).then(resolve);
-          note('Voice status unreachable — using browser voice.', 5000);
-          return browserSpeak(text).then(function() {
-            currentAudio = null; stopWave();
-            if (orbState === 'speaking') { setOrb('idle'); caption(''); }
-            resolve();
-          });
-        });
-      }
-      if (!useEleven) {
-        note('ElevenLabs NOT configured on the server (add ELEVENLABS_API_KEY on Railway) — using browser voice.', 8000);
-      }
-      lastSpokenText = text;
-      stopBrowserWake();   // GUARDRAIL: EDITH must never hear herself
-      if (useEleven) {
-        var url = '/dashboard/api/tts?text=' + encodeURIComponent(text);
-        if (opts.voiceId) url += '&voice_id=' + encodeURIComponent(opts.voiceId);
-        var audio = new Audio(url);
-        audio.volume = volume();
-        currentAudio = audio;
-        try { buildFxChain(audio, activePreset(context), !!opts.crushFirstWord); } catch (e) { /* play raw */ }
-        var fell = false;
-        audio.addEventListener('error', function() {
-          if (fell) return; fell = true;
-          if (audio.currentTime > 0.4) { done(); return; }   // mostly played — never double-speak
-          _diagnoseTts(text);            // say WHY the real voice failed
-          browserSpeak(text).then(done);
-        });
-        audio.addEventListener('ended', done);
-        audio.play().catch(function(err) {
-          if (fell) return; fell = true;
-          if (err && err.name === 'NotAllowedError') {
-            // autoplay blocked: wake-word speech has no click behind it
-            note('Browser blocked audio without a click — click anywhere once, then EDITH can speak unprompted.', 9000);
-            var retry = function() {
-              document.removeEventListener('click', retry, true);
-              audioCtx();
-              audio.play().catch(function() { browserSpeak(text).then(done); });
-            };
-            document.addEventListener('click', retry, true);
-            return;
-          }
-          _diagnoseTts(text);
-          browserSpeak(text).then(done);
-        });
-      } else {
-        browserSpeak(text).then(done);
-      }
-
-      function done() {
-        currentAudio = null;
-        stopWave();
-        if (orbState === 'speaking') { setOrb('idle'); caption(''); }
-        setTimeout(resumeWakeIfArmed, 900);   // echo-guard: speakers settle first
-        resolve();
-      }
-    });
-  }
-
-  async function _diagnoseTts(text) {
-    try {
-      var resp = await fetch('/dashboard/api/tts', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: (text || 'test').slice(0, 40) }),
-      });
-      if (resp.headers.get('content-type') && resp.headers.get('content-type').indexOf('json') !== -1) {
-        var data = await resp.json();
-        if (data && data.reason) note('ElevenLabs failed: ' + data.reason + ' — using browser voice.', 9000);
-      }
-    } catch (e) {}
-  }
-
-  function browserSpeak(text) {
-    return new Promise(function(resolve) {
-      if (!window.speechSynthesis) { note('Voice unavailable — text only.'); return resolve(); }
-      if (!ttsFallbackNoted) { note('Using fallback voice (ElevenLabs unavailable). Effects bypassed.'); ttsFallbackNoted = true; }
-      var u = new SpeechSynthesisUtterance(text);
-      u.volume = volume(); u.rate = 1.02;
-      var voices = speechSynthesis.getVoices() || [];
-      var v = voices.find(function(x) { return /karen|catherine|female/i.test(x.name) && /en/i.test(x.lang); })
-           || voices.find(function(x) { return /en[-_](AU|GB)/i.test(x.lang); });
-      if (v) u.voice = v;
-      u.pitch = 1.05;
-      u.onend = resolve; u.onerror = resolve;
-      speechSynthesis.speak(u);
-    });
-  }
-
-  function stopSpeaking() {
-    if (currentAudio) { try { currentAudio.pause(); } catch (e) {} currentAudio = null; }
-    if (window.speechSynthesis) speechSynthesis.cancel();
-    stopWave();
-    if (orbState === 'speaking') { setOrb('idle'); caption(''); }
-  }
-
-  // ── Waveform strip + speaking pulse from the POST-fx signal ──
+  // SPEAKING wave + orb pulse read the POST-effects voice channel
   var waveRAF = null;
   function startWave() {
     if (!waveCanvas || lsGet('edith-cinematic', '1') !== '1') return;
+    var an = audioManager.analyser();
+    if (!an) return;
     waveCanvas.classList.add('show');
     var g = waveCanvas.getContext('2d');
     var buf = new Uint8Array(128);
     (function loop() {
-      if (!fxAnalyser || !currentAudio) { return; }
-      fxAnalyser.getByteTimeDomainData(buf);
+      if (!audioManager.isSpeaking()) return;
+      an.getByteTimeDomainData(buf);
       g.clearRect(0, 0, 180, 28);
-      g.strokeStyle = 'rgba(91,155,208,0.85)';
-      g.lineWidth = 1.4;
+      g.strokeStyle = 'rgba(91,155,208,0.85)'; g.lineWidth = 1.4;
       g.beginPath();
       var peak = 0;
       for (var i = 0; i < 128; i++) {
@@ -385,13 +561,38 @@
   function stopWave() {
     if (waveRAF) cancelAnimationFrame(waveRAF);
     waveRAF = null;
-    if (waveCanvas) { waveCanvas.classList.remove('show'); var g = waveCanvas.getContext('2d'); g.clearRect(0, 0, 180, 28); }
+    if (waveCanvas) { waveCanvas.classList.remove('show'); waveCanvas.getContext('2d').clearRect(0, 0, 180, 28); }
     if (orb) orb.style.setProperty('--speak-level', '0');
   }
 
-  // ── PHASE 2: conversational endpointing ──────────────────
-  var CONTINUATIONS = /\b(and|but|so|or|because|then|also|plus|like|um|uh|hmm|well|which|with|to|the|a|of|for|if|when|that)\s*$|,\s*$/i;
+  // ── mic level (endpointing VAD + listening glow) ─────────
+  var micStream = null, micAnalyser = null, micBuf = null;
+  async function ensureMic() {
+    if (micStream) return micStream;
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    var c = audioManager.ensure();
+    var src = c.createMediaStreamSource(micStream);
+    micAnalyser = c.createAnalyser(); micAnalyser.fftSize = 512;
+    src.connect(micAnalyser);
+    micBuf = new Uint8Array(micAnalyser.fftSize);
+    return micStream;
+  }
+  function releaseMic() {
+    if (micStream) { micStream.getTracks().forEach(function(t) { t.stop(); }); micStream = null; micAnalyser = null; }
+  }
+  function micRMS() {
+    if (!micAnalyser) return 0;
+    micAnalyser.getByteTimeDomainData(micBuf);
+    var sum = 0;
+    for (var i = 0; i < micBuf.length; i++) { var d = (micBuf[i] - 128) / 128; sum += d * d; }
+    return Math.sqrt(sum / micBuf.length);
+  }
 
+  // ═════════════════════════════════════════════════════════
+  //  ENDPOINTING (Phase 6 — preserved): adaptive silence ×
+  //  continuation cues × energy VAD; ring shows the countdown
+  // ═════════════════════════════════════════════════════════
+  var CONTINUATIONS = /\b(and|but|so|or|because|then|also|plus|like|um|uh|hmm|well|which|with|to|the|a|of|for|if|when|that)\s*$|,\s*$/i;
   var recognition = null;
   var listening = false;
   var holdMode = false;
@@ -406,10 +607,7 @@
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return null;
     var r = new SR();
-    r.lang = 'en-AU';
-    r.interimResults = true;
-    r.continuous = true;
-
+    r.lang = 'en-AU'; r.interimResults = true; r.continuous = true;
     r.onresult = function(e) {
       var txt = '';
       for (var i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
@@ -429,8 +627,6 @@
       }
     };
     r.onend = function() {
-      // Chrome ends recognition on its own sometimes — if we're mid-listen with
-      // text pending, treat as an endpoint; if listening with nothing, restart.
       if (!listening) return;
       if (pendingText) finalizeUtterance();
       else { try { r.start(); } catch (e) {} }
@@ -440,32 +636,32 @@
 
   async function startListening(viaHold) {
     if (!hasSTT || listening) return;
-    stopSpeaking();
+    if (!transition(S.LISTENING, viaHold ? 'hold' : 'listen')) return;
+    audioManager.stopVoice();
+    stopBrowserWake();
     recognition = recognition || initRecognition();
     if (!recognition) return;
-    try { await ensureMic(); } catch (e) { /* analyser optional; SR prompts its own */ }
-    stopBrowserWake();   // hand the mic recognizer to the query listener
+    try { await ensureMic(); } catch (e) {}
     pendingText = '';
     lastChangeAt = performance.now();
     holdMode = !!viaHold;
     listening = true;
     try { recognition.start(); } catch (e) {}
-    setOrb('listening');
     caption('listening…', true);
     runEndpointLoop();
     runMicGlow();
   }
 
   function stopListening(silent) {
-    listening = false;
-    holdMode = false;
+    listening = false; holdMode = false;
     clearInterval(endpointTimer); endpointTimer = null;
     if (levelRAF2) cancelAnimationFrame(levelRAF2); levelRAF2 = null;
     setRing(0);
     if (recognition) { try { recognition.stop(); } catch (e) {} }
-    if (orbState === 'listening') { setOrb('idle'); if (!silent) caption(''); }
+    if (state === S.LISTENING) transition(S.IDLE, 'listen end');
+    if (!silent) caption('');
     if (orb) orb.style.setProperty('--mic-level', '0');
-    resumeWakeIfArmed();
+    setTimeout(resumeWakeIfArmed, 600);
   }
 
   function runMicGlow() {
@@ -480,15 +676,11 @@
     clearInterval(endpointTimer);
     endpointTimer = setInterval(function() {
       if (!listening) return clearInterval(endpointTimer);
-      if (holdMode) { setRing(0); return; }   // hold-to-talk: release decides
+      if (holdMode) { setRing(0); return; }
       if (!pendingText) { setRing(0); return; }
-
       var win = patienceMs();
-      if (CONTINUATIONS.test(pendingText)) win *= 2;   // linguistic continuation
-
-      // energy VAD: resumed speech instantly resets the countdown
+      if (CONTINUATIONS.test(pendingText)) win *= 2;
       if (micRMS() > 0.055) { lastChangeAt = performance.now(); setRing(0); return; }
-
       var elapsed = performance.now() - lastChangeAt;
       setRing(elapsed / win);
       if (elapsed >= win) finalizeUtterance();
@@ -502,18 +694,19 @@
     stopListening(true);
     setTimeout(function() { setRing(0); }, 250);
     if (text) handleTranscript(text);
-    else { setOrb('idle'); caption(''); }
+    else caption('');
   }
 
-  // ── PHASE 4: conversation mode + flow ────────────────────
-  var sessionActive = false;     // entered via wake word or boot
+  // ═════════════════════════════════════════════════════════
+  //  CONVERSATION FLOW (Phase 6)
+  // ═════════════════════════════════════════════════════════
+  var sessionActive = false;
   var bootedThisSession = false;
   var convoTimer = null;
   var pendingBriefOffer = false;
+  var SIGNOFF = /\b(thanks edith|thank you edith|that'?s all|go to sleep|goodnight edith|that'?ll be all)\b/i;
 
   function convoEnabled() { return lsGet('edith-convo', '1') === '1'; }
-
-  var SIGNOFF = /\b(thanks edith|thank you edith|that'?s all|go to sleep|goodnight edith|that'?ll be all)\b/i;
 
   function _isSelfEcho(text) {
     if (!lastSpokenText) return false;
@@ -525,20 +718,17 @@
 
   async function handleTranscript(text) {
     if (!text) return;
-    // GUARDRAIL: discard speaker bleed — her own words are not a query
-    if (_isSelfEcho(text)) { setOrb('idle'); caption(''); return; }
-    // "Hey Edith" spoken into an open mic is a wake, not a question
-    if (/^\s*(hey\s+)?(edith|jarvis)[\s.,!?]*$/i.test(text)) {
-      return wakeFired();
-    }
-    // "Hey Edith, what's our cash?" — strip the wake phrase, answer the question
+    if (_isSelfEcho(text)) { caption(''); transition(S.IDLE, 'echo discard'); return; }
+    if (/^\s*(hey\s+)?(edith|jarvis)[\s.,!?]*$/i.test(text)) return wakeFired('transcript');
     var stripped = text.replace(/^\s*(hey\s+)?(edith|jarvis)[\s.,!?]*/i, '');
     if (stripped !== text && stripped.trim()) text = stripped.trim();
+
     if (SIGNOFF.test(text)) {
       sessionActive = false;
-      await speak('Very good, Rydel.', 'reply');
-      setOrb('idle');
+      await say('Very good, Rydel.', 'reply');
+      transition(S.IDLE, 'signoff');
       setSessionFx(false);
+      setTimeout(resumeWakeIfArmed, 600);
       return;
     }
     if (pendingBriefOffer && /^(yes|yeah|yep|sure|ok|okay|go|brief|please)\b/i.test(text)) {
@@ -549,31 +739,32 @@
     if (/^(brief me|morning brief|daily brief|read my priorities)\b/i.test(text)) return runBrief();
 
     if (!window.JarvisChat) return;
-    setOrb('thinking');
+    transition(S.THINKING, 'query');
+    var sentAt = performance.now();
     var reply = await window.JarvisChat.ask(text, true);
     if (reply) {
-      await speakInterruptible(reply, 'reply');
+      await speakWithBargeIn(reply, 'reply');
+      log('latency send→speech-start:', Math.round(_speakStartedAt - sentAt) + 'ms');
       afterReply();
     } else {
-      setOrb('idle');
+      transition(S.IDLE, 'no reply');
       note('No reply — check the chat panel.');
     }
   }
 
-  // barge-in: sustained speech energy (>300ms) while EDITH talks stops her
-  function speakInterruptible(text, context, opts) {
+  // barge-in: sustained HUMAN-level energy (>0.17 RMS, 600ms) stops her
+  function speakWithBargeIn(text, context, opts) {
     return new Promise(function(resolve) {
-      var bargeStart = null, raf = null;
-      var done = false;
+      var bargeStart = null, raf = null, finished = false;
       function watch() {
-        if (done) return;
-        if (currentAudio && micAnalyser) {
-          if (micRMS() > 0.17) {            // speaker bleed sits well below this
+        if (finished) return;
+        if (audioManager.isSpeaking() && micAnalyser) {
+          if (micRMS() > 0.17) {
             if (!bargeStart) bargeStart = performance.now();
             else if (performance.now() - bargeStart > 600) {
-              stopSpeaking();
+              audioManager.stopVoice();
+              finished = true;
               startListening();
-              done = true;
               return resolve();
             }
           } else bargeStart = null;
@@ -581,8 +772,8 @@
         raf = requestAnimationFrame(watch);
       }
       watch();
-      speak(text, context, opts).then(function() {
-        done = true;
+      say(text, context, opts).then(function() {
+        finished = true;
         if (raf) cancelAnimationFrame(raf);
         resolve();
       });
@@ -590,8 +781,11 @@
   }
 
   function afterReply() {
-    if (!convoEnabled() || !sessionActive) return;
-    // soft re-listen window (~6s) — a follow-up needs no click
+    if (!convoEnabled() || !sessionActive) {
+      transition(S.IDLE, 'reply done');
+      setTimeout(resumeWakeIfArmed, 600);
+      return;
+    }
     clearTimeout(convoTimer);
     startListening();
     note('listening for a follow-up…', 5500);
@@ -601,147 +795,86 @@
   }
 
   async function runBrief() {
-    setOrb('thinking');
+    transition(S.THINKING, 'brief');
     caption('composing your brief…', true);
     try {
       var resp = await fetch('/dashboard/api/brief', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       var data = await resp.json();
       if (data.text) {
         if (window.JarvisChat) window.JarvisChat.addAssistantMessage(data.text);
-        await speakInterruptible(data.text, 'reply');
+        await speakWithBargeIn(data.text, 'reply');
         afterReply();
-      } else { setOrb('idle'); note(data.error || 'Brief unavailable.'); }
-    } catch (e) { setOrb('idle'); note('Brief failed — network?'); }
+      } else { transition(S.IDLE, 'brief fail'); note(data.error || 'Brief unavailable.'); }
+    } catch (e) { transition(S.IDLE, 'brief error'); note('Brief failed — network?'); }
   }
 
-  // ── PHASE 3: boot HUD + greeting ─────────────────────────
-  function playReactorSfx() {
+  // ═════════════════════════════════════════════════════════
+  //  BOOT (Phase 5) + GREETING — single entry, state-guarded
+  // ═════════════════════════════════════════════════════════
+  var musicPresent = false;
+
+  async function refreshMusicStatus() {
     try {
-      var a = new Audio('/dashboard/static/audio/reactor.wav');
-      a.volume = Math.min(1, volume() * 1.0);
-      a.play().catch(function() { reactorSound(); });
-    } catch (e) { reactorSound(); }
-  }
-
-  function reactorSound() {
-    try {
-      var ctx = audioCtx();
-      var t0 = ctx.currentTime;
-      var out = ctx.createGain();
-      out.gain.value = 0.9 * (volume() || 0);
-      out.connect(ctx.destination);
-
-      // deep core swell
-      var sub = ctx.createOscillator(); sub.type = 'sine';
-      sub.frequency.setValueAtTime(46, t0);
-      sub.frequency.exponentialRampToValueAtTime(110, t0 + 1.0);
-      var subG = ctx.createGain();
-      subG.gain.setValueAtTime(0.0001, t0);
-      subG.gain.exponentialRampToValueAtTime(0.5, t0 + 0.5);
-      subG.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.4);
-      sub.connect(subG); subG.connect(out);
-
-      // turbine sweep through an opening filter
-      var saw = ctx.createOscillator(); saw.type = 'sawtooth';
-      saw.frequency.setValueAtTime(70, t0);
-      saw.frequency.exponentialRampToValueAtTime(660, t0 + 1.15);
-      var swFilt = ctx.createBiquadFilter(); swFilt.type = 'lowpass'; swFilt.Q.value = 6;
-      swFilt.frequency.setValueAtTime(180, t0);
-      swFilt.frequency.exponentialRampToValueAtTime(4200, t0 + 1.15);
-      var sawG = ctx.createGain();
-      sawG.gain.setValueAtTime(0.0001, t0);
-      sawG.gain.exponentialRampToValueAtTime(0.22, t0 + 0.7);
-      sawG.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.45);
-      saw.connect(swFilt); swFilt.connect(sawG); sawG.connect(out);
-
-      // charge shimmer (filtered noise rising)
-      var nBuf = ctx.createBuffer(1, ctx.sampleRate * 1.4, ctx.sampleRate);
-      var nd = nBuf.getChannelData(0);
-      for (var i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
-      var noise = ctx.createBufferSource(); noise.buffer = nBuf;
-      var nFilt = ctx.createBiquadFilter(); nFilt.type = 'bandpass'; nFilt.Q.value = 2.2;
-      nFilt.frequency.setValueAtTime(500, t0);
-      nFilt.frequency.exponentialRampToValueAtTime(6500, t0 + 1.2);
-      var nG = ctx.createGain();
-      nG.gain.setValueAtTime(0.0001, t0);
-      nG.gain.exponentialRampToValueAtTime(0.10, t0 + 0.9);
-      nG.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.4);
-      noise.connect(nFilt); nFilt.connect(nG); nG.connect(out);
-
-      // ignition ping at the crest
-      var ping = ctx.createOscillator(); ping.type = 'sine';
-      ping.frequency.setValueAtTime(1760, t0 + 1.05);
-      var pG = ctx.createGain();
-      pG.gain.setValueAtTime(0.0001, t0 + 1.05);
-      pG.gain.exponentialRampToValueAtTime(0.25, t0 + 1.1);
-      pG.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.6);
-      ping.connect(pG); pG.connect(out);
-
-      sub.start(t0); sub.stop(t0 + 1.5);
-      saw.start(t0); saw.stop(t0 + 1.5);
-      noise.start(t0);
-      ping.start(t0 + 1.05); ping.stop(t0 + 1.7);
+      var resp = await fetch('/dashboard/api/entrance-audio');
+      if (resp.ok) {
+        var d = await resp.json();
+        musicPresent = !!d.present;
+        return d;
+      }
     } catch (e) {}
+    musicPresent = false;
+    return null;
   }
 
-  function chime() {
-    try {
-      var ctx = audioCtx();
-      var o = ctx.createOscillator(), g = ctx.createGain();
-      o.type = 'sine'; o.frequency.setValueAtTime(880, ctx.currentTime);
-      o.frequency.exponentialRampToValueAtTime(1318, ctx.currentTime + 0.12);
-      g.gain.setValueAtTime(0.0001, ctx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.18 * volume() || 0.0001, ctx.currentTime + 0.03);
-      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
-      o.connect(g); g.connect(ctx.destination);
-      o.start(); o.stop(ctx.currentTime + 0.4);
-    } catch (e) {}
-  }
-
-  var entranceAudio = null;
-  function playEntranceAudio() {
-    // served from the Railway volume (user-uploaded track) or the default sting
-    entranceAudio = new Audio('/dashboard/audio/entrance');
-    entranceAudio.volume = volume();
-    entranceAudio.play().catch(function() {});
-  }
-  function duckEntrance() {
-    if (!entranceAudio) return;
-    var duck = setInterval(function() {
-      if (!entranceAudio) return clearInterval(duck);
-      entranceAudio.volume = Math.max(0.3 * (volume() || 1), entranceAudio.volume - 0.1);
-      if (entranceAudio.volume <= 0.31 * (volume() || 1)) clearInterval(duck);
-    }, 110);
-  }
-  function stopEntrance() {
-    if (entranceAudio) { try { entranceAudio.pause(); } catch (e) {} entranceAudio = null; }
-  }
-
-  async function bootSequence(withAudio) {
-    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  async function bootSequence() {
+    if (!transition(S.BOOTING, 'boot')) return;   // double-trigger dies here
     sessionActive = true;
     bootedThisSession = true;
     setSessionFx(true);
 
-    playReactorSfx();   // arc-reactor ignition leads…
-    if (withAudio) setTimeout(playEntranceAudio, 650);   // …the track drops in behind it
+    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // t=0: music (if uploaded) + synth power-up + dim + orb ignition
+    if (musicPresent) audioManager.playMusic('/dashboard/audio/entrance');
+    audioManager.reactor();
 
     if (!reduced) {
       var hud = document.createElement('div');
       hud.className = 'edith-boot-hud';
       hud.innerHTML =
-        '<div class="ebh-sweep"></div><div class="ebh-scan"></div>' +
+        '<div class="ebh-dim"></div><div class="ebh-sweep"></div><div class="ebh-scan"></div>' +
+        '<canvas class="ebh-grid" width="640" height="360"></canvas>' +
         '<div class="ebh-console" id="ebh-console"></div>' +
         '<div class="ebh-progress"><div class="ebh-progress-fill" id="ebh-pfill"></div><span class="ebh-pct" id="ebh-pct">0%</span></div>' +
-        '<div class="ebh-caption">EDITH — ONLINE</div>';
+        '<div class="ebh-caption" id="ebh-typed"></div>';
       document.body.appendChild(hud);
       document.body.classList.add('boot-seq');
 
-      // systems console: engines reporting in, Iron-Man style
-      var SYSTEMS = [
-        'ARC CORE', 'CASH ENGINE', 'FORWARD MRR MODEL', 'FUNNEL TELEMETRY',
-        'CLIENT HEALTH GRID', 'COMMS ARRAY', 'EDITH CORE',
-      ];
+      // wireframe grid pass (the one canvas layer)
+      try {
+        var gc = hud.querySelector('.ebh-grid').getContext('2d');
+        var gt0 = performance.now();
+        (function gridLoop() {
+          if (!hud.isConnected) return;
+          var p = (performance.now() - gt0) / 2200;
+          if (p > 1) return;
+          gc.clearRect(0, 0, 640, 360);
+          gc.strokeStyle = 'rgba(91,155,208,' + (0.18 * (1 - p)) + ')';
+          gc.lineWidth = 0.5;
+          var off = p * 40;
+          for (var x = -40 + off; x < 680; x += 40) {
+            gc.beginPath(); gc.moveTo(x, 0); gc.lineTo(x - 60, 360); gc.stroke();
+          }
+          for (var y = -40 + off; y < 400; y += 40) {
+            gc.beginPath(); gc.moveTo(0, y); gc.lineTo(640, y - 20); gc.stroke();
+          }
+          requestAnimationFrame(gridLoop);
+        })();
+      } catch (e) {}
+
+      // systems console
+      var SYSTEMS = ['ARC CORE', 'CASH ENGINE', 'FORWARD MRR MODEL', 'FUNNEL TELEMETRY',
+                     'CLIENT HEALTH GRID', 'COMMS ARRAY', 'EDITH CORE'];
       var consoleEl = hud.querySelector('#ebh-console');
       var pfill = hud.querySelector('#ebh-pfill');
       var pct = hud.querySelector('#ebh-pct');
@@ -753,10 +886,22 @@
           row.innerHTML = '<span class="ebh-sys">' + name + '</span><span class="ebh-dots"></span><span class="ebh-ok">ONLINE</span>';
           consoleEl.appendChild(row);
           var p = Math.round(((i + 1) / SYSTEMS.length) * 100);
-          pfill.style.width = p + '%';
-          pct.textContent = p + '%';
-        }, 280 + i * 320);
+          pfill.style.width = p + '%'; pct.textContent = p + '%';
+        }, 250 + i * 230);
       });
+
+      // t≈2.0: "EDITH — ONLINE" types on with a cursor
+      var typed = hud.querySelector('#ebh-typed');
+      var label = 'EDITH — ONLINE';
+      setTimeout(function() {
+        var i = 0;
+        var tt = setInterval(function() {
+          if (!typed.isConnected) return clearInterval(tt);
+          typed.textContent = label.slice(0, ++i);
+          typed.classList.add('typing');
+          if (i >= label.length) { clearInterval(tt); typed.classList.remove('typing'); }
+        }, 55);
+      }, 1900);
 
       var cleanup = function() {
         document.body.classList.remove('boot-seq');
@@ -764,80 +909,128 @@
         document.removeEventListener('click', skipper, true);
       };
       var skipper = function() { cleanup(); };
-      setTimeout(function() { document.addEventListener('click', skipper, true); }, 150);
-      setTimeout(cleanup, 4200);
-      setOrb('thinking');
-      await new Promise(function(r) { setTimeout(r, 3100); });
+      setTimeout(function() { document.addEventListener('click', skipper, true); }, 200);
+      setTimeout(cleanup, 3600);
+      await new Promise(function(r) { setTimeout(r, 2600); });
     } else {
-      await new Promise(function(r) { setTimeout(r, 250); });
+      await new Promise(function(r) { setTimeout(r, 400); });
     }
 
-    duckEntrance();
-
-    // greeting: server-composed (Sydney time + live Newcastle weather + engine headline)
+    // GREETING — fires ONLY from BOOTING, once
+    if (!transition(S.GREETING, 'boot complete')) return;
     var text = null;
     try {
       var resp = await fetch('/dashboard/api/greeting');
-      if (resp.ok) {
-        var data = await resp.json();
-        text = data.text;
-      } else {
-        note('Greeting endpoint returned ' + resp.status + ' — using fallback greeting.', 6000);
-      }
-    } catch (e) {
-      note('Greeting fetch failed (' + (e.message || 'network') + ') — using fallback greeting.', 6000);
-    }
+      if (resp.ok) { text = (await resp.json()).text; }
+      else note('Greeting endpoint returned ' + resp.status + ' — fallback greeting.', 6000);
+    } catch (e) { note('Greeting fetch failed — fallback greeting.', 6000); }
     if (!text) {
       var hour = new Date().getHours();
       text = 'Good ' + (hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening') + ', Rydel. EDITH online. What do you need?';
     }
     if (window.JarvisChat) window.JarvisChat.addAssistantMessage(text);
-    await speakInterruptible(text, 'system', { crushFirstWord: true });
-    // gentle fade-out instead of a hard cut
-    if (entranceAudio) {
-      var fade = setInterval(function() {
-        if (!entranceAudio) return clearInterval(fade);
-        entranceAudio.volume = Math.max(0, entranceAudio.volume - 0.04);
-        if (entranceAudio.volume <= 0.01) { clearInterval(fade); stopEntrance(); }
-      }, 120);
-    }
-    // mic auto-opens — the conversation is the point
+    await speakWithBargeIn(text, 'system', { crushFirstWord: true });
+    if (musicPresent && lsGet('edith-music-keep', '0') !== '1') audioManager.fadeOutMusic(2);
     startListening();
   }
 
-  function miniHud() {
-    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduced) return;
-    var hud = document.createElement('div');
-    hud.className = 'edith-boot-hud mini';
-    hud.innerHTML = '<div class="ebh-sweep"></div><div class="ebh-scan"></div>';
-    document.body.appendChild(hud);
-    setTimeout(function() { hud.remove(); }, 1400);
+  // ── wake entry — idempotent: debounce + state guard ──
+  var _interacted = false;
+  function audioUnlocked() {
+    if (navigator.userActivation && navigator.userActivation.hasBeenActive) return true;
+    return _interacted;
+  }
+  function _unlockAudio() { _interacted = true; try { audioManager.ensure(); } catch (e) {} }
+  document.addEventListener('pointerdown', _unlockAudio, true);
+  document.addEventListener('keydown', _unlockAudio, true);
+
+  function showPowerPrompt() {
+    if (document.getElementById('edith-power-prompt')) return;
+    var el = document.createElement('div');
+    el.id = 'edith-power-prompt'; el.className = 'edith-power-prompt';
+    el.innerHTML = '<div class="epp-core"></div><div class="epp-text">EDITH READY — TAP TO POWER UP</div>';
+    document.body.appendChild(el);
+    el.addEventListener('click', function() {
+      el.remove(); _unlockAudio(); bootSequence();
+    });
   }
 
-  function wakeFired() {
+  var _wakeAt = 0;
+  function wakeFired(source) {
+    var now = performance.now();
+    if (now - _wakeAt < 1500) { log('wake debounced (' + source + ')'); return; }
+    _wakeAt = now;
+    if (state !== S.IDLE && state !== S.LISTENING) { log('wake ignored in state', state); return; }
     if (!audioUnlocked()) { showPowerPrompt(); return; }
-    chime();
-    if (!bootedThisSession) return bootSequence(true);
-    miniHud();
-    if (orbState === 'speaking') { stopSpeaking(); }
+    if (listening) stopListening(true);
+
+    if (!bootedThisSession) return bootSequence();
+
+    audioManager.chime('ack');
     sessionActive = true;
     setSessionFx(true);
-    // the track rides every wake: ~4s blast, ducked under her voice, fade out
-    playEntranceAudio();
-    setTimeout(duckEntrance, 1800);
-    setTimeout(stopEntrance, 6500);
-    speak('Yes, Rydel?', 'reply').then(function() { startListening(); });
+    say('Yes, Rydel?', 'reply').then(function() { startListening(); });
   }
 
-  // ── PHASE 1: wake word (Porcupine WASM, on-device) ───────
+  // ═════════════════════════════════════════════════════════
+  //  WAKE WORD — Porcupine on-device, or browser-STT interim
+  // ═════════════════════════════════════════════════════════
   var porcupine = null;
   var wakeArmed = false;
-  var usingBuiltinJarvis = false;
 
   function wakePhrase() {
     if (CFG.picovoiceKey) return CFG.wakePpnPresent ? 'Hey Edith' : 'Jarvis';
-    return 'Hey Edith';   // browser-STT fallback matches the transcript directly
+    return 'Hey Edith';
+  }
+
+  var browserWake = null;
+  var browserWakeActive = false;
+  var WAKE_RX = /\b(hey\s+)?(edith|jarvis)\b\s*$/i;
+
+  function startBrowserWake() {
+    if (browserWakeActive || !hasSTT) return;
+    // single-mic, no-self-hearing rule: idle only
+    if (listening || audioManager.isSpeaking() || state !== S.IDLE) return;
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    browserWake = browserWake || (function() {
+      var r = new SR();
+      r.lang = 'en-AU'; r.interimResults = true; r.continuous = true;
+      r.onresult = function(e) {
+        var txt = '';
+        for (var i = e.results.length - 1; i >= 0 && i >= e.results.length - 2; i--) {
+          txt = e.results[i][0].transcript + ' ' + txt;
+        }
+        if (WAKE_RX.test(txt.trim())) {
+          stopBrowserWake();
+          wakeFired('browser-wake');      // debounce + state guard make this safe
+        }
+      };
+      r.onerror = function(e) {
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+          note('Mic blocked — wake word off.', 6000);
+          lsSet('edith-wake', '0');
+          wakeArmed = false; browserWakeActive = false; setOrb(state);
+        }
+      };
+      r.onend = function() {
+        if (browserWakeActive && wakeArmed && !listening && !document.hidden) {
+          try { r.start(); } catch (e) {}
+        }
+      };
+      return r;
+    })();
+    try { browserWake.start(); browserWakeActive = true; } catch (e) {}
+  }
+  function stopBrowserWake() {
+    browserWakeActive = false;
+    if (browserWake) { try { browserWake.stop(); } catch (e) {} }
+  }
+  function resumeWakeIfArmed() {
+    if (!wakeArmed || CFG.picovoiceKey || document.hidden) return;
+    if (listening || audioManager.isSpeaking() || state !== S.IDLE) return;
+    setTimeout(function() {
+      if (wakeArmed && !listening && state === S.IDLE) startBrowserWake();
+    }, 400);
   }
 
   function loadScript(src) {
@@ -848,82 +1041,19 @@
     });
   }
 
-  // ── Browser-STT wake fallback (interim until Picovoice approval) ──
-  // Honest trade-off: this uses the browser's speech service (audio leaves the
-  // device while armed), unlike Porcupine's on-device WASM. The code prefers
-  // Porcupine automatically once PICOVOICE_ACCESS_KEY exists.
-  var browserWake = null;
-  var browserWakeActive = false;
-  var WAKE_RX = /\b(hey\s+)?(edith|edith\b|jarvis)\b\s*$/i;
-
-  function startBrowserWake() {
-    if (browserWakeActive || !hasSTT) return;
-    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    browserWake = new SR();
-    browserWake.lang = 'en-AU';
-    browserWake.interimResults = true;
-    browserWake.continuous = true;
-    browserWake.onresult = function(e) {
-      var txt = '';
-      for (var i = e.results.length - 1; i >= 0 && i >= e.results.length - 2; i--) {
-        txt = e.results[i][0].transcript + ' ' + txt;
-      }
-      if (WAKE_RX.test(txt.trim())) {
-        stopBrowserWake();
-        wakeFired();
-      }
-    };
-    browserWake.onerror = function(e) {
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-        note('Mic blocked — wake word off.', 6000);
-        lsSet('edith-wake', '0');
-        wakeArmed = false; browserWakeActive = false; setOrb(orbState);
-      }
-    };
-    browserWake.onend = function() {
-      // browser ends recognition periodically — re-arm unless we stopped on purpose
-      if (browserWakeActive && wakeArmed && !listening && !document.hidden) {
-        try { browserWake.start(); } catch (e) {}
-      }
-    };
-    try { browserWake.start(); browserWakeActive = true; } catch (e) {}
-  }
-
-  function stopBrowserWake() {
-    browserWakeActive = false;
-    if (browserWake) { try { browserWake.stop(); } catch (e) {} }
-  }
-
-  // the query listener and the wake listener can't share the mic recognizer —
-  // pause wake while actively listening, resume after
-  function resumeWakeIfArmed() {
-    if (!wakeArmed || CFG.picovoiceKey || document.hidden) return;
-    // single-mic, no-self-hearing rule: idle only
-    if (listening || currentAudio || (window.speechSynthesis && speechSynthesis.speaking)) return;
-    setTimeout(function() {
-      if (wakeArmed && !listening && !currentAudio) startBrowserWake();
-    }, 400);
-  }
-
   async function armWakeWord() {
     if (wakeArmed) return;
     if (!CFG.picovoiceKey) {
-      if (!hasSTT) {
-        note('Wake word needs Chrome.', 6000);
-        lsSet('edith-wake', '0');
-        refreshPanel();
-        return;
-      }
+      if (!hasSTT) { note('Wake word needs Chrome.', 6000); lsSet('edith-wake', '0'); return; }
       try { await ensureMic(); } catch (e) {
         note('Mic blocked — click the lock icon to allow it.', 7000);
         lsSet('edith-wake', '0');
-        refreshPanel();
         return;
       }
       wakeArmed = true;
-      setOrb(orbState);
+      setOrb(state);
       startBrowserWake();
-      note('Wake word armed — say "Hey Edith" (browser mode: uses the browser speech service; switches to on-device Picovoice once the key is added)', 8000);
+      note('Wake word armed — say "Hey Edith" (browser mode; on-device once Picovoice key is added)', 7000);
       return;
     }
     try {
@@ -931,45 +1061,37 @@
         await loadScript('https://cdn.jsdelivr.net/npm/@picovoice/porcupine-web@3.0.3/dist/iife/index.js');
         await loadScript('https://cdn.jsdelivr.net/npm/@picovoice/web-voice-processor@4.0.9/dist/iife/index.js');
       }
-      var keyword;
-      if (CFG.wakePpnPresent) {
-        keyword = { publicPath: CFG.wakePpnPath, label: 'Hey Edith', sensitivity: lsNum('edith-wake-sens', 0.6) };
-        usingBuiltinJarvis = false;
-      } else {
-        keyword = { builtin: 'Jarvis', sensitivity: lsNum('edith-wake-sens', 0.6) };
-        usingBuiltinJarvis = true;
-      }
+      var keyword = CFG.wakePpnPresent
+        ? { publicPath: CFG.wakePpnPath, label: 'Hey Edith', sensitivity: lsNum('edith-wake-sens', 0.6) }
+        : { builtin: 'Jarvis', sensitivity: lsNum('edith-wake-sens', 0.6) };
       porcupine = await window.PorcupineWeb.PorcupineWorker.create(
-        CFG.picovoiceKey,
-        [keyword],
-        function() { wakeFired(); },
+        CFG.picovoiceKey, [keyword],
+        function() { wakeFired('porcupine'); },
         { publicPath: 'https://cdn.jsdelivr.net/npm/@picovoice/porcupine-web@3.0.3/lib/common/porcupine_params.pv' }
       );
       await window.WebVoiceProcessor.WebVoiceProcessor.subscribe(porcupine);
       wakeArmed = true;
-      setOrb(orbState);
-      note('Wake word armed — say "' + wakePhrase() + '"' + (usingBuiltinJarvis ? ' (interim until hey_edith .ppn is added)' : ''), 6000);
+      setOrb(state);
+      note('Wake word armed (on-device) — say "' + wakePhrase() + '"', 6000);
     } catch (e) {
-      console.error('wake word init failed:', e);
-      note('Wake word unavailable (' + (e.message || 'init failed').slice(0, 60) + ') — click / hold-V still work.', 7000);
+      log('porcupine init failed:', e.message);
+      note('Wake word unavailable — click / hold-V still work.', 7000);
       lsSet('edith-wake', '0');
       wakeArmed = false;
-      refreshPanel();
     }
   }
 
   async function disarmWakeWord() {
     wakeArmed = false;
-    setOrb(orbState);
+    setOrb(state);
     stopBrowserWake();
     try {
       if (porcupine) {
         await window.WebVoiceProcessor.WebVoiceProcessor.unsubscribe(porcupine);
-        porcupine.release();
-        porcupine = null;
+        porcupine.release(); porcupine = null;
       }
     } catch (e) {}
-    releaseMic(); // mic fully released — browser indicator goes dark
+    releaseMic();
   }
 
   document.addEventListener('visibilitychange', function() {
@@ -985,9 +1107,11 @@
     }
   });
 
-  // ── Orb + keyboard ───────────────────────────────────────
+  // ═════════════════════════════════════════════════════════
+  //  ORB + KEYBOARD
+  // ═════════════════════════════════════════════════════════
   function onOrbClick() {
-    if (orbState === 'speaking') return stopSpeaking();
+    if (audioManager.isSpeaking()) { audioManager.stopVoice(); transition(S.IDLE, 'orb interrupt'); return; }
     if (listening) {
       if (pendingText) return finalizeUtterance();
       sessionActive = false;
@@ -1001,7 +1125,12 @@
     document.addEventListener('keydown', function(e) {
       var tag = (document.activeElement || {}).tagName;
       var typing = tag === 'INPUT' || tag === 'TEXTAREA';
-      if (e.key === 'Escape') { stopSpeaking(); stopListening(); return; }
+      if (e.key === 'Escape') {
+        audioManager.stopAll();
+        stopListening();
+        if (state !== S.IDLE) transition(S.IDLE, 'esc');
+        return;
+      }
       if (typing) return;
       if ((e.key === 'v' || e.key === 'V' || (e.code === 'Space' && hasSTT)) && !vHeld && !e.metaKey && !e.ctrlKey) {
         if (e.code === 'Space') e.preventDefault();
@@ -1019,35 +1148,33 @@
     });
   }
 
-  // ── Voice panel (settings + AI character tuning + audition) ──
-  function refreshPanel() {
-    var el = document.getElementById('edith-panel');
-    if (el) { el.remove(); togglePanel(); }
-  }
-
+  // ═════════════════════════════════════════════════════════
+  //  SETTINGS PANEL
+  // ═════════════════════════════════════════════════════════
   function togglePanel() {
     var el = document.getElementById('edith-panel');
     if (el) { el.remove(); return; }
     el = document.createElement('div');
     el.id = 'edith-panel';
     el.className = 'jarvis-help edith-panel';
-    var wakeOn = lsGet('edith-wake', '1') === '1';
-    var p = fxParams(lsGet('edith-fx-preset', 'edith'));
+    var p = audioManager.fxParams(lsGet('edith-fx-preset', 'subtle'));
     el.innerHTML =
       '<div class="jh-title">EDITH</div>' +
-      '<div class="jh-row"><b>Click orb / hold V or Space</b> talk &middot; <b>Esc</b> interrupt &middot; <b>B</b> brief</div>' +
-      '<div class="jh-row"><label><input type="checkbox" id="ep-wake" ' + (wakeOn ? 'checked' : '') + '> &#127908; Wake word: say "' + wakePhrase() + '"' + (CFG.picovoiceKey ? (CFG.wakePpnPresent ? '' : ' <span class="ep-dim">(interim — train "Hey Edith" .ppn)</span>') : ' <span class="ep-dim">(browser mode — on-device once Picovoice key is added)</span>') + '</label></div>' +
-      '<div class="jh-row"><label><input type="checkbox" id="ep-convo" ' + (lsGet('edith-convo', '1') === '1' ? 'checked' : '') + '> Conversation mode (auto re-listen)</label></div>' +
+      '<div class="jh-row"><b>Click orb / hold V or Space</b> talk &middot; <b>Esc</b> stop &middot; <b>B</b> brief</div>' +
+      '<div class="jh-row"><label><input type="checkbox" id="ep-wake" ' + (lsGet('edith-wake', '1') === '1' ? 'checked' : '') + '> &#127908; Wake word: "' + wakePhrase() + '"' + (CFG.picovoiceKey ? '' : ' <span class="ep-dim">(browser mode)</span>') + '</label></div>' +
+      '<div class="jh-row"><label><input type="checkbox" id="ep-convo" ' + (lsGet('edith-convo', '1') === '1' ? 'checked' : '') + '> Conversation mode</label></div>' +
       '<div class="jh-row"><label><input type="checkbox" id="ep-cine" ' + (lsGet('edith-cinematic', '1') === '1' ? 'checked' : '') + '> Cinematic mode</label></div>' +
       '<div class="jh-row"><label><input type="checkbox" id="ep-loadanim" ' + (lsGet('edith-load-anim', '1') === '1' ? 'checked' : '') + '> Boot animation on page load</label></div>' +
       '<div class="jh-row">Patience <input type="range" id="ep-patience" min="0.8" max="3" step="0.1" value="' + lsNum('edith-patience', 1.4) + '"> <span id="ep-patience-v">' + lsNum('edith-patience', 1.4).toFixed(1) + 's</span></div>' +
-      '<div class="jh-row jh-controls"><label><input type="checkbox" id="ep-mute" ' + (lsGet('edith-muted', '0') === '1' ? 'checked' : '') + '> mute</label>' +
-      '<label>vol <input type="range" id="ep-vol" min="0" max="1" step="0.1" value="' + lsNum('edith-vol', 1) + '"></label></div>' +
+      '<div class="ep-section">Mixer</div>' +
+      ['master', 'voice', 'sfx', 'music'].map(function(chn) {
+        return '<div class="jh-row">' + chn + ' <input type="range" data-mix="' + chn + '" min="0" max="1.2" step="0.05" value="' + audioManager.mixGet(chn) + '"></div>';
+      }).join('') +
       '<div class="ep-section">AI Voice Character</div>' +
-      '<div class="jh-row"><label><input type="checkbox" id="ep-fx" ' + (fxEnabled() ? 'checked' : '') + '> AI processing</label></div>' +
+      '<div class="jh-row"><label><input type="checkbox" id="ep-fx" ' + (audioManager.fxEnabled() ? 'checked' : '') + '> AI processing</label></div>' +
       '<div class="jh-row ep-presets">' +
-        ['edith', 'assistant', 'subtle', 'system', 'off'].map(function(name) {
-          var cur = lsGet('edith-fx-preset', 'edith');
+        ['subtle', 'assistant', 'system', 'off'].map(function(name) {
+          var cur = lsGet('edith-fx-preset', 'subtle');
           return '<button class="ep-preset' + (cur === name ? ' active' : '') + '" data-p="' + name + '">' + name + '</button>';
         }).join('') +
       '</div>' +
@@ -1057,17 +1184,18 @@
         '<div class="jh-row">Resonance <input type="range" data-fx="comb" min="0" max="0.4" step="0.02" value="' + p.comb + '"></div>' +
         '<div class="jh-row">Double <input type="range" data-fx="dbl" min="0" max="0.6" step="0.02" value="' + p.dbl + '"></div>' +
         '<div class="jh-row">Reverb <input type="range" data-fx="rev" min="0" max="0.4" step="0.02" value="' + p.rev + '"></div>' +
-        '<div class="jh-row">Wet <input type="range" data-fx="wet" min="0" max="0.6" step="0.02" value="' + p.wet + '"></div>' +
+        '<div class="jh-row">Wet <input type="range" data-fx="wet" min="0" max="0.7" step="0.02" value="' + p.wet + '"></div>' +
       '</details>' +
       '<div class="ep-section">Voice (locked: FRIDAY)</div>' +
-      '<div class="jh-row"><input type="text" id="ep-voice-id" class="ep-input" placeholder="ElevenLabs voice ID (audition)" value=""></div>' +
+      '<div class="jh-row"><input type="text" id="ep-voice-id" class="ep-input" placeholder="ElevenLabs voice ID (audition)"></div>' +
       '<div class="jh-row ep-presets"><button id="ep-audition" class="ep-preset">audition</button>' +
       '<button id="ep-voice-set" class="ep-preset">set</button>' +
       '<button id="ep-voice-reset" class="ep-preset">reset to default</button></div>' +
-      '<div class="ep-section">Wake track</div>' +
-      '<div class="jh-row ep-dim">Plays on every "Hey Edith". Upload YOUR OWN legally-obtained MP3 (e.g. your copy of Back in Black) — nothing copyrighted ships with the dashboard.</div>' +
-      '<div class="jh-row"><input type="file" id="ep-track" accept="audio/mpeg,audio/mp3" class="ep-input"></div>' +
+      '<div class="ep-section">Entrance music</div>' +
+      '<div class="jh-row ep-dim" id="ep-track-status">checking…</div>' +
+      '<div class="jh-row"><input type="file" id="ep-track" accept="audio/mpeg,audio/mp3,audio/mp4,audio/x-m4a" class="ep-input"></div>' +
       '<div class="jh-row ep-presets"><button id="ep-track-up" class="ep-preset">upload</button><button id="ep-track-rm" class="ep-preset">remove</button><button id="ep-track-test" class="ep-preset">test</button></div>' +
+      '<div class="jh-row"><label><input type="checkbox" id="ep-music-keep" ' + (lsGet('edith-music-keep', '0') === '1' ? 'checked' : '') + '> keep playing after boot</label></div>' +
       '<div class="ep-section">Status</div>' +
       '<div class="jh-row ep-dim" id="ep-status">checking…</div>' +
       '<div class="jh-close">esc or ? to close</div>';
@@ -1075,16 +1203,23 @@
 
     (async function fillStatus() {
       await refreshVoiceStatus();
+      var d = await refreshMusicStatus();
+      var trackEl = el.querySelector('#ep-track-status');
+      if (trackEl) trackEl.textContent = (d && d.present)
+        ? ('uploaded ✓ (' + Math.round((d.bytes || 0) / 1024 / 1024 * 10) / 10 + 'MB)' + (d.volatile ? ' — re-upload after each deploy (no volume mounted)' : ''))
+        : 'none — upload YOUR OWN legally-obtained track (nothing copyrighted ships with this dashboard)';
       var s = el.querySelector('#ep-status');
       if (!s) return;
-      if (!voiceStatus) { s.textContent = 'voice-status unreachable — check login/network'; return; }
+      if (!voiceStatus) { s.textContent = 'voice-status unreachable'; return; }
       s.innerHTML =
         'ElevenLabs: <b style="color:' + (voiceStatus.elevenlabs_configured ? 'var(--green)' : 'var(--red)') + '">' +
-        (voiceStatus.elevenlabs_configured ? 'configured' : 'NOT CONFIGURED — add ELEVENLABS_API_KEY on Railway') + '</b><br>' +
+        (voiceStatus.elevenlabs_configured ? 'configured' : 'NOT CONFIGURED — add ELEVENLABS_API_KEY') + '</b><br>' +
         'Voice: ' + esc(voiceStatus.voice_id || '?') + (voiceStatus.voice_id === voiceStatus.default_voice_id ? ' (locked default)' : ' (override)') + '<br>' +
         'Wake mode: ' + (CFG.picovoiceKey ? 'on-device (Picovoice)' : 'browser (interim)') + '<br>' +
-        'TTS today: ' + (voiceStatus.daily_chars_used || 0) + ' / ' + voiceStatus.daily_char_cap + ' chars';
+        'TTS today: ' + (voiceStatus.daily_chars_used || 0) + ' / ' + voiceStatus.daily_char_cap + ' chars<br>' +
+        'State: ' + state;
     })();
+
     el.querySelector('#ep-wake').addEventListener('change', function() {
       lsSet('edith-wake', this.checked ? '1' : '0');
       if (this.checked) armWakeWord(); else disarmWakeWord();
@@ -1092,12 +1227,14 @@
     el.querySelector('#ep-convo').addEventListener('change', function() { lsSet('edith-convo', this.checked ? '1' : '0'); });
     el.querySelector('#ep-cine').addEventListener('change', function() { lsSet('edith-cinematic', this.checked ? '1' : '0'); });
     el.querySelector('#ep-loadanim').addEventListener('change', function() { lsSet('edith-load-anim', this.checked ? '1' : '0'); });
+    el.querySelector('#ep-music-keep').addEventListener('change', function() { lsSet('edith-music-keep', this.checked ? '1' : '0'); });
     el.querySelector('#ep-patience').addEventListener('input', function() {
       lsSet('edith-patience', this.value);
       el.querySelector('#ep-patience-v').textContent = parseFloat(this.value).toFixed(1) + 's';
     });
-    el.querySelector('#ep-mute').addEventListener('change', function() { lsSet('edith-muted', this.checked ? '1' : '0'); });
-    el.querySelector('#ep-vol').addEventListener('input', function() { lsSet('edith-vol', this.value); });
+    el.querySelectorAll('[data-mix]').forEach(function(sl) {
+      sl.addEventListener('input', function() { audioManager.setMix(this.dataset.mix, this.value); });
+    });
     el.querySelector('#ep-fx').addEventListener('change', function() { lsSet('edith-fx-on', this.checked ? '1' : '0'); });
     el.querySelectorAll('.ep-preset[data-p]').forEach(function(btn) {
       btn.addEventListener('click', function() {
@@ -1113,31 +1250,17 @@
         lsSet('edith-fx-custom', '1');
       });
     });
-    el.querySelector('#ep-track-up').addEventListener('click', async function() {
-      var f = el.querySelector('#ep-track').files[0];
-      if (!f) return note('Choose an MP3 first.');
-      var fd = new FormData(); fd.append('file', f);
-      var resp = await fetch('/dashboard/api/entrance-audio', { method: 'POST', body: fd });
-      var data = await resp.json();
-      note(data.ok ? 'Track uploaded — say "Hey Edith".' : ('Upload failed: ' + (data.error || resp.status)));
-    });
-    el.querySelector('#ep-track-rm').addEventListener('click', async function() {
-      await fetch('/dashboard/api/entrance-audio', { method: 'DELETE' });
-      note('Track removed — default sting restored.');
-    });
-    el.querySelector('#ep-track-test').addEventListener('click', function() {
-      playEntranceAudio();
-      setTimeout(stopEntrance, 5000);
-    });
     el.querySelector('#ep-audition').addEventListener('click', function() {
       var vid = el.querySelector('#ep-voice-id').value.trim();
-      speak(TEST_LINE, 'reply', vid ? { voiceId: vid } : {});
+      say(TEST_LINE, 'reply', vid ? { voiceId: vid } : {}).then(function() {
+        if (state === S.SPEAKING) transition(S.IDLE, 'audition done');
+      });
     });
     el.querySelector('#ep-voice-set').addEventListener('click', async function() {
       var vid = el.querySelector('#ep-voice-id').value.trim();
       if (!vid) return note('Paste a voice ID first.');
       await fetch('/dashboard/api/voice-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ voice_id: vid }) });
-      note('Voice set — next reply uses it. "reset to default" restores FRIDAY.');
+      note('Voice set — next reply uses it.');
       refreshVoiceStatus();
     });
     el.querySelector('#ep-voice-reset').addEventListener('click', async function() {
@@ -1145,104 +1268,58 @@
       note('Voice reset to the locked default.');
       refreshVoiceStatus();
     });
+    el.querySelector('#ep-track-up').addEventListener('click', async function() {
+      var f = el.querySelector('#ep-track').files[0];
+      if (!f) return note('Choose an MP3/M4A first.');
+      var fd = new FormData(); fd.append('file', f);
+      var resp = await fetch('/dashboard/api/entrance-audio', { method: 'POST', body: fd });
+      var data = await resp.json();
+      note(data.ok ? 'Track uploaded — say "Hey Edith".' : ('Upload failed: ' + (data.error || resp.status)));
+      refreshMusicStatus();
+    });
+    el.querySelector('#ep-track-rm').addEventListener('click', async function() {
+      await fetch('/dashboard/api/entrance-audio', { method: 'DELETE' });
+      note('Track removed.');
+      refreshMusicStatus();
+    });
+    el.querySelector('#ep-track-test').addEventListener('click', async function() {
+      await refreshMusicStatus();
+      if (!musicPresent) return note('No track uploaded.');
+      audioManager.playMusic('/dashboard/audio/entrance');
+      setTimeout(function() { audioManager.fadeOutMusic(1.5); }, 5000);
+    });
   }
 
-  async function refreshVoiceStatus() {
-    try {
-      var resp = await fetch('/dashboard/api/voice-status');
-      if (resp.ok) voiceStatus = await resp.json();
-    } catch (e) { voiceStatus = null; }
+  // ── load-time visual boot (silent, autoplay-safe) ────────
+  function loadBootVisuals() {
+    if (lsGet('edith-load-anim', '1') !== '1') return;
+    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) return;
+    document.body.classList.add('boot-seq');
+    setTimeout(function() { document.body.classList.remove('boot-seq'); }, 2400);
   }
 
-  // ── Entrance trigger (reactor) + init ────────────────────
   function initEntranceTrigger() {
     var reactor = document.querySelector('.reactor');
     if (!reactor) return;
     reactor.style.cursor = 'pointer';
     reactor.title = 'Power up EDITH';
     reactor.addEventListener('click', function() {
-      bootedThisSession = false;   // power button always replays the boot
-      bootSequence(true);
+      bootedThisSession = false;
+      if (state !== S.IDLE) { audioManager.stopAll(); stopListening(true); state = S.IDLE; }
+      bootSequence();
     });
     if (lsGet('jarvis-entrance-invite', '0') === '1') reactor.classList.add('invite');
   }
 
-  // GUARDRAIL: gesture-less audio is blocked by Chrome until the user has
-  // interacted. Track it precisely; never speak into a locked void.
-  var _interacted = false;
-  function audioUnlocked() {
-    if (navigator.userActivation && navigator.userActivation.hasBeenActive) return true;
-    return _interacted;
-  }
-  function _unlockAudio() {
-    _interacted = true;
-    try { audioCtx(); } catch (e) {}
-  }
-  document.addEventListener('pointerdown', _unlockAudio, true);
-  document.addEventListener('keydown', _unlockAudio, true);
-
-  // If the wake word fires before any interaction, convert the failure into a
-  // designed moment: a power-up overlay whose click IS the unlocking gesture.
-  function showPowerPrompt() {
-    if (document.getElementById('edith-power-prompt')) return;
-    var el = document.createElement('div');
-    el.id = 'edith-power-prompt';
-    el.className = 'edith-power-prompt';
-    el.innerHTML = '<div class="epp-core"></div><div class="epp-text">EDITH READY — TAP TO POWER UP</div>';
-    document.body.appendChild(el);
-    el.addEventListener('click', function() {
-      el.remove();
-      _unlockAudio();
-      bootSequence(true);
-    });
-  }
-
-  function loadBootVisuals() {
-    if (lsGet('edith-load-anim', '1') !== '1') return;
-    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduced) return;
-    var hud = document.createElement('div');
-    hud.className = 'edith-boot-hud';
-    hud.innerHTML =
-      '<div class="ebh-sweep"></div><div class="ebh-scan"></div>' +
-      '<div class="ebh-console" id="ebh-load-console"></div>' +
-      '<div class="ebh-progress"><div class="ebh-progress-fill" id="ebh-load-pfill"></div><span class="ebh-pct" id="ebh-load-pct">0%</span></div>' +
-      '<div class="ebh-caption">EDITH — ONLINE</div>';
-    document.body.appendChild(hud);
-    document.body.classList.add('boot-seq');
-    var SYSTEMS = ['ARC CORE', 'CASH ENGINE', 'FORWARD MRR MODEL', 'FUNNEL TELEMETRY',
-                   'CLIENT HEALTH GRID', 'COMMS ARRAY', 'EDITH CORE'];
-    var c = hud.querySelector('#ebh-load-console');
-    var pf = hud.querySelector('#ebh-load-pfill');
-    var pc = hud.querySelector('#ebh-load-pct');
-    SYSTEMS.forEach(function(name, i) {
-      setTimeout(function() {
-        if (!c.isConnected) return;
-        var row = document.createElement('div');
-        row.className = 'ebh-line';
-        row.innerHTML = '<span class="ebh-sys">' + name + '</span><span class="ebh-dots"></span><span class="ebh-ok">ONLINE</span>';
-        c.appendChild(row);
-        var p = Math.round(((i + 1) / SYSTEMS.length) * 100);
-        pf.style.width = p + '%'; pc.textContent = p + '%';
-      }, 200 + i * 260);
-    });
-    var clean = function() {
-      document.body.classList.remove('boot-seq');
-      hud.remove();
-      document.removeEventListener('click', skip, true);
-    };
-    var skip = function() { clean(); };
-    setTimeout(function() { document.addEventListener('click', skip, true); }, 150);
-    setTimeout(clean, 3400);
-  }
-
+  // ── init ─────────────────────────────────────────────────
   (async function init() {
     buildUI();
     initKeys();
     initEntranceTrigger();
-    loadBootVisuals();   // every page load opens like a system powering up (silent)
-    await refreshVoiceStatus();
-    if (lsGet('edith-wake', '1') === '1') armWakeWord();   // hands-free by default
+    loadBootVisuals();
+    await Promise.all([refreshVoiceStatus(), refreshMusicStatus()]);
+    if (lsGet('edith-wake', '1') === '1') armWakeWord();
   })();
 
 })();
