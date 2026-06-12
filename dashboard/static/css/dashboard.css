@@ -2069,3 +2069,49 @@ body.boot-seq main > *:nth-child(n+6) { animation-delay: 0.5s; }
 .edith-boot-hud.mini::after { animation-duration: 0.9s; }
 .edith-boot-hud.mini { background: none; }
 .edith-boot-hud.mini .ebh-scan { animation-duration: 1.2s; }
+
+/* ── EDITH session HUD: corner brackets + grid + card energize ── */
+.edith-brackets { pointer-events: none; }
+.edith-brackets i {
+  position: fixed; width: 46px; height: 46px; z-index: 240;
+  border: 2px solid rgba(91,155,208,0);
+  transition: border-color 0.6s, transform 0.6s;
+}
+.edith-brackets .tl { top: 64px; left: 10px; border-right: none; border-bottom: none; transform: translate(-12px, -12px); }
+.edith-brackets .tr { top: 64px; right: 10px; border-left: none; border-bottom: none; transform: translate(12px, -12px); }
+.edith-brackets .bl { bottom: 10px; left: 10px; border-right: none; border-top: none; transform: translate(-12px, 12px); }
+.edith-brackets .br { bottom: 10px; right: 10px; border-left: none; border-top: none; transform: translate(12px, 12px); }
+body.edith-session .edith-brackets i {
+  border-color: rgba(91,155,208,0.55);
+  transform: translate(0, 0);
+  animation: bracket-hum 3s ease-in-out infinite;
+}
+@keyframes bracket-hum {
+  0%, 100% { box-shadow: 0 0 0 rgba(91,155,208,0); }
+  50% { box-shadow: 0 0 14px rgba(91,155,208,0.35); }
+}
+
+/* live grid shimmer across the page while the session runs */
+body.edith-session::before {
+  content: ''; position: fixed; inset: 0; z-index: 1; pointer-events: none;
+  background:
+    linear-gradient(rgba(91,155,208,0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(91,155,208,0.018) 1px, transparent 1px);
+  background-size: 44px 44px;
+  animation: grid-drift 14s linear infinite;
+}
+@keyframes grid-drift { to { background-position: 44px 44px; } }
+
+/* cards subtly energize during the session */
+body.edith-session .panel { border-color: rgba(91,155,208,0.22); }
+body.edith-session .kpi-strip { border-color: rgba(91,155,208,0.22); }
+
+/* boot: stronger ignition flash on the cards */
+body.boot-seq .panel, body.boot-seq .kpi-strip {
+  animation: panel-ignite 0.85s cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.edith-session::before { animation: none; }
+  .edith-brackets i { animation: none !important; }
+}

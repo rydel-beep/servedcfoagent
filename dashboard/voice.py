@@ -360,13 +360,27 @@ def build_greeting(snap: dict) -> dict:
             line += f", heading for {round(weather['high_c'])}"
         parts.append(line + ".")
 
-    cp = (snap or {}).get("cash_position") or {}
-    cash, runway = cp.get("cash_in_bank"), cp.get("runway_months")
-    if cash is not None:
-        headline = f"While you're here — cash position is {_fmt_aud_speech(cash)}"
-        if runway is not None:
-            headline += f", which is {runway} months of runway"
-        parts.append(headline + ".")
+    # Instagram-story safe: sales MOTION (appointments, closes, close rate,
+    # cash collected over 30d), never balance-sheet exposure (cash position,
+    # runway, burn stay out of the greeting — ask EDITH directly for those).
+    funnel = ((snap or {}).get("sales") or {}).get("funnel") or {}
+    sets_n, closes_n = funnel.get("sets"), funnel.get("closes")
+    close_rate = funnel.get("show_to_close_pct")
+    collected = ((((snap or {}).get("stripe") or {}).get("revenue") or {})
+                 .get("current") or {}).get("total_aud")
+
+    sales_bits = []
+    if sets_n is not None:
+        sales_bits.append(f"{sets_n} appointments booked")
+    if closes_n is not None:
+        sales_bits.append(f"{closes_n} deals closed")
+    if sales_bits:
+        line = "You're at " + " and ".join(sales_bits)
+        if close_rate is not None:
+            line += f", closing at {round(close_rate)} percent"
+        parts.append(line + ".")
+    if collected is not None:
+        parts.append(f"Cash collected in the last thirty days: {_fmt_aud_speech(collected)}.")
 
     parts.append("What do you need?")
     return {"text": " ".join(parts), "weather": weather}

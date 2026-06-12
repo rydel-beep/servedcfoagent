@@ -134,6 +134,8 @@ def _fake_snap():
     return {
         "cash_position": {"cash_in_bank": 140007.29, "stripe_incoming": 18000,
                           "runway_months": 3.6, "total_monthly_burn": 39211},
+        "sales": {"funnel": {"sets": 21, "closes": 7, "show_to_close_pct": 33.3}},
+        "stripe": {"revenue": {"current": {"total_aud": 80860.0}}},
         "client_health": {"current_mrr": 72896.18, "next_mrr": 58236.18,
                           "mrr_delta": -14660.0, "renewal_watch": [],
                           "revenue_at_risk_30d": 14660},
@@ -197,8 +199,11 @@ def test_greeting_skips_weather_gracefully(monkeypatch):
     assert out["weather"] is None
     t = out["text"]
     assert "Rydel" in t and "What do you need?" in t
-    assert "$140,000" in t and "3.6" in t   # engine headline survives
     assert "Newcastle" not in t
+    # Instagram-story safe: sales motion only — never balance exposure
+    assert "21 appointments booked" in t and "7 deals closed" in t
+    assert "33 percent" in t and "$81,000" in t
+    assert "140,000" not in t and "runway" not in t.lower()
 
 
 def test_greeting_includes_weather_when_available(monkeypatch):

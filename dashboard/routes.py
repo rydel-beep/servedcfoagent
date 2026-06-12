@@ -253,6 +253,47 @@ def api_voice_config():
     return jsonify(out)
 
 
+_ENTRANCE_DIR = "/data" if os.path.isdir("/data") else os.path.join(os.path.dirname(__file__), "..", "state")
+_ENTRANCE_FILE = os.path.join(_ENTRANCE_DIR, "entrance.mp3")
+_ENTRANCE_MAX_BYTES = 16 * 1024 * 1024
+
+
+@bp.route("/audio/entrance", methods=["GET"])
+@require_auth
+def audio_entrance():
+    """EDITH's wake track: Rydel's own uploaded file (Railway volume) if present,
+    else the bundled royalty-free sting. The build ships NO copyrighted audio —
+    the slot only ever holds a user-supplied file."""
+    from flask import send_file
+    if os.path.exists(_ENTRANCE_FILE):
+        return send_file(_ENTRANCE_FILE, mimetype="audio/mpeg", max_age=300)
+    default = os.path.join(os.path.dirname(__file__), "static", "audio", "entrance-default.wav")
+    return send_file(default, mimetype="audio/wav", max_age=300)
+
+
+@bp.route("/api/entrance-audio", methods=["POST", "DELETE"])
+@require_auth
+def api_entrance_audio():
+    """Upload (or remove) the user-supplied entrance track. Stored on the
+    volume, never in the repo."""
+    if request.method == "DELETE":
+        if os.path.exists(_ENTRANCE_FILE):
+            os.remove(_ENTRANCE_FILE)
+        return jsonify({"ok": True, "present": False})
+
+    f = request.files.get("file")
+    if not f:
+        return jsonify({"error": "no file"}), 400
+    blob = f.read(_ENTRANCE_MAX_BYTES + 1)
+    if len(blob) > _ENTRANCE_MAX_BYTES:
+        return jsonify({"error": "file too large (16MB max)"}), 413
+    os.makedirs(_ENTRANCE_DIR, exist_ok=True)
+    with open(_ENTRANCE_FILE, "wb") as out:
+        out.write(blob)
+    logger.info("Entrance audio uploaded (%d bytes)", len(blob))
+    return jsonify({"ok": True, "present": True, "bytes": len(blob)})
+
+
 @bp.route("/api/hiring-scenario", methods=["POST"])
 @require_auth
 def api_hiring_scenario():

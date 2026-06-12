@@ -55,8 +55,19 @@
     hudRing.className = 'edith-hud-ring';
     document.body.appendChild(hudRing);
 
+    var brackets = document.createElement('div');
+    brackets.id = 'edith-brackets';
+    brackets.className = 'edith-brackets';
+    brackets.innerHTML = '<i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i>';
+    document.body.appendChild(brackets);
+
     orb.addEventListener('click', onOrbClick);
     if (!hasSTT) { orb.classList.add('no-stt'); note('Voice input needs Chrome — EDITH can still speak.', 6000); }
+  }
+
+  function setSessionFx(on) {
+    if (lsGet('edith-cinematic', '1') !== '1') on = false;
+    document.body.classList.toggle('edith-session', !!on);
   }
 
   function setOrb(state) {
@@ -125,11 +136,12 @@
     off:       { wet: 0.0,  hp: 0,    lp: 20000, comb: 0,    dbl: 0,    rev: 0 },
     subtle:    { wet: 0.16, hp: 110,  lp: 9000,  comb: 0.10, dbl: 0.22, rev: 0.10 },
     assistant: { wet: 0.24, hp: 130,  lp: 7800,  comb: 0.16, dbl: 0.32, rev: 0.15 },
-    system:    { wet: 0.38, hp: 170,  lp: 6200,  comb: 0.24, dbl: 0.42, rev: 0.24 },
+    edith:     { wet: 0.52, hp: 220,  lp: 5400,  comb: 0.30, dbl: 0.50, rev: 0.26 },  // the movie comm-filter
+    system:    { wet: 0.62, hp: 260,  lp: 4800,  comb: 0.36, dbl: 0.56, rev: 0.32 },
   };
 
   function fxParams(presetName) {
-    var p = Object.assign({}, PRESETS[presetName] || PRESETS.assistant);
+    var p = Object.assign({}, PRESETS[presetName] || PRESETS.edith);
     // advanced overrides (persisted)
     ['wet', 'hp', 'lp', 'comb', 'dbl', 'rev'].forEach(function(k) {
       var v = lsGet('edith-fx-' + k, null);
@@ -232,7 +244,7 @@
   function activePreset(context) {
     if (!fxEnabled()) return 'off';
     if (context === 'system') return 'system';
-    return lsGet('edith-fx-preset', 'assistant');
+    return lsGet('edith-fx-preset', 'edith');
   }
 
   function speak(text, context, opts) {
@@ -497,6 +509,7 @@
       sessionActive = false;
       await speak('Very good, Rydel.', 'reply');
       setOrb('idle');
+      setSessionFx(false);
       return;
     }
     if (pendingBriefOffer && /^(yes|yeah|yep|sure|ok|okay|go|brief|please)\b/i.test(text)) {
@@ -507,7 +520,6 @@
     if (/^(brief me|morning brief|daily brief|read my priorities)\b/i.test(text)) return runBrief();
 
     if (!window.JarvisChat) return;
-    window.JarvisChat.openPanel();
     setOrb('thinking');
     var reply = await window.JarvisChat.ask(text, true);
     if (reply) {
@@ -566,7 +578,7 @@
       var resp = await fetch('/dashboard/api/brief', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       var data = await resp.json();
       if (data.text) {
-        if (window.JarvisChat) { window.JarvisChat.openPanel(); window.JarvisChat.addAssistantMessage(data.text); }
+        if (window.JarvisChat) window.JarvisChat.addAssistantMessage(data.text);
         await speakInterruptible(data.text, 'reply');
         afterReply();
       } else { setOrb('idle'); note(data.error || 'Brief unavailable.'); }
@@ -589,13 +601,9 @@
   }
 
   var entranceAudio = null;
-  async function playEntranceAudio() {
-    var src = '/dashboard/static/audio/entrance.mp3';
-    try {
-      var head = await fetch(src, { method: 'HEAD' });
-      if (!head.ok) src = '/dashboard/static/audio/entrance-default.wav';
-    } catch (e) { src = '/dashboard/static/audio/entrance-default.wav'; }
-    entranceAudio = new Audio(src);
+  function playEntranceAudio() {
+    // served from the Railway volume (user-uploaded track) or the default sting
+    entranceAudio = new Audio('/dashboard/audio/entrance');
     entranceAudio.volume = volume();
     entranceAudio.play().catch(function() {});
   }
@@ -615,6 +623,7 @@
     var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     sessionActive = true;
     bootedThisSession = true;
+    setSessionFx(true);
 
     if (withAudio) playEntranceAudio();
 
@@ -657,7 +666,7 @@
       var hour = new Date().getHours();
       text = 'Good ' + (hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening') + ', Rydel. EDITH online. What do you need?';
     }
-    if (window.JarvisChat) { window.JarvisChat.openPanel(); window.JarvisChat.addAssistantMessage(text); }
+    if (window.JarvisChat) window.JarvisChat.addAssistantMessage(text);
     await speakInterruptible(text, 'system', { crushFirstWord: true });
     stopEntrance();
     // mic auto-opens — the conversation is the point
@@ -680,6 +689,11 @@
     miniHud();
     if (orbState === 'speaking') { stopSpeaking(); }
     sessionActive = true;
+    setSessionFx(true);
+    // the track rides every wake: ~4s blast, ducked under her voice, fade out
+    playEntranceAudio();
+    setTimeout(duckEntrance, 1800);
+    setTimeout(stopEntrance, 6500);
     speak('Yes, Rydel?', 'reply').then(function() { startListening(); });
   }
 
@@ -882,7 +896,7 @@
     el.id = 'edith-panel';
     el.className = 'jarvis-help edith-panel';
     var wakeOn = lsGet('edith-wake', '1') === '1';
-    var p = fxParams(lsGet('edith-fx-preset', 'assistant'));
+    var p = fxParams(lsGet('edith-fx-preset', 'edith'));
     el.innerHTML =
       '<div class="jh-title">EDITH</div>' +
       '<div class="jh-row"><b>Click orb / hold V or Space</b> talk &middot; <b>Esc</b> interrupt &middot; <b>B</b> brief</div>' +
@@ -895,8 +909,8 @@
       '<div class="ep-section">AI Voice Character</div>' +
       '<div class="jh-row"><label><input type="checkbox" id="ep-fx" ' + (fxEnabled() ? 'checked' : '') + '> AI processing</label></div>' +
       '<div class="jh-row ep-presets">' +
-        ['subtle', 'assistant', 'system', 'off'].map(function(name) {
-          var cur = lsGet('edith-fx-preset', 'assistant');
+        ['edith', 'assistant', 'subtle', 'system', 'off'].map(function(name) {
+          var cur = lsGet('edith-fx-preset', 'edith');
           return '<button class="ep-preset' + (cur === name ? ' active' : '') + '" data-p="' + name + '">' + name + '</button>';
         }).join('') +
       '</div>' +
@@ -913,6 +927,10 @@
       '<div class="jh-row ep-presets"><button id="ep-audition" class="ep-preset">audition</button>' +
       '<button id="ep-voice-set" class="ep-preset">set</button>' +
       '<button id="ep-voice-reset" class="ep-preset">reset to default</button></div>' +
+      '<div class="ep-section">Wake track</div>' +
+      '<div class="jh-row ep-dim">Plays on every "Hey Edith". Upload YOUR OWN legally-obtained MP3 (e.g. your copy of Back in Black) — nothing copyrighted ships with the dashboard.</div>' +
+      '<div class="jh-row"><input type="file" id="ep-track" accept="audio/mpeg,audio/mp3" class="ep-input"></div>' +
+      '<div class="jh-row ep-presets"><button id="ep-track-up" class="ep-preset">upload</button><button id="ep-track-rm" class="ep-preset">remove</button><button id="ep-track-test" class="ep-preset">test</button></div>' +
       '<div class="ep-section">Status</div>' +
       '<div class="jh-row ep-dim" id="ep-status">checking…</div>' +
       '<div class="jh-close">esc or ? to close</div>';
@@ -956,6 +974,22 @@
         lsSet('edith-fx-' + this.dataset.fx, this.value);
         lsSet('edith-fx-custom', '1');
       });
+    });
+    el.querySelector('#ep-track-up').addEventListener('click', async function() {
+      var f = el.querySelector('#ep-track').files[0];
+      if (!f) return note('Choose an MP3 first.');
+      var fd = new FormData(); fd.append('file', f);
+      var resp = await fetch('/dashboard/api/entrance-audio', { method: 'POST', body: fd });
+      var data = await resp.json();
+      note(data.ok ? 'Track uploaded — say "Hey Edith".' : ('Upload failed: ' + (data.error || resp.status)));
+    });
+    el.querySelector('#ep-track-rm').addEventListener('click', async function() {
+      await fetch('/dashboard/api/entrance-audio', { method: 'DELETE' });
+      note('Track removed — default sting restored.');
+    });
+    el.querySelector('#ep-track-test').addEventListener('click', function() {
+      playEntranceAudio();
+      setTimeout(stopEntrance, 5000);
     });
     el.querySelector('#ep-audition').addEventListener('click', function() {
       var vid = el.querySelector('#ep-voice-id').value.trim();
