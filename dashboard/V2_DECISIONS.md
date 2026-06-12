@@ -78,3 +78,17 @@
   honestly in UI (uses browser speech service, NOT on-device). Auto-prefers Porcupine when
   PICOVOICE_ACCESS_KEY appears. Wake/query listeners share one recognizer — wake pauses
   during active listening and on hidden tabs, resumes after.
+
+## EDITH single-audio-authority rebuild (2026-06-12)
+- Phase 0 found: wake double-fire (interim+final transcripts, no idempotency), 7 unowned
+  sound sources, no mixer, boot SFX at full scale, mp3 never uploaded to server. Confirmed
+  by Rydel before surgery.
+- Phases 1-3 are one coherent edith.js rewrite (audioManager + state machine + fx + synth
+  can't be split without shipping broken intermediates); committed as one, then P4 server,
+  then P5/report — noted as deviation from commit-per-phase.
+- Default conversational preset back to Subtle per spec (the earlier 'edith' 52% preset
+  removed; System at 45% covers the heavy moments). Rydel can push Subtle's sliders up.
+- Re-wake music blast removed per spec (second wake = chime + "Yes, Rydel?" only). Music
+  rides the boot; "keep playing after boot" toggle added.
+- Default sting deleted: empty slot → synth power-up only (no 404 player errors; client
+  checks slot status before attempting playback).
