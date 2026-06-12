@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>EDITH HUD — reference implementation</title>
+<!-- Reference file as provided by Rydel — the spec. Kept in repo for side-by-side comparison. -->
+<style>
+  body{margin:0;background:#0B1623;font-family:ui-monospace,Menlo,monospace;color:#EEF4FA;
+       display:flex;flex-direction:column;align-items:center;gap:16px;padding:28px}
+  h1{font-size:14px;font-weight:500;letter-spacing:.2em;color:#7A9ABF;margin:0}
+  #edith-hud{position:relative;width:min(960px,94vw);height:520px;background:#101F30;
+             border-radius:12px;overflow:hidden}
+  .eh-brk{position:absolute;width:28px;height:28px;border:2px solid #2E6EA6;opacity:.75}
+  .eh-tl{top:12px;left:12px;border-right:0;border-bottom:0}
+  .eh-tr{top:12px;right:12px;border-left:0;border-bottom:0}
+  .eh-bl{bottom:12px;left:12px;border-right:0;border-top:0}
+  .eh-br{bottom:12px;right:12px;border-left:0;border-top:0}
+  #eh-scan{position:absolute;left:0;right:0;top:-2px;height:2px;background:#2E6EA6;opacity:0;
+           animation:ehScan 8s linear infinite}
+  @keyframes ehScan{0%{transform:translateY(0);opacity:0}4%{opacity:.35}
+                    46%{transform:translateY(520px);opacity:.35}50%,100%{transform:translateY(520px);opacity:0}}
+  #eh-radar{position:absolute;top:20px;right:20px;width:92px;height:92px;
+            border:1px solid #2E6EA6;border-radius:50%;opacity:.8}
+  #eh-radar:before{content:"";position:absolute;inset:26px;border:1px solid #2E6EA6;
+                   border-radius:50%;opacity:.5}
+  #eh-rline{position:absolute;left:50%;top:50%;width:1.5px;height:46px;background:#7FB6E6;
+            transform-origin:top center;animation:ehSpin 4s linear infinite}
+  .eh-blip{position:absolute;width:5px;height:5px;border-radius:50%;background:#5FA0D8;
+           animation:ehBlip 2.6s ease-in-out infinite}
+  @keyframes ehBlip{0%,100%{opacity:.25}50%{opacity:1}}
+  #eh-stage{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+            justify-content:center;gap:14px}
+  #eh-orbwrap{position:relative;width:240px;height:240px}
+  #eh-rings{position:absolute;inset:0}
+  #eh-rings circle{transform-origin:120px 120px;fill:none}
+  .eh-r1{stroke:#2E6EA6;stroke-width:2;stroke-dasharray:32 14;animation:ehSpin 14s linear infinite}
+  .eh-r2{stroke:#3E7FB8;stroke-width:1.5;stroke-dasharray:6 10;animation:ehSpinRev 18s linear infinite;opacity:.85}
+  .eh-r3{stroke:#7A9ABF;stroke-width:1;stroke-dasharray:2 9;animation:ehSpin 26s linear infinite;opacity:.6}
+  .eh-swp{stroke:#9CC4E8;stroke-width:3;stroke-dasharray:50 640;animation:ehSpin 6s linear infinite;opacity:0}
+  @keyframes ehSpin{to{transform:rotate(360deg)}}
+  @keyframes ehSpinRev{to{transform:rotate(-360deg)}}
+  [data-state="thinking"] .eh-r1{animation-duration:3s}
+  [data-state="thinking"] .eh-r2{animation-duration:4.5s}
+  [data-state="thinking"] .eh-r3{animation-duration:7s}
+  [data-state="thinking"] .eh-swp{opacity:.95;animation-duration:1.6s}
+  [data-state="listening"] .eh-swp{opacity:.5;animation-duration:3.5s}
+  #eh-halo1,#eh-halo2,#eh-core{position:absolute;border-radius:50%}
+  #eh-halo1{inset:66px;background:#2E6EA6;opacity:.14}
+  #eh-halo2{inset:82px;background:#2E6EA6;opacity:.22}
+  #eh-core{inset:96px;background:#5FA0D8;animation:ehBreathe 3.4s ease-in-out infinite}
+  [data-state="thinking"] #eh-core{animation-duration:1.1s;background:#7FB6E6}
+  [data-state="speaking"] #eh-core{animation-duration:.7s}
+  @keyframes ehBreathe{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+  .eh-pulse{position:absolute;inset:76px;border:1.5px solid #5FA0D8;border-radius:50%;
+            opacity:.8;animation:ehPulse 1.5s ease-out forwards;pointer-events:none}
+  @keyframes ehPulse{to{transform:scale(2.3);opacity:0}}
+  #eh-tick{min-height:20px;font-size:12px;letter-spacing:.18em;color:#9CC4E8}
+  .eh-cur{animation:ehBlink 1s steps(1) infinite}
+  @keyframes ehBlink{50%{opacity:0}}
+  #eh-wave{display:flex;gap:3px;height:28px;align-items:flex-end;min-width:130px;justify-content:center}
+  #eh-wave i{width:4px;background:#5FA0D8;border-radius:1px;height:4px}
+  #eh-cap{font-size:12.5px;color:#C9DCEF;min-height:16px;letter-spacing:.05em}
+  #eh-controls{display:flex;gap:10px}
+  #eh-controls button{background:transparent;border:1px solid #2E6EA6;color:#9CC4E8;
+    font:inherit;font-size:12px;letter-spacing:.1em;padding:8px 16px;border-radius:8px;cursor:pointer}
+  #eh-controls button:hover{background:#16293E}
+  @media (prefers-reduced-motion: reduce){
+    #edith-hud *{animation-duration:0.01s !important;animation-iteration-count:1 !important}
+  }
+</style>
+</head>
+<body>
+<h1>EDITH HUD — REFERENCE</h1>
+<div id="edith-hud" data-state="thinking">
+  <div class="eh-brk eh-tl"></div><div class="eh-brk eh-tr"></div>
+  <div class="eh-brk eh-bl"></div><div class="eh-brk eh-br"></div>
+  <canvas id="eh-shards" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
+  <div id="eh-scan"></div>
+  <div id="eh-radar" title="systems radar">
+    <div id="eh-rline"></div>
+    <span class="eh-blip" style="top:13px;left:55px" title="CASH"></span>
+    <span class="eh-blip" style="top:50px;left:15px;animation-delay:.6s" title="MRR"></span>
+    <span class="eh-blip" style="top:68px;left:63px;animation-delay:1.2s" title="FUNNEL"></span>
+    <span class="eh-blip" style="top:30px;left:33px;animation-delay:1.8s" title="TEAM"></span>
+  </div>
+  <div id="eh-stage">
+    <div id="eh-orbwrap">
+      <svg id="eh-rings" viewBox="0 0 240 240">
+        <circle class="eh-r3" cx="120" cy="120" r="110"/>
+        <circle class="eh-r2" cx="120" cy="120" r="94"/>
+        <circle class="eh-r1" cx="120" cy="120" r="78"/>
+        <circle class="eh-swp" cx="120" cy="120" r="78"/>
+      </svg>
+      <div id="eh-halo1"></div><div id="eh-halo2"></div><div id="eh-core"></div>
+      <div id="eh-pl"></div>
+    </div>
+    <div id="eh-tick">ANALYSING ENGINES<span class="eh-cur">▌</span></div>
+    <div id="eh-wave"></div>
+    <div id="eh-cap"></div>
+  </div>
+</div>
+<div id="eh-controls">
+  <button onclick="EDITH_HUD.setState('idle')">IDLE</button>
+  <button onclick="EDITH_HUD.setState('listening')">LISTENING</button>
+  <button onclick="EDITH_HUD.setState('thinking')">THINKING</button>
+  <button onclick="EDITH_HUD.setState('speaking')">SPEAKING</button>
+</div>
+<script src="dashboard/static/js/hud.js"></script>
+</body>
+</html>

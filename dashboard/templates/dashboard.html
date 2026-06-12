@@ -7,7 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/dashboard/static/css/dashboard.css">
+<link rel="stylesheet" href="/dashboard/static/css/dashboard.css?v={{ asset_v }}">
+<link rel="stylesheet" href="/dashboard/static/css/hud.css?v={{ asset_v }}">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
@@ -555,12 +556,42 @@
   </div>
 </div>
 
+<!-- EDITH HUD — verbatim from edith-hud-reference.html (overlay layer) -->
+<div id="edith-hud" data-state="idle">
+  <div class="eh-brk eh-tl"></div><div class="eh-brk eh-tr"></div>
+  <div class="eh-brk eh-bl"></div><div class="eh-brk eh-br"></div>
+  <canvas id="eh-shards"></canvas>
+  <div id="eh-scan"></div>
+  <div id="eh-radar" title="systems radar">
+    <div id="eh-rline"></div>
+    <span class="eh-blip" style="top:13px;left:55px" title="CASH"></span>
+    <span class="eh-blip" style="top:50px;left:15px;animation-delay:.6s" title="MRR"></span>
+    <span class="eh-blip" style="top:68px;left:63px;animation-delay:1.2s" title="FUNNEL"></span>
+    <span class="eh-blip" style="top:30px;left:33px;animation-delay:1.8s" title="TEAM"></span>
+  </div>
+  <div id="eh-stage">
+    <div id="eh-orbwrap">
+      <svg id="eh-rings" viewBox="0 0 240 240">
+        <circle class="eh-r3" cx="120" cy="120" r="110"/>
+        <circle class="eh-r2" cx="120" cy="120" r="94"/>
+        <circle class="eh-r1" cx="120" cy="120" r="78"/>
+        <circle class="eh-swp" cx="120" cy="120" r="78"/>
+      </svg>
+      <div id="eh-halo1"></div><div id="eh-halo2"></div><div id="eh-core"></div>
+      <div id="eh-pl"></div>
+    </div>
+    <div id="eh-tick">EDITH — STANDBY</div>
+    <div id="eh-wave"></div>
+    <div id="eh-cap"></div>
+  </div>
+</div>
+
 <script>window.__SNAP__ = {{ boot_snapshot | default('null') | safe }};
 window.__EDITH_CFG__ = {{ edith_cfg | default('{}') | safe }};</script>
-<script src="/dashboard/static/js/dashboard.js"></script>
-<script src="/dashboard/static/js/chat.js"></script>
-<script src="/dashboard/static/js/export.js"></script>
-<script src="/dashboard/static/js/edith.js"></script>
-<script src="/dashboard/static/js/stark-hud.js"></script>
+<script src="/dashboard/static/js/dashboard.js?v={{ asset_v }}"></script>
+<script src="/dashboard/static/js/chat.js?v={{ asset_v }}"></script>
+<script src="/dashboard/static/js/export.js?v={{ asset_v }}"></script>
+<script src="/dashboard/static/js/edith.js?v={{ asset_v }}"></script>
+<script src="/dashboard/static/js/hud.js?v={{ asset_v }}"></script>
 </body>
 </html>

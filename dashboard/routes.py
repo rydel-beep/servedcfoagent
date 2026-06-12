@@ -17,6 +17,11 @@ from config import CFO_REFRESH_KEY
 
 logger = logging.getLogger(__name__)
 
+# Cache-bust static assets per deploy: Railway exposes the git sha; fall back
+# to process start time so every restart still busts.
+import time as _time
+_ASSET_VERSION = (os.environ.get("RAILWAY_GIT_COMMIT_SHA", "") or str(int(_time.time())))[:12]
+
 bp = Blueprint(
     "dashboard",
     __name__,
@@ -47,7 +52,8 @@ def index():
         "wakePpnPresent": wake_ppn,
         "wakePpnPath": "/dashboard/static/wake/hey_edith_wasm.ppn",
     })
-    return render_template("dashboard.html", boot_snapshot=boot, edith_cfg=edith_cfg)
+    return render_template("dashboard.html", boot_snapshot=boot, edith_cfg=edith_cfg,
+                           asset_v=_ASSET_VERSION)
 
 
 @bp.route("/login", methods=["GET"])

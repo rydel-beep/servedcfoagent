@@ -271,7 +271,7 @@
 
         var url = '/dashboard/api/tts?text=' + encodeURIComponent(text);
         if (opts.voiceId) url += '&voice_id=' + encodeURIComponent(opts.voiceId);
-        try { window.dispatchEvent(new CustomEvent('edith:tts', { detail: { phase: 'synth' } })); } catch (ev) {}
+        try { window.dispatchEvent(new CustomEvent('edith:tts', { detail: { phase: 'synth', text: text } })); } catch (ev) {}
         var el = new Audio(url);
         el.volume = 1;                     // gain lives in the mixer, not the element
         currentEl = el;
