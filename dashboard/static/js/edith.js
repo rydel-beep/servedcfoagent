@@ -770,6 +770,13 @@
     for (var i = 0; i < micBuf.length; i++) { var d = (micBuf[i] - 128) / 128; sum += d * d; }
     return Math.sqrt(sum / micBuf.length);
   }
+  function micPeak() {
+    if (!micAnalyser) return 0;
+    micAnalyser.getByteTimeDomainData(micBuf);
+    var peak = 0;
+    for (var i = 0; i < micBuf.length; i++) { var d = Math.abs((micBuf[i] - 128) / 128); if (d > peak) peak = d; }
+    return peak;
+  }
 
   // ═════════════════════════════════════════════════════════
   //  ENDPOINTING (Phase 6 — preserved): adaptive silence ×
@@ -1307,8 +1314,25 @@
   var _calib = null;            // calibration overlay state
 
   function clapSens() { return Math.min(3, Math.max(0.5, lsNum('edith-clap-sens', 1.5))); }
-  // higher slider = more sensitive: threshold = floor × (12 / sens)
-  function clapThreshold() { return Math.max(0.02, _noiseFloor * (12 / clapSens())); }
+  // higher slider = more sensitive: threshold = floor × (9 / sens), absolute floor 0.04 peak
+  function clapThreshold() { return Math.max(0.04, _noiseFloor * (9 / clapSens())); }
+
+  var _ctxSuspendedNoted = false;
+  function _clapCtxAlive() {
+    try {
+      var c = audioManager.ensure();
+      if (c.state === 'suspended') {
+        c.resume();   // sticks after the first user gesture
+        if (!_ctxSuspendedNoted) {
+          _ctxSuspendedNoted = true;
+          note('Clap wake is waiting for one click/tap (browser audio policy) — then it hears you.', 8000);
+        }
+        return false;
+      }
+      _ctxSuspendedNoted = false;
+      return true;
+    } catch (e) { return false; }
+  }
 
   function spectralFlatness() {
     if (!micAnalyser) return 0;
@@ -1327,6 +1351,7 @@
     if (!clapArmed) return;
     clapRAF = requestAnimationFrame(clapLoop);
     if (hiddenTab() || !micAnalyser) return;
+    if (!_clapCtxAlive()) return;   // suspended ctx = silent analyser; resume + wait
     var t0 = performance.now();
 
     // HARD GATE: never listen for claps while EDITH outputs anything —
@@ -1336,30 +1361,32 @@
     // state guard: claps act only from IDLE (and not mid-listen)
     if (listening || state !== S.IDLE) { _onset = null; return; }
 
-    var rms = micRMS();
+    var peak = micPeak();   // claps are spikes — peak beats RMS for onsets
     var now = performance.now();
 
-    // adaptive noise floor: slow EMA, never learns during a transient
-    if (!_onset && rms < clapThreshold()) {
-      _noiseFloor = _noiseFloor * 0.995 + rms * 0.005;
-      _noiseFloor = Math.max(0.002, Math.min(0.08, _noiseFloor));
+    // adaptive noise floor on peaks: slow EMA, never learns during a transient
+    if (!_onset && peak < clapThreshold()) {
+      _noiseFloor = _noiseFloor * 0.99 + peak * 0.01;
+      _noiseFloor = Math.max(0.004, Math.min(0.15, _noiseFloor));
     }
 
     if (_onset) {
-      // decay check: must fall back near floor within ~130ms, else reject (tonal/sustained)
-      if (now - _onset.at > 130) {
-        var decayed = rms < Math.max(_noiseFloor * 2.5, 0.015);
-        if (decayed && _onset.flat > 0.30) registerClap(_onset);
-        else if (_calib) calibBlip(_onset, false, decayed ? 'tonal' : 'no decay');
+      // decay check: spike must die within ~180ms, else reject (tonal/sustained)
+      if (now - _onset.at > 180) {
+        var decayed = peak < Math.max(_noiseFloor * 3.5, 0.05);
+        if (decayed && _onset.flat > 0.22) registerClap(_onset);
+        else if (_calib) calibBlip(_onset, false, decayed ? 'tonal (flat ' + _onset.flat.toFixed(2) + ')' : 'no decay');
         _onset = null;
+      } else if (peak > _onset.peak) {
+        _onset.peak = peak;   // track the true spike height
       }
     } else {
-      var fastRise = _prevRms[0] < Math.max(_noiseFloor * 2, 0.012);
-      if (rms > clapThreshold() && fastRise) {
-        _onset = { at: now, peak: rms, flat: spectralFlatness() };
+      var fastRise = _prevRms[0] < clapThreshold() * 0.6;
+      if (peak > clapThreshold() && fastRise) {
+        _onset = { at: now, peak: peak, flat: spectralFlatness() };
       }
     }
-    _prevRms.shift(); _prevRms.push(rms);
+    _prevRms.shift(); _prevRms.push(peak);
 
     _clapLoopCost.push(performance.now() - t0);
     if (_clapLoopCost.length > 400) _clapLoopCost.shift();
@@ -1468,17 +1495,25 @@
     el.querySelector('#calib-testonly').addEventListener('change', function() { _calib.testOnly = this.checked; });
     el.querySelector('#calib-close').addEventListener('click', closeCalibration);
     if (!clapArmed) armClap();   // calibration needs the detector live
+    var readout = document.createElement('div');
+    readout.className = 'jh-row ep-dim calib-readout';
+    el.insertBefore(readout, el.querySelector('.calib-flash'));
     (function meterLoop() {
       if (!_calib) return;
       var g = _calib.meter;
       g.clearRect(0, 0, 280, 44);
-      var rms = micRMS();
-      g.fillStyle = 'rgba(91,155,208,0.8)';
-      g.fillRect(0, 14, Math.min(rms * 1400, 280), 16);
-      var fx = Math.min(_noiseFloor * 1400, 280);
+      var pk = micPeak();
+      var ctxOk = false;
+      try { ctxOk = audioManager.ensure().state === 'running'; } catch (e) {}
+      g.fillStyle = pk > clapThreshold() ? 'rgba(52,201,142,0.9)' : 'rgba(91,155,208,0.8)';
+      g.fillRect(0, 14, Math.min(pk * 350, 280), 16);
+      var fx = Math.min(_noiseFloor * 350, 280);
       g.fillStyle = 'rgba(122,154,191,0.8)'; g.fillRect(fx, 6, 1.5, 32);
-      var tx = Math.min(clapThreshold() * 1400, 280);
+      var tx = Math.min(clapThreshold() * 350, 280);
       g.fillStyle = 'rgba(232,180,69,0.95)'; g.fillRect(tx, 2, 2, 40);
+      readout.textContent = ctxOk
+        ? ('peak ' + pk.toFixed(3) + ' · floor ' + _noiseFloor.toFixed(3) + ' · trigger ' + clapThreshold().toFixed(3))
+        : '⚠ audio engine suspended — click anywhere once, then the meter goes live';
       requestAnimationFrame(meterLoop);
     })();
   }
