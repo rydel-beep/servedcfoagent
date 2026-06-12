@@ -175,3 +175,82 @@ def test_brief_endpoint_with_auth():
     if resp.status_code == 200:
         data = resp.get_json()
         assert data["text"] and data["source"] in ("model", "template")
+
+
+# ── EDITH: greeting, weather, voice config ───────────────────────────────────
+
+def test_greeting_rejects_unauthenticated():
+    c = _client()
+    assert c.get("/dashboard/api/greeting").status_code == 302
+
+
+def test_voice_config_rejects_unauthenticated():
+    c = _client()
+    assert c.post("/dashboard/api/voice-config", json={}).status_code == 302
+
+
+def test_greeting_skips_weather_gracefully(monkeypatch):
+    """Weather down → greeting still composes (time + headline + open)."""
+    import dashboard.voice as voice_mod
+    monkeypatch.setattr(voice_mod, "get_newcastle_weather", lambda: None)
+    out = voice_mod.build_greeting(_fake_snap())
+    assert out["weather"] is None
+    t = out["text"]
+    assert "Rydel" in t and "What do you need?" in t
+    assert "$140,000" in t and "3.6" in t   # engine headline survives
+    assert "Newcastle" not in t
+
+
+def test_greeting_includes_weather_when_available(monkeypatch):
+    import dashboard.voice as voice_mod
+    monkeypatch.setattr(voice_mod, "get_newcastle_weather",
+                        lambda: {"temp_c": 18.2, "condition": "clear", "high_c": 22.4})
+    t = voice_mod.build_greeting(_fake_snap())["text"]
+    assert "18 and clear in Newcastle" in t and "high of 22" in t
+
+
+def test_greeting_time_of_day_sydney(monkeypatch):
+    """Greeting salutation must follow Sydney time, not server/UTC time."""
+    import dashboard.voice as voice_mod
+    from helpers import now_sydney
+    hour = now_sydney().hour
+    expected = "morning" if hour < 12 else ("afternoon" if hour < 18 else "evening")
+    assert f"Good {expected}" in voice_mod.build_greeting(_fake_snap())["text"]
+
+
+def test_voice_config_set_and_reset(tmp_path, monkeypatch):
+    import dashboard.voice as voice_mod
+    monkeypatch.setattr(voice_mod, "_VOICE_CONFIG_FILE", str(tmp_path / "vc.json"))
+    voice_mod.save_voice_config({"voice_id": "abc123", "stability": 0.7})
+    assert voice_mod.active_voice_id() == "abc123"
+    assert voice_mod.active_voice_settings()["stability"] == 0.7
+    # empty body resets to the locked default
+    voice_mod.save_voice_config({})
+    assert voice_mod.active_voice_id() == "yj30vwTGJxSHezdAGsv9"
+    assert voice_mod.active_voice_settings() == {"stability": 0.55, "similarity_boost": 0.75}
+
+
+def test_voice_config_rejects_garbage():
+    import dashboard.voice as voice_mod
+    out = voice_mod.save_voice_config({"voice_id": "x" * 500, "stability": 9, "similarity": -1})
+    assert len(out["voice_id"]) == 64      # clamped
+    assert "stability" not in out          # out-of-range dropped
+    voice_mod.save_voice_config({})        # reset
+
+
+def test_voice_addendum_is_edith():
+    from dashboard.chat import VOICE_ADDENDUM
+    assert "EDITH" in VOICE_ADDENDUM and "Jarvis" not in VOICE_ADDENDUM
+
+
+def test_weather_cache_shape(monkeypatch):
+    """A cached weather payload is returned without a second network hit."""
+    import dashboard.voice as voice_mod, time as _t
+    voice_mod._weather_cache.update(ts=_t.time(), data={"temp_c": 20, "condition": "clear", "high_c": 23})
+    called = {"n": 0}
+    class _Boom:
+        def __call__(self, *a, **k): called["n"] += 1; raise AssertionError("network hit despite cache")
+    monkeypatch.setattr(voice_mod.requests, "get", _Boom())
+    assert voice_mod.get_newcastle_weather()["temp_c"] == 20
+    assert called["n"] == 0
+    voice_mod._weather_cache.update(ts=0.0, data=None)

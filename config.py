@@ -103,6 +103,9 @@ CASH_CONFIRMED_DATE = os.getenv("CASH_CONFIRMED_DATE", "2026-06-04")
 # ── Snapshot ─────────────────────────────────────────────────────────────────
 SNAPSHOT_FILE = os.getenv("SNAPSHOT_FILE", "snapshot_state.json")
 CFO_REFRESH_KEY = os.getenv("CFO_REFRESH_KEY", "")
+# Picovoice (wake word) — client-side by design (WASM init); injected only
+# into the authed dashboard page, never into public assets.
+PICOVOICE_ACCESS_KEY = os.getenv("PICOVOICE_ACCESS_KEY", "")
 
 # ── Timeouts ─────────────────────────────────────────────────────────────────
 HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "10"))

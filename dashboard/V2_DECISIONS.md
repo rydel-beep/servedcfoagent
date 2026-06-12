@@ -57,3 +57,17 @@
   User slot dashboard/static/audio/entrance.mp3 is gitignored; no copyrighted audio bundled.
 - TTS caps in-memory (resets on deploy) — acceptable for a cost backstop, documented.
 - Stretch items (wake word, conversation mode) deferred per ship-priority.
+
+## EDITH suite decisions (2026-06-12)
+- Supersedes voice.js (removed) — edith.js is the single voice client. Internal JS API name
+  window.JarvisChat kept (not user-visible) to avoid churn in chat.js consumers.
+- No hey_edith_wasm.ppn at build time → interim built-in "Jarvis" keyword, labeled in UI;
+  code hot-loads the custom .ppn when present (server flags presence into __EDITH_CFG__).
+- PICOVOICE_ACCESS_KEY unverifiable locally (railway CLI unlinked) — wake toggle explains
+  itself if absent; click/hold-V unaffected.
+- Micro-doubling "detune" implemented as LFO-modulated 14ms delay (chorus ≈8 cents perceived)
+  — true pitch-shift needs a worklet; chorus achieves the read at zero latency.
+- Greeting is deterministic server composition (engine values + Open-Meteo), not model-written:
+  faster, never fabricates, weather skips gracefully.
+- Voice audition persists to state/voice_config.json (Railway volume) so a "set" survives
+  restarts; empty POST resets to the locked FRIDAY voice.

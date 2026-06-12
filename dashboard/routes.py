@@ -39,7 +39,15 @@ def index():
     snap = load_persisted()
     # </ must not appear inside an inline <script> block
     boot = _json.dumps(snap).replace("</", "<\\/") if snap else "null"
-    return render_template("dashboard.html", boot_snapshot=boot)
+    from config import PICOVOICE_ACCESS_KEY
+    wake_ppn = os.path.exists(os.path.join(
+        os.path.dirname(__file__), "static", "wake", "hey_edith_wasm.ppn"))
+    edith_cfg = _json.dumps({
+        "picovoiceKey": PICOVOICE_ACCESS_KEY,   # authed page only, by design
+        "wakePpnPresent": wake_ppn,
+        "wakePpnPath": "/dashboard/static/wake/hey_edith_wasm.ppn",
+    })
+    return render_template("dashboard.html", boot_snapshot=boot, edith_cfg=edith_cfg)
 
 
 @bp.route("/login", methods=["GET"])
@@ -172,11 +180,13 @@ def api_tts():
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
         text = data.get("text", "")
+        voice_id = data.get("voice_id")
     else:
         text = request.args.get("text", "")
+        voice_id = request.args.get("voice_id")
 
     try:
-        gen = stream_tts(text)
+        gen = stream_tts(text, voice_id_override=voice_id)
         # Pull the first chunk eagerly so failures surface as JSON, not mid-stream
         first = next(gen)
     except (RuntimeError, StopIteration) as e:
@@ -218,6 +228,29 @@ def api_brief():
     token = request.cookies.get(COOKIE_NAME, "anon")
     result = build_brief(snap, history, token)
     return jsonify(result)
+
+
+@bp.route("/api/greeting", methods=["GET"])
+@require_auth
+def api_greeting():
+    """EDITH's wake-sequence greeting: time-of-day + live Newcastle weather
+    (15-min cache, graceful skip) + one engine headline."""
+    from snapshot import load_persisted
+    from dashboard.voice import build_greeting
+    snap = load_persisted() or {}
+    return jsonify(build_greeting(snap))
+
+
+@bp.route("/api/voice-config", methods=["POST"])
+@require_auth
+def api_voice_config():
+    """Set the runtime voice (audition tool): {voice_id, stability, similarity}.
+    Empty body resets to the locked default. No redeploy needed."""
+    from dashboard.voice import save_voice_config, tts_usage
+    cfg = save_voice_config(request.get_json(silent=True) or {})
+    out = tts_usage()
+    out["saved"] = cfg
+    return jsonify(out)
 
 
 @bp.route("/api/hiring-scenario", methods=["POST"])

@@ -125,7 +125,7 @@
     });
   }
 
-  // Context-aware Jarvis suggested questions
+  // Context-aware EDITH suggested questions
   function renderChatChips(snap) {
     var wrap = document.getElementById('chat-chips');
     if (!wrap) return;
@@ -186,7 +186,7 @@
     items.push({ label: 'Refresh data', hint: 'action', run: function() { var b = $('#btn-refresh'); if (b) b.click(); } });
     items.push({ label: 'Download CFO briefing PDF', hint: 'action', run: function() { var b = $('#btn-briefing-pdf'); if (b) b.click(); } });
     items.push({ label: 'Export sales summary', hint: 'action', run: function() { var b = $('#btn-export-sales'); if (b) b.click(); } });
-    items.push({ label: 'Ask Jarvis\u2026', hint: '/ to chat', run: function() { var b = $('#btn-chat-toggle'); if (b) b.click(); } });
+    items.push({ label: 'Ask EDITH\u2026', hint: '/ to chat', run: function() { var b = $('#btn-chat-toggle'); if (b) b.click(); } });
     return items;
   }
 

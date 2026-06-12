@@ -1907,3 +1907,128 @@ body.boot-seq .reactor { animation: spin 0.5s linear infinite, pulse 0.5s ease-i
   .jarvis-orb { right: 14px; bottom: 76px; width: 48px; height: 48px; }
   .jarvis-caption, .jarvis-help { right: 14px; bottom: 134px; max-width: 78vw; }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   EDITH — endpointing ring, armed indicator, boot HUD, wave strip, panel
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* silence-countdown progress ring (fills while EDITH waits for you to finish) */
+.orb-progress {
+  position: absolute; inset: -3px; width: 62px; height: 62px;
+  transform: rotate(-90deg); opacity: 0; transition: opacity 0.15s;
+  pointer-events: none;
+}
+.orb-progress.show { opacity: 1; }
+.orb-progress circle {
+  stroke: var(--amber); stroke-width: 2; stroke-linecap: round;
+  transition: stroke-dashoffset 0.08s linear;
+}
+
+/* wake-word armed indicator */
+.orb-armed {
+  position: absolute; top: -2px; right: -2px;
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--green); border: 2px solid var(--bg);
+  opacity: 0; transform: scale(0.5); transition: all 0.25s;
+}
+.jarvis-orb.armed .orb-armed { opacity: 1; transform: scale(1); animation: pulse 2.4s ease-in-out infinite; }
+
+/* speaking pulse synced to the POST-processed signal */
+.jarvis-orb.speaking .orb-core {
+  animation: none;
+  transform: scale(calc(1 + var(--speak-level, 0) * 0.14));
+  box-shadow: 0 0 calc(14px + var(--speak-level, 0) * 26px) rgba(91,155,208,0.75);
+  transition: transform 0.06s linear;
+}
+
+/* live waveform strip (cinematic mode) */
+.edith-wave {
+  position: fixed; right: 92px; bottom: 102px; z-index: 249;
+  width: 180px; height: 28px;
+  opacity: 0; transition: opacity 0.3s; pointer-events: none;
+  filter: drop-shadow(0 0 6px rgba(91,155,208,0.4));
+}
+.edith-wave.show { opacity: 0.9; }
+
+/* faint session HUD ring around the orb */
+.edith-hud-ring {
+  position: fixed; right: 8px; bottom: 72px; z-index: 248;
+  width: 88px; height: 88px; border-radius: 50%;
+  border: 1px dashed rgba(91,155,208,0.25);
+  opacity: 0; transition: opacity 0.6s; pointer-events: none;
+  animation: hud-rotate 24s linear infinite;
+}
+.jarvis-orb.session ~ * #edith-hud-ring { opacity: 1; }
+body:has(.jarvis-orb.session) .edith-hud-ring { opacity: 1; }
+@keyframes hud-rotate { to { transform: rotate(360deg); } }
+
+/* ── Boot HUD ── */
+.edith-boot-hud {
+  position: fixed; inset: 0; z-index: 350; pointer-events: none;
+}
+.ebh-sweep {
+  position: absolute; left: 50%; top: 50%;
+  width: 40px; height: 40px; border-radius: 50%;
+  border: 2px solid rgba(91,155,208,0.7);
+  transform: translate(-50%, -50%);
+  animation: ebh-sweep 1.6s cubic-bezier(0.2, 0.6, 0.2, 1) forwards;
+}
+@keyframes ebh-sweep {
+  0% { width: 40px; height: 40px; opacity: 1; border-width: 3px; }
+  100% { width: 260vmax; height: 260vmax; opacity: 0; border-width: 1px; }
+}
+.ebh-scan {
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(0deg,
+    transparent 0px, transparent 3px, rgba(91,155,208,0.025) 3px, rgba(91,155,208,0.025) 4px);
+  animation: ebh-scan 3s ease-out forwards;
+}
+@keyframes ebh-scan { 0% { opacity: 1; } 80% { opacity: 0.6; } 100% { opacity: 0; } }
+.ebh-caption {
+  position: absolute; left: 50%; top: 58%;
+  transform: translateX(-50%);
+  font-family: var(--font-display); font-size: 15px; letter-spacing: 6px;
+  color: var(--brand-tint); text-shadow: 0 0 18px rgba(91,155,208,0.8);
+  animation: ebh-caption 3s ease-out forwards;
+}
+@keyframes ebh-caption {
+  0% { opacity: 0; letter-spacing: 12px; }
+  25% { opacity: 1; letter-spacing: 6px; }
+  85% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* boot card cascade — retimed to a 60–90ms HUD stagger */
+body.boot-seq main > *:nth-child(1) { animation-delay: 0.10s; }
+body.boot-seq main > *:nth-child(2) { animation-delay: 0.17s; }
+body.boot-seq main > *:nth-child(3) { animation-delay: 0.25s; }
+body.boot-seq main > *:nth-child(4) { animation-delay: 0.33s; }
+body.boot-seq main > *:nth-child(5) { animation-delay: 0.42s; }
+body.boot-seq main > *:nth-child(n+6) { animation-delay: 0.5s; }
+
+/* ── EDITH panel additions ── */
+.edith-panel { width: 320px; max-height: 70vh; overflow-y: auto; }
+.ep-section {
+  margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border);
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--brand-muted);
+}
+.ep-presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.ep-preset {
+  padding: 4px 10px; border-radius: 12px;
+  background: var(--bg-inset-strong); border: 1px solid var(--border);
+  color: var(--text-secondary); font-size: 11px; cursor: pointer;
+  font-family: var(--font-ui); text-transform: capitalize;
+}
+.ep-preset:hover { border-color: var(--brand); color: var(--text); }
+.ep-preset.active { background: var(--accent-dim); border-color: var(--brand); color: var(--brand-tint); }
+.ep-adv summary { cursor: pointer; font-size: 11px; color: var(--text-muted); padding: 4px 0; }
+.ep-adv input[type="range"] { width: 150px; accent-color: var(--accent); vertical-align: middle; }
+.ep-input {
+  width: 100%; padding: 6px 9px;
+  background: var(--bg-inset); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text); font-size: 11px;
+  font-family: var(--font-ui);
+}
+.ep-input:focus { outline: none; border-color: var(--accent); }
+.ep-dim { color: var(--text-muted); font-size: 10px; }

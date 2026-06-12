@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Served CFO — Jarvis</title>
+<title>Served CFO — EDITH</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
@@ -18,7 +18,7 @@
 <header class="header">
   <div class="header-left">
     <div class="reactor"></div>
-    <h1 class="wordmark">JARVIS</h1>
+    <h1 class="wordmark">EDITH</h1>
     <span class="wordmark-sub">Served CFO</span>
   </div>
   <div class="header-right">
@@ -35,7 +35,7 @@
     <button class="icon-btn" id="btn-export-sales" title="Export Sales Summary" style="display:none">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" fill="currentColor"/></svg>
     </button>
-    <button class="icon-btn" id="btn-chat-toggle" title="Chat with Jarvis">
+    <button class="icon-btn" id="btn-chat-toggle" title="Chat with EDITH">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z" fill="currentColor"/></svg>
     </button>
   </div>
@@ -540,7 +540,7 @@
 <div class="chat-overlay" id="chat-overlay"></div>
 <div class="chat-panel" id="chat-panel">
   <div class="chat-header">
-    <span class="chat-title">Jarvis</span>
+    <span class="chat-title">EDITH</span>
     <span class="chat-context" id="chat-context"></span>
     <button class="chat-clear" id="chat-clear" title="Clear conversation" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:13px;padding:4px 8px;margin-right:4px;opacity:0.7;">Clear</button>
     <button class="chat-close" id="chat-close">&times;</button>
@@ -555,10 +555,11 @@
   </div>
 </div>
 
-<script>window.__SNAP__ = {{ boot_snapshot | default('null') | safe }};</script>
+<script>window.__SNAP__ = {{ boot_snapshot | default('null') | safe }};
+window.__EDITH_CFG__ = {{ edith_cfg | default('{}') | safe }};</script>
 <script src="/dashboard/static/js/dashboard.js"></script>
 <script src="/dashboard/static/js/chat.js"></script>
 <script src="/dashboard/static/js/export.js"></script>
-<script src="/dashboard/static/js/voice.js"></script>
+<script src="/dashboard/static/js/edith.js"></script>
 </body>
 </html>
