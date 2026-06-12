@@ -253,29 +253,46 @@ def api_voice_config():
     return jsonify(out)
 
 
-_ENTRANCE_DIR = "/data" if os.path.isdir("/data") else os.path.join(os.path.dirname(__file__), "..", "state")
-_ENTRANCE_FILE = os.path.join(_ENTRANCE_DIR, "entrance.mp3")
-_ENTRANCE_MAX_BYTES = 16 * 1024 * 1024
+# Entrance music slot: env-configurable, Railway-volume-aware.
+# /data (volume) survives redeploys; the app-dir fallback does NOT — the
+# status payload flags that so the UI can say "re-upload after each deploy".
+_HAS_VOLUME = os.path.isdir("/data")
+_ENTRANCE_FILE = os.environ.get(
+    "ENTRANCE_AUDIO_PATH",
+    "/data/entrance.mp3" if _HAS_VOLUME
+    else os.path.join(os.path.dirname(__file__), "..", "state", "entrance.mp3"))
+_ENTRANCE_MAX_BYTES = 15 * 1024 * 1024
+_ENTRANCE_TYPES = {"audio/mpeg", "audio/mp3", "audio/mp4", "audio/x-m4a", "audio/aac"}
+
+
+def _entrance_status() -> dict:
+    present = os.path.exists(_ENTRANCE_FILE)
+    return {
+        "present": present,
+        "bytes": os.path.getsize(_ENTRANCE_FILE) if present else 0,
+        "volatile": not _HAS_VOLUME and not os.environ.get("ENTRANCE_AUDIO_PATH"),
+    }
 
 
 @bp.route("/audio/entrance", methods=["GET"])
 @require_auth
 def audio_entrance():
-    """EDITH's wake track: Rydel's own uploaded file (Railway volume) if present,
-    else the bundled royalty-free sting. The build ships NO copyrighted audio —
-    the slot only ever holds a user-supplied file."""
+    """EDITH's wake track — the user-uploaded file only. The build ships NO
+    audio files; absent slot → 404 and the client plays the synth power-up."""
     from flask import send_file
     if os.path.exists(_ENTRANCE_FILE):
         return send_file(_ENTRANCE_FILE, mimetype="audio/mpeg", max_age=300)
-    default = os.path.join(os.path.dirname(__file__), "static", "audio", "entrance-default.wav")
-    return send_file(default, mimetype="audio/wav", max_age=300)
+    return jsonify({"error": "no entrance audio uploaded"}), 404
 
 
-@bp.route("/api/entrance-audio", methods=["POST", "DELETE"])
+@bp.route("/api/entrance-audio", methods=["GET", "POST", "DELETE"])
 @require_auth
 def api_entrance_audio():
-    """Upload (or remove) the user-supplied entrance track. Stored on the
-    volume, never in the repo."""
+    """Status / upload / remove for the user-supplied entrance track.
+    Stored at ENTRANCE_AUDIO_PATH (volume), never in the repo."""
+    if request.method == "GET":
+        return jsonify(_entrance_status())
+
     if request.method == "DELETE":
         if os.path.exists(_ENTRANCE_FILE):
             os.remove(_ENTRANCE_FILE)
@@ -284,14 +301,18 @@ def api_entrance_audio():
     f = request.files.get("file")
     if not f:
         return jsonify({"error": "no file"}), 400
+    if f.mimetype and f.mimetype not in _ENTRANCE_TYPES:
+        return jsonify({"error": f"unsupported type {f.mimetype} (mp3/m4a only)"}), 415
     blob = f.read(_ENTRANCE_MAX_BYTES + 1)
     if len(blob) > _ENTRANCE_MAX_BYTES:
-        return jsonify({"error": "file too large (16MB max)"}), 413
-    os.makedirs(_ENTRANCE_DIR, exist_ok=True)
+        return jsonify({"error": "file too large (15MB max)"}), 413
+    os.makedirs(os.path.dirname(_ENTRANCE_FILE), exist_ok=True)
     with open(_ENTRANCE_FILE, "wb") as out:
         out.write(blob)
-    logger.info("Entrance audio uploaded (%d bytes)", len(blob))
-    return jsonify({"ok": True, "present": True, "bytes": len(blob)})
+    logger.info("Entrance audio uploaded (%d bytes) -> %s", len(blob), _ENTRANCE_FILE)
+    out_status = _entrance_status()
+    out_status["ok"] = True
+    return jsonify(out_status)
 
 
 @bp.route("/api/hiring-scenario", methods=["POST"])
