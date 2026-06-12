@@ -586,6 +586,67 @@
   }
 
   // ── PHASE 3: boot HUD + greeting ─────────────────────────
+  function reactorSound() {
+    try {
+      var ctx = audioCtx();
+      var t0 = ctx.currentTime;
+      var out = ctx.createGain();
+      out.gain.value = 0.9 * (volume() || 0);
+      out.connect(ctx.destination);
+
+      // deep core swell
+      var sub = ctx.createOscillator(); sub.type = 'sine';
+      sub.frequency.setValueAtTime(46, t0);
+      sub.frequency.exponentialRampToValueAtTime(110, t0 + 1.0);
+      var subG = ctx.createGain();
+      subG.gain.setValueAtTime(0.0001, t0);
+      subG.gain.exponentialRampToValueAtTime(0.5, t0 + 0.5);
+      subG.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.4);
+      sub.connect(subG); subG.connect(out);
+
+      // turbine sweep through an opening filter
+      var saw = ctx.createOscillator(); saw.type = 'sawtooth';
+      saw.frequency.setValueAtTime(70, t0);
+      saw.frequency.exponentialRampToValueAtTime(660, t0 + 1.15);
+      var swFilt = ctx.createBiquadFilter(); swFilt.type = 'lowpass'; swFilt.Q.value = 6;
+      swFilt.frequency.setValueAtTime(180, t0);
+      swFilt.frequency.exponentialRampToValueAtTime(4200, t0 + 1.15);
+      var sawG = ctx.createGain();
+      sawG.gain.setValueAtTime(0.0001, t0);
+      sawG.gain.exponentialRampToValueAtTime(0.22, t0 + 0.7);
+      sawG.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.45);
+      saw.connect(swFilt); swFilt.connect(sawG); sawG.connect(out);
+
+      // charge shimmer (filtered noise rising)
+      var nBuf = ctx.createBuffer(1, ctx.sampleRate * 1.4, ctx.sampleRate);
+      var nd = nBuf.getChannelData(0);
+      for (var i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+      var noise = ctx.createBufferSource(); noise.buffer = nBuf;
+      var nFilt = ctx.createBiquadFilter(); nFilt.type = 'bandpass'; nFilt.Q.value = 2.2;
+      nFilt.frequency.setValueAtTime(500, t0);
+      nFilt.frequency.exponentialRampToValueAtTime(6500, t0 + 1.2);
+      var nG = ctx.createGain();
+      nG.gain.setValueAtTime(0.0001, t0);
+      nG.gain.exponentialRampToValueAtTime(0.10, t0 + 0.9);
+      nG.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.4);
+      noise.connect(nFilt); nFilt.connect(nG); nG.connect(out);
+
+      // ignition ping at the crest
+      var ping = ctx.createOscillator(); ping.type = 'sine';
+      ping.frequency.setValueAtTime(1760, t0 + 1.05);
+      var pG = ctx.createGain();
+      pG.gain.setValueAtTime(0.0001, t0 + 1.05);
+      pG.gain.exponentialRampToValueAtTime(0.25, t0 + 1.1);
+      pG.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.6);
+      ping.connect(pG); pG.connect(out);
+
+      sub.start(t0); sub.stop(t0 + 1.5);
+      saw.start(t0); saw.stop(t0 + 1.5);
+      noise.start(t0);
+      ping.start(t0 + 1.05); ping.stop(t0 + 1.7);
+    } catch (e) {}
+  }
+
   function chime() {
     try {
       var ctx = audioCtx();
@@ -625,14 +686,41 @@
     bootedThisSession = true;
     setSessionFx(true);
 
-    if (withAudio) playEntranceAudio();
+    reactorSound();   // arc-reactor ignition leads…
+    if (withAudio) setTimeout(playEntranceAudio, 650);   // …the track drops in behind it
 
     if (!reduced) {
       var hud = document.createElement('div');
       hud.className = 'edith-boot-hud';
-      hud.innerHTML = '<div class="ebh-sweep"></div><div class="ebh-scan"></div><div class="ebh-caption">EDITH — ONLINE</div>';
+      hud.innerHTML =
+        '<div class="ebh-sweep"></div><div class="ebh-scan"></div>' +
+        '<div class="ebh-console" id="ebh-console"></div>' +
+        '<div class="ebh-progress"><div class="ebh-progress-fill" id="ebh-pfill"></div><span class="ebh-pct" id="ebh-pct">0%</span></div>' +
+        '<div class="ebh-caption">EDITH — ONLINE</div>';
       document.body.appendChild(hud);
       document.body.classList.add('boot-seq');
+
+      // systems console: engines reporting in, Iron-Man style
+      var SYSTEMS = [
+        'ARC CORE', 'CASH ENGINE', 'FORWARD MRR MODEL', 'FUNNEL TELEMETRY',
+        'CLIENT HEALTH GRID', 'COMMS ARRAY', 'EDITH CORE',
+      ];
+      var consoleEl = hud.querySelector('#ebh-console');
+      var pfill = hud.querySelector('#ebh-pfill');
+      var pct = hud.querySelector('#ebh-pct');
+      SYSTEMS.forEach(function(name, i) {
+        setTimeout(function() {
+          if (!consoleEl.isConnected) return;
+          var row = document.createElement('div');
+          row.className = 'ebh-line';
+          row.innerHTML = '<span class="ebh-sys">' + name + '</span><span class="ebh-dots"></span><span class="ebh-ok">ONLINE</span>';
+          consoleEl.appendChild(row);
+          var p = Math.round(((i + 1) / SYSTEMS.length) * 100);
+          pfill.style.width = p + '%';
+          pct.textContent = p + '%';
+        }, 280 + i * 320);
+      });
+
       var cleanup = function() {
         document.body.classList.remove('boot-seq');
         hud.remove();
@@ -640,9 +728,9 @@
       };
       var skipper = function() { cleanup(); };
       setTimeout(function() { document.addEventListener('click', skipper, true); }, 150);
-      setTimeout(cleanup, 3300);
+      setTimeout(cleanup, 4200);
       setOrb('thinking');
-      await new Promise(function(r) { setTimeout(r, 2300); });
+      await new Promise(function(r) { setTimeout(r, 3100); });
     } else {
       await new Promise(function(r) { setTimeout(r, 250); });
     }

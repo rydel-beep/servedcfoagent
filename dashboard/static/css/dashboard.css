@@ -2115,3 +2115,48 @@ body.boot-seq .panel, body.boot-seq .kpi-strip {
   body.edith-session::before { animation: none; }
   .edith-brackets i { animation: none !important; }
 }
+
+/* ── EDITH boot console: systems reporting in ── */
+.ebh-console {
+  position: absolute; left: 50%; top: 24%;
+  transform: translateX(-50%);
+  width: min(86vw, 380px);
+  font-family: 'SF Mono', Menlo, monospace;
+  font-size: 11px; letter-spacing: 1px;
+}
+.ebh-line {
+  display: flex; align-items: baseline; gap: 8px;
+  color: var(--brand-muted);
+  animation: ebh-line-in 0.22s ease-out backwards;
+  padding: 3px 0;
+  text-shadow: 0 0 8px rgba(91,155,208,0.5);
+}
+@keyframes ebh-line-in {
+  from { opacity: 0; transform: translateX(-14px); filter: brightness(2.4); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+.ebh-sys { color: var(--brand-tint); }
+.ebh-dots { flex: 1; border-bottom: 1px dotted rgba(122,154,191,0.35); margin: 0 2px 3px; }
+.ebh-ok { color: var(--green); font-weight: 700; animation: ebh-ok-flash 0.5s ease-out; }
+@keyframes ebh-ok-flash {
+  0% { color: #fff; text-shadow: 0 0 14px rgba(52,201,142,0.9); }
+  100% { color: var(--green); }
+}
+.ebh-progress {
+  position: absolute; left: 50%; top: calc(24% + 178px);
+  transform: translateX(-50%);
+  width: min(86vw, 380px); height: 3px;
+  background: rgba(122,154,191,0.15); border-radius: 2px;
+}
+.ebh-progress-fill {
+  height: 100%; width: 0; border-radius: 2px;
+  background: linear-gradient(90deg, var(--brand), var(--brand-bright));
+  box-shadow: 0 0 12px rgba(91,155,208,0.7);
+  transition: width 0.3s ease-out;
+}
+.ebh-pct {
+  position: absolute; right: 0; top: 8px;
+  font-family: 'SF Mono', Menlo, monospace;
+  font-size: 10px; color: var(--brand-muted);
+}
+.edith-boot-hud .ebh-caption { top: 66%; }
