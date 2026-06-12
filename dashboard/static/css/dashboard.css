@@ -2160,3 +2160,22 @@ body.boot-seq .panel, body.boot-seq .kpi-strip {
   font-size: 10px; color: var(--brand-muted);
 }
 .edith-boot-hud .ebh-caption { top: 66%; }
+
+/* ── Power-up prompt (autoplay-gate moment, not a failure) ── */
+.edith-power-prompt {
+  position: fixed; inset: 0; z-index: 360;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 22px; cursor: pointer;
+  background: rgba(6,12,22,0.82); backdrop-filter: blur(6px);
+}
+.epp-core {
+  width: 86px; height: 86px; border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #9CCAEC 0%, var(--brand) 45%, var(--brand-navy) 100%);
+  box-shadow: 0 0 40px rgba(91,155,208,0.8), 0 0 120px rgba(46,110,166,0.5);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+.epp-text {
+  font-family: var(--font-display);
+  font-size: 14px; letter-spacing: 5px; color: var(--brand-tint);
+  text-shadow: 0 0 16px rgba(91,155,208,0.8);
+}

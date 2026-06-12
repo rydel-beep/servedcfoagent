@@ -238,6 +238,7 @@
   // ── TTS playback (ElevenLabs stream → fx graph; fallback chain) ──
   var currentAudio = null;
   var voiceStatus = null;
+  var lastSpokenText = '';
   var ttsFallbackNoted = false;
 
   function fxEnabled() { return lsGet('edith-fx-on', '1') === '1'; }
@@ -258,10 +259,23 @@
 
       var useEleven = voiceStatus && voiceStatus.elevenlabs_configured;
       if (!voiceStatus) {
-        note('Voice status unknown — refresh the page.', 5000);
-      } else if (!useEleven) {
+        // race guard: status fetch may still be in flight on early wakes —
+        // resolve it NOW rather than wrongly dropping to the browser voice
+        return refreshVoiceStatus().then(function() {
+          if (voiceStatus) return speak(text, context, opts).then(resolve);
+          note('Voice status unreachable — using browser voice.', 5000);
+          return browserSpeak(text).then(function() {
+            currentAudio = null; stopWave();
+            if (orbState === 'speaking') { setOrb('idle'); caption(''); }
+            resolve();
+          });
+        });
+      }
+      if (!useEleven) {
         note('ElevenLabs NOT configured on the server (add ELEVENLABS_API_KEY on Railway) — using browser voice.', 8000);
       }
+      lastSpokenText = text;
+      stopBrowserWake();   // GUARDRAIL: EDITH must never hear herself
       if (useEleven) {
         var url = '/dashboard/api/tts?text=' + encodeURIComponent(text);
         if (opts.voiceId) url += '&voice_id=' + encodeURIComponent(opts.voiceId);
@@ -272,6 +286,7 @@
         var fell = false;
         audio.addEventListener('error', function() {
           if (fell) return; fell = true;
+          if (audio.currentTime > 0.4) { done(); return; }   // mostly played — never double-speak
           _diagnoseTts(text);            // say WHY the real voice failed
           browserSpeak(text).then(done);
         });
@@ -300,6 +315,7 @@
         currentAudio = null;
         stopWave();
         if (orbState === 'speaking') { setOrb('idle'); caption(''); }
+        setTimeout(resumeWakeIfArmed, 900);   // echo-guard: speakers settle first
         resolve();
       }
     });
@@ -324,8 +340,11 @@
       if (!ttsFallbackNoted) { note('Using fallback voice (ElevenLabs unavailable). Effects bypassed.'); ttsFallbackNoted = true; }
       var u = new SpeechSynthesisUtterance(text);
       u.volume = volume(); u.rate = 1.02;
-      var v = (speechSynthesis.getVoices() || []).find(function(x) { return /en[-_](GB|AU)/i.test(x.lang); });
+      var voices = speechSynthesis.getVoices() || [];
+      var v = voices.find(function(x) { return /karen|catherine|female/i.test(x.name) && /en/i.test(x.lang); })
+           || voices.find(function(x) { return /en[-_](AU|GB)/i.test(x.lang); });
       if (v) u.voice = v;
+      u.pitch = 1.05;
       u.onend = resolve; u.onerror = resolve;
       speechSynthesis.speak(u);
     });
@@ -496,8 +515,18 @@
 
   var SIGNOFF = /\b(thanks edith|thank you edith|that'?s all|go to sleep|goodnight edith|that'?ll be all)\b/i;
 
+  function _isSelfEcho(text) {
+    if (!lastSpokenText) return false;
+    var t = text.toLowerCase().replace(/[^a-z0-9 ]/g, '');
+    var s = lastSpokenText.toLowerCase().replace(/[^a-z0-9 ]/g, '');
+    if (t.length < 8) return false;
+    return s.indexOf(t) !== -1 || t.indexOf(s.slice(0, 60)) !== -1;
+  }
+
   async function handleTranscript(text) {
     if (!text) return;
+    // GUARDRAIL: discard speaker bleed — her own words are not a query
+    if (_isSelfEcho(text)) { setOrb('idle'); caption(''); return; }
     // "Hey Edith" spoken into an open mic is a wake, not a question
     if (/^\s*(hey\s+)?(edith|jarvis)[\s.,!?]*$/i.test(text)) {
       return wakeFired();
@@ -539,9 +568,9 @@
       function watch() {
         if (done) return;
         if (currentAudio && micAnalyser) {
-          if (micRMS() > 0.08) {
+          if (micRMS() > 0.17) {            // speaker bleed sits well below this
             if (!bargeStart) bargeStart = performance.now();
-            else if (performance.now() - bargeStart > 300) {
+            else if (performance.now() - bargeStart > 600) {
               stopSpeaking();
               startListening();
               done = true;
@@ -586,6 +615,14 @@
   }
 
   // ── PHASE 3: boot HUD + greeting ─────────────────────────
+  function playReactorSfx() {
+    try {
+      var a = new Audio('/dashboard/static/audio/reactor.wav');
+      a.volume = Math.min(1, volume() * 1.0);
+      a.play().catch(function() { reactorSound(); });
+    } catch (e) { reactorSound(); }
+  }
+
   function reactorSound() {
     try {
       var ctx = audioCtx();
@@ -672,8 +709,8 @@
     if (!entranceAudio) return;
     var duck = setInterval(function() {
       if (!entranceAudio) return clearInterval(duck);
-      entranceAudio.volume = Math.max(0.06, entranceAudio.volume - 0.12);
-      if (entranceAudio.volume <= 0.07) clearInterval(duck);
+      entranceAudio.volume = Math.max(0.3 * (volume() || 1), entranceAudio.volume - 0.1);
+      if (entranceAudio.volume <= 0.31 * (volume() || 1)) clearInterval(duck);
     }, 110);
   }
   function stopEntrance() {
@@ -686,7 +723,7 @@
     bootedThisSession = true;
     setSessionFx(true);
 
-    reactorSound();   // arc-reactor ignition leads…
+    playReactorSfx();   // arc-reactor ignition leads…
     if (withAudio) setTimeout(playEntranceAudio, 650);   // …the track drops in behind it
 
     if (!reduced) {
@@ -756,7 +793,14 @@
     }
     if (window.JarvisChat) window.JarvisChat.addAssistantMessage(text);
     await speakInterruptible(text, 'system', { crushFirstWord: true });
-    stopEntrance();
+    // gentle fade-out instead of a hard cut
+    if (entranceAudio) {
+      var fade = setInterval(function() {
+        if (!entranceAudio) return clearInterval(fade);
+        entranceAudio.volume = Math.max(0, entranceAudio.volume - 0.04);
+        if (entranceAudio.volume <= 0.01) { clearInterval(fade); stopEntrance(); }
+      }, 120);
+    }
     // mic auto-opens — the conversation is the point
     startListening();
   }
@@ -772,6 +816,7 @@
   }
 
   function wakeFired() {
+    if (!audioUnlocked()) { showPowerPrompt(); return; }
     chime();
     if (!bootedThisSession) return bootSequence(true);
     miniHud();
@@ -852,9 +897,12 @@
   // the query listener and the wake listener can't share the mic recognizer —
   // pause wake while actively listening, resume after
   function resumeWakeIfArmed() {
-    if (wakeArmed && !CFG.picovoiceKey && !listening && !document.hidden) {
-      setTimeout(function() { if (wakeArmed && !listening) startBrowserWake(); }, 400);
-    }
+    if (!wakeArmed || CFG.picovoiceKey || document.hidden) return;
+    // single-mic, no-self-hearing rule: idle only
+    if (listening || currentAudio || (window.speechSynthesis && speechSynthesis.speaking)) return;
+    setTimeout(function() {
+      if (wakeArmed && !listening && !currentAudio) startBrowserWake();
+    }, 400);
   }
 
   async function armWakeWord() {
@@ -991,6 +1039,7 @@
       '<div class="jh-row"><label><input type="checkbox" id="ep-wake" ' + (wakeOn ? 'checked' : '') + '> &#127908; Wake word: say "' + wakePhrase() + '"' + (CFG.picovoiceKey ? (CFG.wakePpnPresent ? '' : ' <span class="ep-dim">(interim — train "Hey Edith" .ppn)</span>') : ' <span class="ep-dim">(browser mode — on-device once Picovoice key is added)</span>') + '</label></div>' +
       '<div class="jh-row"><label><input type="checkbox" id="ep-convo" ' + (lsGet('edith-convo', '1') === '1' ? 'checked' : '') + '> Conversation mode (auto re-listen)</label></div>' +
       '<div class="jh-row"><label><input type="checkbox" id="ep-cine" ' + (lsGet('edith-cinematic', '1') === '1' ? 'checked' : '') + '> Cinematic mode</label></div>' +
+      '<div class="jh-row"><label><input type="checkbox" id="ep-loadanim" ' + (lsGet('edith-load-anim', '1') === '1' ? 'checked' : '') + '> Boot animation on page load</label></div>' +
       '<div class="jh-row">Patience <input type="range" id="ep-patience" min="0.8" max="3" step="0.1" value="' + lsNum('edith-patience', 1.4) + '"> <span id="ep-patience-v">' + lsNum('edith-patience', 1.4).toFixed(1) + 's</span></div>' +
       '<div class="jh-row jh-controls"><label><input type="checkbox" id="ep-mute" ' + (lsGet('edith-muted', '0') === '1' ? 'checked' : '') + '> mute</label>' +
       '<label>vol <input type="range" id="ep-vol" min="0" max="1" step="0.1" value="' + lsNum('edith-vol', 1) + '"></label></div>' +
@@ -1042,6 +1091,7 @@
     });
     el.querySelector('#ep-convo').addEventListener('change', function() { lsSet('edith-convo', this.checked ? '1' : '0'); });
     el.querySelector('#ep-cine').addEventListener('change', function() { lsSet('edith-cinematic', this.checked ? '1' : '0'); });
+    el.querySelector('#ep-loadanim').addEventListener('change', function() { lsSet('edith-load-anim', this.checked ? '1' : '0'); });
     el.querySelector('#ep-patience').addEventListener('input', function() {
       lsSet('edith-patience', this.value);
       el.querySelector('#ep-patience-v').textContent = parseFloat(this.value).toFixed(1) + 's';
@@ -1117,19 +1167,80 @@
     if (lsGet('jarvis-entrance-invite', '0') === '1') reactor.classList.add('invite');
   }
 
-  // first user interaction unlocks audio for gesture-less (wake-word) speech
-  function _unlockAudio() {
-    try { audioCtx(); } catch (e) {}
-    document.removeEventListener('click', _unlockAudio, true);
-    document.removeEventListener('keydown', _unlockAudio, true);
+  // GUARDRAIL: gesture-less audio is blocked by Chrome until the user has
+  // interacted. Track it precisely; never speak into a locked void.
+  var _interacted = false;
+  function audioUnlocked() {
+    if (navigator.userActivation && navigator.userActivation.hasBeenActive) return true;
+    return _interacted;
   }
-  document.addEventListener('click', _unlockAudio, true);
+  function _unlockAudio() {
+    _interacted = true;
+    try { audioCtx(); } catch (e) {}
+  }
+  document.addEventListener('pointerdown', _unlockAudio, true);
   document.addEventListener('keydown', _unlockAudio, true);
+
+  // If the wake word fires before any interaction, convert the failure into a
+  // designed moment: a power-up overlay whose click IS the unlocking gesture.
+  function showPowerPrompt() {
+    if (document.getElementById('edith-power-prompt')) return;
+    var el = document.createElement('div');
+    el.id = 'edith-power-prompt';
+    el.className = 'edith-power-prompt';
+    el.innerHTML = '<div class="epp-core"></div><div class="epp-text">EDITH READY — TAP TO POWER UP</div>';
+    document.body.appendChild(el);
+    el.addEventListener('click', function() {
+      el.remove();
+      _unlockAudio();
+      bootSequence(true);
+    });
+  }
+
+  function loadBootVisuals() {
+    if (lsGet('edith-load-anim', '1') !== '1') return;
+    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) return;
+    var hud = document.createElement('div');
+    hud.className = 'edith-boot-hud';
+    hud.innerHTML =
+      '<div class="ebh-sweep"></div><div class="ebh-scan"></div>' +
+      '<div class="ebh-console" id="ebh-load-console"></div>' +
+      '<div class="ebh-progress"><div class="ebh-progress-fill" id="ebh-load-pfill"></div><span class="ebh-pct" id="ebh-load-pct">0%</span></div>' +
+      '<div class="ebh-caption">EDITH — ONLINE</div>';
+    document.body.appendChild(hud);
+    document.body.classList.add('boot-seq');
+    var SYSTEMS = ['ARC CORE', 'CASH ENGINE', 'FORWARD MRR MODEL', 'FUNNEL TELEMETRY',
+                   'CLIENT HEALTH GRID', 'COMMS ARRAY', 'EDITH CORE'];
+    var c = hud.querySelector('#ebh-load-console');
+    var pf = hud.querySelector('#ebh-load-pfill');
+    var pc = hud.querySelector('#ebh-load-pct');
+    SYSTEMS.forEach(function(name, i) {
+      setTimeout(function() {
+        if (!c.isConnected) return;
+        var row = document.createElement('div');
+        row.className = 'ebh-line';
+        row.innerHTML = '<span class="ebh-sys">' + name + '</span><span class="ebh-dots"></span><span class="ebh-ok">ONLINE</span>';
+        c.appendChild(row);
+        var p = Math.round(((i + 1) / SYSTEMS.length) * 100);
+        pf.style.width = p + '%'; pc.textContent = p + '%';
+      }, 200 + i * 260);
+    });
+    var clean = function() {
+      document.body.classList.remove('boot-seq');
+      hud.remove();
+      document.removeEventListener('click', skip, true);
+    };
+    var skip = function() { clean(); };
+    setTimeout(function() { document.addEventListener('click', skip, true); }, 150);
+    setTimeout(clean, 3400);
+  }
 
   (async function init() {
     buildUI();
     initKeys();
     initEntranceTrigger();
+    loadBootVisuals();   // every page load opens like a system powering up (silent)
     await refreshVoiceStatus();
     if (lsGet('edith-wake', '1') === '1') armWakeWord();   // hands-free by default
   })();
