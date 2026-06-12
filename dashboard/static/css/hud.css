@@ -84,7 +84,5 @@
 #edith-hud.focus .eh-brk,#edith-hud.focus #eh-radar,
 #edith-hud.focus #eh-scan,#edith-hud.focus #eh-shards{display:none}
 
-/* reduced motion: shorten, NEVER hide — verbatim contract */
-@media (prefers-reduced-motion: reduce){
-  #edith-hud *{animation-duration:0.01s !important;animation-iteration-count:1 !important}
-}
+/* reduced-motion gate removed per Rydel: the HUD always animates.
+   Shift+S Focus mode is the off-switch. */

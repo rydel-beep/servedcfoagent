@@ -233,7 +233,7 @@ def test_voice_config_set_and_reset(tmp_path, monkeypatch):
     # empty body resets to the locked default
     voice_mod.save_voice_config({})
     assert voice_mod.active_voice_id() == "yj30vwTGJxSHezdAGsv9"
-    assert voice_mod.active_voice_settings() == {"stability": 0.70, "similarity_boost": 0.75}
+    assert voice_mod.active_voice_settings() == {"stability": 0.70, "similarity_boost": 0.75, "speed": 0.92}
 
 
 def test_voice_config_rejects_garbage():

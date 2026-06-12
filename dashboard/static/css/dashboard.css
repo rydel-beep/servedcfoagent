@@ -1525,10 +1525,9 @@ body {
 ::-webkit-scrollbar-thumb { background: rgba(122,154,191,0.18); border-radius: 5px; border: 2px solid var(--bg); }
 ::-webkit-scrollbar-thumb:hover { background: rgba(122,154,191,0.3); }
 
-/* Reduced motion: respect the preference */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
-}
+/* Reduced-motion gate REMOVED (2026-06-12): with macOS Reduce Motion on, the
+   global freeze silently killed every animation across three HUD builds.
+   Focus mode (Shift+S) is the deliberate, user-controlled off-switch. */
 
 /* ════════════════════════════════════════════════════════════════════════
    STAGE C — UX components: Morning Brief, badges, tooltips, states,
@@ -2111,10 +2110,7 @@ body.boot-seq .panel, body.boot-seq .kpi-strip {
   animation: panel-ignite 0.85s cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  body.edith-session::before { animation: none; }
-  .edith-brackets i { animation: none !important; }
-}
+
 
 /* ── EDITH boot console: systems reporting in ── */
 .ebh-console {

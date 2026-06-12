@@ -152,7 +152,6 @@
   // one (400ms, tabular numerals — nothing jitters).
   var _prevKpiVals = {};
   function animateKpiDeltas() {
-    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     document.querySelectorAll('.kpi-value, .brief-cash-value, .brief-stat-value').forEach(function(el, idx) {
       var m = (el.textContent || '').match(/^\$?([\d,]+)/);
       if (!m) return;
@@ -179,7 +178,6 @@
   function countUpKpis() {
     if (_countedUp) return;
     _countedUp = true;
-    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     document.querySelectorAll('.kpi-value, .brief-cash-value').forEach(function(el) {
       var text = el.textContent || '';
       var m = text.match(/^\$?([\d,]+)/);

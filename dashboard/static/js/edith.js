@@ -163,7 +163,7 @@
       }
 
       // dry path FIRST — an exception below can never mute the voice
-      var dryG = c.createGain(); dryG.gain.value = 1 - p.wet * 0.5;
+      var dryG = c.createGain(); dryG.gain.value = 1 - p.wet * 0.8;
       head.connect(dryG); dryG.connect(chVoice);
       try {
         var hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = p.hp || 1;
@@ -203,10 +203,15 @@
         var revMix = c.createGain(); revMix.gain.value = p.rev;
         shelf.connect(conv); conv.connect(revMix);
 
+        // tone layer scales with wet; INGREDIENTS connect at ABSOLUTE gains
+        // ("0.30 under dry") — routing them through the wet gain crushed every
+        // ingredient to ~30% of its dialed value. That was the inaudible filter.
         var wet = c.createGain(); wet.gain.value = p.wet;
-        shelf.connect(wet); combMix.connect(wet); dblMix.connect(wet);
-        shimMix.connect(wet); revMix.connect(wet);
-        wet.connect(chVoice);
+        shelf.connect(wet); wet.connect(chVoice);
+        combMix.connect(chVoice);
+        dblMix.connect(chVoice);
+        shimMix.connect(chVoice);
+        revMix.connect(chVoice);
 
         if (crushFirstWord) {
           var shaper = c.createWaveShaper();
@@ -350,7 +355,7 @@
         if (!window.speechSynthesis) { note('Voice unavailable — text only.'); return resolve(); }
         var u = new SpeechSynthesisUtterance(text);
         u.volume = Math.min(1, mixGet('voice') * mixGet('master'));
-        u.rate = 1.02; u.pitch = 1.05;
+        u.rate = 0.97; u.pitch = 1.05;
         var voices = speechSynthesis.getVoices() || [];
         // never the default: female en-AU/en-GB by name heuristics first
         var v = voices.find(function(x) { return /karen|catherine|moira|serena|female/i.test(x.name) && /^en/i.test(x.lang); })
@@ -1024,13 +1029,14 @@
     bootedThisSession = true;
     setSessionFx(true);
 
-    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
+    var audioOk = audioUnlocked();
     // t=0: music (if uploaded) + synth power-up + dim + orb ignition
-    if (musicPresent) audioManager.playMusic('/dashboard/audio/entrance');
-    audioManager.reactor();
+    if (audioOk) {
+      if (musicPresent) audioManager.playMusic('/dashboard/audio/entrance');
+      audioManager.reactor();
+    }
 
-    if (!reduced) {
+    if (true) {   // boot visuals ALWAYS run (Focus mode is the only off-switch)
       var hud = document.createElement('div');
       hud.className = 'edith-boot-hud';
       hud.innerHTML =
@@ -1121,6 +1127,13 @@
       text = 'Good ' + (hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening') + ', Rydel. EDITH online. What do you need?';
     }
     if (window.JarvisChat) window.JarvisChat.addAssistantMessage(text);
+    if (!audioOk) {
+      // visuals delivered; the voice joins on the first tap
+      caption(text, true);
+      queueSpeech(text, 'system');
+      transition(S.IDLE, 'silent boot done');
+      return;
+    }
     await speakWithBargeIn(text, 'system', { crushFirstWord: true });
     if (musicPresent && lsGet('edith-music-keep', '0') !== '1') audioManager.fadeOutMusic(2);
     startListening();
@@ -1132,18 +1145,30 @@
     if (navigator.userActivation && navigator.userActivation.hasBeenActive) return true;
     return _interacted;
   }
-  function _unlockAudio() { _interacted = true; try { audioManager.ensure(); } catch (e) {} }
+  function _unlockAudio() {
+    _interacted = true;
+    try { audioManager.ensure(); } catch (e) {}
+    setTimeout(_flushPendingSpeech, 150);
+  }
   document.addEventListener('pointerdown', _unlockAudio, true);
   document.addEventListener('keydown', _unlockAudio, true);
 
-  function showPowerPrompt() {
-    if (document.getElementById('edith-power-prompt')) return;
-    var el = document.createElement('div');
-    el.id = 'edith-power-prompt'; el.className = 'edith-power-prompt';
-    el.innerHTML = '<div class="epp-core"></div><div class="epp-text">EDITH READY — TAP TO POWER UP</div>';
-    document.body.appendChild(el);
-    el.addEventListener('click', function() {
-      el.remove(); _unlockAudio(); bootSequence();
+  // The full-screen power prompt is GONE (hated). A locked-audio wake now
+  // boots VISUALLY and silently; the queued greeting speaks the moment the
+  // first tap unlocks audio. The wake is never blocked, never interrupted.
+  var _pendingSpeech = null;   // { text, context, at }
+  function queueSpeech(text, context) {
+    _pendingSpeech = { text: text, context: context, at: performance.now() };
+    note('\ud83d\udd07 tap anywhere and EDITH speaks', 8000);
+  }
+  function _flushPendingSpeech() {
+    if (!_pendingSpeech) return;
+    var p = _pendingSpeech;
+    _pendingSpeech = null;
+    if (performance.now() - p.at > 60000) return;   // stale greeting: let it go
+    say(p.text, p.context).then(function() {
+      if (state === S.SPEAKING) transition(S.IDLE, 'queued speech done');
+      startListening();
     });
   }
 
@@ -1153,11 +1178,18 @@
     if (now - _wakeAt < 1500) { log('wake debounced (' + source + ')'); return; }
     _wakeAt = now;
     if (state !== S.IDLE && state !== S.LISTENING) { log('wake ignored in state', state); return; }
-    if (!audioUnlocked()) { showPowerPrompt(); return; }
     if (listening) stopListening(true);
 
     if (!bootedThisSession) return bootSequence();
 
+    if (!audioUnlocked()) {
+      // silent re-wake: visuals + listening; ack joins when audio unlocks
+      sessionActive = true;
+      setSessionFx(true);
+      note('\ud83d\udd07 listening (tap anywhere for sound)', 5000);
+      startListening();
+      return;
+    }
     audioManager.chime('ack');
     sessionActive = true;
     setSessionFx(true);
@@ -1315,7 +1347,7 @@
   var _clapLoopCost = [];       // CPU measurement
   var _calib = null;            // calibration overlay state
 
-  function clapSens() { return Math.min(3, Math.max(0.5, lsNum('edith-clap-sens', 1.5))); }
+  function clapSens() { return Math.min(3, Math.max(0.5, lsNum('edith-clap-sens', 2.0))); }
   // higher slider = more sensitive: threshold = floor × (9 / sens), absolute floor 0.04 peak
   function clapThreshold() { return Math.max(0.04, _noiseFloor * (9 / clapSens())); }
 
@@ -1637,6 +1669,7 @@
         '<div class="jh-row">Wet <input type="range" data-fx="wet" min="0" max="0.7" step="0.02" value="' + p.wet + '"></div>' +
       '</details>' +
       '<div class="ep-section">Voice (locked: FRIDAY)</div>' +
+      '<div class="jh-row">Speed <input type="range" id="ep-speed" min="0.7" max="1.2" step="0.02" value="' + ((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.speed) || 0.92) + '"> <span id="ep-speed-v">' + (((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.speed) || 0.92)).toFixed(2) + '</span></div>' +
       '<div class="jh-row"><input type="text" id="ep-voice-id" class="ep-input" placeholder="ElevenLabs voice ID (audition)"></div>' +
       '<div class="jh-row ep-presets"><button id="ep-audition" class="ep-preset">audition</button>' +
       '<button id="ep-ab" class="ep-preset">A/B raw vs fx</button>' +
@@ -1713,6 +1746,19 @@
         lsSet('edith-fx-custom', '1');
       });
     });
+    var speedTimer = null;
+    el.querySelector('#ep-speed').addEventListener('input', function() {
+      var v = parseFloat(this.value);
+      el.querySelector('#ep-speed-v').textContent = v.toFixed(2);
+      clearTimeout(speedTimer);
+      speedTimer = setTimeout(function() {
+        fetch('/dashboard/api/voice-config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ speed: v,
+            stability: (voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.stability) || 0.70,
+            similarity: (voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.similarity_boost) || 0.75 }) })
+          .then(function() { note('Speed ' + v.toFixed(2) + ' — applies to the next line.'); refreshVoiceStatus(); });
+      }, 350);
+    });
     el.querySelector('#ep-audition').addEventListener('click', function() {
       var vid = el.querySelector('#ep-voice-id').value.trim();
       say(TEST_LINE, 'reply', vid ? { voiceId: vid } : {}).then(function() {
@@ -1787,8 +1833,6 @@
   // ── load-time visual boot (silent, autoplay-safe) ────────
   function loadBootVisuals() {
     if (lsGet('edith-load-anim', '1') !== '1') return;
-    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduced) return;
     document.body.classList.add('boot-seq');
     setTimeout(function() { document.body.classList.remove('boot-seq'); }, 2400);
   }
@@ -1820,6 +1864,18 @@
   };
 
   // ── init ─────────────────────────────────────────────────
+  // fx settings versioning: stale custom slider values from older builds could
+  // pin the character at inaudible levels — clear them once per version bump.
+  (function migrateFx() {
+    if (lsGet('edith-fx-ver', '') !== '3') {
+      ['custom', 'wet', 'hp', 'lp', 'shelf', 'comb', 'dbl', 'shim', 'rev'].forEach(function(k) {
+        try { localStorage.removeItem('edith-fx-' + k); } catch (e) {}
+      });
+      try { localStorage.removeItem('edith-fx-preset'); localStorage.setItem('edith-fx-ver', '3'); } catch (e) {}
+      log('fx settings migrated to v3 (stale customs cleared)');
+    }
+  })();
+
   (async function init() {
     buildUI();
     initKeys();

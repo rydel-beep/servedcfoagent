@@ -128,3 +128,20 @@
      in v2 with auto-resume + visible note).
 - Proof: harness PASS — 2/2 claps accepted, 418ms gap wake fired, boot ran, 300Hz tone
   rejected, 0.045ms/frame CPU. Harness kept as a permanent regression tool.
+
+## Full fix round (2026-06-12 night)
+- THE ANIMATIONS ROOT CAUSE (final): dashboard.css Stage-B shipped a GLOBAL
+  prefers-reduced-motion rule (*{animation-duration:0.01ms!important}) — with macOS Reduce
+  Motion on, it froze every animation on the whole dashboard including all HUD work. All
+  motion-killing reduced gates removed (CSS + JS); Focus mode (Shift+S) is the only off-switch.
+- Power prompt removed: locked-audio wakes boot VISUALLY + queue the greeting; voice joins on
+  first tap (note toast). Wake is never blocked.
+- FX inaudibility (final): ingredients (double/comb/shimmer/reverb) were routed through the
+  wet gain — double at 0.30 dialed = 0.084 effective. Now absolute sends ("0.30 under dry"
+  per spec); dry crossfade deepened (1-wet*0.8); fx settings version-migrated to clear stale
+  custom slider values.
+- Speech speed: ElevenLabs voice_settings.speed default 0.92 + panel slider; browser fallback
+  rate 0.97.
+- Clap default sensitivity 1.5→2.0 (threshold floor×4.5); harness re-PASS (flat 0.39/0.42
+  accepts, tone rejected); clap wake follows the same silent-boot path = full parity with
+  "Hey Edith".

@@ -54,7 +54,7 @@ def save_voice_config(cfg: dict) -> dict:
     vid = (cfg.get("voice_id") or "").strip()
     if vid:
         clean["voice_id"] = vid[:64]
-    for k, lo, hi in (("stability", 0.0, 1.0), ("similarity", 0.0, 1.0)):
+    for k, lo, hi in (("stability", 0.0, 1.0), ("similarity", 0.0, 1.0), ("speed", 0.7, 1.2)):
         v = cfg.get(k)
         if isinstance(v, (int, float)) and lo <= v <= hi:
             clean[k] = float(v)
@@ -74,10 +74,12 @@ def active_voice_id() -> str:
 
 def active_voice_settings() -> dict:
     # EDITH register: stability 0.70 (even, controlled — reads composed/synthetic
-    # before any FX), similarity 0.75. Overridable via the panel's voice config.
+    # before any FX), similarity 0.75, speed 0.92 (measured pace — "a little too
+    # fast" feedback 2026-06-12). All overridable via the panel's voice config.
     return {
         "stability": _voice_config.get("stability", 0.70),
         "similarity_boost": _voice_config.get("similarity", 0.75),
+        "speed": _voice_config.get("speed", 0.92),
     }
 
 
