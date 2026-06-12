@@ -68,6 +68,7 @@
     addMessage(text, 'user');
     conversationHistory.push({ role: 'user', content: text });
     isSending = true;
+    try { window.dispatchEvent(new CustomEvent('edith:chat', { detail: { phase: 'sent' } })); } catch (e) {}
 
     var loading = addMessage('', 'typing');
 
@@ -84,9 +85,11 @@
         addMessage(data.reply, 'assistant');
         conversationHistory.push({ role: 'assistant', content: data.reply });
         trimHistory();
+        try { window.dispatchEvent(new CustomEvent('edith:chat', { detail: { phase: 'reply' } })); } catch (e) {}
         return data.reply;
       } else if (data.error) {
         addMessage(data.error, 'error');
+        try { window.dispatchEvent(new CustomEvent('edith:chat', { detail: { phase: 'error' } })); } catch (e) {}
       }
       return null;
     } catch (e) {

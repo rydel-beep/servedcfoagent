@@ -148,6 +148,32 @@
     }).join('');
   }
 
+  // On data refresh, KPI values COUNT from their previous figure to the new
+  // one (400ms, tabular numerals — nothing jitters).
+  var _prevKpiVals = {};
+  function animateKpiDeltas() {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    document.querySelectorAll('.kpi-value, .brief-cash-value, .brief-stat-value').forEach(function(el, idx) {
+      var m = (el.textContent || '').match(/^\$?([\d,]+)/);
+      if (!m) return;
+      var target = parseInt(m[1].replace(/,/g, ''), 10);
+      var key = el.id || 'k' + idx;
+      var prev = _prevKpiVals[key];
+      _prevKpiVals[key] = target;
+      if (prev == null || prev === target || !isFinite(prev)) return;
+      var prefix = (el.textContent || '').startsWith('$') ? '$' : '';
+      var suffix = (el.textContent || '').slice(m[0].length);
+      var start = null;
+      (function step(ts) {
+        if (!start) start = ts || performance.now();
+        var p = Math.min(((ts || performance.now()) - start) / 400, 1);
+        var eased = 1 - Math.pow(1 - p, 3);
+        el.textContent = prefix + Math.round(prev + (target - prev) * eased).toLocaleString('en-AU') + suffix;
+        if (p < 1) requestAnimationFrame(step);
+      })();
+    });
+  }
+
   // Number count-up on first load only — subtle, 500ms
   var _countedUp = false;
   function countUpKpis() {
@@ -493,6 +519,9 @@
     renderKpiTrends();
     renderChatChips(snap);
     countUpKpis();
+    animateKpiDeltas();
+
+    try { window.dispatchEvent(new CustomEvent('edith:data')); } catch (e) {}
 
     // Render-integrity check: detect duplicated elements
     checkRenderIntegrity();

@@ -40,8 +40,12 @@
       return false;
     }
     log('state', state, '→', to, why ? '(' + why + ')' : '');
+    var from = state;
     state = to;
     setOrb(to === S.BOOTING || to === S.GREETING ? 'thinking' : to);
+    try {
+      window.dispatchEvent(new CustomEvent('edith:state', { detail: { from: from, to: to, why: why } }));
+    } catch (e) {}
     return true;
   }
 
@@ -267,6 +271,7 @@
 
         var url = '/dashboard/api/tts?text=' + encodeURIComponent(text);
         if (opts.voiceId) url += '&voice_id=' + encodeURIComponent(opts.voiceId);
+        try { window.dispatchEvent(new CustomEvent('edith:tts', { detail: { phase: 'synth' } })); } catch (ev) {}
         var el = new Audio(url);
         el.volume = 1;                     // gain lives in the mixer, not the element
         currentEl = el;
@@ -309,6 +314,7 @@
           if (fellBack) { try { el.pause(); } catch (e) {} return; }   // late success → discard
           firstByte = true;
           clearTimeout(watchdog);
+          try { window.dispatchEvent(new CustomEvent('edith:tts', { detail: { phase: 'playing' } })); } catch (ev) {}
         });
         el.addEventListener('ended', function() {
           if (settled || fellBack) return;
@@ -480,13 +486,94 @@
       } catch (e) {}
     }
 
-    function stopAll() { stopVoice(); stopMusic(); }
+    // ── UI sound kit (Phase 4): synthesized, tiny, behind the toggle ──
+    function uiOn() { return lsGet('edith-ui-sounds', document.body.classList.contains('focus-mode') ? '0' : '1') === '1'; }
+
+    var humNodes = null;
+    function startHum() {
+      if (!uiOn() || humNodes) return;
+      try {
+        var c = ensure();
+        var nb = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
+        var nd = nb.getChannelData(0);
+        for (var i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+        var n = c.createBufferSource(); n.buffer = nb; n.loop = true;
+        var nf = c.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 800; nf.Q.value = 2;
+        var ng = c.createGain(); ng.gain.value = 0.04;
+        var o = c.createOscillator(); o.type = 'sine'; o.frequency.value = 62;
+        var og = c.createGain(); og.gain.value = 0.05;
+        var lfo = c.createOscillator(); lfo.frequency.value = 1.4;
+        var lg = c.createGain(); lg.gain.value = 0.025;
+        lfo.connect(lg); lg.connect(og.gain);
+        n.connect(nf); nf.connect(ng); ng.connect(chSfx);
+        o.connect(og); og.connect(chSfx);
+        n.start(); o.start(); lfo.start();
+        humNodes = { n: n, o: o, lfo: lfo, ng: ng, og: og };
+      } catch (e) {}
+    }
+    function stopHum() {
+      if (!humNodes) return;
+      try {
+        var c = ensure();
+        humNodes.ng.gain.setTargetAtTime(0.0001, c.currentTime, 0.06);
+        humNodes.og.gain.setTargetAtTime(0.0001, c.currentTime, 0.06);
+        var h = humNodes;
+        setTimeout(function() { try { h.n.stop(); h.o.stop(); h.lfo.stop(); } catch (e) {} }, 300);
+      } catch (e) {}
+      humNodes = null;
+    }
+
+    function uiTick() {
+      if (!uiOn()) return;
+      try {
+        var c = ensure(); var t0 = c.currentTime;
+        var o = c.createOscillator(); o.type = 'square'; o.frequency.value = 2200;
+        var g = c.createGain();
+        g.gain.setValueAtTime(0.03, t0);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.012);
+        o.connect(g); g.connect(chSfx); o.start(t0); o.stop(t0 + 0.02);
+      } catch (e) {}
+    }
+    function uiConfirm() {
+      if (!uiOn()) return;
+      try {
+        var c = ensure(); var t0 = c.currentTime;
+        [880, 1318].forEach(function(f, i) {
+          var o = c.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+          var g = c.createGain();
+          g.gain.setValueAtTime(0.0001, t0 + i * 0.06);
+          g.gain.linearRampToValueAtTime(0.06, t0 + i * 0.06 + 0.02);
+          g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.06 + 0.12);
+          o.connect(g); g.connect(chSfx); o.start(t0 + i * 0.06); o.stop(t0 + i * 0.06 + 0.15);
+        });
+      } catch (e) {}
+    }
+    function uiComplete() {
+      if (!uiOn()) return;
+      chime('ack');
+    }
+    function uiError() {
+      if (!uiOn()) return;
+      try {
+        var c = ensure(); var t0 = c.currentTime;
+        var o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 110;
+        var f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 400;
+        var g = c.createGain();
+        g.gain.setValueAtTime(0.05, t0);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.12);
+        o.connect(f); f.connect(g); g.connect(chSfx); o.start(t0); o.stop(t0 + 0.14);
+      } catch (e) {}
+    }
+
+    function stopAll() { stopVoice(); stopMusic(); stopHum(); }
 
     return {
       ensure: ensure, speak: speak, stopVoice: stopVoice, stopAll: stopAll,
       playMusic: playMusic, fadeOutMusic: fadeOutMusic, stopMusic: stopMusic,
       reactor: reactor, chime: chime, setMix: setMix, mixGet: mixGet,
       fxParams: fxParams, fxEnabled: fxEnabled,
+      startHum: startHum, stopHum: stopHum,
+      uiTick: uiTick, uiConfirm: uiConfirm, uiComplete: uiComplete, uiError: uiError,
       isSpeaking: function() { return speakingFlag; },
       analyser: function() { return voiceAnalyser; },
     };
@@ -1240,6 +1327,8 @@
       '<div class="jh-row"><label><input type="checkbox" id="ep-wake" ' + (lsGet('edith-wake', '1') === '1' ? 'checked' : '') + '> &#127908; Wake word: "' + wakePhrase() + '"' + (CFG.picovoiceKey ? '' : ' <span class="ep-dim">(browser mode)</span>') + '</label></div>' +
       '<div class="jh-row"><label><input type="checkbox" id="ep-convo" ' + (lsGet('edith-convo', '1') === '1' ? 'checked' : '') + '> Conversation mode</label></div>' +
       '<div class="jh-row"><label><input type="checkbox" id="ep-cine" ' + (lsGet('edith-cinematic', '1') === '1' ? 'checked' : '') + '> Cinematic mode</label></div>' +
+      '<div class="jh-row"><label><input type="checkbox" id="ep-stark" ' + (lsGet('edith-stark', '1') === '1' ? 'checked' : '') + '> Stark mode (Shift+S)</label></div>' +
+      '<div class="jh-row"><label><input type="checkbox" id="ep-uisounds" ' + (lsGet('edith-ui-sounds', '1') === '1' ? 'checked' : '') + '> UI sounds</label></div>' +
       '<div class="jh-row"><label><input type="checkbox" id="ep-loadanim" ' + (lsGet('edith-load-anim', '1') === '1' ? 'checked' : '') + '> Boot animation on page load</label></div>' +
       '<div class="jh-row">Patience <input type="range" id="ep-patience" min="0.8" max="3" step="0.1" value="' + lsNum('edith-patience', 1.4) + '"> <span id="ep-patience-v">' + lsNum('edith-patience', 1.4).toFixed(1) + 's</span></div>' +
       '<div class="ep-section">Mixer</div>' +
@@ -1306,6 +1395,12 @@
     });
     el.querySelector('#ep-convo').addEventListener('change', function() { lsSet('edith-convo', this.checked ? '1' : '0'); });
     el.querySelector('#ep-cine').addEventListener('change', function() { lsSet('edith-cinematic', this.checked ? '1' : '0'); });
+    el.querySelector('#ep-stark').addEventListener('change', function() {
+      lsSet('edith-stark', this.checked ? '1' : '0');
+      document.body.classList.toggle('stark-mode', this.checked);
+      document.body.classList.toggle('focus-mode', !this.checked);
+    });
+    el.querySelector('#ep-uisounds').addEventListener('change', function() { lsSet('edith-ui-sounds', this.checked ? '1' : '0'); });
     el.querySelector('#ep-loadanim').addEventListener('change', function() { lsSet('edith-load-anim', this.checked ? '1' : '0'); });
     el.querySelector('#ep-music-keep').addEventListener('change', function() { lsSet('edith-music-keep', this.checked ? '1' : '0'); });
     el.querySelector('#ep-patience').addEventListener('input', function() {
@@ -1422,6 +1517,19 @@
     });
     if (lsGet('jarvis-entrance-invite', '0') === '1') reactor.classList.add('invite');
   }
+
+  // ── public surface for the Stark HUD layer (stark-hud.js) ──
+  window.EDITH = {
+    getState: function() { return state; },
+    micRMS: micRMS,
+    analyser: function() { return audioManager.analyser(); },
+    audio: {
+      startHum: audioManager.startHum, stopHum: audioManager.stopHum,
+      uiTick: audioManager.uiTick, uiConfirm: audioManager.uiConfirm,
+      uiComplete: audioManager.uiComplete, uiError: audioManager.uiError,
+    },
+    isListening: function() { return listening; },
+  };
 
   // ── init ─────────────────────────────────────────────────
   (async function init() {

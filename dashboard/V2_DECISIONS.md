@@ -102,3 +102,15 @@
   bypass self-detector are shipped IN the panel as the arbiter since terminal builds
   can't hear audio. Buffer-source conversion not needed; revisit only if probe FAILs.
 - Stability 0.55 -> 0.70 server-side (Layer A of the character).
+
+## Stark HUD build (2026-06-12)
+- Captures run against a LOCAL instance of the same commit (live token is Rydel-only;
+  credentials discipline). Pixels identical; labeled in report.
+- States driven via the public EDITH event surface in headless (mic/audio seams overridden
+  in-page) — tests the render layer, which is this build's deliverable.
+- Capture-driven iteration: first thinking-state frames FAILED the stranger test; intensity
+  raised (full-frame vignette, 480px computing ring, brackets v2, grid surge) and re-captured
+  until frames read sci-fi. The proof loop worked exactly as the spec intended.
+- verification/ folder gitignored: frames contain real financials.
+- Typed-chat sends drive the same thinking choreography via edith:chat events (spec: voice OR
+  text) without touching the voice state machine.

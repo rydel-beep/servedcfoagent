@@ -2222,3 +2222,227 @@ body.boot-seq .panel::after {
 }
 .edith-fx-badge.show { opacity: 1; }
 .edith-fx-badge.warn { border-color: rgba(232,180,69,0.5); color: var(--amber); background: rgba(232,180,69,0.1); }
+
+/* ════════════════════════════════════════════════════════════════════════
+   STARK HUD — animation-first layer. Stark mode = default; Focus strips it.
+   Transforms/opacity only. Brand geometry, no new colors.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Phase 1: processing reactor (the centerpiece, readable across a room) ── */
+.stark-reactor {
+  position: fixed; right: -34px; bottom: 26px; z-index: 248;
+  width: 180px; height: 180px;
+  opacity: 0; transform: scale(0.6);
+  transition: opacity 0.18s ease-out, transform 0.22s cubic-bezier(0.2, 0.8, 0.3, 1.2);
+  pointer-events: none;
+}
+.stark-reactor.run { opacity: 1; transform: scale(1); }
+.stark-reactor svg { width: 100%; height: 100%; overflow: visible; }
+.sr-ring { stroke-width: 2; }
+.sr-a { stroke: rgba(91,155,208,0.65); transform-origin: 90px 90px; animation: sr-spin 3.2s linear infinite; }
+.sr-b { stroke: rgba(122,154,191,0.5); stroke-width: 1.5; transform-origin: 90px 90px; animation: sr-spin 2.1s linear infinite reverse; }
+.sr-c { stroke: rgba(238,244,250,0.45); stroke-width: 1; transform-origin: 90px 90px; animation: sr-spin 4.6s linear infinite; }
+@keyframes sr-spin { to { transform: rotate(360deg); } }
+.sr-tick { stroke: rgba(91,155,208,0.3); stroke-width: 1; }
+.sr-orbit-group { transform-origin: 90px 90px; animation: sr-spin 1.4s linear infinite; }
+.sr-orbiter { fill: #EEF4FA; filter: drop-shadow(0 0 6px rgba(91,155,208,1)); }
+body.stark-thinking .jarvis-orb .orb-core { animation: orb-think-pulse 0.5s ease-in-out infinite; }
+@keyframes orb-think-pulse {
+  0%, 100% { box-shadow: 0 0 16px rgba(91,155,208,0.6); }
+  50% { box-shadow: 0 0 34px rgba(91,155,208,1), inset 0 0 16px rgba(238,244,250,0.4); }
+}
+
+/* ── shards / bars canvas ── */
+.stark-canvas {
+  position: fixed; right: 0; bottom: 60px; z-index: 247;
+  width: 280px; height: 340px;
+  opacity: 0; transition: opacity 0.25s; pointer-events: none;
+}
+.stark-canvas.show { opacity: 1; }
+
+/* ── scan beam ── */
+.stark-beam {
+  position: fixed; left: 0; right: 0; top: 0; height: 2px; z-index: 300;
+  background: linear-gradient(90deg, transparent, rgba(91,155,208,0.55), rgba(238,244,250,0.7), rgba(91,155,208,0.55), transparent);
+  box-shadow: 0 0 18px rgba(91,155,208,0.5);
+  opacity: 0; pointer-events: none;
+}
+.stark-beam.run { animation: beam-sweep 0.6s ease-in-out; }
+@keyframes beam-sweep {
+  0% { opacity: 0; transform: translateY(8vh); }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(92vh); }
+}
+
+/* ── status ticker ── */
+.stark-ticker {
+  position: fixed; right: 24px; bottom: 36px; z-index: 251;
+  font-family: 'SF Mono', Menlo, monospace;
+  font-size: 9px; letter-spacing: 2px; color: var(--brand-muted);
+  text-shadow: 0 0 8px rgba(91,155,208,0.6);
+  opacity: 0; transition: opacity 0.2s; pointer-events: none;
+}
+.stark-ticker.show { opacity: 1; }
+
+/* ── Phase 2: listening choreography ── */
+.stark-pulse-ring {
+  position: fixed; right: 38px; bottom: 102px; z-index: 246;
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 1.5px solid rgba(52,201,142,0.7);
+  pointer-events: none;
+  animation: pulse-ring-out 1.1s cubic-bezier(0.1, 0.6, 0.4, 1) forwards;
+}
+@keyframes pulse-ring-out {
+  0% { transform: scale(1); opacity: 0.9; }
+  100% { transform: scale(5.5); opacity: 0; }
+}
+.stark-edge {
+  position: fixed; inset: 0; z-index: 200; pointer-events: none;
+  box-shadow: inset 0 0 80px rgba(52,201,142,0.28);
+  opacity: 0; transition: opacity 0.12s linear;
+}
+body.stark-mode .orb-progress circle { stroke-dasharray: 6 3 !important; }
+
+/* speaking: hide edith's small wave (the HUD bars replace it) */
+body.stark-mode.stark-speaking .edith-wave { display: none; }
+
+/* ── Phase 3: ambient lab ── */
+body.stark-mode .edith-brackets i {
+  border-color: rgba(91,155,208,0.4);
+  transform: translate(0, 0);
+}
+.stark-radar {
+  position: fixed; left: 18px; bottom: 18px; z-index: 240;
+  width: 120px; height: 120px;
+  opacity: 0; transition: opacity 0.6s; pointer-events: auto;
+}
+body.stark-mode .stark-radar { opacity: 0.85; }
+.radar-ring { fill: none; stroke: rgba(91,155,208,0.25); stroke-width: 0.8; }
+.radar-sweep {
+  fill: rgba(91,155,208,0.12);
+  transform-origin: 60px 60px;
+  animation: sr-spin 6s linear infinite;
+}
+.radar-blip { fill: var(--green); filter: drop-shadow(0 0 3px rgba(52,201,142,0.8)); animation: pulse 2.6s ease-in-out infinite; }
+.radar-blip.stale { fill: var(--amber); filter: drop-shadow(0 0 3px rgba(232,180,69,0.8)); }
+
+.stark-grid {
+  position: fixed; inset: -10vh 0; z-index: 0; pointer-events: none;
+  opacity: 0; transition: opacity 0.8s;
+  background:
+    linear-gradient(30deg, rgba(91,155,208,0.5) 1px, transparent 1px),
+    linear-gradient(150deg, rgba(91,155,208,0.5) 1px, transparent 1px);
+  background-size: 64px 64px;
+  will-change: transform;
+}
+body.stark-mode .stark-grid { opacity: 0.04; }
+
+/* card life: data-pulse runs the border once on refresh */
+.data-pulse { animation: card-pulse 1.2s ease-out; }
+@keyframes card-pulse {
+  0% { border-color: rgba(91,155,208,0.7); box-shadow: 0 0 0 rgba(91,155,208,0.4); }
+  40% { box-shadow: 0 0 22px rgba(91,155,208,0.25); }
+  100% { border-color: var(--border); box-shadow: var(--shadow-1); }
+}
+
+/* window-toggle reprojection */
+.stark-reproject > * { animation: reproject 0.36s ease-out backwards; }
+.stark-reproject > *:nth-child(2n) { animation-delay: 0.05s; }
+.stark-reproject > *:nth-child(3n) { animation-delay: 0.1s; }
+@keyframes reproject {
+  from { opacity: 0.35; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* refresh radial sweep */
+.stark-radial {
+  position: fixed; top: 27px; right: 130px; z-index: 300;
+  width: 10px; height: 10px; border-radius: 50%;
+  border: 2px solid rgba(91,155,208,0.6);
+  pointer-events: none;
+  animation: radial-out 0.9s ease-out forwards;
+}
+@keyframes radial-out {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(120); opacity: 0; }
+}
+
+/* ── Focus mode: strip the ambience, keep the load-bearing UX ── */
+body.focus-mode .stark-radar, body.focus-mode .stark-grid,
+body.focus-mode .stark-canvas, body.focus-mode .stark-beam,
+body.focus-mode .stark-reactor, body.focus-mode .stark-ticker,
+body.focus-mode .stark-edge, body.focus-mode .stark-pulse-ring { display: none !important; }
+body.focus-mode .edith-brackets i { border-color: transparent; }
+
+@media (max-width: 640px) {
+  .stark-reactor { right: -42px; bottom: 16px; width: 150px; height: 150px; }
+  .stark-radar { display: none; }
+  .stark-canvas { width: 220px; }
+}
+
+/* ── INTENSITY ITERATION (capture-driven): thinking goes full-frame ── */
+
+/* the large centered computing ring — behind content, unmistakable */
+.stark-bigring {
+  position: fixed; left: 50%; top: 50%; z-index: 1;
+  width: 480px; height: 480px;
+  transform: translate(-50%, -50%);
+  opacity: 0; transition: opacity 0.3s;
+  pointer-events: none;
+}
+.stark-bigring.run { opacity: 1; }
+.sbr-ring { stroke-width: 2.5; }
+.sbr-a { stroke: rgba(91,155,208,0.22); transform-origin: 240px 240px; animation: sr-spin 9s linear infinite; }
+.sbr-b { stroke: rgba(122,154,191,0.18); transform-origin: 240px 240px; animation: sr-spin 6s linear infinite reverse; }
+.sbr-c { stroke: rgba(238,244,250,0.12); transform-origin: 240px 240px; animation: sr-spin 13s linear infinite; }
+.sbr-tick { stroke: rgba(91,155,208,0.16); stroke-width: 1.5; }
+
+/* full-frame state shift while computing: vignette + grid surge + brackets */
+body.stark-thinking::after {
+  content: ''; position: fixed; inset: 0; z-index: 2; pointer-events: none;
+  background: radial-gradient(ellipse at 50% 45%, transparent 45%, rgba(10,18,32,0.45) 100%);
+  box-shadow: inset 0 0 120px rgba(46,110,166,0.35);
+  animation: think-vignette 0.25s ease-out;
+}
+@keyframes think-vignette { from { opacity: 0; } to { opacity: 1; } }
+body.stark-thinking .stark-grid { opacity: 0.11 !important; }
+body.stark-thinking .edith-brackets i {
+  border-color: rgba(91,155,208,0.95) !important;
+  box-shadow: 0 0 18px rgba(91,155,208,0.6);
+}
+
+/* brackets v2: bigger, present, with corner stubs */
+body.stark-mode .edith-brackets i { width: 64px; height: 64px; border-width: 2px; border-color: rgba(91,155,208,0.5); }
+.edith-brackets i::after {
+  content: ''; position: absolute; width: 7px; height: 7px;
+  background: rgba(91,155,208,0.7);
+}
+.edith-brackets .tl::after { top: -2px; left: -2px; }
+.edith-brackets .tr::after { top: -2px; right: -2px; }
+.edith-brackets .bl::after { bottom: -2px; left: -2px; }
+.edith-brackets .br::after { bottom: -2px; right: -2px; }
+body.focus-mode .edith-brackets i::after { display: none; }
+
+/* radar: bigger, brighter */
+.stark-radar { width: 140px; height: 140px; }
+body.stark-mode .stark-radar { opacity: 1; }
+.radar-ring { stroke: rgba(91,155,208,0.4); }
+.radar-sweep { fill: rgba(91,155,208,0.2); }
+
+/* header data-stream: thin moving light under the header bar */
+.stark-header-stream {
+  position: fixed; top: 53px; left: 0; right: 0; height: 2px; z-index: 101;
+  background: linear-gradient(90deg,
+    transparent 0%, rgba(91,155,208,0.0) 30%, rgba(91,155,208,0.8) 50%,
+    rgba(238,244,250,0.9) 52%, rgba(91,155,208,0.0) 70%, transparent 100%);
+  background-size: 300% 100%;
+  opacity: 0; pointer-events: none;
+}
+body.stark-mode .stark-header-stream { opacity: 0.7; animation: stream-slide 7s linear infinite; }
+@keyframes stream-slide { 0% { background-position: 130% 0; } 100% { background-position: -130% 0; } }
+
+/* ticker: larger, brighter */
+.stark-ticker { font-size: 11px; letter-spacing: 3px; color: var(--brand-bright); }
+
+body.focus-mode .stark-bigring, body.focus-mode .stark-header-stream { display: none !important; }
