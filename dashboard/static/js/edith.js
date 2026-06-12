@@ -755,7 +755,9 @@
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     var c = audioManager.ensure();
     var src = c.createMediaStreamSource(micStream);
-    micAnalyser = c.createAnalyser(); micAnalyser.fftSize = 512;
+    micAnalyser = c.createAnalyser();
+    micAnalyser.fftSize = 2048;                 // ~46ms window: a 12ms clap can't fall between frames
+    micAnalyser.smoothingTimeConstant = 0.3;    // fresher spectrum for the transient flatness check
     src.connect(micAnalyser);
     micBuf = new Uint8Array(micAnalyser.fftSize);
     return micStream;
@@ -1374,11 +1376,19 @@
       // decay check: spike must die within ~180ms, else reject (tonal/sustained)
       if (now - _onset.at > 180) {
         var decayed = peak < Math.max(_noiseFloor * 3.5, 0.05);
-        if (decayed && _onset.flat > 0.22) registerClap(_onset);
+        var verdict = decayed && _onset.flat > 0.15;
+        log('clap onset:', verdict ? 'ACCEPT' : 'reject',
+            'peak=' + _onset.peak.toFixed(3), 'flat=' + _onset.flat.toFixed(2),
+            'decayed=' + decayed, 'floor=' + _noiseFloor.toFixed(3));
+        if (verdict) registerClap(_onset);
         else if (_calib) calibBlip(_onset, false, decayed ? 'tonal (flat ' + _onset.flat.toFixed(2) + ')' : 'no decay');
         _onset = null;
-      } else if (peak > _onset.peak) {
-        _onset.peak = peak;   // track the true spike height
+      } else {
+        if (peak > _onset.peak) _onset.peak = peak;   // track the true spike height
+        // the FFT window lags the impulse — flatness peaks mid-transient,
+        // so keep the MAX observed across the transient's lifetime
+        var f = spectralFlatness();
+        if (f > _onset.flat) _onset.flat = f;
       }
     } else {
       var fastRise = _prevRms[0] < clapThreshold() * 0.6;
@@ -1424,8 +1434,14 @@
   async function armClap() {
     if (clapArmed) return;
     try { await ensureMic(); } catch (e) {
-      note('Mic blocked — clap wake needs it.', 6000);
-      lsSet('edith-clap', '0');
+      // a gesture-less load can fail transiently — retry on first interaction,
+      // never silently persist the toggle off
+      log('clap arm deferred (mic not available yet):', e && e.name);
+      var retry = function() {
+        document.removeEventListener('pointerdown', retry, true);
+        if (lsGet('edith-clap', '1') === '1') armClap();
+      };
+      document.addEventListener('pointerdown', retry, true);
       return;
     }
     clapArmed = true;
@@ -1445,6 +1461,18 @@
       log('clap detector CPU: avg ' + avg.toFixed(3) + 'ms/frame over ' + _clapLoopCost.length + ' frames');
     }
   }
+  window.__CLAP_STATE__ = function() {
+    var ctxState = null;
+    try { ctxState = audioManager.ensure().state; } catch (e) { ctxState = 'err:' + e.message; }
+    return {
+      armed: clapArmed, micAnalyser: !!micAnalyser, micStream: !!micStream,
+      ctx: ctxState, floor: _noiseFloor, thresh: clapThreshold(),
+      state: state, listening: listening,
+      outputting: audioManager.isOutputting(),
+      loopFrames: _clapLoopCost.length,
+      peakNow: micPeak(),
+    };
+  };
   window.__CLAP_CPU__ = function() {
     if (!_clapLoopCost.length) return null;
     var avg = _clapLoopCost.reduce(function(a, b) { return a + b; }, 0) / _clapLoopCost.length;
@@ -1799,6 +1827,7 @@
     loadBootVisuals();
     await Promise.all([refreshVoiceStatus(), refreshMusicStatus()]);
     if (lsGet('edith-wake', '1') === '1') armWakeWord();
+    if (lsGet('edith-clap', '1') === '1') armClap();        // double-clap wake, on-device
   })();
 
 })();

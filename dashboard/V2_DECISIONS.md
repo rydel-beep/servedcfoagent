@@ -114,3 +114,17 @@
 - verification/ folder gitignored: frames contain real financials.
 - Typed-chat sends drive the same thinking choreography via edith:chat events (spec: voice OR
   text) without touching the voice state machine.
+
+## Clap detector debugging (2026-06-12, evidence-driven)
+- "Clapped, nothing happened" root causes found via fake-mic Playwright harness
+  (scripts/test_clap.py, synthesized clap-clap-tone wav as Chromium's mic):
+  1. THE BIG ONE: the init arm line never landed — an earlier patch changed the anchor
+     comment so the replace silently no-oped (no assert). Detector never armed outside
+    calibration. Lesson encoded: every patch replace now asserts.
+  2. Flatness was sampled at the onset frame, when the FFT window still held pre-clap
+     silence → claps measured 0.08 and were rejected as tonal. Now tracks MAX flatness
+     across the transient (claps measure 0.58-1.0; gate 0.15).
+  3. Suspended-AudioContext on gesture-less load silenced the analyser (fixed earlier
+     in v2 with auto-resume + visible note).
+- Proof: harness PASS — 2/2 claps accepted, 418ms gap wake fired, boot ran, 300Hz tone
+  rejected, 0.045ms/frame CPU. Harness kept as a permanent regression tool.
