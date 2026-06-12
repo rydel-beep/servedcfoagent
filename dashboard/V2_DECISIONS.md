@@ -92,3 +92,13 @@
   rides the boot; "keep playing after boot" toggle added.
 - Default sting deleted: empty slot → synth power-up only (no 404 player errors; client
   checks slot status before attempting playback).
+
+## Effects routing fix (2026-06-12, post-rebuild)
+- Phase 1 verdict: routing was intact; cause = subtle-by-default (12-15% wet) + stale
+  localStorage 'edith' key resolving to subtle after the rebuild dropped it. Fixed by
+  recalibration (EDITH preset 28% default w/ compressor + sheen + shimmer) + unknown keys
+  resolving UP to the default.
+- Kept MediaElementSource streaming (spec allows if probe passes); the muffle probe +
+  bypass self-detector are shipped IN the panel as the arbiter since terminal builds
+  can't hear audio. Buffer-source conversion not needed; revisit only if probe FAILs.
+- Stability 0.55 -> 0.70 server-side (Layer A of the character).

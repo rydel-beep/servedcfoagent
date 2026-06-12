@@ -73,9 +73,10 @@ def active_voice_id() -> str:
 
 
 def active_voice_settings() -> dict:
-    # EDITH register defaults: stability ~0.55, similarity ~0.75, measured pace
+    # EDITH register: stability 0.70 (even, controlled — reads composed/synthetic
+    # before any FX), similarity 0.75. Overridable via the panel's voice config.
     return {
-        "stability": _voice_config.get("stability", 0.55),
+        "stability": _voice_config.get("stability", 0.70),
         "similarity_boost": _voice_config.get("similarity", 0.75),
     }
 

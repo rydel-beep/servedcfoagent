@@ -108,19 +108,22 @@
 
     // ── the voice effects graph (Phase 2) — MANDATORY routing ──
     // source → HP/LP → comb resonance → micro-double → plate → wet/dry → voice ch
+    // EDITH character: compressor (even = synthetic), bandpass, +2.5dB sheen,
+    // comb, forward micro-double, capped shimmer ring-mod, bright plate.
     var PRESETS = {
-      off:       { wet: 0.00, hp: 0,   lp: 20000, comb: 0,    dbl: 0,    rev: 0 },
-      subtle:    { wet: 0.15, hp: 120, lp: 8000,  comb: 0.12, dbl: 0.25, rev: 0.12 },
-      assistant: { wet: 0.28, hp: 140, lp: 7200,  comb: 0.18, dbl: 0.35, rev: 0.16 },
-      system:    { wet: 0.45, hp: 200, lp: 5800,  comb: 0.28, dbl: 0.48, rev: 0.24 },
+      off:    { wet: 0.00, hp: 0,   lp: 20000, shelf: 0,   comb: 0,    dbl: 0,    shim: 0,    rev: 0,    comp: false },
+      subtle: { wet: 0.12, hp: 120, lp: 8000,  shelf: 1.5, comb: 0.12, dbl: 0.25, shim: 0,    rev: 0.12, comp: true },
+      edith:  { wet: 0.28, hp: 140, lp: 9000,  shelf: 2.5, comb: 0.15, dbl: 0.30, shim: 0.03, rev: 0.14, comp: true },
+      system: { wet: 0.45, hp: 200, lp: 5800,  shelf: 3.0, comb: 0.26, dbl: 0.44, shim: 0.05, rev: 0.22, comp: true },
     };
     function fxParams(presetName) {
-      var p = Object.assign({}, PRESETS[presetName] || PRESETS.subtle);
+      var p = Object.assign({}, PRESETS[presetName] || PRESETS.edith);
       if (lsGet('edith-fx-custom', '0') === '1') {
-        ['wet', 'hp', 'lp', 'comb', 'dbl', 'rev'].forEach(function(k) {
+        ['wet', 'hp', 'lp', 'shelf', 'comb', 'dbl', 'shim', 'rev'].forEach(function(k) {
           var v = lsGet('edith-fx-' + k, null);
           if (v != null) p[k] = parseFloat(v);
         });
+        p.shim = Math.min(0.10, p.shim || 0);   // >0.08 = Dalek; hard cap
       }
       return p;
     }
@@ -128,7 +131,9 @@
     function activePreset(context) {
       if (!fxEnabled()) return 'off';
       if (context === 'system') return 'system';
-      return lsGet('edith-fx-preset', 'subtle');
+      var stored = lsGet('edith-fx-preset', 'edith');
+      if (!PRESETS[stored]) stored = 'edith';   // stale keys resolve to the default, never silently down
+      return stored;
     }
     function makeImpulse(c, ms) {
       var len = Math.max(1, Math.round(c.sampleRate * ms / 1000));
@@ -137,37 +142,66 @@
       for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.2);
       return buf;
     }
-    function routeThroughFx(el, presetName, crushFirstWord) {
+    function routeThroughFx(el, presetName, crushFirstWord, fxOverride) {
       var c = ensure();
-      var p = fxParams(presetName);
+      var p = fxOverride || fxParams(presetName);
+      log('fx route:', presetName, 'wet=' + p.wet, 'ctx=' + c.state);
       var src = c.createMediaElementSource(el);
+
+      // COMPRESSOR first — the whole signal gets the ultra-even AI dynamics
+      var head = src;
+      if (p.comp !== false) {
+        var comp = c.createDynamicsCompressor();
+        comp.threshold.value = -28; comp.ratio.value = 4;
+        comp.attack.value = 0.005; comp.release.value = 0.15;
+        src.connect(comp);
+        head = comp;
+      }
+
       // dry path FIRST — an exception below can never mute the voice
       var dryG = c.createGain(); dryG.gain.value = 1 - p.wet * 0.5;
-      src.connect(dryG); dryG.connect(chVoice);
+      head.connect(dryG); dryG.connect(chVoice);
       try {
         var hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = p.hp || 1;
         var lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = p.lp;
-        src.connect(hp); hp.connect(lp);
+        head.connect(hp); hp.connect(lp);
+
+        // presence sheen: the crisp digital edge
+        var shelf = c.createBiquadFilter(); shelf.type = 'highshelf';
+        shelf.frequency.value = 6500; shelf.gain.value = p.shelf || 0;
+        lp.connect(shelf);
 
         var combDelay = c.createDelay(0.05); combDelay.delayTime.value = 0.005;
         var combFb = c.createGain(); combFb.gain.value = Math.min(0.5, p.comb * 2.2);
         var combMix = c.createGain(); combMix.gain.value = p.comb;
-        lp.connect(combDelay); combDelay.connect(combFb); combFb.connect(combDelay);
+        shelf.connect(combDelay); combDelay.connect(combFb); combFb.connect(combDelay);
         combDelay.connect(combMix);
 
         var dbl = c.createDelay(0.06); dbl.delayTime.value = 0.014;
-        var lfo = c.createOscillator(); lfo.frequency.value = 0.7;
-        var lfoG = c.createGain(); lfoG.gain.value = 0.0006;
+        var lfo = c.createOscillator(); lfo.frequency.value = 0.8;
+        var lfoG = c.createGain(); lfoG.gain.value = 0.00075;   // ≈10 cents perceived
         lfo.connect(lfoG); lfoG.connect(dbl.delayTime); lfo.start();
         var dblMix = c.createGain(); dblMix.gain.value = p.dbl;
-        lp.connect(dbl); dbl.connect(dblMix);
+        shelf.connect(dbl); dbl.connect(dblMix);
 
-        var conv = c.createConvolver(); conv.buffer = makeImpulse(c, 120);
+        // shimmer: very low-mix ring-mod ~3kHz — a glassy synthetic glint
+        var shimMix = c.createGain(); shimMix.gain.value = 0;
+        if (p.shim > 0) {
+          var ring = c.createGain(); ring.gain.value = 0;
+          var shimOsc = c.createOscillator(); shimOsc.frequency.value = 3000;
+          shimOsc.connect(ring.gain); shimOsc.start();
+          shelf.connect(ring);
+          shimMix.gain.value = Math.min(0.10, p.shim);
+          ring.connect(shimMix);
+        }
+
+        var conv = c.createConvolver(); conv.buffer = makeImpulse(c, 100);
         var revMix = c.createGain(); revMix.gain.value = p.rev;
-        lp.connect(conv); conv.connect(revMix);
+        shelf.connect(conv); conv.connect(revMix);
 
         var wet = c.createGain(); wet.gain.value = p.wet;
-        lp.connect(wet); combMix.connect(wet); dblMix.connect(wet); revMix.connect(wet);
+        shelf.connect(wet); combMix.connect(wet); dblMix.connect(wet);
+        shimMix.connect(wet); revMix.connect(wet);
         wet.connect(chVoice);
 
         if (crushFirstWord) {
@@ -176,7 +210,7 @@
           for (var i = 0; i < 256; i++) curve[i] = Math.round(((i / 128) - 1) * 6) / 6;
           shaper.curve = curve;
           var crushG = c.createGain(); crushG.gain.value = 0.5;
-          lp.connect(shaper); shaper.connect(crushG); crushG.connect(chVoice);
+          shelf.connect(shaper); shaper.connect(crushG); crushG.connect(chVoice);
           setTimeout(function() { try { crushG.gain.setTargetAtTime(0, c.currentTime, 0.02); } catch (e) {} }, 80);
         }
         return true;
@@ -236,8 +270,29 @@
         var el = new Audio(url);
         el.volume = 1;                     // gain lives in the mixer, not the element
         currentEl = el;
-        var routed = routeThroughFx(el, activePreset(opts.context), !!opts.crushFirstWord);
+        var presetName = opts.fxOverride ? 'probe' : activePreset(opts.context);
+        var routed = routeThroughFx(el, presetName, !!opts.crushFirstWord, opts.fxOverride);
         if (!routed) log('utterance playing without fx');
+        fxBadge(routed ? (presetName === 'off' ? 'OFF' : presetName.toUpperCase()) : 'BYPASS');
+
+        // bypass self-detection: element advancing while the post-fx analyser is
+        // silent = audio escaping the graph. Detect, badge, and report.
+        var bypassCheck = setTimeout(function() {
+          if (currentUtterance !== my || !voiceAnalyser) return;
+          if (el.currentTime > 1 && !el.paused) {
+            var b = new Uint8Array(voiceAnalyser.fftSize);
+            voiceAnalyser.getByteTimeDomainData(b);
+            var peak = 0;
+            for (var i = 0; i < b.length; i++) peak = Math.max(peak, Math.abs(b[i] - 128));
+            if (peak < 2) {
+              log('BYPASS DETECTED: element playing but post-fx analyser silent');
+              fxBadge('BYPASS!');
+              note('FX routing bypass detected — report this. Audio is playing outside the graph.', 8000);
+            } else {
+              log('routing verified: post-fx analyser carrying signal (peak ' + peak + ')');
+            }
+          }
+        }, 1500);
 
         var firstByte = false;
         var fellBack = false;
@@ -257,7 +312,7 @@
         });
         el.addEventListener('ended', function() {
           if (settled || fellBack) return;
-          settled = true; clearTimeout(watchdog);
+          settled = true; clearTimeout(watchdog); clearTimeout(bypassCheck);
           done('elevenlabs');
         });
         el.addEventListener('error', function() {
@@ -437,6 +492,13 @@
     };
   })();
 
+  // probe parameter sets (fxOverride payloads)
+  var PROBE_RAW = { wet: 0, hp: 0, lp: 20000, shelf: 0, comb: 0, dbl: 0, shim: 0, rev: 0, comp: false };
+  var PROBE_MUFFLE = { wet: 1, hp: 0, lp: 300, shelf: 0, comb: 0, dbl: 0, shim: 0, rev: 0, comp: false };
+  function audioManagerSampleRate() {
+    try { return audioManager.ensure().sampleRate; } catch (e) { return 44100; }
+  }
+
   // ── shared voice status ──────────────────────────────────
   var voiceStatus = null;
   var lastSpokenText = '';
@@ -449,6 +511,7 @@
 
   function fallbackBadge(reason) {
     note('voice fallback (' + reason + ')', 6000);
+    fxBadge('FALLBACK');
   }
 
   // speak wrapper: tracks transcript for the echo filter + latency metric
@@ -463,7 +526,16 @@
   // ═════════════════════════════════════════════════════════
   //  UI: orb, captions, notes, wave, brackets
   // ═════════════════════════════════════════════════════════
-  var orb, ringEl, captionEl, noteEl, waveCanvas;
+  var orb, ringEl, captionEl, noteEl, waveCanvas, fxBadgeEl;
+
+  function fxBadge(label) {
+    if (!fxBadgeEl) return;
+    fxBadgeEl.textContent = 'FX: ' + label;
+    fxBadgeEl.className = 'edith-fx-badge show' +
+      (label === 'OFF' || label === 'BYPASS' || label === 'BYPASS!' || label === 'FALLBACK' ? ' warn' : '');
+    clearTimeout(fxBadgeEl._t);
+    fxBadgeEl._t = setTimeout(function() { fxBadgeEl.classList.remove('show'); }, 6000);
+  }
 
   function buildUI() {
     orb = document.createElement('div');
@@ -489,6 +561,10 @@
     waveCanvas.id = 'edith-wave'; waveCanvas.className = 'edith-wave';
     waveCanvas.width = 180; waveCanvas.height = 28;
     document.body.appendChild(waveCanvas);
+
+    fxBadgeEl = document.createElement('div');
+    fxBadgeEl.className = 'edith-fx-badge';
+    document.body.appendChild(fxBadgeEl);
 
     var brackets = document.createElement('div');
     brackets.id = 'edith-brackets'; brackets.className = 'edith-brackets';
@@ -1157,7 +1233,7 @@
     el = document.createElement('div');
     el.id = 'edith-panel';
     el.className = 'jarvis-help edith-panel';
-    var p = audioManager.fxParams(lsGet('edith-fx-preset', 'subtle'));
+    var p = audioManager.fxParams(lsGet('edith-fx-preset', 'edith'));
     el.innerHTML =
       '<div class="jh-title">EDITH</div>' +
       '<div class="jh-row"><b>Click orb / hold V or Space</b> talk &middot; <b>Esc</b> stop &middot; <b>B</b> brief</div>' +
@@ -1173,8 +1249,8 @@
       '<div class="ep-section">AI Voice Character</div>' +
       '<div class="jh-row"><label><input type="checkbox" id="ep-fx" ' + (audioManager.fxEnabled() ? 'checked' : '') + '> AI processing</label></div>' +
       '<div class="jh-row ep-presets">' +
-        ['subtle', 'assistant', 'system', 'off'].map(function(name) {
-          var cur = lsGet('edith-fx-preset', 'subtle');
+        ['edith', 'subtle', 'system', 'off'].map(function(name) {
+          var cur = lsGet('edith-fx-preset', 'edith');
           return '<button class="ep-preset' + (cur === name ? ' active' : '') + '" data-p="' + name + '">' + name + '</button>';
         }).join('') +
       '</div>' +
@@ -1183,12 +1259,16 @@
         '<div class="jh-row">LP <input type="range" data-fx="lp" min="3000" max="16000" step="250" value="' + p.lp + '"></div>' +
         '<div class="jh-row">Resonance <input type="range" data-fx="comb" min="0" max="0.4" step="0.02" value="' + p.comb + '"></div>' +
         '<div class="jh-row">Double <input type="range" data-fx="dbl" min="0" max="0.6" step="0.02" value="' + p.dbl + '"></div>' +
+        '<div class="jh-row">Sheen <input type="range" data-fx="shelf" min="0" max="6" step="0.5" value="' + (p.shelf || 0) + '"></div>' +
+        '<div class="jh-row">Shimmer <input type="range" data-fx="shim" min="0" max="0.10" step="0.01" value="' + (p.shim || 0) + '"></div>' +
         '<div class="jh-row">Reverb <input type="range" data-fx="rev" min="0" max="0.4" step="0.02" value="' + p.rev + '"></div>' +
         '<div class="jh-row">Wet <input type="range" data-fx="wet" min="0" max="0.7" step="0.02" value="' + p.wet + '"></div>' +
       '</details>' +
       '<div class="ep-section">Voice (locked: FRIDAY)</div>' +
       '<div class="jh-row"><input type="text" id="ep-voice-id" class="ep-input" placeholder="ElevenLabs voice ID (audition)"></div>' +
       '<div class="jh-row ep-presets"><button id="ep-audition" class="ep-preset">audition</button>' +
+      '<button id="ep-ab" class="ep-preset">A/B raw vs fx</button>' +
+      '<button id="ep-probe" class="ep-preset">muffle probe</button>' +
       '<button id="ep-voice-set" class="ep-preset">set</button>' +
       '<button id="ep-voice-reset" class="ep-preset">reset to default</button></div>' +
       '<div class="ep-section">Entrance music</div>' +
@@ -1255,6 +1335,37 @@
       say(TEST_LINE, 'reply', vid ? { voiceId: vid } : {}).then(function() {
         if (state === S.SPEAKING) transition(S.IDLE, 'audition done');
       });
+    });
+    // A/B: raw first, 600ms gap, then through current settings — the ear's test
+    el.querySelector('#ep-ab').addEventListener('click', async function() {
+      var line = 'EDITH online. This is the raw voice.';
+      note('A: raw…', 2500);
+      await say(line, 'reply', { fxOverride: PROBE_RAW });
+      await new Promise(function(r) { setTimeout(r, 600); });
+      note('B: through current settings…', 2500);
+      await say('EDITH online. This is the processed voice.', 'reply');
+      if (state === S.SPEAKING) transition(S.IDLE, 'ab done');
+    });
+    // Muffle probe: 100% wet through a 300Hz lowpass. If the voice is not
+    // obviously underwater, the chain is NOT in the signal path. The analyser
+    // verdict prints alongside what you hear.
+    el.querySelector('#ep-probe').addEventListener('click', async function() {
+      note('Muffle probe: this line should sound underwater…', 5000);
+      var verdictTimer = setTimeout(function() {
+        var an = audioManager.analyser();
+        if (!an) return;
+        var freq = new Uint8Array(an.frequencyBinCount);
+        an.getByteFrequencyData(freq);
+        var cut = Math.round(600 / (audioManagerSampleRate() / 2) * freq.length);
+        var low = 0, high = 0;
+        for (var i = 0; i < freq.length; i++) { if (i <= cut) low += freq[i]; else high += freq[i]; }
+        var pass = low > 200 && high < low * 0.25;
+        note('MUFFLE PROBE ' + (pass ? 'PASS — chain is in the signal path ✓' : 'FAIL — high-band energy present; routing suspect') , 9000);
+        log('muffle probe:', pass ? 'PASS' : 'FAIL', 'low=' + low, 'high=' + high);
+      }, 2200);
+      await say('Testing the audio chain. If this sounds clear, the routing is broken.', 'reply', { fxOverride: PROBE_MUFFLE });
+      clearTimeout(verdictTimer);
+      if (state === S.SPEAKING) transition(S.IDLE, 'probe done');
     });
     el.querySelector('#ep-voice-set').addEventListener('click', async function() {
       var vid = el.querySelector('#ep-voice-id').value.trim();

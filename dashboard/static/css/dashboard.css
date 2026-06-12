@@ -2209,3 +2209,16 @@ body.boot-seq .panel::after {
 @keyframes online-tick {
   0% { opacity: 0; } 15% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; }
 }
+
+/* ── FX path badge: which path the audio took is never a mystery ── */
+.edith-fx-badge {
+  position: fixed; right: 92px; bottom: 78px; z-index: 249;
+  padding: 3px 9px; border-radius: 9px;
+  font-family: 'SF Mono', Menlo, monospace;
+  font-size: 9px; letter-spacing: 1px;
+  background: rgba(91,155,208,0.14); color: var(--brand-muted);
+  border: 1px solid rgba(91,155,208,0.3);
+  opacity: 0; transition: opacity 0.25s; pointer-events: none;
+}
+.edith-fx-badge.show { opacity: 1; }
+.edith-fx-badge.warn { border-color: rgba(232,180,69,0.5); color: var(--amber); background: rgba(232,180,69,0.1); }
