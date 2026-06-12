@@ -243,6 +243,11 @@
       startWave();
 
       var useEleven = voiceStatus && voiceStatus.elevenlabs_configured;
+      if (!voiceStatus) {
+        note('Voice status unknown — refresh the page.', 5000);
+      } else if (!useEleven) {
+        note('ElevenLabs NOT configured on the server (add ELEVENLABS_API_KEY on Railway) — using browser voice.', 8000);
+      }
       if (useEleven) {
         var url = '/dashboard/api/tts?text=' + encodeURIComponent(text);
         if (opts.voiceId) url += '&voice_id=' + encodeURIComponent(opts.voiceId);
@@ -252,9 +257,28 @@
         currentAudio = audio;
         try { buildFxChain(audio, activePreset(context), !!opts.crushFirstWord); } catch (e) { /* play raw */ }
         var fell = false;
-        audio.addEventListener('error', function() { if (!fell) { fell = true; browserSpeak(text).then(done); } });
+        audio.addEventListener('error', function() {
+          if (fell) return; fell = true;
+          _diagnoseTts(text);            // say WHY the real voice failed
+          browserSpeak(text).then(done);
+        });
         audio.addEventListener('ended', done);
-        audio.play().catch(function() { if (!fell) { fell = true; browserSpeak(text).then(done); } });
+        audio.play().catch(function(err) {
+          if (fell) return; fell = true;
+          if (err && err.name === 'NotAllowedError') {
+            // autoplay blocked: wake-word speech has no click behind it
+            note('Browser blocked audio without a click — click anywhere once, then EDITH can speak unprompted.', 9000);
+            var retry = function() {
+              document.removeEventListener('click', retry, true);
+              audioCtx();
+              audio.play().catch(function() { browserSpeak(text).then(done); });
+            };
+            document.addEventListener('click', retry, true);
+            return;
+          }
+          _diagnoseTts(text);
+          browserSpeak(text).then(done);
+        });
       } else {
         browserSpeak(text).then(done);
       }
@@ -266,6 +290,19 @@
         resolve();
       }
     });
+  }
+
+  async function _diagnoseTts(text) {
+    try {
+      var resp = await fetch('/dashboard/api/tts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: (text || 'test').slice(0, 40) }),
+      });
+      if (resp.headers.get('content-type') && resp.headers.get('content-type').indexOf('json') !== -1) {
+        var data = await resp.json();
+        if (data && data.reason) note('ElevenLabs failed: ' + data.reason + ' — using browser voice.', 9000);
+      }
+    } catch (e) {}
   }
 
   function browserSpeak(text) {
@@ -448,6 +485,10 @@
 
   async function handleTranscript(text) {
     if (!text) return;
+    // "Hey Edith" spoken into an open mic is a wake, not a question
+    if (/^\s*(hey\s+)?(edith|jarvis)[\s.,!?]*$/i.test(text)) {
+      return wakeFired();
+    }
     if (SIGNOFF.test(text)) {
       sessionActive = false;
       await speak('Very good, Rydel.', 'reply');
@@ -599,9 +640,15 @@
     var text = null;
     try {
       var resp = await fetch('/dashboard/api/greeting');
-      var data = await resp.json();
-      text = data.text;
-    } catch (e) {}
+      if (resp.ok) {
+        var data = await resp.json();
+        text = data.text;
+      } else {
+        note('Greeting endpoint returned ' + resp.status + ' — using fallback greeting.', 6000);
+      }
+    } catch (e) {
+      note('Greeting fetch failed (' + (e.message || 'network') + ') — using fallback greeting.', 6000);
+    }
     if (!text) {
       var hour = new Date().getHours();
       text = 'Good ' + (hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening') + ', Rydel. EDITH online. What do you need?';
@@ -851,9 +898,23 @@
       '<div class="jh-row ep-presets"><button id="ep-audition" class="ep-preset">audition</button>' +
       '<button id="ep-voice-set" class="ep-preset">set</button>' +
       '<button id="ep-voice-reset" class="ep-preset">reset to default</button></div>' +
+      '<div class="ep-section">Status</div>' +
+      '<div class="jh-row ep-dim" id="ep-status">checking…</div>' +
       '<div class="jh-close">esc or ? to close</div>';
     document.body.appendChild(el);
 
+    (async function fillStatus() {
+      await refreshVoiceStatus();
+      var s = el.querySelector('#ep-status');
+      if (!s) return;
+      if (!voiceStatus) { s.textContent = 'voice-status unreachable — check login/network'; return; }
+      s.innerHTML =
+        'ElevenLabs: <b style="color:' + (voiceStatus.elevenlabs_configured ? 'var(--green)' : 'var(--red)') + '">' +
+        (voiceStatus.elevenlabs_configured ? 'configured' : 'NOT CONFIGURED — add ELEVENLABS_API_KEY on Railway') + '</b><br>' +
+        'Voice: ' + esc(voiceStatus.voice_id || '?') + (voiceStatus.voice_id === voiceStatus.default_voice_id ? ' (locked default)' : ' (override)') + '<br>' +
+        'Wake mode: ' + (CFG.picovoiceKey ? 'on-device (Picovoice)' : 'browser (interim)') + '<br>' +
+        'TTS today: ' + (voiceStatus.daily_chars_used || 0) + ' / ' + voiceStatus.daily_char_cap + ' chars';
+    })();
     el.querySelector('#ep-wake').addEventListener('change', function() {
       lsSet('edith-wake', this.checked ? '1' : '0');
       if (this.checked) armWakeWord(); else disarmWakeWord();
@@ -918,6 +979,15 @@
     });
     if (lsGet('jarvis-entrance-invite', '0') === '1') reactor.classList.add('invite');
   }
+
+  // first user interaction unlocks audio for gesture-less (wake-word) speech
+  function _unlockAudio() {
+    try { audioCtx(); } catch (e) {}
+    document.removeEventListener('click', _unlockAudio, true);
+    document.removeEventListener('keydown', _unlockAudio, true);
+  }
+  document.addEventListener('click', _unlockAudio, true);
+  document.addEventListener('keydown', _unlockAudio, true);
 
   (async function init() {
     buildUI();
