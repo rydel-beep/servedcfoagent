@@ -54,7 +54,14 @@ interim in the UI). To get "Hey Edith":
    page load and hot-switches the keyword — no code change needed.
 
 Also requires **`PICOVOICE_ACCESS_KEY`** in Railway env (free at the same
-console). Without it the toggle explains itself and click/hold-V still work.
+console — note: Picovoice signups now need approval, which can take time).
+**Until the key exists, the toggle arms a BROWSER-MODE wake word instead:**
+the browser's own speech recognition listens for "Hey Edith" continuously.
+Honest trade-off, stated in the UI: browser mode sends audio to the browser's
+speech service while armed (it is NOT on-device); it also hands the mic to the
+query listener while you're actively talking and re-arms after. The code
+auto-upgrades to on-device Porcupine the moment the key is added — no action
+needed beyond the env var. Click/hold-V always work regardless.
 Note: the Picovoice key is client-side **by design** (WASM init) but is
 injected only into the authed dashboard page, never into public static assets.
 Blast radius if leaked: someone could burn your free-tier wake-word quota —

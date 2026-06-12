@@ -375,6 +375,7 @@
     recognition = recognition || initRecognition();
     if (!recognition) return;
     try { await ensureMic(); } catch (e) { /* analyser optional; SR prompts its own */ }
+    stopBrowserWake();   // hand the mic recognizer to the query listener
     pendingText = '';
     lastChangeAt = performance.now();
     holdMode = !!viaHold;
@@ -395,6 +396,7 @@
     if (recognition) { try { recognition.stop(); } catch (e) {} }
     if (orbState === 'listening') { setOrb('idle'); if (!silent) caption(''); }
     if (orb) orb.style.setProperty('--mic-level', '0');
+    resumeWakeIfArmed();
   }
 
   function runMicGlow() {
@@ -625,7 +627,8 @@
   var usingBuiltinJarvis = false;
 
   function wakePhrase() {
-    return (CFG.wakePpnPresent ? 'Hey Edith' : 'Jarvis');
+    if (CFG.picovoiceKey) return CFG.wakePpnPresent ? 'Hey Edith' : 'Jarvis';
+    return 'Hey Edith';   // browser-STT fallback matches the transcript directly
   }
 
   function loadScript(src) {
@@ -636,12 +639,79 @@
     });
   }
 
+  // ── Browser-STT wake fallback (interim until Picovoice approval) ──
+  // Honest trade-off: this uses the browser's speech service (audio leaves the
+  // device while armed), unlike Porcupine's on-device WASM. The code prefers
+  // Porcupine automatically once PICOVOICE_ACCESS_KEY exists.
+  var browserWake = null;
+  var browserWakeActive = false;
+  var WAKE_RX = /\b(hey\s+)?(edith|edith\b|jarvis)\b\s*$/i;
+
+  function startBrowserWake() {
+    if (browserWakeActive || !hasSTT) return;
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    browserWake = new SR();
+    browserWake.lang = 'en-AU';
+    browserWake.interimResults = true;
+    browserWake.continuous = true;
+    browserWake.onresult = function(e) {
+      var txt = '';
+      for (var i = e.results.length - 1; i >= 0 && i >= e.results.length - 2; i--) {
+        txt = e.results[i][0].transcript + ' ' + txt;
+      }
+      if (WAKE_RX.test(txt.trim())) {
+        stopBrowserWake();
+        wakeFired();
+      }
+    };
+    browserWake.onerror = function(e) {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        note('Mic blocked — wake word off.', 6000);
+        lsSet('edith-wake', '0');
+        wakeArmed = false; browserWakeActive = false; setOrb(orbState);
+      }
+    };
+    browserWake.onend = function() {
+      // browser ends recognition periodically — re-arm unless we stopped on purpose
+      if (browserWakeActive && wakeArmed && !listening && !document.hidden) {
+        try { browserWake.start(); } catch (e) {}
+      }
+    };
+    try { browserWake.start(); browserWakeActive = true; } catch (e) {}
+  }
+
+  function stopBrowserWake() {
+    browserWakeActive = false;
+    if (browserWake) { try { browserWake.stop(); } catch (e) {} }
+  }
+
+  // the query listener and the wake listener can't share the mic recognizer —
+  // pause wake while actively listening, resume after
+  function resumeWakeIfArmed() {
+    if (wakeArmed && !CFG.picovoiceKey && !listening && !document.hidden) {
+      setTimeout(function() { if (wakeArmed && !listening) startBrowserWake(); }, 400);
+    }
+  }
+
   async function armWakeWord() {
     if (wakeArmed) return;
     if (!CFG.picovoiceKey) {
-      note('Wake word needs PICOVOICE_ACCESS_KEY on the server — using click / hold-V.', 7000);
-      lsSet('edith-wake', '0');
-      refreshPanel();
+      if (!hasSTT) {
+        note('Wake word needs Chrome.', 6000);
+        lsSet('edith-wake', '0');
+        refreshPanel();
+        return;
+      }
+      try { await ensureMic(); } catch (e) {
+        note('Mic blocked — click the lock icon to allow it.', 7000);
+        lsSet('edith-wake', '0');
+        refreshPanel();
+        return;
+      }
+      wakeArmed = true;
+      setOrb(orbState);
+      startBrowserWake();
+      note('Wake word armed — say "Hey Edith" (browser mode: uses the browser speech service; switches to on-device Picovoice once the key is added)', 8000);
       return;
     }
     try {
@@ -679,6 +749,7 @@
   async function disarmWakeWord() {
     wakeArmed = false;
     setOrb(orbState);
+    stopBrowserWake();
     try {
       if (porcupine) {
         await window.WebVoiceProcessor.WebVoiceProcessor.unsubscribe(porcupine);
@@ -690,11 +761,16 @@
   }
 
   document.addEventListener('visibilitychange', function() {
-    if (!wakeArmed || !porcupine) return;
-    try {
-      if (document.hidden) window.WebVoiceProcessor.WebVoiceProcessor.unsubscribe(porcupine);
-      else window.WebVoiceProcessor.WebVoiceProcessor.subscribe(porcupine);
-    } catch (e) {}
+    if (!wakeArmed) return;
+    if (porcupine) {
+      try {
+        if (document.hidden) window.WebVoiceProcessor.WebVoiceProcessor.unsubscribe(porcupine);
+        else window.WebVoiceProcessor.WebVoiceProcessor.subscribe(porcupine);
+      } catch (e) {}
+    } else {
+      if (document.hidden) stopBrowserWake();
+      else resumeWakeIfArmed();
+    }
   });
 
   // ── Orb + keyboard ───────────────────────────────────────
@@ -748,7 +824,7 @@
     el.innerHTML =
       '<div class="jh-title">EDITH</div>' +
       '<div class="jh-row"><b>Click orb / hold V or Space</b> talk &middot; <b>Esc</b> interrupt &middot; <b>B</b> brief</div>' +
-      '<div class="jh-row"><label><input type="checkbox" id="ep-wake" ' + (wakeOn ? 'checked' : '') + '> &#127908; Wake word: say "' + wakePhrase() + '"' + (CFG.wakePpnPresent ? '' : ' <span class="ep-dim">(interim — train "Hey Edith" .ppn)</span>') + '</label></div>' +
+      '<div class="jh-row"><label><input type="checkbox" id="ep-wake" ' + (wakeOn ? 'checked' : '') + '> &#127908; Wake word: say "' + wakePhrase() + '"' + (CFG.picovoiceKey ? (CFG.wakePpnPresent ? '' : ' <span class="ep-dim">(interim — train "Hey Edith" .ppn)</span>') : ' <span class="ep-dim">(browser mode — on-device once Picovoice key is added)</span>') + '</label></div>' +
       '<div class="jh-row"><label><input type="checkbox" id="ep-convo" ' + (lsGet('edith-convo', '1') === '1' ? 'checked' : '') + '> Conversation mode (auto re-listen)</label></div>' +
       '<div class="jh-row"><label><input type="checkbox" id="ep-cine" ' + (lsGet('edith-cinematic', '1') === '1' ? 'checked' : '') + '> Cinematic mode</label></div>' +
       '<div class="jh-row">Patience <input type="range" id="ep-patience" min="0.8" max="3" step="0.1" value="' + lsNum('edith-patience', 1.4) + '"> <span id="ep-patience-v">' + lsNum('edith-patience', 1.4).toFixed(1) + 's</span></div>' +

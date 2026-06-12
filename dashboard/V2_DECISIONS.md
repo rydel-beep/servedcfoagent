@@ -71,3 +71,10 @@
   faster, never fabricates, weather skips gracefully.
 - Voice audition persists to state/voice_config.json (Railway volume) so a "set" survives
   restarts; empty POST resets to the locked FRIDAY voice.
+
+## Browser-mode wake word (2026-06-12, post-EDITH)
+- Picovoice signup now requires approval; Rydel blocked. Added a browser-STT wake fallback:
+  continuous SpeechRecognition matching /(hey )?edith|jarvis/ at transcript end. Labeled
+  honestly in UI (uses browser speech service, NOT on-device). Auto-prefers Porcupine when
+  PICOVOICE_ACCESS_KEY appears. Wake/query listeners share one recognizer — wake pauses
+  during active listening and on hidden tabs, resumes after.
