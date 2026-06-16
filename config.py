@@ -100,6 +100,15 @@ CASH_TAX_RESERVED = float(os.getenv("CASH_TAX_RESERVED", "20000"))
 # The snapshot flags the cash position as stale when this is > 7 days old.
 CASH_CONFIRMED_DATE = os.getenv("CASH_CONFIRMED_DATE", "2026-06-04")
 
+# ── Anthropic chat model ─────────────────────────────────────────────────────
+# Single source of truth for the model every Claude-calling endpoint uses, so the
+# string can never drift across endpoints again. Override via the CHAT_MODEL env
+# var on Railway; the in-code default must always be a CURRENT, valid model ID.
+# History: the old hardcoded "claude-sonnet-4-20250514" (Sonnet 4, dated ID) was
+# RETIRED 2026-06-15 and began returning 404 not_found_error. Replaced with the
+# documented drop-in, claude-sonnet-4-6 (Sonnet 4.6).
+CHAT_MODEL = os.getenv("CHAT_MODEL", "claude-sonnet-4-6")
+
 # ── Snapshot ─────────────────────────────────────────────────────────────────
 SNAPSHOT_FILE = os.getenv("SNAPSHOT_FILE", "snapshot_state.json")
 CFO_REFRESH_KEY = os.getenv("CFO_REFRESH_KEY", "")

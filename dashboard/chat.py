@@ -11,6 +11,8 @@ import os
 import time
 from collections import defaultdict
 
+from config import CHAT_MODEL
+
 logger = logging.getLogger(__name__)
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -345,7 +347,7 @@ def chat(history: list, snapshot_json: str, token: str, voice: bool = False) -> 
             import anthropic
             client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
             response = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model=CHAT_MODEL,
                 max_tokens=300 if voice else 1000,
                 temperature=0.5,
                 system=system,
