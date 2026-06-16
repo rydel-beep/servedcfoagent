@@ -1052,7 +1052,13 @@ def _compute_multi_window(ltc_rows: list[list[str]], today: date) -> list[dict]:
     return [_compute_window_metrics(ltc_rows, today, w) for w in _WINDOWS]
 
 
-_PAYOUT_LOG_GID = 1862317163
+# Setter Payout Log tab in the Lead-to-Cash book. The previous gid (1862317163)
+# was a since-deleted/rebuilt tab and returned HTTP 400 (Google served an HTML
+# error page, not CSV), so setter payout detail silently came back empty.
+# Confirmed by Rydel 2026-06-16. The Closer Payout & KPI tab (gid 115293898) is a
+# separate tab not currently read here — closer commission is derived from the
+# main LTC Tracker rows + CLOSER_COMMISSION_BY_OFFER per source-of-truth precedence.
+_PAYOUT_LOG_GID = 552970662
 
 
 def _normalise_offer(offer: str) -> str | None:

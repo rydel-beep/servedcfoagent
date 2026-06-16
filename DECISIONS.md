@@ -26,3 +26,22 @@
 
 5. **Scope held to Issue A.** Hard-stopped before Issue B (Sheets freshness) per the work
    order's phase gate.
+
+## 2026-06-16 — Sheets freshness audit (Issue B, Phase 1 — diagnosis only)
+
+6. **No fetch logic changed.** Hard stop at the data map per the work order. Findings only.
+
+7. **Will NOT fix the payout-log 400 by switching gviz-by-gid.** Probed and proved gviz
+   *ignores* the `gid` param (gid 1862317163 and gid 239343371 returned byte-identical output
+   — a 27-row guardrail tab). Swapping `/export?gid=` → `gviz?gid=` would turn a loud 400 into
+   a silent wrong-tab read. Correct fix is fetch-by-NAME via gviz (needs the exact tab name)
+   or publishing the LTC book for `/export`. Deferred to Rydel.
+
+8. **Will NOT silently repoint `forward_mrr`.** gid 1407663952 is the **Health** tab, but
+   `forward_mrr` treats it as RECOGNIZED. Per CLAUDE.md ("do not silently repoint an engine")
+   this needs Rydel to confirm intent before any change.
+
+9. **Probes were read-only and public.** Sheets CSV/gviz exports need no credentials, so no
+   secret was touched. The one model-API ping ran via `railway run` so the Anthropic key was
+   injected into a subprocess, never read into context. No Railway variable was dumped (only
+   the single `CHAT_MODEL` / `SNAPSHOT_FILE` keys were parsed out).
