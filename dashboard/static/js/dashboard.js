@@ -86,6 +86,18 @@
     return Math.round(mins / 60) + 'h ago';
   }
 
+  // Absolute "data as of" time, always in Sydney (the business runs on AEST/AEDT).
+  // generated_at carries a +10:00/+11:00 offset so the instant parses correctly.
+  function fmtSydney(iso) {
+    if (!iso) return 'unknown';
+    try {
+      return new Date(iso).toLocaleString('en-AU', {
+        timeZone: 'Australia/Sydney', day: 'numeric', month: 'short',
+        hour: 'numeric', minute: '2-digit', hour12: true,
+      }) + ' AEST';
+    } catch (e) { return iso; }
+  }
+
   function esc(s) {
     const d = document.createElement('div');
     d.textContent = s || '';
@@ -532,31 +544,36 @@
       console.warn('[integrity] Duplicate projection summary detected — removing extras');
       for (var i = 1; i < projSummaries.length; i++) projSummaries[i].remove();
     }
-    // Check for stale data warning
-    if (currentSnap && currentSnap.generated_at) {
-      var ageMs = Date.now() - new Date(currentSnap.generated_at).getTime();
-      if (ageMs > 24 * 3600 * 1000) {
-        var dot = $('#status-dot');
-        if (dot) dot.className = 'status-dot stale';
-        var txt = $('#status-text');
-        if (txt) txt.textContent = '⚠ stale (>24h)';
-      }
-    }
+    // Keep the header pill authoritative via renderStatus (handles age + health).
+    if (currentSnap) renderStatus(currentSnap);
   }
 
   // ── Status bar ───────────────────────────────────────────
+  // The always-visible pill reflects DATA HEALTH, not just age: a recent
+  // snapshot with failing sources must look unhealthy, loudly.
   function renderStatus(snap) {
     const genAt = snap.generated_at;
     const mins = genAt ? Math.round((Date.now() - new Date(genAt)) / 60000) : 999;
+    const degraded = (snap.degraded || []).length;
+    const failing = (snap.ok === false) || degraded > 0;
     const dot = $('#status-dot');
     const txt = $('#status-text');
-    if (mins > 120) {
-      dot.className = 'status-dot stale';
-      txt.textContent = timeAgo(genAt);
-    } else {
-      dot.className = 'status-dot';
-      txt.textContent = timeAgo(genAt);
-    }
+    if (!dot || !txt) return;
+
+    // Dot: red if sources are failing OR data is very stale; amber if aging; green otherwise.
+    if (failing || mins > 24 * 60) dot.className = 'status-dot fail';
+    else if (mins > 120) dot.className = 'status-dot stale';
+    else dot.className = 'status-dot';
+
+    // Text: relative age, with a loud issue count when sources are failing.
+    txt.textContent = timeAgo(genAt) + (degraded > 0 ? ' · ⚠ ' + degraded : '');
+
+    // Tooltip: the explicit "Data as of <Sydney time>" readout + health.
+    const health = snap.ok === false
+      ? (degraded + ' data-quality issue' + (degraded === 1 ? '' : 's'))
+      : 'all sources OK';
+    $('#status-pill').title = 'Data as of ' + fmtSydney(genAt) + ' · ' + health
+      + '. Click ↻ to refresh.';
   }
 
   // ── Executive Summary ────────────────────────────────────
@@ -3808,7 +3825,7 @@
     }
     $('#quality-meta').innerHTML = `
       <div class="quality-meta">
-        Last refresh: ${snap.generated_at || '—'}<br>
+        Data as of: ${fmtSydney(snap.generated_at)}<br>
         Status: ${snap.ok ? 'All sources OK' : degraded.length + ' degraded source(s)'}
       </div>
     `;
@@ -3861,14 +3878,25 @@
     btn.disabled = true;
     btn.classList.add('loading');
     refreshCooldown = true;
+    const txt = $('#status-text');
+    if (txt) txt.textContent = 'refreshing…';
     try {
       const resp = await fetch('/dashboard/api/refresh', { method: 'POST' });
       if (resp.ok) {
         const snap = await fetchSnapshot();
-        if (snap) render(snap);
+        if (snap) render(snap);  // renderStatus repaints the pill with fresh health
+      } else {
+        // Surface the failure loudly instead of silently swallowing it.
+        let detail = 'HTTP ' + resp.status;
+        try { const e = await resp.json(); if (e && e.error) detail = e.error; } catch (_) {}
+        if (txt) txt.textContent = '⚠ refresh failed';
+        const pill = $('#status-pill'); if (pill) pill.title = 'Refresh failed: ' + detail;
+        const dot = $('#status-dot'); if (dot) dot.className = 'status-dot fail';
       }
     } catch (e) {
       console.error('Refresh failed:', e);
+      if (txt) txt.textContent = '⚠ refresh failed';
+      const dot = $('#status-dot'); if (dot) dot.className = 'status-dot fail';
     } finally {
       btn.classList.remove('loading');
       setTimeout(() => { btn.disabled = false; refreshCooldown = false; }, 10000);

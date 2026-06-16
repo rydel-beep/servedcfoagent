@@ -145,6 +145,7 @@ body {
   background: var(--green);
 }
 .status-dot.stale { background: var(--amber); }
+.status-dot.fail { background: var(--red); box-shadow: 0 0 0 3px var(--red-dim); }
 
 .icon-btn {
   display: flex; align-items: center; justify-content: center;

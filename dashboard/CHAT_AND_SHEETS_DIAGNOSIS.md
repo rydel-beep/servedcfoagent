@@ -162,13 +162,17 @@ look stale/wrong**, in priority order:
 
 ### B.7 — Phase 2 status
 
-- ✅ **Payout-log fixed** (`_PAYOUT_LOG_GID` → 552970662, verified live). Pending deploy decision.
-- ⏳ **`forward_mrr` gid 1407663952** — confirm whether forward-MRR should read **RECOGNIZED by name**
-  (like `finance_sheets.pull_recognized_revenue`) instead of the Health gid. Awaiting Rydel.
-- ⏳ **`gid=239343371`** — confirm what it is and whether EDITH should read it. Awaiting Rydel.
-- ⏳ **Closer Payout & KPI tab (115293898)** — not currently read; decide whether to surface it (new
-  feature). Awaiting Rydel.
-- ⏳ Make failures **loud** (dashboard `data-status` panel instead of silent `[]`/degraded).
-- ⏳ **"data as of &lt;today_sydney&gt;" readout** + per-source last-fetch time & row count + manual
-  **refresh** control.
+- ✅ **Payout-log fixed** (`_PAYOUT_LOG_GID` → 552970662, verified live). Shipped (commit d1d6c2b).
+- ✅ **`forward_mrr` repointed** to read **RECOGNIZED by name** (commit fa81087). Before/after numbers
+  identical today — source-correctness fix, no number shift.
+- ✅ **`gid=239343371`** resolved — manual scratch tab, intentionally not wired (Rydel).
+- ✅ **Freshness UX shipped:** header pill now reflects **data health** (red dot + issue count when
+  `ok:false`/degraded, not just age), with an explicit **"Data as of &lt;Sydney time&gt;"** tooltip;
+  the Data Quality panel shows the formatted "Data as of" time; the **manual refresh** button now
+  surfaces success/failure loudly instead of failing silently.
+- ⏳ **Closer Payout & KPI tab (115293898)** — not read; surfacing it is a new feature. Awaiting Rydel.
+- ⏳ **Per-source last-fetch time & row count** — deeper readout; needs the snapshot to record per-source
+  fetch metadata. Not built (avoids scope creep); degraded[] already names failing sources. Available
+  on request.
 - ⏳ Optionally persist the snapshot to a `/data` volume so it survives deploys (set `SNAPSHOT_FILE`).
+  Currently mitigated by startup auto-refresh on boot.
