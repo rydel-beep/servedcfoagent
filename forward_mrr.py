@@ -70,12 +70,19 @@ def _json_safe(obj):
 
 
 def _fetch_recognized_tab() -> list[list[str]]:
-    """Fetch the RECOGNIZED tab (gid 1407663952) as raw rows."""
+    """Fetch the RECOGNIZED tab BY NAME (matches finance_sheets_pull).
+
+    Previously this fetched gid 1407663952 — which is actually the **Health**
+    tab, not RECOGNIZED. The two share a per-client layout, but Health carries a
+    shorter forward horizon, so projections were built off the wrong tab. Reading
+    "RECOGNIZED" by name (via gviz, like finance_sheets_pull.pull_recognized_revenue)
+    is the correct source and carries the full recognition runway.
+    """
     sid = FINANCE_SHEET_CONFIG["sheet_id"]
-    gid = "1407663952"
+    tab = FINANCE_SHEET_CONFIG["recognized_tab"]  # "RECOGNIZED"
     url = (
         f"https://docs.google.com/spreadsheets/d/{sid}"
-        f"/export?format=csv&gid={gid}"
+        f"/gviz/tq?tqx=out:csv&sheet={requests.utils.quote(tab)}"
     )
     try:
         resp = requests.get(url, timeout=(5, HTTP_TIMEOUT))
