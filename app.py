@@ -157,7 +157,9 @@ def get_snapshot():
     snap = _get_snapshot()
     if snap is None:
         return jsonify({"error": "No snapshot available yet. POST /cfo/refresh to generate one."}), 404
-    return jsonify(snap)
+    resp = jsonify(snap)
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
 
 
 @app.route("/cfo/refresh", methods=["POST"])

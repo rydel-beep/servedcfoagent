@@ -45,3 +45,37 @@
    secret was touched. The one model-API ping ran via `railway run` so the Anthropic key was
    injected into a subprocess, never read into context. No Railway variable was dumped (only
    the single `CHAT_MODEL` / `SNAPSHOT_FILE` keys were parsed out).
+
+## 2026-06-19 — Data-accuracy build (see dashboard/DATA_ACCURACY_FIX_REPORT.md)
+
+10. **Production refreshes correctly — the "stale data" was the repo's committed
+    `snapshot_state.json` (06-12), NOT prod.** Authenticated live pull showed prod stamped today
+    (10:48), funnel 48/13/9/6, MRR $75,396, 36 clients. The repo file is a build artifact. The
+    refresh path (POST rebuild→persist→GET→render) is sound; no refresh-path defect found.
+
+11. **Stage 1 (Xero OAuth restore) and the GHL reconnect are MOOT** — both already LIVE in prod
+    (Xero P&L margin 73%, burn off real lines; GHL conv 39.2%, 89 opps). The `/data` volume is
+    why Xero survived deploys. No action taken.
+
+12. **Stage 2 (live cash from Xero) is the real remaining work and stays GATED.** `xero_pull`
+    fetches P&L only — no bank balances — so cash is still the labelled manual override. Needs
+    (a) a bank-balance pull in `xero_pull.py` and (b) balance semantics pinned: the live
+    CommBank read returned a NEGATIVE combined over a range = period movement, not a closing
+    balance. Will NOT repoint $140k to a live-but-wrong negative. Awaiting Rydel.
+
+13. **Stripe MCP sub miscount NOT fixed in-repo** — separate `served-stripe-mcp` repo;
+    "served-cfo-agent/ only" applies. The agent already treats the count as non-authoritative
+    and flags the mismatch.
+
+14. **Closes NOT collapsed to one number** — funnel-cohort (6), closer monthly KPI (5), and
+    deal-won variants measure different things and are labelled by section; collapsing would
+    reduce accuracy. Headline uses one definition (scorecard cohort).
+
+15. **Applied (171/171 green; deploy gated):** `current_month_mrr` alias on `forward_mrr`;
+    `won_but_unlogged` DQ flag (fires on the 2 unlogged wins); `Cache-Control: no-store` on
+    snapshot/refresh endpoints; `_safe_label` redaction of email-shaped Business Name labels
+    (also fixed 2 pre-existing PII-leak test failures).
+
+16. **New finding: history is NOT aggregate-only.** `history_store.append()` writes the full
+    snapshot incl. client names to `snapshot_history.jsonl`, contradicting CLAUDE.md. Flagged
+    for a scoped follow-up; not fixed here.

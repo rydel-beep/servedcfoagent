@@ -13,6 +13,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import re
 import statistics
 from datetime import date, timedelta
 
@@ -118,6 +119,21 @@ def _cell(row: list[str], idx: int) -> str:
     if idx >= len(row):
         return ""
     return row[idx]
+
+
+_EMAIL_RE = re.compile(r"\S+@\S+\.\S+")
+
+
+def _safe_label(val: str) -> str:
+    """Redact email-shaped business/lead labels before they enter any output.
+
+    Some LTC rows have an email in the Business Name field (lead-form junk). Per the
+    security rules, emails must never reach the snapshot (the PII-leak guard asserts
+    no '@'). Real business names never look like emails, so this only strikes junk.
+    """
+    if val and _EMAIL_RE.search(val):
+        return "[redacted email]"
+    return val
 
 
 def _read_scorecard_cell(rows: list[list[str]], row_idx: int, col_idx: int = 1) -> str:
@@ -1101,7 +1117,7 @@ def _pull_closer_commission_detail(
         if not close_dt or close_dt < cutoff or close_dt > today:
             continue
 
-        business = _cell(row, 7).strip()
+        business = _safe_label(_cell(row, 7).strip())
         closer_name = _cell(row, 21).strip() or "Unattributed"
         offer = _cell(row, 26).strip()
         sheet_comm = _parse_money(_cell(row, 40))
@@ -1223,7 +1239,7 @@ def _pull_commission_detail(
             # Parse deal rows under current setter
             if current_setter:
                 deal_date = _parse_date(_cell(row, 1)) or _parse_date(_cell(row, 0))
-                business = _cell(row, 2).strip()
+                business = _safe_label(_cell(row, 2).strip())
                 if business and deal_date:
                     deal = {
                         "date": str(deal_date),
@@ -1441,7 +1457,7 @@ def pull_sales_analytics() -> dict:
             outcome = _cell(row, 23).strip().lower()
             if outcome != "won":
                 continue
-            biz = _cell(row, 7).strip()
+            biz = _safe_label(_cell(row, 7).strip())
             close_dt = _parse_date(_cell(row, 27))
             offer = _cell(row, 26).strip()
             contract = _parse_money(_cell(row, 28))

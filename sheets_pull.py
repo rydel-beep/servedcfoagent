@@ -170,6 +170,14 @@ def pull_sheets() -> dict:
     setter_breakdown: dict[str, float] = {}
     blank_closer_commission_count = 0
     blank_setter_commission_count = 0
+    # "Won but unlogged": rows flagged Won whose Close Date / Cash Collected are still
+    # blank. Close/cash/commission metrics legitimately EXCLUDE these, so the data can
+    # appear to "stop" at the last fully-logged close. Surface the gap so it's visible
+    # rather than silently understating recent performance. Counts only (no names — the
+    # LTC name/notes fields contain emails and must never reach the snapshot).
+    won_missing_close_date = 0
+    won_missing_cash = 0
+    won_unlogged_count = 0
     unparseable_cells: list[str] = []
     offer_breakdown: dict[str, int] = {}
 
@@ -207,6 +215,18 @@ def pull_sheets() -> dict:
             contract_value_total += contract
         if net_cash is not None:
             net_cash_total += net_cash
+
+        # Won-but-unlogged: flagged Won but Close Date or Cash Collected still blank.
+        # (close_dt parsed above; cash parsed above.) These are recent wins whose
+        # structured close/money entry hasn't been completed at source.
+        missing_close = close_dt is None
+        missing_cash = cash is None
+        if missing_close or missing_cash:
+            won_unlogged_count += 1
+            if missing_close:
+                won_missing_close_date += 1
+            if missing_cash:
+                won_missing_cash += 1
 
         # Closer commission — actual from sheet
         closer_raw = _cell(row, idx_comm_closer).strip()
@@ -249,6 +269,20 @@ def pull_sheets() -> dict:
             "metric": "commission_parse",
             "reason": f"Could not parse {len(unparseable_cells)} commission cell(s): {unparseable_cells}",
         })
+    if won_unlogged_count > 0:
+        parts = []
+        if won_missing_close_date:
+            parts.append(f"{won_missing_close_date} missing Close Date")
+        if won_missing_cash:
+            parts.append(f"{won_missing_cash} missing Cash Collected")
+        degraded.append({
+            "metric": "won_but_unlogged",
+            "reason": (
+                f"{won_unlogged_count} deal(s) marked Won but not fully logged "
+                f"({'; '.join(parts)}) — closes/cash/commission EXCLUDE these until the "
+                f"Close Date + money columns are filled in the tracker."
+            ),
+        })
 
     return {
         "sheets": {
@@ -262,6 +296,9 @@ def pull_sheets() -> dict:
             "setter_breakdown": setter_breakdown if setter_breakdown else None,
             "offer_breakdown": offer_breakdown if offer_breakdown else None,
             "data_quality": {
+                "won_but_unlogged": won_unlogged_count,
+                "won_missing_close_date": won_missing_close_date,
+                "won_missing_cash": won_missing_cash,
                 "blank_closer_commission": blank_closer_commission_count,
                 "blank_setter_commission": blank_setter_commission_count,
             },

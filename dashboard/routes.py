@@ -87,7 +87,10 @@ def api_snapshot():
     snap = load_persisted()
     if snap is None:
         return jsonify({"error": "No snapshot available"}), 404
-    return jsonify(snap)
+    resp = jsonify(snap)
+    # Never let a client/proxy serve a stale snapshot after a refresh.
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
 
 
 @bp.route("/api/refresh", methods=["POST"])
@@ -104,12 +107,14 @@ def api_refresh():
     import app as app_module
     app_module._current_snapshot = snap
 
-    return jsonify({
+    resp = jsonify({
         "status": "refreshed",
         "ok": snap.get("ok"),
         "degraded_count": len(snap.get("degraded", [])),
         "generated_at": snap.get("generated_at"),
     })
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
 
 
 @bp.route("/api/history", methods=["GET"])

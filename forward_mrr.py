@@ -276,6 +276,10 @@ def build_forward_mrr() -> dict:
     result = {
         "current_month": current_month_label,
         "current_recognized_mrr": current_mrr,
+        # Alias: the docstring documents `current_month_mrr`, but the value was only
+        # emitted as `current_recognized_mrr`, so any consumer reading the documented
+        # name got a phantom None. Expose both — same value, one source.
+        "current_month_mrr": current_mrr,
         "forward_months": forward_months,
         "mtm_floor": round(mtm_floor, 2),
         "mtm_clients": len(mtm_clients),
