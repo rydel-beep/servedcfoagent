@@ -178,7 +178,11 @@ def refresh_snapshot():
     return jsonify({"status": "refreshed", "ok": snap.get("ok"), "degraded_count": len(snap.get("degraded", []))})
 
 
-XERO_SCOPES = "offline_access accounting.reports.profitandloss.read accounting.settings.read"
+# accounting.reports.read is the BROAD reports scope — covers Profit & Loss AND
+# Balance Sheet / Bank Summary (needed for live bank-account closing balances).
+# Replaces the granular accounting.reports.profitandloss.read (which was P&L-only).
+# Expanding the scope requires a one-time re-consent at /xero/connect.
+XERO_SCOPES = "offline_access accounting.reports.read accounting.settings.read"
 
 
 @app.route("/xero/connect", methods=["GET"])
@@ -379,6 +383,54 @@ def debug_xero_raw():
         "raw_report": raw,
     }
     return jsonify(summary)
+
+
+@app.route("/debug/xero-banksummary", methods=["GET"])
+def debug_xero_banksummary():
+    """Dump raw Xero Bank Summary report for Stage 2A balance-semantics proof.
+    Read-only + auth-protected. Needs the accounting.reports.read scope (re-consent).
+    """
+    key = request.headers.get("X-CFO-KEY", "")
+    if not CFO_REFRESH_KEY or key != CFO_REFRESH_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    from datetime import timedelta
+    from xero_pull import _load_tokens, _refresh_access_token, XERO_API_BASE
+    from config import XERO_TOKEN_FILE
+    from helpers import today_sydney
+
+    stored = _load_tokens()
+    if not stored or not stored.get("refresh_token"):
+        return jsonify({"error": "No Xero tokens found", "token_file": XERO_TOKEN_FILE}), 404
+
+    tokens = _refresh_access_token(stored)
+    if not tokens:
+        return jsonify({"error": "Token refresh failed"}), 502
+
+    today = today_sydney()
+    start = today - timedelta(days=30)
+
+    try:
+        resp = http_requests.get(
+            f"{XERO_API_BASE}/api.xro/2.0/Reports/BankSummary",
+            headers={
+                "Authorization": f"Bearer {tokens['access_token']}",
+                "Xero-Tenant-Id": tokens["tenant_id"],
+                "Accept": "application/json",
+            },
+            params={"fromDate": str(start), "toDate": str(today)},
+            timeout=(5, 15),
+        )
+        # 403 here => the token still lacks accounting.reports.read (re-consent not done).
+        raw = resp.json() if resp.status_code == 200 else {"http_error": resp.status_code, "body": resp.text[:500]}
+    except Exception as e:
+        raw = {"error": str(e)}
+
+    return jsonify({
+        "date_range": {"fromDate": str(start), "toDate": str(today)},
+        "note": "Closing-balance column is point-in-time at toDate. Proof tool only; not wired to cash.",
+        "raw_report": raw,
+    })
 
 
 # ── Startup auto-refresh (runs once per worker, non-blocking) ──────────

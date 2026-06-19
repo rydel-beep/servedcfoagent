@@ -79,3 +79,21 @@
 16. **New finding: history is NOT aggregate-only.** `history_store.append()` writes the full
     snapshot incl. client names to `snapshot_history.jsonl`, contradicting CLAUDE.md. Flagged
     for a scoped follow-up; not fixed here.
+
+## 2026-06-19 — Stage 2 live cash: STOPPED at Stage 1 gate (see dashboard/LIVE_CASH_REPORT.md)
+
+17. **Agent's Railway Xero OAuth is LIVE but scope-blocked for bank balances.** A deployed-context
+    read (`/debug/xero-raw`) returned a 200 P&L. But the scope is `accounting.reports.profit
+    andloss.read` (P&L ONLY). Bank closing balances need `accounting.reports.read` (Balance
+    Sheet / Bank Summary). → Re-consent at a broader scope required (Rydel's browser action via
+    /xero/connect). Will NOT bypass auth or use the chat MCP for prod.
+
+18. **Tenant identity must be confirmed before any cash repoint.** The agent's P&L header reads
+    "THE 97 GROUP PTY LTD", while the claude.ai MCP labelled the org "Served Marketing". Strong
+    evidence it's the same entity (P&L shows Served's exact cost lines: Advertising $7,342,
+    Contractors NO GST $15,789), but will NOT repoint cash on an assumption. Rydel to confirm
+    THE 97 GROUP PTY LTD is the Xero org holding CommBank #2352 + #4041.
+
+19. **Nothing built/changed this step.** Stage 2A/2B/3 queued behind the re-consent gate. Cash
+    stays on the labelled $140,007 override — not faked. I CAN do the scope code change + deploy
+    on Rydel's go (not a credential action); only the browser re-consent is his.
