@@ -290,19 +290,27 @@ def build_system_prompt(messages: list, snapshot_json: str, voice: bool = False)
     business = is_business_intent(messages)
     system = BASE_PERSONA
     if business:
+        # Voice replies are short and spoken — use the lean context (no raw dump)
+        # for a faster first token. Text chat keeps the full snapshot for depth.
         system += "\n\n" + SYSTEM_PROMPT.format(
-            context_block=_build_context_block(snapshot_json)
+            context_block=_build_context_block(snapshot_json, lean=voice)
         )
     if voice:
         system += VOICE_ADDENDUM
     return system, business
 
 
-def _build_context_block(snapshot_json: str) -> str:
+def _build_context_block(snapshot_json: str, lean: bool = False) -> str:
     """Build a focused context block from the snapshot for the system prompt.
 
     Includes: verdicts, hormozi metrics, funnel, active clients summary,
     revenue views, degraded flags, and the full snapshot for deep lookups.
+
+    lean=True drops the trailing raw FULL-SNAPSHOT dump (Phase 4). The curated
+    sections below already carry every canonical/headline number, so a short
+    spoken reply doesn't need the full dump — and dropping it roughly halves the
+    context, which is what dominates time-to-first-token. The text-chat path keeps
+    lean=False so deep, exploratory questions still have the raw snapshot.
     """
     import json
     try:
@@ -424,8 +432,11 @@ def _build_context_block(snapshot_json: str) -> str:
     if degraded:
         sections.append("DATA QUALITY FLAGS:\n" + json.dumps(degraded, indent=2))
 
-    # Full snapshot for anything not covered above
-    sections.append("FULL SNAPSHOT:\n" + snapshot_json)
+    # Full snapshot for anything not covered above. Skipped in lean mode (voice):
+    # the curated sections above are comprehensive, and the raw dump is what most
+    # inflates time-to-first-token on the spoken path.
+    if not lean:
+        sections.append("FULL SNAPSHOT:\n" + snapshot_json)
 
     return "\n\n".join(sections)
 
