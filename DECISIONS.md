@@ -120,3 +120,33 @@
     HUD non-regression guarantee). Tests: 177 passed (+7 new intent tests); the lone failure
     (`test_pdf_reads_cash_position_fields`) is pre-existing and unrelated. Live four-type
     conversation test must run on the deployed dashboard (no local API key by design).
+
+## 2026-06-19 — EDITH real-time responsiveness + voice music control (see dashboard/EDITH_RESPONSIVENESS_REPORT.md)
+
+24. **Latency was a serial stack; fixed by overlapping, not micro-optimising.** Phase 0 (live):
+    endpointing ~1.4s + NON-streaming model gen ~4.3s + TTS first-byte ~0.78s ≈ 6.6s to first
+    word. The model-gen wait (whole reply before TTS) was dominant.
+
+25. **Streaming pipeline (Phase 1).** chat_stream() generator + /api/chat-stream SSE; chat.js
+    reads the stream and splits at sentence/clause boundaries (decimals guarded); edith.js plays
+    chunks through the SAME fx chain via a queue, one-voice/barge-in preserved, stopVoice resolves
+    the stream promise. Non-streaming /api/chat is the fallback (used inline on any stream error).
+
+26. **Fast TTS env (Phase 2)** TTS_MODEL (default flash) + optional TTS_GREETING_MODEL; locked
+    voice ID + fx unchanged. **Adaptive endpointing (Phase 3):** ~0.75–0.9s on a clear sentence
+    end, 2× base on a continuation cue; ring/hold-V/barge-in intact.
+
+27. **Lean voice context (Phase 4) — second bottleneck.** Live streaming showed business TTFT
+    ~2.5s vs general ~1.7s because the ~93k-char snapshot inflates time-to-first-token. Voice path
+    now drops the redundant FULL SNAPSHOT dump (curated sections already carry every canonical
+    number): ~33k → ~11k context tokens (−69%), business TTFT ~2.5s → ~2.0s. Text chat keeps the
+    full snapshot. General turns already snapshot-free.
+
+28. **Voice music control (Phase 5).** Local intent match (down/up/pause/resume/mute/set %) acts
+    on the MUSIC channel only, routed before the model, instant tonal ack, volume persisted via
+    setMix→localStorage. EDITH's voice + SFX never touched.
+
+29. **Net:** stop-speaking → first word ~6.5s → ~3.4s (general) / ~4.0s (business); she speaks
+    sentence 1 while the rest streams. Tests 182 pass (+5). Ear-test (mic/speakers) is Rydel's to
+    run; server-side streaming timings are live-measured. Excluded unrelated pre-existing
+    Postgres-memory WIP (db.py/config.py/requirements.txt) from these commits.
