@@ -178,14 +178,20 @@ def refresh_snapshot():
     return jsonify({"status": "refreshed", "ok": snap.get("ok"), "degraded_count": len(snap.get("degraded", []))})
 
 
-# Scope set must match exactly what the Xero app has enabled, or the consent flow
-# 500s with invalid_scope. Three scopes only:
-#   offline_access              — issues a refresh token (stops the silent expiry
-#                                 that broke Xero before)
-#   accounting.reports.read     — Balance Sheet / Bank Summary / P&L reports
-#   accounting.transactions.read— bank account + transaction data (Bank Summary)
-# (Dropped accounting.settings.read — not enabled on the app and unused in code.)
-XERO_SCOPES = "offline_access accounting.reports.read accounting.transactions.read"
+# Scope set must match what the Xero app has ENABLED, or consent 500s with
+# invalid_scope. This app exposes only GRANULAR report scopes — the broad
+# accounting.reports.read / accounting.transactions.read are NOT enabled
+# (verified empirically against the live authorize endpoint). Granular set:
+#   offline_access                          - refresh token (stops silent expiry)
+#   accounting.reports.profitandloss.read   - P&L (keeps existing pull working)
+#   accounting.reports.banksummary.read     - bank account closing balances
+#   accounting.reports.balancesheet.read    - balances (cross-check / fallback)
+XERO_SCOPES = (
+    "offline_access "
+    "accounting.reports.profitandloss.read "
+    "accounting.reports.banksummary.read "
+    "accounting.reports.balancesheet.read"
+)
 
 
 @app.route("/xero/connect", methods=["GET"])
