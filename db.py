@@ -248,9 +248,15 @@ def recent_messages(conversation_id: int, limit: int = 12) -> list[dict]:
 
 # ── Selective recall (Phase 3) ───────────────────────────────────────────────
 def search_messages(query: str, exclude_conversation_id: int | None = None,
-                    limit: int = 6, min_similarity: float = 0.15) -> list[dict]:
+                    limit: int = 6, min_similarity: float = 0.30) -> list[dict]:
     """Trigram keyword recall across PRIOR conversations. Returns top matches with a
-    snippet + date. Empty on short query or failure."""
+    snippet + date. Empty on short query or failure.
+
+    Uses word_similarity(query, content) (ASYMMETRIC) — it scores the query against the
+    best-matching span inside each message, so a short query ("runway") matches a long
+    message that mentions it. Plain similarity() normalises by both strings' length and
+    scores a short-query-vs-long-message near zero, which made cross-session recall almost
+    never fire."""
     q = (query or "").strip()
     if len(q) < 4:
         return []
@@ -259,10 +265,10 @@ def search_messages(query: str, exclude_conversation_id: int | None = None,
             cur.execute(
                 """
                 SELECT m.role, m.content, m.created_at, m.conversation_id,
-                       similarity(m.content, %s) AS sim
+                       word_similarity(%s, m.content) AS sim
                 FROM messages m
                 WHERE (%s::bigint IS NULL OR m.conversation_id <> %s::bigint)
-                  AND similarity(m.content, %s) >= %s
+                  AND word_similarity(%s, m.content) >= %s
                 ORDER BY sim DESC, m.created_at DESC
                 LIMIT %s
                 """,
