@@ -175,3 +175,65 @@
   conversation B, EDITH correctly recalled "Bluefin Tuna Launch, March 2027" from Postgres, with
   provenance (result.recalled). clear-all privacy control verified. 183/183 tests green.
 - EDITH now remembers across sessions/devices end-to-end. Memory subsystem COMPLETE.
+
+## 2026-06-19 — EDITH personality + expressive voice (see dashboard/EDITH_PERSONALITY_REPORT.md)
+
+30. **Flatness was under-specified character + over-stable voice.** Persona said only "warm,
+    composed, dry wit" (no mood-reading/humour/examples); ElevenLabs stability 0.70 flattened
+    tone. Both fixed.
+
+31. **Character rewrite (Phase 1, biggest lever).** BASE_PERSONA now gives SPECIFIC behaviour:
+    EDITH/JARVIS archetype with chief-of-staff initiative; READ THE ROOM (loose→playful,
+    stressed→sharp, win→pleased, hard-news→warm+straight); react-don't-narrate; "Range IS the
+    personality"; 4 few-shot beats (style not scripts). VOICE_ADDENDUM carries personality via
+    word choice + prosody (em-dash/ellipsis as voice cues), stays concise. Hard lines survive:
+    financial figures engine-sourced/true, honesty over likeability, no fabricated feelings.
+
+32. **Expressive delivery (Phase 2).** stability 0.70→0.40, new style 0.35, speaker_boost on,
+    speed 0.95 — all env (TTS_STABILITY/STYLE/SIMILARITY/SPEED/SPEAKER_BOOST) + live panel sliders
+    (Expression, Style) + "A/B composed vs expressive" button. Locked voice ID + fx chain
+    unchanged (effect rides the livelier raw voice). save_voice_config persists style.
+
+33. **Adaptability + memory (Phase 3).** Personality in the always-on persona (no added latency),
+    applies to general + business; memory_block recall carries warmth across sessions.
+
+34. **Live-verified (deployed, text+voice).** Joke→playful riff; terse→sharp accurate number;
+    win→genuine + flags missing deal value (no invention); hard-news→warm+straight with every
+    figure engine-sourced (3.5mo runway, churn cliff, 0/12 renewals); range→shifts register +
+    mood callback; voice joke→"Ha — how many have you had?". Accuracy held throughout. Tests 187
+    pass (+ persona/style); voice-config reset test updated to expressive defaults. Excluded
+    parallel WIP (chat.js chat-open, dashboard.css, capture_layering.py) from my commits.
+
+## 2026-06-19 — EDITH UI layering & fluidity fix (see dashboard/UI_LAYERING_REPORT.md)
+
+- **Root cause (measured, not guessed):** chat panel docked right at z-200; every EDITH
+  voice/HUD element docked bottom-right at z≥230 (`#eh-stage` via `#edith-hud`=230,
+  `.jarvis-orb`/`.jarvis-caption`=250). So orb/waveform/ticker/caption painted OVER the panel.
+  Phase-0 harness proved it: `overlaps_panel` true for eh_stage/eh_wave/eh_cap/eh_tick/jarvis_orb.
+- **Fix = one z-index token scale** (`--z-ambient…--z-tooltip` in `:root`) applied system-wide;
+  no raw z-index left on a live positioned element. Lanes: ambient(1) < content(10) <
+  chrome(85–100) < orb(150) < scrim(300) < chat(310) < boot(700) < modal(1000) < toast(1100)
+  < tooltip(1200).
+- **Structural move:** lifted `#eh-stage` OUT of `#edith-hud` so ambient (grid/scan/radar/
+  brackets/shards → z-ambient, behind content) and the orb (z-orb, above content) live in
+  separate lanes. `hud.js` now mirrors `data-state` onto `#eh-stage` so the `[data-state]`-keyed
+  ring/core animations survive the move (verified rings+core still animate).
+- **DEVIATION from the brief's literal layer order (documented):** brief listed orb (#4) ABOVE
+  chat (#3). I put the **chat scrim+panel ABOVE the orb** (scrim 300 / panel 310 > orb 150).
+  Rationale: belt-and-suspenders — the panel then wins on z-order ALONE, so the acceptance gate
+  (no overlap) cannot be defeated by a geometry edge case. The orb still visibly "yields": on
+  `body.chat-open` it slides clear of the panel (`translateX(-(chat-w+32))`), ambient dims to
+  0.10, and all floating TEXT (eh-cap/eh-tick/jarvis-caption/note) is muted (reply lives in the
+  bubble). Net effect matches the brief's intent (orb steps aside, conversation has priority)
+  with a stronger guarantee.
+- **Did NOT delete any animation.** Orb rings + `#eh-wave` waveform still play in their lane,
+  stepped aside. The inert `.stark-*` CSS (no `stark-hud.js`, never injected) was left intact
+  with a comment rather than ripped out.
+- **Panel open/close switched from animated `right:` to `translateX`** (GPU, no layout shift);
+  reduced-motion respected.
+- **Proof:** before/after Playwright captures + JSON assertions in
+  `dashboard/verification/ui-layering/` (after: all `overlaps_panel` false, panel z 310, chat
+  controls clickable, 0 console errors). Verified at 1440/820/390px. HUD canary green.
+- **Non-regression:** 187/187 relevant tests pass; the 1 failure is a pre-existing
+  `ModuleNotFoundError: fpdf` (missing local optional dep), no Python touched.
+- **NOT pushed/deployed** — frontend diff shown, gated on Rydel's go per project norms.
