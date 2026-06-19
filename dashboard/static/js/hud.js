@@ -6,6 +6,10 @@
 (function(){
   var root=document.getElementById('edith-hud');
   if(!root)return;
+  // #eh-stage now lives outside #edith-hud (own z-lane). The state-driven ring
+  // and core animations key off [data-state] on the stage's ancestor, so mirror
+  // the attribute onto the stage too (kept in sync in setState below).
+  var stage=document.getElementById('eh-stage');
   var tick=document.getElementById('eh-tick'),
       cap=document.getElementById('eh-cap'),
       wave=document.getElementById('eh-wave'),
@@ -60,24 +64,38 @@
   }
   loop();
 
-  var capLine='';   // the REAL reply text (set by the bridge) — never a fake specific
+  // Caption is a live typewriter over a target string. It is driven by the REAL
+  // spoken text via edith:caption events (per-chunk reveal, synced to playback),
+  // never a snapshot taken at speaking-start (that was the desync bug — it typed a
+  // stale/entry line and never advanced as chunks streamed).
+  var capTarget='', capShown=0, capTimer=null;
+  function capRender(){ cap.textContent=capTarget.slice(0,capShown); }
+  function capPump(){
+    if(capTimer)return;
+    capTimer=setInterval(function(){
+      if(capShown>=capTarget.length){clearInterval(capTimer);capTimer=null;return;}
+      capShown++; capRender();
+    },24);
+  }
+  function capSet(text){ capTarget=(text||'').slice(0,400); capShown=0; capRender(); capPump(); }
+  function capClear(){ if(capTimer){clearInterval(capTimer);capTimer=null;} capTarget=''; capShown=0; cap.textContent=''; }
+
   window.EDITH_HUD={
     setState:function(s){
       state=s; root.setAttribute('data-state',s);
-      parts.length=0; cap.textContent='';
+      if(stage)stage.setAttribute('data-state',s);
+      parts.length=0;
+      // Clear the caption on every state EXCEPT entering 'speaking' — there the
+      // live edith:caption events fill it. (Leaving 'speaking' clears it.)
+      if(s!=='speaking')capClear();
       if(s==='idle')setTick('EDITH — STANDBY',false);
       if(s==='listening')setTick('LISTENING',true);
       if(s==='thinking'){li=0;setTick(lines[0],true);}
-      if(s==='speaking'){
-        setTick('EDITH',false); var k=0; var line=capLine;
-        var tw=setInterval(function(){
-          if(state!=='speaking'||k>=line.length){clearInterval(tw);return;}
-          cap.textContent+=line[k++];
-        },28);
-      }
+      if(s==='speaking')setTick('EDITH',false);
     },
     getState:function(){return state;},
-    setCaption:function(text){capLine=(text||'').slice(0,220);},
+    setCaption:capSet,        // replace + type (per-chunk reveal or full single-shot line)
+    clearCaption:capClear,
   };
 
   /* ===== integration bridge: drive setState from the live state machine ===== */
@@ -93,9 +111,12 @@
     if(e.detail.phase==='reply'&&state==='thinking')window.EDITH_HUD.setState('idle');
     if(e.detail.phase==='error'&&state==='thinking')window.EDITH_HUD.setState('idle');
   });
-  // TTS lifecycle: real reply text becomes the typed caption
-  window.addEventListener('edith:tts',function(e){
-    if(e.detail.phase==='synth'&&e.detail.text)window.EDITH_HUD.setCaption(e.detail.text);
+  // Live caption: the REAL text of the chunk that just STARTED PLAYING, so the
+  // on-screen words track what's audible (per-chunk reveal). text:'' clears it
+  // (barge-in / flush). This is the single source of truth for the caption.
+  window.addEventListener('edith:caption',function(e){
+    var t=(e.detail&&e.detail.text)||'';
+    if(t)window.EDITH_HUD.setCaption(t); else window.EDITH_HUD.clearCaption();
   });
 
   // Focus mode: Shift+S hides overlay layers (brackets/radar/scanline/shards)

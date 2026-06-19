@@ -332,6 +332,9 @@
           if (fellBack) { try { el.pause(); } catch (e) {} return; }   // late success → discard
           firstByte = true;
           clearTimeout(watchdog);
+          // Single-shot reply (greeting / brief / audition): caption the full line
+          // as it starts to play, so the on-screen text matches the spoken words.
+          try { window.dispatchEvent(new CustomEvent('edith:caption', { detail: { text: text } })); } catch (ev) {}
           try { window.dispatchEvent(new CustomEvent('edith:tts', { detail: { phase: 'playing' } })); } catch (ev) {}
         });
         el.addEventListener('ended', function() {
@@ -457,6 +460,11 @@
         _pumpStream();                                   // next chunk (gapless-ish)
       }
       el.addEventListener('playing', function() {
+        if (currentUtterance !== my) return;
+        // Caption tracks what's AUDIBLE: reveal this chunk's text as it starts to
+        // play (per-chunk reveal). Same text that was sent to TTS — no placeholder.
+        caption(text, true);
+        try { window.dispatchEvent(new CustomEvent('edith:caption', { detail: { text: text } })); } catch (ev) {}
         try { window.dispatchEvent(new CustomEvent('edith:tts', { detail: { phase: 'playing' } })); } catch (ev) {}
       });
       el.addEventListener('ended', advance);
@@ -487,6 +495,9 @@
       speakingFlag = false;
       stopWave();
       release();
+      // Caption clears with the audio — no orphaned text from a flushed reply.
+      caption('');
+      try { window.dispatchEvent(new CustomEvent('edith:caption', { detail: { text: '' } })); } catch (ev) {}
       if (cb) cb();
     }
 
@@ -1932,8 +1943,8 @@
         '<div class="jh-row">Wet <input type="range" data-fx="wet" min="0" max="0.7" step="0.02" value="' + p.wet + '"></div>' +
       '</details>' +
       '<div class="ep-section">Voice (locked: FRIDAY)</div>' +
-      '<div class="jh-row">Expression <input type="range" id="ep-stability" min="0.2" max="0.9" step="0.05" value="' + ((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.stability) != null ? voiceStatus.voice_settings.stability : 0.40) + '"> <span id="ep-stability-v">' + (((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.stability) != null ? voiceStatus.voice_settings.stability : 0.40)).toFixed(2) + '</span> <span class="ep-dim">(lower = livelier)</span></div>' +
-      '<div class="jh-row">Style <input type="range" id="ep-style" min="0" max="0.6" step="0.05" value="' + ((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.style) != null ? voiceStatus.voice_settings.style : 0.35) + '"> <span id="ep-style-v">' + (((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.style) != null ? voiceStatus.voice_settings.style : 0.35)).toFixed(2) + '</span></div>' +
+      '<div class="jh-row">Expression <input type="range" id="ep-stability" min="0.2" max="0.9" step="0.05" value="' + ((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.stability) != null ? voiceStatus.voice_settings.stability : 0.50) + '"> <span id="ep-stability-v">' + (((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.stability) != null ? voiceStatus.voice_settings.stability : 0.50)).toFixed(2) + '</span> <span class="ep-dim">(lower = livelier)</span></div>' +
+      '<div class="jh-row">Style <input type="range" id="ep-style" min="0" max="0.6" step="0.05" value="' + ((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.style) != null ? voiceStatus.voice_settings.style : 0.30) + '"> <span id="ep-style-v">' + (((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.style) != null ? voiceStatus.voice_settings.style : 0.30)).toFixed(2) + '</span></div>' +
       '<div class="jh-row">Speed <input type="range" id="ep-speed" min="0.7" max="1.2" step="0.02" value="' + ((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.speed) || 0.95) + '"> <span id="ep-speed-v">' + (((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.speed) || 0.95)).toFixed(2) + '</span></div>' +
       '<div class="jh-row"><input type="text" id="ep-voice-id" class="ep-input" placeholder="ElevenLabs voice ID (audition)"></div>' +
       '<div class="jh-row ep-presets"><button id="ep-audition" class="ep-preset">audition</button>' +
@@ -2056,16 +2067,18 @@
       async function setCfg(c) {
         await fetch('/dashboard/api/voice-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(c) });
       }
-      note('A: composed (flat)…', 3000);
-      await setCfg({ stability: 0.70, style: 0.0, similarity: sim, speed: 0.95 });
-      await say(line, 'reply');
-      await new Promise(function(r) { setTimeout(r, 700); });
-      note('B: expressive…', 3000);
+      // A = 0.40 (the old, sometimes-draggy expressive); B = 0.50 (stable-but-alive,
+      // the new default). Same line, so the ear locks the consistent value.
+      note('A: stability 0.40 (livelier, can drag)…', 3000);
       await setCfg({ stability: 0.40, style: 0.35, similarity: sim, speed: 0.95 });
       await say(line, 'reply');
-      // leave it on expressive; reflect in the sliders
-      var sb = el.querySelector('#ep-stability'); if (sb) { sb.value = 0.40; el.querySelector('#ep-stability-v').textContent = '0.40'; }
-      var st = el.querySelector('#ep-style'); if (st) { st.value = 0.35; el.querySelector('#ep-style-v').textContent = '0.35'; }
+      await new Promise(function(r) { setTimeout(r, 700); });
+      note('B: stability 0.50 (stable-but-alive — default)…', 3000);
+      await setCfg({ stability: 0.50, style: 0.30, similarity: sim, speed: 0.95 });
+      await say(line, 'reply');
+      // leave it on the stable default; reflect in the sliders
+      var sb = el.querySelector('#ep-stability'); if (sb) { sb.value = 0.50; el.querySelector('#ep-stability-v').textContent = '0.50'; }
+      var st = el.querySelector('#ep-style'); if (st) { st.value = 0.30; el.querySelector('#ep-style-v').textContent = '0.30'; }
       refreshVoiceStatus();
       if (state === S.SPEAKING) transition(S.IDLE, 'ab-expr done');
     });

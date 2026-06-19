@@ -286,12 +286,21 @@ def test_voice_addendum_carries_personality_via_prosody():
 
 
 def test_voice_settings_expressive_band_with_style():
-    """Phase 2: defaults sit in the expressive band and expose a style dial."""
+    """Defaults sit in the stable-but-alive band and expose a style dial."""
     import dashboard.voice as voice_mod
     s = voice_mod.active_voice_settings()
-    assert 0.30 <= s["stability"] <= 0.50           # expressive, not flat (0.70) nor wobbly
+    assert 0.45 <= s["stability"] <= 0.55           # alive but consistent (not flat 0.70, not draggy 0.40)
     assert "style" in s and s["style"] > 0
     assert s["similarity_boost"] == 0.75            # identity holds
+
+
+def test_voice_settings_are_one_fixed_profile():
+    """Tonality consistency: settings don't change per call/mood — same profile every time."""
+    import dashboard.voice as voice_mod
+    voice_mod.save_voice_config({})                 # defaults
+    a = voice_mod.active_voice_settings()
+    b = voice_mod.active_voice_settings()
+    assert a == b                                   # no per-utterance churn
 
 
 def test_voice_config_accepts_style_dial(tmp_path, monkeypatch):
@@ -409,7 +418,8 @@ def test_voice_config_set_and_reset(tmp_path, monkeypatch):
     voice_mod.save_voice_config({})
     assert voice_mod.active_voice_id() == "yj30vwTGJxSHezdAGsv9"
     s = voice_mod.active_voice_settings()
-    assert s["stability"] == voice_mod.TTS_STABILITY and s["stability"] <= 0.45  # expressive band
+    # stable-but-alive band: expressive enough to carry tone, stable enough not to drag
+    assert s["stability"] == voice_mod.TTS_STABILITY and 0.45 <= s["stability"] <= 0.55
     assert s["similarity_boost"] == 0.75
     assert s["style"] == voice_mod.TTS_STYLE        # expressiveness dial present
     assert "use_speaker_boost" in s

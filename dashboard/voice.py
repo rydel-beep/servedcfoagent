@@ -36,13 +36,16 @@ ELEVENLABS_MODEL = os.environ.get(
 ELEVENLABS_GREETING_MODEL = os.environ.get("TTS_GREETING_MODEL", ELEVENLABS_MODEL)
 
 # ── Expressive delivery defaults (the personality multiplier) ────────────────
-# Lower stability = more emotional range (tone rises/falls with content); too low = wobble.
-# 0.40 sits in the expressive band — clearly still EDITH, but no longer flat. `style` adds
-# dynamic delivery on models that support it (ignored harmlessly otherwise). similarity holds
-# identity. All overridable live via the voice panel (save_voice_config) and by env.
-TTS_STABILITY = float(os.environ.get("TTS_STABILITY", "0.40"))
+# Lower stability = more emotional range (tone rises/falls with content); too low = wobble
+# and "drag" (warped/over-emoted prosody). 0.40 overshot — some replies dragged. 0.50 is the
+# stable-but-alive band: still carries tone, consistent turn-to-turn. ONE fixed profile for all
+# conversational replies — personality comes from WORD CHOICE (the prompt), not from yanking
+# voice params per message (that churn is what makes consecutive replies feel inconsistent).
+# `style` adds dynamic delivery on models that support it; similarity holds identity. All
+# overridable live via the voice panel (save_voice_config) and by env.
+TTS_STABILITY = float(os.environ.get("TTS_STABILITY", "0.50"))
 TTS_SIMILARITY = float(os.environ.get("TTS_SIMILARITY", "0.75"))
-TTS_STYLE = float(os.environ.get("TTS_STYLE", "0.35"))
+TTS_STYLE = float(os.environ.get("TTS_STYLE", "0.30"))
 TTS_SPEED = float(os.environ.get("TTS_SPEED", "0.95"))
 TTS_SPEAKER_BOOST = os.environ.get("TTS_SPEAKER_BOOST", "1") == "1"
 
@@ -93,10 +96,11 @@ def active_voice_id() -> str:
 
 
 def active_voice_settings() -> dict:
-    # EDITH expressive register: stability 0.40 (tone moves with content — warm, alive,
-    # still clearly EDITH), similarity 0.75 (identity holds), style 0.35 (dynamic delivery
-    # on models that support it), speed 0.95. Panel overrides win; env sets the defaults.
-    # The EDITH effects chain rides on top of this livelier raw voice.
+    # EDITH expressive register: stability 0.50 (stable-but-alive — carries tone yet stays
+    # consistent turn-to-turn; 0.40 dragged/wobbled), similarity 0.75 (identity holds),
+    # style 0.30 (dynamic but not over-emoted), speed 0.95. ONE fixed profile for all
+    # conversational replies — no per-utterance churn. Panel overrides win; env sets defaults.
+    # The EDITH effects chain rides on top of this livelier-but-stable raw voice.
     return {
         "stability": _voice_config.get("stability", TTS_STABILITY),
         "similarity_boost": _voice_config.get("similarity", TTS_SIMILARITY),
