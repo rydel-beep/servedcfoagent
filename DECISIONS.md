@@ -287,3 +287,28 @@
     personality, caption sync, one-voice/barge-in preserved. Tests 188 pass. Ear test (long
     session clean; gapless multi-sentence; no early send) is Rydel's in-browser. Excluded parallel
     UI-layering WIP (css/html/chat.js/UI_LAYERING_REPORT.md/capture_layering.py) from this commit.
+
+## 2026-06-19 — EDITH persistent-memory repair: forgot on refresh (see dashboard/EDITH_MEMORY_REPAIR_REPORT.md)
+
+42. **The DB chain was healthy; recall had a hole.** Verified live: Postgres provisioned
+    (internal+public DATABASE_URL), reachable, migrated (tables+pg_trgm), writes landing (54 msgs),
+    distillation running (23 facts), idle gap 12h. The bug: db.recent_messages() existed but was
+    NEVER called, and build_recall_context's search EXCLUDES the current conversation. On refresh
+    (client JS history wiped) the model got only facts + a cross-conv search of the only conv that
+    exists (empty) → forgot the recent thread.
+
+43. **Fix.** memory.resume_thread(): on a wiped client thread (≤1 msg) reload recent_messages of
+    the resumed conversation from Postgres and prepend, so refresh RESUMES. Wired into /api/chat +
+    /api/chat-stream (resume → reconstruct → record → recall → model). _sanitize_history collapses
+    consecutive same-role turns (Anthropic alternation). search_messages: symmetric similarity() →
+    word_similarity() (short-query-in-long-text), 0.15→0.30 — cross-session recall now fires.
+
+44. **Loud degradation.** /api/memory-status + a self-contained "persistent memory offline" badge
+    (polls/min) so a DB failure is never again a silent forget.
+
+45. **PROVEN live.** Talk ("pillar one = customer retention, Bluebells case study, 32% repeat") →
+    simulated refresh (empty client history) → EDITH recalled all three; accuracy boundary held
+    (flagged Bluebells as a live renewal client). Writes grow per turn; 23 distilled facts; cross-
+    session search returns hits. NOTE: first test ran mid-rollout and self-poisoned the thread with
+    "memory is broken" assistant turns; removed those test-only messages (restored conv #1 to 54),
+    clean test passed. Tests 193 pass (+5). Excluded parallel UI-layering WIP from my commits.
