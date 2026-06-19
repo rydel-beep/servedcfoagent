@@ -260,3 +260,30 @@
     Tests 188 pass (+1). Eye test (caption visibly tracks speech; 0.50 by ear) is Rydel's in-
     browser. hud.js carried a 1-line `var stage` from in-flight parallel layering work (not mine);
     excluded the rest of the parallel UI WIP (css/html/chat.js/capture_layering.py) from my commit.
+
+## 2026-06-19 — EDITH audio integrity (see dashboard/EDITH_AUDIO_INTEGRITY_REPORT.md)
+
+38. **Progressive crackle = audio node leak.** routeThroughFx built a full fx graph (incl. lfo/
+    shim oscillators that .start()) per chunk/utterance and never disconnected/stopped them →
+    hundreds of running oscillators + nodes accumulate → CPU climbs → audio underruns/crackle.
+    Fix: track every node/oscillator per utterance; el._fxTeardown declick-ramps then stops
+    oscillators + disconnects all nodes on ended/stop. Built-once output peak limiter on the
+    voice bus prevents hot-chain clip-crackle. Node sim: 0 leaked over 200 chunks (was ~3600
+    nodes + 400 oscillators).
+
+39. **Self-cutoff = no-lookahead scheduling.** Next chunk was only fetched on current's `ended`
+    → ~0.5-0.8s gap per seam; `error` skipped a sentence. Fix: one-ahead PREFETCH (next chunk
+    buffers while current plays, warmed on arrival via _maybePrefetch); clean HOLD if generation
+    lags (never abandons sentence); retry-once on transient error. Stop-trigger audit: all stops
+    are real interrupts or post-completion — no spurious mid-playback stop.
+
+40. **Premature endpointing.** Un-punctuated stops fired at 900ms (interim ASR rarely punctuates)
+    and VAD gate 0.055 was too high to reset on soft/resumed speech. Fix: full window (~1.5s,
+    default 1.4→1.5) for un-punctuated stops, fast ~1.0s ONLY on punctuated end, 1.8x for expanded
+    continuation cues; VAD reset 0.055→0.035. Ring + hold-V unchanged. Sim confirms patient on
+    mid-thought, snappy on punctuated end.
+
+41. **All edith.js only; guardrails intact.** Responsiveness (prefetch doesn't delay first word),
+    personality, caption sync, one-voice/barge-in preserved. Tests 188 pass. Ear test (long
+    session clean; gapless multi-sentence; no early send) is Rydel's in-browser. Excluded parallel
+    UI-layering WIP (css/html/chat.js/UI_LAYERING_REPORT.md/capture_layering.py) from this commit.
