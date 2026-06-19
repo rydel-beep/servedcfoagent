@@ -1932,9 +1932,12 @@
         '<div class="jh-row">Wet <input type="range" data-fx="wet" min="0" max="0.7" step="0.02" value="' + p.wet + '"></div>' +
       '</details>' +
       '<div class="ep-section">Voice (locked: FRIDAY)</div>' +
-      '<div class="jh-row">Speed <input type="range" id="ep-speed" min="0.7" max="1.2" step="0.02" value="' + ((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.speed) || 0.92) + '"> <span id="ep-speed-v">' + (((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.speed) || 0.92)).toFixed(2) + '</span></div>' +
+      '<div class="jh-row">Expression <input type="range" id="ep-stability" min="0.2" max="0.9" step="0.05" value="' + ((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.stability) != null ? voiceStatus.voice_settings.stability : 0.40) + '"> <span id="ep-stability-v">' + (((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.stability) != null ? voiceStatus.voice_settings.stability : 0.40)).toFixed(2) + '</span> <span class="ep-dim">(lower = livelier)</span></div>' +
+      '<div class="jh-row">Style <input type="range" id="ep-style" min="0" max="0.6" step="0.05" value="' + ((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.style) != null ? voiceStatus.voice_settings.style : 0.35) + '"> <span id="ep-style-v">' + (((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.style) != null ? voiceStatus.voice_settings.style : 0.35)).toFixed(2) + '</span></div>' +
+      '<div class="jh-row">Speed <input type="range" id="ep-speed" min="0.7" max="1.2" step="0.02" value="' + ((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.speed) || 0.95) + '"> <span id="ep-speed-v">' + (((voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.speed) || 0.95)).toFixed(2) + '</span></div>' +
       '<div class="jh-row"><input type="text" id="ep-voice-id" class="ep-input" placeholder="ElevenLabs voice ID (audition)"></div>' +
       '<div class="jh-row ep-presets"><button id="ep-audition" class="ep-preset">audition</button>' +
+      '<button id="ep-ab-expr" class="ep-preset">A/B composed vs expressive</button>' +
       '<button id="ep-ab" class="ep-preset">A/B raw vs fx</button>' +
       '<button id="ep-probe" class="ep-preset">muffle probe</button>' +
       '<button id="ep-voice-set" class="ep-preset">set</button>' +
@@ -2009,24 +2012,62 @@
         lsSet('edith-fx-custom', '1');
       });
     });
-    var speedTimer = null;
-    el.querySelector('#ep-speed').addEventListener('input', function() {
-      var v = parseFloat(this.value);
-      el.querySelector('#ep-speed-v').textContent = v.toFixed(2);
-      clearTimeout(speedTimer);
-      speedTimer = setTimeout(function() {
+    // One poster for ALL voice dials — save_voice_config replaces the whole config,
+    // so every save must carry the full set or it wipes the others.
+    var cfgTimer = null;
+    function postVoiceCfg(msg) {
+      var body = {
+        stability: parseFloat(el.querySelector('#ep-stability').value),
+        style: parseFloat(el.querySelector('#ep-style').value),
+        speed: parseFloat(el.querySelector('#ep-speed').value),
+        similarity: (voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.similarity_boost) || 0.75,
+      };
+      clearTimeout(cfgTimer);
+      cfgTimer = setTimeout(function() {
         fetch('/dashboard/api/voice-config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ speed: v,
-            stability: (voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.stability) || 0.70,
-            similarity: (voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.similarity_boost) || 0.75 }) })
-          .then(function() { note('Speed ' + v.toFixed(2) + ' — applies to the next line.'); refreshVoiceStatus(); });
-      }, 350);
+          body: JSON.stringify(body) })
+          .then(function() { if (msg) note(msg + ' — applies to the next line.'); refreshVoiceStatus(); });
+      }, 300);
+    }
+    el.querySelector('#ep-stability').addEventListener('input', function() {
+      el.querySelector('#ep-stability-v').textContent = parseFloat(this.value).toFixed(2);
+      postVoiceCfg('Expression ' + parseFloat(this.value).toFixed(2));
+    });
+    el.querySelector('#ep-style').addEventListener('input', function() {
+      el.querySelector('#ep-style-v').textContent = parseFloat(this.value).toFixed(2);
+      postVoiceCfg('Style ' + parseFloat(this.value).toFixed(2));
+    });
+    el.querySelector('#ep-speed').addEventListener('input', function() {
+      el.querySelector('#ep-speed-v').textContent = parseFloat(this.value).toFixed(2);
+      postVoiceCfg('Speed ' + parseFloat(this.value).toFixed(2));
     });
     el.querySelector('#ep-audition').addEventListener('click', function() {
       var vid = el.querySelector('#ep-voice-id').value.trim();
       say(TEST_LINE, 'reply', vid ? { voiceId: vid } : {}).then(function() {
         if (state === S.SPEAKING) transition(S.IDLE, 'audition done');
       });
+    });
+    // A/B composed vs expressive: same line, old flat setting vs the new lively one.
+    // Posts each setting just before its line (TTS reads server config at request
+    // time), then leaves the voice on EXPRESSIVE and syncs the sliders to match.
+    el.querySelector('#ep-ab-expr').addEventListener('click', async function() {
+      var sim = (voiceStatus && voiceStatus.voice_settings && voiceStatus.voice_settings.similarity_boost) || 0.75;
+      var line = 'Closed the Bondi deal — nice, that is a real one. Good day, Rydel.';
+      async function setCfg(c) {
+        await fetch('/dashboard/api/voice-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(c) });
+      }
+      note('A: composed (flat)…', 3000);
+      await setCfg({ stability: 0.70, style: 0.0, similarity: sim, speed: 0.95 });
+      await say(line, 'reply');
+      await new Promise(function(r) { setTimeout(r, 700); });
+      note('B: expressive…', 3000);
+      await setCfg({ stability: 0.40, style: 0.35, similarity: sim, speed: 0.95 });
+      await say(line, 'reply');
+      // leave it on expressive; reflect in the sliders
+      var sb = el.querySelector('#ep-stability'); if (sb) { sb.value = 0.40; el.querySelector('#ep-stability-v').textContent = '0.40'; }
+      var st = el.querySelector('#ep-style'); if (st) { st.value = 0.35; el.querySelector('#ep-style-v').textContent = '0.35'; }
+      refreshVoiceStatus();
+      if (state === S.SPEAKING) transition(S.IDLE, 'ab-expr done');
     });
     // A/B: raw first, 600ms gap, then through current settings — the ear's test
     el.querySelector('#ep-ab').addEventListener('click', async function() {

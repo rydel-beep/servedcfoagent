@@ -35,6 +35,17 @@ ELEVENLABS_MODEL = os.environ.get(
 # warmth matters and latency doesn't. Defaults to the fast model (no behaviour change).
 ELEVENLABS_GREETING_MODEL = os.environ.get("TTS_GREETING_MODEL", ELEVENLABS_MODEL)
 
+# ── Expressive delivery defaults (the personality multiplier) ────────────────
+# Lower stability = more emotional range (tone rises/falls with content); too low = wobble.
+# 0.40 sits in the expressive band — clearly still EDITH, but no longer flat. `style` adds
+# dynamic delivery on models that support it (ignored harmlessly otherwise). similarity holds
+# identity. All overridable live via the voice panel (save_voice_config) and by env.
+TTS_STABILITY = float(os.environ.get("TTS_STABILITY", "0.40"))
+TTS_SIMILARITY = float(os.environ.get("TTS_SIMILARITY", "0.75"))
+TTS_STYLE = float(os.environ.get("TTS_STYLE", "0.35"))
+TTS_SPEED = float(os.environ.get("TTS_SPEED", "0.95"))
+TTS_SPEAKER_BOOST = os.environ.get("TTS_SPEAKER_BOOST", "1") == "1"
+
 # Runtime voice config — lets the audition tool swap voice/tuning without a
 # redeploy. Persisted to the state dir so it survives restarts.
 _VOICE_CONFIG_FILE = os.path.join(
@@ -54,14 +65,16 @@ def _load_voice_config() -> dict:
 
 
 def save_voice_config(cfg: dict) -> dict:
-    """Persist {voice_id, stability, similarity}. Empty/missing keys reset to defaults."""
+    """Persist {voice_id, stability, similarity, style, speed}. Empty/missing keys
+    reset to the (expressive) defaults. `style` is the new expressiveness dial."""
     global _voice_config
     import json as _json
     clean = {}
     vid = (cfg.get("voice_id") or "").strip()
     if vid:
         clean["voice_id"] = vid[:64]
-    for k, lo, hi in (("stability", 0.0, 1.0), ("similarity", 0.0, 1.0), ("speed", 0.7, 1.2)):
+    for k, lo, hi in (("stability", 0.0, 1.0), ("similarity", 0.0, 1.0),
+                      ("style", 0.0, 1.0), ("speed", 0.7, 1.2)):
         v = cfg.get(k)
         if isinstance(v, (int, float)) and lo <= v <= hi:
             clean[k] = float(v)
@@ -80,13 +93,16 @@ def active_voice_id() -> str:
 
 
 def active_voice_settings() -> dict:
-    # EDITH register: stability 0.70 (even, controlled — reads composed/synthetic
-    # before any FX), similarity 0.75, speed 0.92 (measured pace — "a little too
-    # fast" feedback 2026-06-12). All overridable via the panel's voice config.
+    # EDITH expressive register: stability 0.40 (tone moves with content — warm, alive,
+    # still clearly EDITH), similarity 0.75 (identity holds), style 0.35 (dynamic delivery
+    # on models that support it), speed 0.95. Panel overrides win; env sets the defaults.
+    # The EDITH effects chain rides on top of this livelier raw voice.
     return {
-        "stability": _voice_config.get("stability", 0.70),
-        "similarity_boost": _voice_config.get("similarity", 0.75),
-        "speed": _voice_config.get("speed", 0.92),
+        "stability": _voice_config.get("stability", TTS_STABILITY),
+        "similarity_boost": _voice_config.get("similarity", TTS_SIMILARITY),
+        "style": _voice_config.get("style", TTS_STYLE),
+        "use_speaker_boost": TTS_SPEAKER_BOOST,
+        "speed": _voice_config.get("speed", TTS_SPEED),
     }
 
 

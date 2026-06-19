@@ -253,6 +253,56 @@ def test_tts_model_is_env_configurable_fast_default():
     assert voice_mod.ELEVENLABS_GREETING_MODEL
 
 
+# ── Personality + expressive delivery ────────────────────────────────────────
+
+def test_persona_has_mood_reading_and_humour():
+    """The character is SHOWN (mood-reading + few-shot beats), not just 'be human'."""
+    from dashboard.chat import BASE_PERSONA
+    p = BASE_PERSONA.lower()
+    assert "read the room" in p                      # mood-reading is explicit
+    for cue in ("joking", "stressed", "win", "hard"):
+        assert cue in p, cue                         # the four registers are named
+    assert "a few beats" in p                        # few-shot examples present
+    assert "chief of staff" in p                     # opinions/initiative
+    # hard lines survive personality
+    assert "never invent a number" in BASE_PERSONA
+    assert "honesty over likeability" in p
+
+
+def test_persona_not_one_note():
+    """Range is the personality — neither always-jokey nor always-flat."""
+    from dashboard.chat import BASE_PERSONA
+    assert "Range IS the personality" in BASE_PERSONA
+    # doesn't claim real feelings it will over-act
+    assert "don't claim feelings you don't have" in BASE_PERSONA
+
+
+def test_voice_addendum_carries_personality_via_prosody():
+    """Phase 2 tie-in: punctuation as prosody, personality in delivery not length."""
+    from dashboard.chat import VOICE_ADDENDUM
+    v = VOICE_ADDENDUM.lower()
+    assert "punctuation" in v and ("em-dash" in v or "ellips" in v)
+    assert "match his mood" in v
+
+
+def test_voice_settings_expressive_band_with_style():
+    """Phase 2: defaults sit in the expressive band and expose a style dial."""
+    import dashboard.voice as voice_mod
+    s = voice_mod.active_voice_settings()
+    assert 0.30 <= s["stability"] <= 0.50           # expressive, not flat (0.70) nor wobbly
+    assert "style" in s and s["style"] > 0
+    assert s["similarity_boost"] == 0.75            # identity holds
+
+
+def test_voice_config_accepts_style_dial(tmp_path, monkeypatch):
+    import dashboard.voice as voice_mod
+    monkeypatch.setattr(voice_mod, "_VOICE_CONFIG_FILE", str(tmp_path / "vc.json"))
+    voice_mod.save_voice_config({"stability": 0.35, "style": 0.5})
+    s = voice_mod.active_voice_settings()
+    assert s["stability"] == 0.35 and s["style"] == 0.5
+    voice_mod.save_voice_config({})                 # reset for other tests
+
+
 # ── Brief composition ────────────────────────────────────────────────────────
 
 def _fake_snap():
@@ -355,10 +405,14 @@ def test_voice_config_set_and_reset(tmp_path, monkeypatch):
     voice_mod.save_voice_config({"voice_id": "abc123", "stability": 0.7})
     assert voice_mod.active_voice_id() == "abc123"
     assert voice_mod.active_voice_settings()["stability"] == 0.7
-    # empty body resets to the locked default
+    # empty body resets to the locked default — now the EXPRESSIVE register
     voice_mod.save_voice_config({})
     assert voice_mod.active_voice_id() == "yj30vwTGJxSHezdAGsv9"
-    assert voice_mod.active_voice_settings() == {"stability": 0.70, "similarity_boost": 0.75, "speed": 0.92}
+    s = voice_mod.active_voice_settings()
+    assert s["stability"] == voice_mod.TTS_STABILITY and s["stability"] <= 0.45  # expressive band
+    assert s["similarity_boost"] == 0.75
+    assert s["style"] == voice_mod.TTS_STYLE        # expressiveness dial present
+    assert "use_speaker_boost" in s
 
 
 def test_voice_config_rejects_garbage():
