@@ -9,10 +9,13 @@ import json
 import logging
 import os
 
-from flask import Blueprint, render_template, request, jsonify, make_response, redirect, url_for
+from flask import (
+    Blueprint, render_template, request, jsonify, make_response, redirect,
+    url_for, Response, stream_with_context,
+)
 
 from dashboard.auth import require_auth, DASHBOARD_TOKEN, COOKIE_NAME, COOKIE_MAX_AGE
-from dashboard.chat import chat as chat_fn
+from dashboard.chat import chat as chat_fn, chat_stream as chat_stream_fn
 from config import CFO_REFRESH_KEY
 
 logger = logging.getLogger(__name__)
@@ -453,3 +456,54 @@ def api_chat():
     token = request.cookies.get(COOKIE_NAME, "anon")
     result = chat_fn(history, snapshot_json, token, voice=bool(data.get("voice")))
     return jsonify(result)
+
+
+@bp.route("/api/chat-stream", methods=["POST"])
+@require_auth
+def api_chat_stream():
+    """Server-Sent Events stream of the reply as it's generated, so the client can
+    start TTS on the first sentence (Phase 1). Same brain + intent routing as
+    /api/chat; that endpoint stays as the non-streaming fallback.
+
+    Events: `meta` {intent, context_tokens} → many `delta` {text} → `done` {reply}
+    or `error` {error}.
+    """
+    data = request.get_json(silent=True) or {}
+    history = data.get("history", [])
+    voice = bool(data.get("voice"))
+    if not history:
+        return jsonify({"error": "Empty message"}), 400
+
+    from snapshot import load_persisted
+    snap = load_persisted()
+    snapshot_json = json.dumps(snap, indent=2) if snap else "{}"
+    token = request.cookies.get(COOKIE_NAME, "anon")
+
+    def sse(event: str, payload) -> str:
+        return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
+
+    @stream_with_context
+    def generate():
+        try:
+            for event_type, payload in chat_stream_fn(history, snapshot_json, token, voice=voice):
+                if event_type == "delta":
+                    yield sse("delta", {"text": payload})
+                elif event_type == "meta":
+                    yield sse("meta", payload)
+                elif event_type == "done":
+                    yield sse("done", {"reply": payload})
+                elif event_type == "error":
+                    yield sse("error", {"error": payload})
+        except Exception as e:  # never let a stream crash leak a 500 mid-SSE
+            logger.error("chat-stream generator error: %s", e)
+            yield sse("error", {"error": "stream interrupted"})
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-store",
+            "X-Accel-Buffering": "no",   # disable proxy buffering so chunks flush live
+            "Connection": "keep-alive",
+        },
+    )

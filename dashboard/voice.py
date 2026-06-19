@@ -26,7 +26,14 @@ logger = logging.getLogger(__name__)
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
 # LOCKED: Rydel's licensed ElevenLabs voice (the FRIDAY voice). EDITH ships with this.
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "yj30vwTGJxSHezdAGsv9")
-ELEVENLABS_MODEL = os.environ.get("ELEVENLABS_MODEL", "eleven_flash_v2_5")  # low latency
+# Conversational TTS model — low-latency by default so first-audio is fast (Phase 2).
+# Canonical env is TTS_MODEL; ELEVENLABS_MODEL kept as a backward-compatible fallback.
+# The locked voice ID and the EDITH effects chain are unchanged — only the synth model.
+ELEVENLABS_MODEL = os.environ.get(
+    "TTS_MODEL", os.environ.get("ELEVENLABS_MODEL", "eleven_flash_v2_5"))
+# Optional higher-fidelity model for the one-off boot greeting, where a touch more
+# warmth matters and latency doesn't. Defaults to the fast model (no behaviour change).
+ELEVENLABS_GREETING_MODEL = os.environ.get("TTS_GREETING_MODEL", ELEVENLABS_MODEL)
 
 # Runtime voice config — lets the audition tool swap voice/tuning without a
 # redeploy. Persisted to the state dir so it survives restarts.
@@ -126,12 +133,16 @@ def _check_caps(text_len: int) -> str | None:
     return None
 
 
-def stream_tts(text: str, voice_id_override: str | None = None):
+def stream_tts(text: str, voice_id_override: str | None = None,
+               model_override: str | None = None):
     """Yield MP3 chunks from ElevenLabs for the given text.
 
     Raises RuntimeError with a human-readable reason on any failure —
     the route turns that into a JSON fallback signal so the client can
     drop to browser speechSynthesis. A TTS failure must never block the answer.
+
+    model_override lets the boot greeting opt into a higher-fidelity model;
+    conversational turns use the fast default for lowest first-audio latency.
     """
     if not ELEVENLABS_API_KEY:
         raise RuntimeError("ELEVENLABS_API_KEY not configured")
@@ -155,7 +166,7 @@ def stream_tts(text: str, voice_id_override: str | None = None):
         headers={"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"},
         json={
             "text": text,
-            "model_id": ELEVENLABS_MODEL,
+            "model_id": model_override or ELEVENLABS_MODEL,
             "voice_settings": active_voice_settings(),
         },
         stream=True,

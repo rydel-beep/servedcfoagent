@@ -210,6 +210,49 @@ def test_voice_addendum_is_topic_agnostic():
     assert "Jarvis" not in VOICE_ADDENDUM
 
 
+# ── Streaming responsiveness (Phase 1) ───────────────────────────────────────
+
+def test_chat_stream_yields_error_without_key():
+    """chat_stream degrades to an error event, never crashes, with no key."""
+    from dashboard.chat import chat_stream
+    import dashboard.chat as chat_mod
+    chat_mod.ANTHROPIC_API_KEY = ""
+    events = list(chat_stream([_U("hi")], "{}", "tok"))
+    assert events and events[0][0] == "error"
+
+
+def test_chat_stream_rate_limit_blocks():
+    """The existing per-token rate limit applies to the stream path too."""
+    from dashboard.chat import chat_stream
+    import dashboard.chat as chat_mod
+    chat_mod.ANTHROPIC_API_KEY = "fake"          # past the no-key guard
+    chat_mod._rate_counts["limtok"] = [9e18] * chat_mod.RATE_LIMIT  # exhaust
+    events = list(chat_stream([_U("hi")], "{}", "limtok"))
+    chat_mod._rate_counts["limtok"] = []
+    assert events and events[0][0] == "error" and "Rate limit" in events[0][1]
+
+
+def test_chat_stream_endpoint_rejects_unauthenticated():
+    c = _client(authed=False)
+    resp = c.post("/dashboard/api/chat-stream", json={"history": [{"role": "user", "content": "hi"}]})
+    assert resp.status_code == 302          # redirect to login, same guard as /api/chat
+
+
+def test_estimate_tokens_monotonic():
+    from dashboard.chat import _estimate_tokens
+    assert _estimate_tokens("") == 0
+    assert _estimate_tokens("a" * 400) == 100
+    assert _estimate_tokens("a" * 800) > _estimate_tokens("a" * 400)
+
+
+def test_tts_model_is_env_configurable_fast_default():
+    """Phase 2: TTS model resolves from env, defaults to a low-latency model."""
+    import dashboard.voice as voice_mod
+    assert "flash" in voice_mod.ELEVENLABS_MODEL or "turbo" in voice_mod.ELEVENLABS_MODEL
+    # greeting model defaults to the same fast model (no behaviour change unless set)
+    assert voice_mod.ELEVENLABS_GREETING_MODEL
+
+
 # ── Brief composition ────────────────────────────────────────────────────────
 
 def _fake_snap():

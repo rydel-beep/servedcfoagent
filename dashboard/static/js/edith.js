@@ -59,7 +59,20 @@
     var currentUtterance = 0;     // token: stale playback discards itself
     var currentEl = null;         // the live TTS <audio> element
     var musicEl = null;
+    var musicPausedAt = 0;        // resume point when music is paused by voice command
     var speakingFlag = false;
+
+    // ── streaming-speech queue (Phase 1) ──
+    // Plays sentence chunks in order through the SAME fx chain while later chunks
+    // are still being generated/synthesised. One-voice rule holds: a new utterance
+    // or barge-in bumps currentUtterance, which orphans this stream instantly.
+    var streamQueue = [];         // pending chunk texts, in order
+    var streamActive = false;     // session open — more chunks may still arrive
+    var streamPlaying = false;    // a chunk's audio is currently playing
+    var streamUtterance = 0;      // the currentUtterance that owns this stream
+    var streamOpts = {};          // fx context for the session
+    var streamPreset = 'edith';
+    var streamOnDone = null;      // resolve() for the whole stream
 
     function mixDefault(name) { return { master: 1.0, voice: 1.0, sfx: 0.25, music: 0.5 }[name]; }
     function mixGet(name) { return Math.min(1.5, Math.max(0, lsNum('edith-mix-' + name, mixDefault(name)))); }
@@ -370,13 +383,111 @@
       });
     }
 
+    // ── streaming speech: open session, push chunks, close ──
+    function beginSpeakStream(opts) {
+      opts = opts || {};
+      stopVoice();                         // one voice — flush anything playing
+      var my = ++currentUtterance;
+      streamUtterance = my;
+      streamQueue = [];
+      streamActive = true;
+      streamPlaying = false;
+      streamOpts = opts;
+      speakingFlag = true;
+      ensure();
+      if (!voiceStatus || !voiceStatus.elevenlabs_configured) {
+        // no streaming TTS available — caller will fall back to browserSpeak
+        streamActive = false;
+        return 0;
+      }
+      streamPreset = opts.fxOverride ? 'probe' : activePreset(opts.context);
+      duck();
+      startWave();
+      caption('', true);
+      return my;
+    }
+
+    function pushSpeakChunk(text) {
+      if (!streamActive || currentUtterance !== streamUtterance) return;
+      text = (text || '').trim();
+      if (!text) return;
+      streamQueue.push(text);
+      _pumpStream();
+    }
+
+    function endSpeakStream() {
+      if (currentUtterance !== streamUtterance) return;
+      streamActive = false;                // drain remaining queue, then finish
+      _pumpStream();
+    }
+
+    function _finishStream(my) {
+      if (currentUtterance !== my) return;
+      speakingFlag = false;
+      currentEl = null;
+      stopWave();
+      caption('');
+      release();
+      var cb = streamOnDone; streamOnDone = null;
+      if (cb) cb();
+    }
+
+    function _pumpStream() {
+      if (streamPlaying) return;
+      var my = streamUtterance;
+      if (currentUtterance !== my) return;              // orphaned by a new utterance
+      if (!streamQueue.length) {
+        if (!streamActive) _finishStream(my);           // drained AND closed → done
+        return;                                          // else await more chunks
+      }
+      var text = streamQueue.shift();
+      streamPlaying = true;
+      var url = '/dashboard/api/tts?text=' + encodeURIComponent(text);
+      if (streamOpts.voiceId) url += '&voice_id=' + encodeURIComponent(streamOpts.voiceId);
+      var el = new Audio(url);
+      el.volume = 1;
+      currentEl = el;
+      try { window.dispatchEvent(new CustomEvent('edith:tts', { detail: { phase: 'synth', text: text } })); } catch (ev) {}
+      routeThroughFx(el, streamPreset, false, streamOpts.fxOverride);
+      var advanced = false;
+      function advance() {
+        if (advanced || currentUtterance !== my) return;
+        advanced = true;
+        streamPlaying = false;
+        _pumpStream();                                   // next chunk (gapless-ish)
+      }
+      el.addEventListener('playing', function() {
+        try { window.dispatchEvent(new CustomEvent('edith:tts', { detail: { phase: 'playing' } })); } catch (ev) {}
+      });
+      el.addEventListener('ended', advance);
+      el.addEventListener('error', advance);             // skip a bad chunk, keep talking
+      el.play().catch(function() { advance(); });
+    }
+
+    function speakStream(opts) {
+      // Returns { id, push, end, promise }. id===0 means streaming-TTS unavailable.
+      var id = beginSpeakStream(opts);
+      var promise = new Promise(function(resolve) { streamOnDone = id ? resolve : null; });
+      if (!id) Promise.resolve().then(function() { /* caller handles fallback */ });
+      return {
+        id: id,
+        push: pushSpeakChunk,
+        end: endSpeakStream,
+        promise: id ? promise : Promise.resolve(),
+      };
+    }
+
     function stopVoice() {
       currentUtterance++;
+      // resolve any in-flight stream promise so awaiters never hang on a flush/barge
+      var cb = streamOnDone; streamOnDone = null;
+      streamActive = false; streamQueue = []; streamPlaying = false;
       if (currentEl) { try { currentEl.pause(); } catch (e) {} currentEl = null; }
       if (window.speechSynthesis) speechSynthesis.cancel();
       speakingFlag = false;
       stopWave();
       release();
+      if (cb) cb();
     }
 
     // ── music channel ──
@@ -404,6 +515,39 @@
     function stopMusic() {
       if (musicEl) { try { musicEl.pause(); } catch (e) {} musicEl = null; }
     }
+
+    // ── voice music control (Phase 5): act on the MUSIC channel only ──
+    // EDITH's voice (chVoice) and SFX (chSfx) are never touched by these.
+    function musicPlaying() { return !!(musicEl && !musicEl.paused); }
+    function hasMusic() { return !!musicEl; }
+    function musicSetVolume(v) {
+      v = Math.min(1.5, Math.max(0, v));
+      setMix('music', v);                 // setMix persists to localStorage + ramps the gain
+      return v;
+    }
+    function musicNudge(dir) {
+      // step by 0.15, clamped; the manual level becomes the new ducking baseline
+      var cur = mixGet('music');
+      return musicSetVolume(dir > 0 ? cur + 0.15 : cur - 0.15);
+    }
+    function musicPause() {
+      if (musicEl && !musicEl.paused) { try { musicEl.pause(); } catch (e) {} return true; }
+      return false;
+    }
+    function musicResume() {
+      if (musicEl && musicEl.paused) { musicEl.play().catch(function() {}); return true; }
+      return false;
+    }
+    var _musicMutedPrev = null;
+    function musicMute() {
+      if (_musicMutedPrev == null) { _musicMutedPrev = mixGet('music'); musicSetVolume(0); return true; }
+      return false;
+    }
+    function musicUnmute() {
+      if (_musicMutedPrev != null) { musicSetVolume(_musicMutedPrev || mixDefault('music')); _musicMutedPrev = null; return true; }
+      return false;
+    }
+    function musicToggleMute() { return _musicMutedPrev == null ? musicMute() : musicUnmute(); }
 
     // ── sfx: synthesized, peak-limited, polite by construction (Phase 3) ──
     function reactor() {
@@ -592,8 +736,12 @@
     function stopAll() { stopVoice(); stopMusic(); stopHum(); }
 
     return {
-      ensure: ensure, speak: speak, stopVoice: stopVoice, stopAll: stopAll,
+      ensure: ensure, speak: speak, speakStream: speakStream, stopVoice: stopVoice, stopAll: stopAll,
       playMusic: playMusic, fadeOutMusic: fadeOutMusic, stopMusic: stopMusic,
+      musicPlaying: musicPlaying, hasMusic: hasMusic,
+      musicSetVolume: musicSetVolume, musicNudge: musicNudge,
+      musicPause: musicPause, musicResume: musicResume,
+      musicMute: musicMute, musicUnmute: musicUnmute, musicToggleMute: musicToggleMute,
       reactor: reactor, chime: chime, setMix: setMix, mixGet: mixGet,
       fxParams: fxParams, fxEnabled: fxEnabled,
       startHum: startHum, stopHum: stopHum,
@@ -869,14 +1017,29 @@
     })();
   }
 
+  // Phase 3: adaptive endpointing window. The base patience (slider) is the
+  // ceiling; we fire FASTER when the transcript looks like a finished thought and
+  // stay patient when it looks mid-sentence.
+  //  · continuation cue ("…and", "…so", trailing comma) → 2× base (he's not done)
+  //  · clear sentence end (? . !) + energy dropped        → ~0.75s (snappy)
+  //  · otherwise a complete-looking phrase                → ~0.9s
+  // Energy must still be low for the whole window, and the transcript stable, so
+  // even the snappy floor needs real silence — it can't clip a mid-thought pause.
+  var EP_FAST_MS = 750, EP_COMPLETE_MS = 900;
+  function endpointWindow(text) {
+    var base = patienceMs();
+    if (CONTINUATIONS.test(text)) return base * 2;                 // mid-thought → patient
+    if (/[?.!]["')\]]?\s*$/.test(text)) return Math.min(base, EP_FAST_MS);  // clear end
+    return Math.min(base, EP_COMPLETE_MS);                          // looks complete
+  }
+
   function runEndpointLoop() {
     clearInterval(endpointTimer);
     endpointTimer = setInterval(function() {
       if (!listening) return clearInterval(endpointTimer);
       if (holdMode) { setRing(0); return; }
       if (!pendingText) { setRing(0); return; }
-      var win = patienceMs();
-      if (CONTINUATIONS.test(pendingText)) win *= 2;
+      var win = endpointWindow(pendingText);
       if (micRMS() > 0.055) { lastChangeAt = performance.now(); setRing(0); return; }
       var elapsed = performance.now() - lastChangeAt;
       setRing(elapsed / win);
@@ -913,6 +1076,111 @@
     return s.indexOf(t) !== -1 || t.indexOf(s.slice(0, 60)) !== -1;
   }
 
+  // ── Phase 5: voice music control ──────────────────────────
+  // Returns true if `text` was a music command (and acted on it). Touches the
+  // music channel only — EDITH's voice + SFX are never affected.
+  function handleMusicCommand(text) {
+    var t = text.toLowerCase().trim();
+    var m = audioManager;
+    var aboutMusic = /\b(music|the track|the song|the tune)\b/.test(t);
+    var setM = t.match(/\bset\s+(?:the\s+music|it|the\s+volume|volume)\s*(?:to|at)?\s*(\d{1,3})\s*(?:percent|%)/);
+    var bareControl = /\b(turn it (?:up|down)|turn (?:up|down)|louder|quieter|softer|lower|pause|resume|unpause|mute|unmute|stop|play)\b/.test(t);
+    // Only hijack a bare control verb (no "music" word) when music actually exists,
+    // so a generic "stop"/"pause" doesn't get swallowed when nothing is playing.
+    if (!aboutMusic && !setM) {
+      if (!bareControl) return false;
+      if (!m.hasMusic()) return false;
+    }
+    var ack = null;
+    if (setM) {
+      var pct = Math.max(0, Math.min(150, parseInt(setM[1], 10)));
+      m.musicSetVolume(pct / 100); ack = 'Music ' + pct + '%';
+    } else if (/\b(unpause|resume|play)\b/.test(t)) { m.musicResume(); ack = 'Resumed';
+    } else if (/\b(pause|stop)\b/.test(t)) { m.musicPause(); ack = 'Paused';
+    } else if (/\bunmute\b/.test(t)) { m.musicUnmute(); ack = 'Unmuted';
+    } else if (/\bmute\b/.test(t)) { m.musicMute(); ack = 'Muted';
+    } else if (/\b(louder|turn it up|turn up|up)\b/.test(t)) { m.musicNudge(1); ack = 'Louder';
+    } else if (/\b(quieter|softer|lower|turn it down|turn down|down)\b/.test(t)) { m.musicNudge(-1); ack = 'Music down';
+    } else { return false; }
+    m.uiConfirm();                 // instant tonal acknowledgement (no TTS round-trip)
+    caption(ack, false);
+    note(ack, 1800);
+    log('music command:', t, '→', ack);
+    return true;
+  }
+
+  // Barge-in watcher usable by the streaming path: sustained human-level energy
+  // (>0.17 RMS for 600ms) while she's speaking stops her and starts listening.
+  function makeBargeWatcher(onBarge) {
+    var bargeStart = null, raf = null, stopped = false;
+    function watch() {
+      if (stopped) return;
+      if (audioManager.isSpeaking() && micAnalyser) {
+        if (micRMS() > 0.17) {
+          if (!bargeStart) bargeStart = performance.now();
+          else if (performance.now() - bargeStart > 600) {
+            stopped = true;
+            if (onBarge) onBarge();
+            audioManager.stopVoice();      // resolves the stream promise (orphaned)
+            startListening();
+            return;
+          }
+        } else bargeStart = null;
+      }
+      raf = requestAnimationFrame(watch);
+    }
+    watch();
+    return function() { stopped = true; if (raf) cancelAnimationFrame(raf); };
+  }
+
+  // Phase 1: stream the reply and speak it sentence-by-sentence. First audible
+  // word lands as soon as the first sentence is generated, not after the whole
+  // reply. Falls back cleanly to the non-streaming path inside askStream.
+  async function respondStreaming(text) {
+    transition(S.THINKING, 'query');
+    var sentAt = performance.now();
+    var stream = audioManager.speakStream({ context: 'reply' });
+
+    if (!stream.id || !window.JarvisChat.askStream) {
+      // streaming TTS unavailable → proven non-streaming path
+      var r0 = await window.JarvisChat.ask(text, true);
+      if (r0) { await speakWithBargeIn(r0, 'reply'); afterReply(); }
+      else { transition(S.IDLE, 'no reply'); note('No reply — check the chat panel.'); }
+      return;
+    }
+
+    var firstWordAt = 0, barged = false, stopBarge = null;
+    lastSpokenText = '';
+    var res = await window.JarvisChat.askStream(text, true, function(sentence) {
+      if (!firstWordAt) {
+        firstWordAt = performance.now();
+        _speakStartedAt = firstWordAt;
+        transition(S.SPEAKING, 'stream');
+        stopBarge = makeBargeWatcher(function() { barged = true; });
+      }
+      lastSpokenText += ' ' + sentence;
+      stream.push(sentence);
+    });
+
+    if (res.chunked) {
+      stream.end();
+      await stream.promise;                 // resolves when audio finishes OR barge orphans it
+      if (stopBarge) stopBarge();
+      log('latency send→speech-start:', Math.round((firstWordAt || performance.now()) - sentAt) + 'ms');
+      if (!barged) afterReply();
+    } else if (res.reply) {
+      if (stopBarge) stopBarge();
+      audioManager.stopVoice();             // close the empty stream session
+      await speakWithBargeIn(res.reply, 'reply');
+      afterReply();
+    } else {
+      if (stopBarge) stopBarge();
+      audioManager.stopVoice();
+      transition(S.IDLE, 'no reply');
+      note('No reply — check the chat panel.');
+    }
+  }
+
   async function handleTranscript(text) {
     if (!text) return;
     if (_isSelfEcho(text)) { caption(''); transition(S.IDLE, 'echo discard'); return; }
@@ -935,18 +1203,13 @@
     pendingBriefOffer = false;
     if (/^(brief me|morning brief|daily brief|read my priorities)\b/i.test(text)) return runBrief();
 
+    // Phase 5: music control — matched locally and acted on instantly (no model
+    // round-trip), touching ONLY the music channel. Routed BEFORE the model so a
+    // "turn it down" can't be mistaken for a business/general query.
+    if (handleMusicCommand(text)) { afterReply(); return; }
+
     if (!window.JarvisChat) return;
-    transition(S.THINKING, 'query');
-    var sentAt = performance.now();
-    var reply = await window.JarvisChat.ask(text, true);
-    if (reply) {
-      await speakWithBargeIn(reply, 'reply');
-      log('latency send→speech-start:', Math.round(_speakStartedAt - sentAt) + 'ms');
-      afterReply();
-    } else {
-      transition(S.IDLE, 'no reply');
-      note('No reply — check the chat panel.');
-    }
+    await respondStreaming(text);
   }
 
   // barge-in: sustained HUMAN-level energy (>0.17 RMS, 600ms) stops her

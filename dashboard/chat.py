@@ -484,6 +484,9 @@ def chat(history: list, snapshot_json: str, token: str, voice: bool = False) -> 
     # is about the business. General turns answer as open Claude (and save tokens).
     system, business_intent = build_system_prompt(messages, snapshot_json, voice=voice)
     intent = "business" if business_intent else "general"
+    # Phase 4: watch context size — general turns must stay lean (no snapshot).
+    logger.info("chat intent=%s context~%d tokens voice=%s",
+                intent, _estimate_tokens(system), voice)
 
     last_err: Exception | None = None
     for attempt in range(3):
@@ -509,3 +512,78 @@ def chat(history: list, snapshot_json: str, token: str, voice: bool = False) -> 
             break
     logger.error("Chat API error: %s", last_err)
     return {"reply": None, "error": f"Chat API error: {str(last_err)[:200]}"}
+
+
+def _estimate_tokens(text: str) -> int:
+    """Cheap context-size estimate (~4 chars/token). For debug/telemetry only —
+    never used for correctness, just to watch that context stays lean (Phase 4)."""
+    return (len(text) + 3) // 4
+
+
+def chat_stream(history: list, snapshot_json: str, token: str, voice: bool = False):
+    """Streaming sibling of chat(): same brain, same intent routing, same accuracy
+    rules — but yields the reply as it is generated so the caller can start TTS on
+    the first sentence instead of waiting for the whole reply (Phase 1, the big win).
+
+    Yields (event_type, payload) tuples:
+      ("meta",  {"intent": ...,"context_tokens": ...})  — once, first
+      ("delta", "<text chunk>")                          — many
+      ("done",  "<full reply text>")                     — once, last on success
+      ("error", "<message>")                             — instead of done on failure
+    The transport (SSE) is the route's job; this stays transport-agnostic.
+    """
+    if not ANTHROPIC_API_KEY:
+        yield ("error", "Chat unavailable — ANTHROPIC_API_KEY not configured.")
+        return
+    if not _check_rate_limit(token):
+        yield ("error", f"Rate limit reached ({RATE_LIMIT} messages/hour). Try again shortly.")
+        return
+
+    messages = _sanitize_history(history)
+    if not messages:
+        yield ("error", "Empty message")
+        return
+
+    system, business_intent = build_system_prompt(messages, snapshot_json, voice=voice)
+    intent = "business" if business_intent else "general"
+    ctx_tokens = _estimate_tokens(system)
+    # Phase 4: watch context size. General turns must NOT carry the snapshot.
+    logger.info("chat_stream intent=%s context~%d tokens voice=%s", intent, ctx_tokens, voice)
+    yield ("meta", {"intent": intent, "context_tokens": ctx_tokens})
+
+    last_err: Exception | None = None
+    emitted = False
+    for attempt in range(3):
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+            full: list[str] = []
+            with client.messages.stream(
+                model=CHAT_MODEL,
+                max_tokens=300 if voice else 1000,
+                temperature=0.5,
+                system=system,
+                messages=messages,
+            ) as stream:
+                for delta in stream.text_stream:
+                    if delta:
+                        full.append(delta)
+                        emitted = True
+                        yield ("delta", delta)
+            yield ("done", "".join(full))
+            return
+        except Exception as e:
+            last_err = e
+            # If we already streamed partial text to the client, retrying would
+            # duplicate it — bail out instead. Only retry a clean (pre-emit) 529.
+            if emitted:
+                break
+            # 529 = transiently overloaded — safe to retry ONLY if nothing was
+            # emitted yet (no partial reply has reached the client this attempt).
+            if ("529" in str(e) or "overloaded" in str(e).lower()):
+                logger.warning("chat_stream overloaded (attempt %d) — retrying", attempt + 1)
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            break
+    logger.error("chat_stream API error: %s", last_err)
+    yield ("error", f"Chat API error: {str(last_err)[:200]}")
