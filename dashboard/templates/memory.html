@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EDITH · Memory</title>
+  <style>
+    :root{
+      --bg:#0A1220; --card:#111E30; --card2:#16263C; --line:rgba(238,244,250,.08);
+      --text:#E8EFF6; --text2:#A7BCD2; --muted:#71889F; --brand:#5B9BD0; --risk:#E0795B;
+      --ok:#4FB286;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+      font-size:14px;line-height:1.5;padding:24px;max-width:980px;margin:0 auto}
+    h1{font-size:22px;font-weight:600;margin:0 0 2px} h2{font-size:15px;color:var(--text2);margin:28px 0 10px;font-weight:600}
+    a{color:var(--brand);text-decoration:none}
+    .sub{color:var(--muted);font-size:12px;margin-bottom:18px}
+    .banner{padding:10px 14px;border-radius:8px;margin-bottom:18px;font-size:13px;display:none}
+    .banner.off{display:block;background:rgba(224,121,91,.12);border:1px solid var(--risk);color:#f0b8a6}
+    .banner.on{display:block;background:rgba(79,178,134,.10);border:1px solid var(--ok);color:#9fe0c4}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:10px}
+    .row{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+    .meta{color:var(--muted);font-size:12px}
+    .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:99px;background:var(--card2);color:var(--text2);margin-right:6px}
+    .pill.decision{color:#9fe0c4} .pill.preference{color:#c4b5f0} .pill.person{color:#f0d59f}
+    .pill.business{color:#9fc4f0} .pill.context{color:var(--text2)}
+    button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card2);
+      color:var(--text2);border-radius:7px;padding:5px 10px;font-size:12px}
+    button:hover{color:var(--text);border-color:var(--brand)}
+    button.danger:hover{border-color:var(--risk);color:#f0b8a6}
+    .btns{display:flex;gap:6px;flex-shrink:0}
+    .fact-text{flex:1} .fact-text[contenteditable=true]{outline:1px solid var(--brand);border-radius:5px;padding:2px 6px;background:rgba(0,0,0,.2)}
+    .empty{color:var(--muted);font-style:italic;padding:8px 0}
+    .transcript{margin-top:10px;border-top:1px solid var(--line);padding-top:10px;display:none}
+    .msg{margin:6px 0} .msg .who{color:var(--brand);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+    .msg.assistant .who{color:var(--text2)}
+    .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+    .toolbar label{font-size:12px;color:var(--muted)}
+    .clearall{margin-top:30px;border-top:1px solid var(--line);padding-top:16px}
+  </style>
+</head>
+<body>
+  <h1>EDITH · Memory</h1>
+  <div class="sub">What EDITH remembers across sessions. Conversational context — <b>not</b> financial truth (figures always come from the live engines). <a href="/dashboard/">← back to dashboard</a></div>
+
+  <div id="banner" class="banner"></div>
+
+  <div class="toolbar">
+    <button id="refresh">↻ Refresh</button>
+    <label><input type="checkbox" id="show-inactive"> show inactive facts</label>
+    <label><input type="checkbox" id="show-archived"> show archived conversations</label>
+  </div>
+
+  <h2>Distilled memory (what EDITH knows)</h2>
+  <div id="facts"></div>
+
+  <h2>Conversations</h2>
+  <div id="conversations"></div>
+
+  <div class="clearall">
+    <h2>Privacy</h2>
+    <button id="clear-all" class="danger">Clear ALL memory…</button>
+    <span class="meta">wipes every fact + transcript. Requires confirmation.</span>
+  </div>
+
+  <script src="/dashboard/static/js/memory.js"></script>
+</body>
+</html>

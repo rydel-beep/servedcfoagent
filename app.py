@@ -36,6 +36,10 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "cfo-dashboard-dev-key-chang
 from dashboard.routes import bp as dashboard_bp
 app.register_blueprint(dashboard_bp, url_prefix="/dashboard")
 
+# Register EDITH memory blueprint (Phase 5 UI). Self-contained; degrades to no-op if DB down.
+from dashboard.memory_routes import bp as memory_bp
+app.register_blueprint(memory_bp, url_prefix="/dashboard/memory")
+
 # In-memory cache of the latest snapshot
 _current_snapshot: dict | None = None
 
@@ -448,6 +452,13 @@ import threading
 def _deferred_startup():
     """Run startup refresh in a background thread so the worker can start serving."""
     with app.app_context():
+        # Apply the persistent-memory schema (idempotent; no-op + logged if DB absent).
+        try:
+            import db as _db
+            if _db.db_configured():
+                _db.migrate()
+        except Exception as _e:  # never let memory setup block the app
+            logger.error("Memory migrate-on-boot skipped: %s", _e)
         _startup_refresh()
         _start_scheduled_refresh()
 

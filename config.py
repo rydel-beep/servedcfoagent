@@ -116,6 +116,18 @@ CFO_REFRESH_KEY = os.getenv("CFO_REFRESH_KEY", "")
 # into the authed dashboard page, never into public assets.
 PICOVOICE_ACCESS_KEY = os.getenv("PICOVOICE_ACCESS_KEY", "")
 
+# ── Persistent memory (Postgres) ─────────────────────────────────────────────
+# Prefer the internal DATABASE_URL (Railway private network — faster, no egress);
+# fall back to DATABASE_PUBLIC_URL (proxy) so it works even if only the public
+# reference is wired. Absent entirely → memory degrades to in-session (no crash).
+DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("DATABASE_PUBLIC_URL", "")
+# New conversation if the prior one has been idle longer than this (hours).
+MEMORY_IDLE_GAP_HOURS = float(os.getenv("MEMORY_IDLE_GAP_HOURS", "12"))
+# Recall budget: recent turns always included + top relevance matches from history.
+MEMORY_RECENT_TURNS = int(os.getenv("MEMORY_RECENT_TURNS", "12"))
+MEMORY_RECALL_MATCHES = int(os.getenv("MEMORY_RECALL_MATCHES", "6"))
+MEMORY_MAX_CONTEXT_CHARS = int(os.getenv("MEMORY_MAX_CONTEXT_CHARS", "8000"))
+
 # ── Timeouts ─────────────────────────────────────────────────────────────────
 HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "10"))
 
