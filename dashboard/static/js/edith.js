@@ -55,7 +55,7 @@
   // ═════════════════════════════════════════════════════════
   var audioManager = (function() {
     var ctx = null;
-    var master, chVoice, chSfx, chMusic, sfxLimiter, voiceAnalyser;
+    var master, chVoice, chSfx, chMusic, sfxLimiter, voiceAnalyser, voiceLimiter;
     var currentUtterance = 0;     // token: stale playback discards itself
     var currentEl = null;         // the live TTS <audio> element
     var musicEl = null;
@@ -73,6 +73,7 @@
     var streamOpts = {};          // fx context for the session
     var streamPreset = 'edith';
     var streamOnDone = null;      // resolve() for the whole stream
+    var streamNextEl = null;      // LOOKAHEAD: next chunk, routed + buffering, ready to play
 
     function mixDefault(name) { return { master: 1.0, voice: 1.0, sfx: 0.25, music: 0.5 }[name]; }
     function mixGet(name) { return Math.min(1.5, Math.max(0, lsNum('edith-mix-' + name, mixDefault(name)))); }
@@ -91,7 +92,13 @@
       sfxLimiter.threshold.value = -14; sfxLimiter.knee.value = 6;
       sfxLimiter.ratio.value = 12; sfxLimiter.attack.value = 0.002; sfxLimiter.release.value = 0.18;
       voiceAnalyser = ctx.createAnalyser(); voiceAnalyser.fftSize = 256;
-      chVoice.connect(voiceAnalyser); voiceAnalyser.connect(master);
+      // Output peak limiter on the voice bus (built ONCE): the wet fx chain summing
+      // dry+comb+double+shimmer+reverb can momentarily exceed 0 dBFS and crackle on
+      // clip. This catches transients so the voice never clips, no matter the preset.
+      voiceLimiter = ctx.createDynamicsCompressor();
+      voiceLimiter.threshold.value = -3; voiceLimiter.knee.value = 3;
+      voiceLimiter.ratio.value = 20; voiceLimiter.attack.value = 0.002; voiceLimiter.release.value = 0.12;
+      chVoice.connect(voiceLimiter); voiceLimiter.connect(voiceAnalyser); voiceAnalyser.connect(master);
       chSfx.connect(sfxLimiter); sfxLimiter.connect(master);
       chMusic.connect(master);
       return ctx;
@@ -163,12 +170,39 @@
       var c = ensure();
       var p = fxOverride || fxParams(presetName);
       log('fx route:', presetName, 'wet=' + p.wet, 'ctx=' + c.state);
-      var src = c.createMediaElementSource(el);
+
+      // Track EVERY node + oscillator created for this utterance so we can fully
+      // disconnect/stop them when it finishes. Without this the graph (and the
+      // running lfo/shim oscillators) leaks per chunk → CPU climbs → progressive
+      // crackle over a long session. N() tracks a node, O() tracks an oscillator.
+      var nodes = [], oscs = [];
+      function N(node) { nodes.push(node); return node; }
+      function O(node) { oscs.push(node); nodes.push(node); return node; }
+
+      // declick + teardown: ramp the mix gains to silence, then (after the ramp)
+      // stop oscillators and disconnect every node so the element + graph are GC'd.
+      var mixGains = [];
+      el._fxTeardown = function() {
+        if (el._fxTorn) return; el._fxTorn = true;
+        try {
+          var t = c.currentTime;
+          mixGains.forEach(function(g) {
+            if (g && g.gain) { try { g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(0.0001, t, 0.008); } catch (e) {} }
+          });
+        } catch (e) {}
+        setTimeout(function() {
+          oscs.forEach(function(o) { try { o.stop(); } catch (e) {} try { o.disconnect(); } catch (e) {} });
+          nodes.forEach(function(n) { try { n.disconnect(); } catch (e) {} });
+          nodes.length = 0; oscs.length = 0; mixGains.length = 0;
+        }, 60);
+      };
+
+      var src = N(c.createMediaElementSource(el));
 
       // COMPRESSOR first — the whole signal gets the ultra-even AI dynamics
       var head = src;
       if (p.comp !== false) {
-        var comp = c.createDynamicsCompressor();
+        var comp = N(c.createDynamicsCompressor());
         comp.threshold.value = -28; comp.ratio.value = 4;
         comp.attack.value = 0.005; comp.release.value = 0.15;
         src.connect(comp);
@@ -176,50 +210,50 @@
       }
 
       // dry path FIRST — an exception below can never mute the voice
-      var dryG = c.createGain(); dryG.gain.value = 1 - p.wet * 0.8;
+      var dryG = N(c.createGain()); dryG.gain.value = 1 - p.wet * 0.8; mixGains.push(dryG);
       head.connect(dryG); dryG.connect(chVoice);
       try {
-        var hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = p.hp || 1;
-        var lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = p.lp;
+        var hp = N(c.createBiquadFilter()); hp.type = 'highpass'; hp.frequency.value = p.hp || 1;
+        var lp = N(c.createBiquadFilter()); lp.type = 'lowpass'; lp.frequency.value = p.lp;
         head.connect(hp); hp.connect(lp);
 
         // presence sheen: the crisp digital edge
-        var shelf = c.createBiquadFilter(); shelf.type = 'highshelf';
+        var shelf = N(c.createBiquadFilter()); shelf.type = 'highshelf';
         shelf.frequency.value = 6500; shelf.gain.value = p.shelf || 0;
         lp.connect(shelf);
 
-        var combDelay = c.createDelay(0.05); combDelay.delayTime.value = 0.005;
-        var combFb = c.createGain(); combFb.gain.value = Math.min(0.5, p.comb * 2.2);
-        var combMix = c.createGain(); combMix.gain.value = p.comb;
+        var combDelay = N(c.createDelay(0.05)); combDelay.delayTime.value = 0.005;
+        var combFb = N(c.createGain()); combFb.gain.value = Math.min(0.5, p.comb * 2.2);
+        var combMix = N(c.createGain()); combMix.gain.value = p.comb; mixGains.push(combMix);
         shelf.connect(combDelay); combDelay.connect(combFb); combFb.connect(combDelay);
         combDelay.connect(combMix);
 
-        var dbl = c.createDelay(0.06); dbl.delayTime.value = 0.014;
-        var lfo = c.createOscillator(); lfo.frequency.value = 0.8;
-        var lfoG = c.createGain(); lfoG.gain.value = 0.00075;   // ≈10 cents perceived
+        var dbl = N(c.createDelay(0.06)); dbl.delayTime.value = 0.014;
+        var lfo = O(c.createOscillator()); lfo.frequency.value = 0.8;
+        var lfoG = N(c.createGain()); lfoG.gain.value = 0.00075;   // ≈10 cents perceived
         lfo.connect(lfoG); lfoG.connect(dbl.delayTime); lfo.start();
-        var dblMix = c.createGain(); dblMix.gain.value = p.dbl;
+        var dblMix = N(c.createGain()); dblMix.gain.value = p.dbl; mixGains.push(dblMix);
         shelf.connect(dbl); dbl.connect(dblMix);
 
         // shimmer: very low-mix ring-mod ~3kHz — a glassy synthetic glint
-        var shimMix = c.createGain(); shimMix.gain.value = 0;
+        var shimMix = N(c.createGain()); shimMix.gain.value = 0; mixGains.push(shimMix);
         if (p.shim > 0) {
-          var ring = c.createGain(); ring.gain.value = 0;
-          var shimOsc = c.createOscillator(); shimOsc.frequency.value = 3000;
+          var ring = N(c.createGain()); ring.gain.value = 0;
+          var shimOsc = O(c.createOscillator()); shimOsc.frequency.value = 3000;
           shimOsc.connect(ring.gain); shimOsc.start();
           shelf.connect(ring);
           shimMix.gain.value = Math.min(0.10, p.shim);
           ring.connect(shimMix);
         }
 
-        var conv = c.createConvolver(); conv.buffer = makeImpulse(c, 100);
-        var revMix = c.createGain(); revMix.gain.value = p.rev;
+        var conv = N(c.createConvolver()); conv.buffer = makeImpulse(c, 100);
+        var revMix = N(c.createGain()); revMix.gain.value = p.rev; mixGains.push(revMix);
         shelf.connect(conv); conv.connect(revMix);
 
         // tone layer scales with wet; INGREDIENTS connect at ABSOLUTE gains
         // ("0.30 under dry") — routing them through the wet gain crushed every
         // ingredient to ~30% of its dialed value. That was the inaudible filter.
-        var wet = c.createGain(); wet.gain.value = p.wet;
+        var wet = N(c.createGain()); wet.gain.value = p.wet; mixGains.push(wet);
         shelf.connect(wet); wet.connect(chVoice);
         combMix.connect(chVoice);
         dblMix.connect(chVoice);
@@ -227,11 +261,11 @@
         revMix.connect(chVoice);
 
         if (crushFirstWord) {
-          var shaper = c.createWaveShaper();
+          var shaper = N(c.createWaveShaper());
           var curve = new Float32Array(256);
           for (var i = 0; i < 256; i++) curve[i] = Math.round(((i / 128) - 1) * 6) / 6;
           shaper.curve = curve;
-          var crushG = c.createGain(); crushG.gain.value = 0.5;
+          var crushG = N(c.createGain()); crushG.gain.value = 0.5;
           shelf.connect(shaper); shaper.connect(crushG); crushG.connect(chVoice);
           setTimeout(function() { try { crushG.gain.setTargetAtTime(0, c.currentTime, 0.02); } catch (e) {} }, 80);
         }
@@ -265,6 +299,7 @@
         var done = function(engine) {
           if (currentUtterance !== my) return;     // an interrupt already cleaned up
           speakingFlag = false;
+          _tearDownEl(el);                          // free this utterance's fx graph
           currentEl = null;
           stopWave();
           caption('');
@@ -393,6 +428,7 @@
       var my = ++currentUtterance;
       streamUtterance = my;
       streamQueue = [];
+      streamNextEl = null;
       streamActive = true;
       streamPlaying = false;
       streamOpts = opts;
@@ -410,12 +446,22 @@
       return my;
     }
 
+    // Warm the NEXT chunk while the current one is still speaking, so its audio is
+    // buffered before the seam (no TTS-first-byte gap). Only one chunk ahead.
+    function _maybePrefetch() {
+      if (currentUtterance !== streamUtterance) return;
+      if (streamPlaying && !streamNextEl && streamQueue.length) {
+        streamNextEl = _prepChunk(streamQueue.shift());
+      }
+    }
+
     function pushSpeakChunk(text) {
       if (!streamActive || currentUtterance !== streamUtterance) return;
       text = (text || '').trim();
       if (!text) return;
       streamQueue.push(text);
-      _pumpStream();
+      if (streamPlaying) _maybePrefetch();   // already speaking → warm this chunk now
+      else _pumpStream();                    // idle → start it playing
     }
 
     function endSpeakStream() {
@@ -427,7 +473,8 @@
     function _finishStream(my) {
       if (currentUtterance !== my) return;
       speakingFlag = false;
-      currentEl = null;
+      _tearDownEl(streamNextEl); streamNextEl = null;   // free any unused prefetch
+      _tearDownEl(currentEl); currentEl = null;
       stopWave();
       caption('');
       release();
@@ -435,40 +482,82 @@
       if (cb) cb();
     }
 
+    // Build a chunk's <audio> + fx graph and START it buffering, WITHOUT playing.
+    // Used for lookahead: the next chunk loads while the current one is still
+    // speaking, so there's no TTS-first-byte gap at the seam.
+    function _prepChunk(text) {
+      var url = '/dashboard/api/tts?text=' + encodeURIComponent(text);
+      if (streamOpts.voiceId) url += '&voice_id=' + encodeURIComponent(streamOpts.voiceId);
+      var el = new Audio(url);
+      el.preload = 'auto';
+      el.volume = 1;
+      el._chunkText = text;
+      routeThroughFx(el, streamPreset, false, streamOpts.fxOverride);
+      try { el.load(); } catch (e) {}                    // kick off buffering now
+      return el;
+    }
+
+    function _tearDownEl(el) {
+      if (!el) return;
+      try { el.pause(); } catch (e) {}
+      try { if (el._fxTeardown) el._fxTeardown(); } catch (e) {}   // free the fx graph
+    }
+
     function _pumpStream() {
       if (streamPlaying) return;
       var my = streamUtterance;
       if (currentUtterance !== my) return;              // orphaned by a new utterance
-      if (!streamQueue.length) {
-        if (!streamActive) _finishStream(my);           // drained AND closed → done
-        return;                                          // else await more chunks
+      var el = streamNextEl;                            // prefetched chunk ready?
+      streamNextEl = null;
+      if (!el) {
+        if (!streamQueue.length) {
+          if (!streamActive) _finishStream(my);         // drained AND closed → done
+          return;                                        // else HOLD cleanly for more chunks
+        }
+        el = _prepChunk(streamQueue.shift());
       }
-      var text = streamQueue.shift();
+      var text = el._chunkText;
       streamPlaying = true;
-      var url = '/dashboard/api/tts?text=' + encodeURIComponent(text);
-      if (streamOpts.voiceId) url += '&voice_id=' + encodeURIComponent(streamOpts.voiceId);
-      var el = new Audio(url);
-      el.volume = 1;
       currentEl = el;
-      try { window.dispatchEvent(new CustomEvent('edith:tts', { detail: { phase: 'synth', text: text } })); } catch (ev) {}
-      routeThroughFx(el, streamPreset, false, streamOpts.fxOverride);
-      var advanced = false;
+      // Lookahead: start buffering the FOLLOWING chunk now, while this one plays.
+      if (streamQueue.length && !streamNextEl) streamNextEl = _prepChunk(streamQueue.shift());
+
+      var advanced = false, retried = false;
       function advance() {
         if (advanced || currentUtterance !== my) return;
         advanced = true;
+        _tearDownEl(el);                                 // release this chunk's nodes
+        if (currentEl === el) currentEl = null;
         streamPlaying = false;
-        _pumpStream();                                   // next chunk (gapless-ish)
+        _pumpStream();                                   // play the (already-buffered) next chunk
       }
       el.addEventListener('playing', function() {
         if (currentUtterance !== my) return;
-        // Caption tracks what's AUDIBLE: reveal this chunk's text as it starts to
-        // play (per-chunk reveal). Same text that was sent to TTS — no placeholder.
+        // Caption tracks what's AUDIBLE: reveal this chunk's text as it starts to play.
         caption(text, true);
         try { window.dispatchEvent(new CustomEvent('edith:caption', { detail: { text: text } })); } catch (ev) {}
         try { window.dispatchEvent(new CustomEvent('edith:tts', { detail: { phase: 'playing' } })); } catch (ev) {}
       });
       el.addEventListener('ended', advance);
-      el.addEventListener('error', advance);             // skip a bad chunk, keep talking
+      el.addEventListener('error', function() {
+        if (advanced || currentUtterance !== my) return;
+        if (!retried) {                                  // transient TTS error → retry ONCE, don't drop the sentence
+          retried = true;
+          _tearDownEl(el);
+          var again = _prepChunk(text);
+          el = again; currentEl = again;
+          again.addEventListener('playing', function() {
+            if (currentUtterance !== my) return;
+            caption(text, true);
+            try { window.dispatchEvent(new CustomEvent('edith:caption', { detail: { text: text } })); } catch (ev) {}
+          });
+          again.addEventListener('ended', advance);
+          again.addEventListener('error', advance);      // second failure → skip, keep talking
+          again.play().catch(advance);
+          return;
+        }
+        advance();
+      });
       el.play().catch(function() { advance(); });
     }
 
@@ -490,7 +579,9 @@
       // resolve any in-flight stream promise so awaiters never hang on a flush/barge
       var cb = streamOnDone; streamOnDone = null;
       streamActive = false; streamQueue = []; streamPlaying = false;
-      if (currentEl) { try { currentEl.pause(); } catch (e) {} currentEl = null; }
+      // tear down the playing chunk AND any prefetched-but-unplayed chunk (free fx graphs)
+      _tearDownEl(streamNextEl); streamNextEl = null;
+      _tearDownEl(currentEl); currentEl = null;
       if (window.speechSynthesis) speechSynthesis.cancel();
       speakingFlag = false;
       stopWave();
@@ -948,7 +1039,10 @@
   //  ENDPOINTING (Phase 6 — preserved): adaptive silence ×
   //  continuation cues × energy VAD; ring shows the countdown
   // ═════════════════════════════════════════════════════════
-  var CONTINUATIONS = /\b(and|but|so|or|because|then|also|plus|like|um|uh|hmm|well|which|with|to|the|a|of|for|if|when|that)\s*$|,\s*$/i;
+  // Trailing words/sounds that mean "I'm still talking" — fillers, conjunctions,
+  // articles, prepositions, and mid-thought verbs/pronouns. Expanded so a natural
+  // pause after these holds the window instead of firing. Also a trailing comma.
+  var CONTINUATIONS = /\b(and|but|so|or|because|then|also|plus|like|um|uh|uhh|umm|er|ah|hmm|well|which|with|to|the|a|an|of|for|if|when|that|is|are|was|were|my|our|your|his|her|their|its|we|i|it|at|in|on|can|could|would|should|will|want|wanna|need|gonna|going|let|me|about|just|really|actually|maybe|think|thinking|know|gotta|kind|sort)\s*$|[,;:\-–—]\s*$/i;
   var recognition = null;
   var listening = false;
   var holdMode = false;
@@ -957,7 +1051,9 @@
   var endpointTimer = null;
   var levelRAF2 = null;
 
-  function patienceMs() { return lsNum('edith-patience', 1.4) * 1000; }
+  // Default patience recalibrated 1.4 → 1.5s so out-of-the-box it doesn't clip a
+  // mid-thought pause. Slider still overrides.
+  function patienceMs() { return lsNum('edith-patience', 1.5) * 1000; }
 
   function initRecognition() {
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1028,22 +1124,27 @@
     })();
   }
 
-  // Phase 3: adaptive endpointing window. The base patience (slider) is the
-  // ceiling; we fire FASTER when the transcript looks like a finished thought and
-  // stay patient when it looks mid-sentence.
-  //  · continuation cue ("…and", "…so", trailing comma) → 2× base (he's not done)
-  //  · clear sentence end (? . !) + energy dropped        → ~0.75s (snappy)
-  //  · otherwise a complete-looking phrase                → ~0.9s
-  // Energy must still be low for the whole window, and the transcript stable, so
-  // even the snappy floor needs real silence — it can't clip a mid-thought pause.
-  var EP_FAST_MS = 750, EP_COMPLETE_MS = 900;
+  // Phase 3 (recalibrated): bias toward PATIENCE so we never cut Rydel off, while
+  // staying snappy on an obviously-finished question. The base patience (slider,
+  // ~1.5s) is the DEFAULT, not the ceiling we shave under:
+  //  · continuation cue ("…and", "…so", filler, trailing comma) → 1.8× base (very patient)
+  //  · confident clear end — ASR added ? . ! AND no continuation → ~1.0s (snappy)
+  //  · everything else (no punctuation = can't be sure) → FULL base (was 0.9s — too eager)
+  // Fast-fire only on a punctuated end because interim ASR rarely punctuates; an
+  // un-punctuated stop is treated as possibly-mid-thought and gets the full window.
+  var EP_FAST_MS = 1000;
   function endpointWindow(text) {
     var base = patienceMs();
-    if (CONTINUATIONS.test(text)) return base * 2;                 // mid-thought → patient
-    if (/[?.!]["')\]]?\s*$/.test(text)) return Math.min(base, EP_FAST_MS);  // clear end
-    return Math.min(base, EP_COMPLETE_MS);                          // looks complete
+    if (CONTINUATIONS.test(text)) return Math.round(base * 1.8);            // mid-thought → very patient
+    if (/[?.!]["')\]]?\s*$/.test(text)) return Math.min(base, EP_FAST_MS);  // confident clear end → ~1.0s
+    return base;                                                            // unsure → full patience
   }
 
+  // Energy-VAD: resumed speech must RESET the silence timer. Threshold lowered
+  // 0.055 → 0.035 so soft/onset speech reliably resets it (a too-high gate let
+  // quiet resumed talking slip through and fire mid-thought). Below the gate we
+  // treat it as silence and let the window run.
+  var VAD_RESUME_RMS = 0.035;
   function runEndpointLoop() {
     clearInterval(endpointTimer);
     endpointTimer = setInterval(function() {
@@ -1051,7 +1152,7 @@
       if (holdMode) { setRing(0); return; }
       if (!pendingText) { setRing(0); return; }
       var win = endpointWindow(pendingText);
-      if (micRMS() > 0.055) { lastChangeAt = performance.now(); setRing(0); return; }
+      if (micRMS() > VAD_RESUME_RMS) { lastChangeAt = performance.now(); setRing(0); return; }  // still talking → reset
       var elapsed = performance.now() - lastChangeAt;
       setRing(elapsed / win);
       if (elapsed >= win) finalizeUtterance();
