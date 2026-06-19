@@ -181,6 +181,19 @@ def api_voice_status():
     return jsonify(tts_usage())
 
 
+@bp.route("/api/memory-status", methods=["GET"])
+@require_auth
+def api_memory_status():
+    """Persistent-memory health for the UI badge — so a DB failure is LOUD, never a
+    silent fall-back to forgetting. Returns online + reason + table row counts. No
+    secrets (the connection string never leaves the server)."""
+    import memory
+    import db
+    status = memory.memory_status()          # {online, reason}
+    status["schema"] = db.schema_overview()  # {} when offline; counts when up
+    return jsonify(status)
+
+
 @bp.route("/api/tts", methods=["GET", "POST"])
 @require_auth
 def api_tts():
@@ -462,6 +475,9 @@ def api_chat():
     channel = "voice" if voice else "text"
     conv_id = memory.start_conversation(channel)
     user_msg = (history[-1].get("content") if history else "") or ""
+    # Rebuild the thread from the DB if the client lost it (refresh/new tab) BEFORE
+    # writing the new turn — this is what makes a refresh RESUME instead of restart.
+    history = memory.resume_thread(conv_id, history)
     memory.record_turn(conv_id, "user", user_msg, channel=channel)
     recall = memory.build_recall_context(user_msg, conversation_id=conv_id)
 
@@ -502,6 +518,8 @@ def api_chat_stream():
     channel = "voice" if voice else "text"
     conv_id = memory.start_conversation(channel)
     user_msg = (history[-1].get("content") if history else "") or ""
+    # Rebuild the thread from the DB on refresh BEFORE writing the new turn (resume, not restart).
+    history = memory.resume_thread(conv_id, history)
     memory.record_turn(conv_id, "user", user_msg, channel=channel)
     recall = memory.build_recall_context(user_msg, conversation_id=conv_id)
 

@@ -2305,3 +2305,42 @@
   })();
 
 })();
+
+/* Persistent-memory health badge — LOUD degradation. If the DB is unreachable,
+   show a visible "memory offline" badge so a failure is never again mistaken for
+   "memory was never built". Self-contained (inline styles, own poll) to stay clear
+   of other UI work. Hidden when memory is online. */
+(function() {
+  'use strict';
+  var badge = null;
+  function ensureBadge() {
+    if (badge) return badge;
+    badge = document.createElement('div');
+    badge.id = 'edith-mem-badge';
+    badge.style.cssText = [
+      'position:fixed', 'left:14px', 'bottom:14px', 'z-index:99999',
+      'padding:6px 11px', 'border-radius:7px',
+      'background:rgba(40,12,12,0.95)', 'border:1px solid rgba(232,69,69,0.55)',
+      'color:#ff9a9a', 'font:600 11px/1.3 system-ui,sans-serif',
+      'letter-spacing:0.02em', 'pointer-events:none', 'box-shadow:0 4px 16px rgba(0,0,0,0.4)',
+      'opacity:0', 'transition:opacity .3s'
+    ].join(';');
+    document.body.appendChild(badge);
+    return badge;
+  }
+  function show(reason) {
+    var b = ensureBadge();
+    b.textContent = '⚠ persistent memory offline' + (reason ? ' (' + reason + ')' : '');
+    b.style.opacity = '1';
+  }
+  function hide() { if (badge) badge.style.opacity = '0'; }
+  function poll() {
+    fetch('/dashboard/api/memory-status', { credentials: 'same-origin' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(d) { if (!d) return; d.online ? hide() : show(d.reason); })
+      .catch(function() { /* network blip — leave prior state */ });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', poll);
+  else poll();
+  setInterval(poll, 60000);   // re-check each minute; recovers automatically when DB returns
+})();

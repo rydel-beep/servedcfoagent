@@ -49,6 +49,37 @@ def start_conversation(channel: str = "text") -> int | None:
     return db.get_or_create_active_conversation(channel)
 
 
+def resume_thread(conversation_id: int | None, client_history: list) -> list:
+    """Rebuild the model's message thread so a REFRESH resumes instead of restarting.
+
+    Mid-session the client still holds the running thread (many messages) — trust it.
+    But after a refresh / new tab the client's in-memory history is gone, so the request
+    arrives with just the new user turn; we then reload the resumed conversation's recent
+    messages from the DB and prepend them, so EDITH continues the thread she can no longer
+    see client-side. THIS is the link that was missing — recent_messages existed but was
+    never wired into a request.
+
+    Call this BEFORE persisting the new user turn so the just-typed message isn't
+    duplicated. No-op (returns client_history unchanged) if the DB is offline.
+    """
+    if not conversation_id or not db.db_configured():
+        return client_history
+    if isinstance(client_history, list) and len(client_history) > 1:
+        return client_history  # client still has the thread — don't duplicate it
+    try:
+        prior = db.recent_messages(conversation_id, MEMORY_RECENT_TURNS * 2)
+    except Exception as e:  # pragma: no cover - defensive
+        logger.error("resume_thread failed: %s", e)
+        return client_history
+    if not prior:
+        return client_history
+    rebuilt = [{"role": m["role"], "content": m["content"]}
+               for m in prior if m.get("content") and m.get("role") in ("user", "assistant")]
+    logger.info("resume_thread: rebuilt %d prior turns for conversation %s",
+                len(rebuilt), conversation_id)
+    return rebuilt + list(client_history or [])
+
+
 def record_turn(conversation_id: int | None, role: str, content: str,
                 channel: str = "text", intent: str | None = None,
                 token_count: int | None = None) -> None:

@@ -490,6 +490,16 @@ def _sanitize_history(history: list) -> list:
         if not content:
             continue
         clean.append({"role": role, "content": content})
+    # Collapse consecutive same-role turns into one. Anthropic requires strict
+    # user/assistant alternation; a DB-reconstructed thread (refresh resume) can
+    # momentarily double a role, which would 400 the API.
+    merged: list = []
+    for m in clean:
+        if merged and merged[-1]["role"] == m["role"]:
+            merged[-1]["content"] += "\n" + m["content"]
+        else:
+            merged.append(dict(m))
+    clean = merged
     # Trim to max length, keeping most recent
     if len(clean) > MAX_HISTORY_MESSAGES:
         clean = clean[-MAX_HISTORY_MESSAGES:]
