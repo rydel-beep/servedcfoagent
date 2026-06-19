@@ -237,3 +237,26 @@
 - **Non-regression:** 187/187 relevant tests pass; the 1 failure is a pre-existing
   `ModuleNotFoundError: fpdf` (missing local optional dep), no Python touched.
 - **NOT pushed/deployed** — frontend diff shown, gated on Rydel's go per project norms.
+
+## 2026-06-19 — EDITH caption/voice sync + tonality consistency (see dashboard/EDITH_TONALITY_CAPTION_REPORT.md)
+
+35. **Caption desync root cause (the real bug).** HUD #eh-cap typed `capLine` snapshotted ONCE at
+    speaking-start (before any streamed chunk arrived) and never advanced — so it showed a stale/
+    entry line; .jarvis-caption was left blank in the streaming path. Fix: caption is driven by the
+    SAME streamed chunk text, revealed per chunk at PLAYBACK START via a new edith:caption event
+    (single source of truth: the same `text` builds the /api/tts URL and the caption). hud.js
+    caption is now a live typewriter (capSet/capClear); no snapshot. stopVoice clears it (barge →
+    no orphaned text). Chat bubble still holds the full reply.
+
+36. **Tonality: stability 0.40→0.50 (stable-but-alive).** 0.40 overshot — some replies dragged/
+    wobbled. 0.50 carries tone yet is consistent turn-to-turn; style 0.35→0.30. Confirmed ONE
+    fixed profile for all conversational replies (regression test: settings identical call-to-
+    call) — personality comes from word choice, not per-utterance param swings. Panel A/B now
+    compares 0.40 vs 0.50 to lock by ear.
+
+37. **Live-verified + guardrails.** Deployed settings stability 0.50/style 0.30 confirmed; caption
+    source == TTS source structurally guaranteed + Node-validated (caption==spoken chunk; barge
+    clears). Personality/warmth, streaming responsiveness, one-voice rule, accuracy all intact.
+    Tests 188 pass (+1). Eye test (caption visibly tracks speech; 0.50 by ear) is Rydel's in-
+    browser. hud.js carried a 1-line `var stage` from in-flight parallel layering work (not mine);
+    excluded the rest of the parallel UI WIP (css/html/chat.js/capture_layering.py) from my commit.
