@@ -454,7 +454,25 @@ def api_chat():
     snapshot_json = json.dumps(snap, indent=2) if snap else "{}"
 
     token = request.cookies.get(COOKIE_NAME, "anon")
-    result = chat_fn(history, snapshot_json, token, voice=bool(data.get("voice")))
+    voice = bool(data.get("voice"))
+
+    # Persistent memory: resume/start a conversation, persist the user turn (async),
+    # and build the recall block. All graceful no-ops if the DB is offline.
+    import memory
+    channel = "voice" if voice else "text"
+    conv_id = memory.start_conversation(channel)
+    user_msg = (history[-1].get("content") if history else "") or ""
+    memory.record_turn(conv_id, "user", user_msg, channel=channel)
+    recall = memory.build_recall_context(user_msg, conversation_id=conv_id)
+
+    result = chat_fn(history, snapshot_json, token, voice=voice, memory_block=recall["block"])
+
+    reply = result.get("reply")
+    if reply:
+        memory.record_turn(conv_id, "assistant", reply, channel=channel, intent=result.get("intent"))
+        memory.maybe_distill_async(conv_id)
+    if recall.get("recalled"):
+        result["recalled"] = recall["recalled"]  # transparency: "recalled from <date>"
     return jsonify(result)
 
 
@@ -479,24 +497,40 @@ def api_chat_stream():
     snapshot_json = json.dumps(snap, indent=2) if snap else "{}"
     token = request.cookies.get(COOKIE_NAME, "anon")
 
+    # Persistent memory: resume/start conversation, persist user turn (async), build recall.
+    import memory
+    channel = "voice" if voice else "text"
+    conv_id = memory.start_conversation(channel)
+    user_msg = (history[-1].get("content") if history else "") or ""
+    memory.record_turn(conv_id, "user", user_msg, channel=channel)
+    recall = memory.build_recall_context(user_msg, conversation_id=conv_id)
+
     def sse(event: str, payload) -> str:
         return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 
     @stream_with_context
     def generate():
+        final_reply = ""
         try:
-            for event_type, payload in chat_stream_fn(history, snapshot_json, token, voice=voice):
+            for event_type, payload in chat_stream_fn(history, snapshot_json, token,
+                                                      voice=voice, memory_block=recall["block"]):
                 if event_type == "delta":
                     yield sse("delta", {"text": payload})
                 elif event_type == "meta":
                     yield sse("meta", payload)
                 elif event_type == "done":
+                    final_reply = payload
                     yield sse("done", {"reply": payload})
                 elif event_type == "error":
                     yield sse("error", {"error": payload})
         except Exception as e:  # never let a stream crash leak a 500 mid-SSE
             logger.error("chat-stream generator error: %s", e)
             yield sse("error", {"error": "stream interrupted"})
+        finally:
+            # Persist the assistant turn once the stream completes (async) + distil.
+            if final_reply:
+                memory.record_turn(conv_id, "assistant", final_reply, channel=channel)
+                memory.maybe_distill_async(conv_id)
 
     return Response(
         generate(),
