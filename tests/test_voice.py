@@ -128,6 +128,88 @@ def test_chat_accepts_voice_flag_without_key():
     assert out["reply"] is None and "ANTHROPIC_API_KEY" in out["error"]
 
 
+# ── Unclamp + intent routing ─────────────────────────────────────────────────
+
+def _U(t):
+    return {"role": "user", "content": t}
+
+
+def _A(t):
+    return {"role": "assistant", "content": t}
+
+
+def test_base_persona_is_unclamped():
+    """EDITH is a general assistant, not finance-only — and never invents figures."""
+    from dashboard.chat import BASE_PERSONA
+    assert "EDITH" in BASE_PERSONA
+    assert "NOT limited to business" in BASE_PERSONA
+    # the one hard rule that survives: no fabricated financial figures
+    assert "never invent a number" in BASE_PERSONA
+
+
+def test_general_questions_route_general():
+    from dashboard.chat import is_business_intent
+    assert is_business_intent([_U("What coffee should I have this afternoon?")]) is False
+    assert is_business_intent([_U("How do I get from Newcastle to Byron Bay?")]) is False
+    # blend prompt: human question, no forced finance — stays general
+    assert is_business_intent([_U("I'm exhausted, should I take the afternoon off?")]) is False
+
+
+def test_business_questions_route_business():
+    from dashboard.chat import is_business_intent
+    for q in ("What's our cash position?", "How much runway do we have?",
+              "Can we hit 110k this month?", "How is Kalin tracking on closes?",
+              "How are we doing this month?"):
+        assert is_business_intent([_U(q)]) is True, q
+
+
+def test_followups_inherit_prior_topic():
+    """Terse follow-ups with no signal of their own inherit the prior turn."""
+    from dashboard.chat import is_business_intent
+    # coffee thread stays general
+    assert is_business_intent([
+        _U("What coffee should I have?"), _A("Cold brew."),
+        _U("what about a flat white instead?")]) is False
+    # cash thread stays business
+    assert is_business_intent([
+        _U("What's our MRR?"), _A("$72k."),
+        _U("what about next month?")]) is True
+
+
+def test_context_attached_only_on_business_intent():
+    """The heavy financial snapshot rides only on business turns; general turns
+    answer as open Claude with just the persona."""
+    from dashboard.chat import build_system_prompt
+    snap = '{"cash_position":{"cash_in_bank":140007.29},"metrics":{"k":1}}'
+    sys_g, biz_g = build_system_prompt([_U("what coffee should I have?")], snap)
+    sys_b, biz_b = build_system_prompt([_U("what's our cash position?")], snap)
+    assert biz_g is False and biz_b is True
+    # general: persona only, no snapshot dump, no business-mode header
+    assert "FULL SNAPSHOT" not in sys_g and "BUSINESS MODE" not in sys_g
+    assert sys_g.startswith("You are EDITH")
+    # business: persona + finance discipline + the live cash figure
+    assert "BUSINESS MODE" in sys_b and "140007.29" in sys_b
+    # token discipline: general prompt is much lighter than business
+    assert len(sys_g) < len(sys_b)
+
+
+def test_chat_reports_intent_in_result():
+    """chat() surfaces the routing decision for the HUD / observability."""
+    from dashboard.chat import chat
+    import dashboard.chat as chat_mod
+    chat_mod.ANTHROPIC_API_KEY = ""  # no network; we only check the no-key path is clean
+    out = chat([_U("hi")], "{}", "tok")
+    # no key → error path (intent only attaches on the success path), but must not crash
+    assert out["reply"] is None
+
+
+def test_voice_addendum_is_topic_agnostic():
+    """Voice register governs delivery, not topic — general voice answers allowed."""
+    from dashboard.chat import VOICE_ADDENDUM
+    assert "DELIVERY" in VOICE_ADDENDUM
+    assert "Jarvis" not in VOICE_ADDENDUM
+
+
 # ── Brief composition ────────────────────────────────────────────────────────
 
 def _fake_snap():

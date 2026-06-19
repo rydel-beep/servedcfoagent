@@ -97,3 +97,26 @@
 19. **Nothing built/changed this step.** Stage 2A/2B/3 queued behind the re-consent gate. Cash
     stays on the labelled $140,007 override — not faked. I CAN do the scope code change + deploy
     on Rydel's go (not a credential action); only the browser re-consent is his.
+
+## 2026-06-19 — EDITH full conversational mind (see dashboard/EDITH_CONVERSATION_REPORT.md)
+
+20. **Unclamped EDITH from finance-only to general assistant + CFO specialisation.** The clamp
+    was the persona + forced finance template in `SYSTEM_PROMPT`, plus unconditional injection
+    of the full snapshot on every turn (no hard-refusal gate existed). Split into `BASE_PERSONA`
+    (always on, general Claude-range) + `SYSTEM_PROMPT` (business register, attached only on
+    business intent) + a topic-agnostic `VOICE_ADDENDUM` (delivery, not topic).
+
+21. **Intent-routed context.** New `is_business_intent()` (keyword/topic/$-figure heuristic with
+    terse-follow-up inheritance) + `build_system_prompt()` — the one auditable place register +
+    context are decided. Business turns attach the live snapshot + accuracy rules; general turns
+    answer as open Claude (and skip the heavy snapshot payload). Bias on ambiguity = attach.
+
+22. **Accuracy guard scoped to financial CLAIMS only.** The single surviving hard rule: never
+    invent a financial figure; missing data is stated plainly. Everything non-financial is free
+    conversation. Auth + rate-limit + TTS caps unchanged; model still `CHAT_MODEL` (not hardcoded).
+
+23. **Voice/text parity is automatic** — both converge on `chat()` → `build_system_prompt`.
+    `chat()` now returns `intent` for observability (HUD ticker left untouched to protect the
+    HUD non-regression guarantee). Tests: 177 passed (+7 new intent tests); the lone failure
+    (`test_pdf_reads_cash_position_fields`) is pre-existing and unrelated. Live four-type
+    conversation test must run on the deployed dashboard (no local API key by design).

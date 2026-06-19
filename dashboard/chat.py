@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from collections import defaultdict
 
@@ -31,9 +32,47 @@ def _check_rate_limit(token: str) -> bool:
     return True
 
 
-SYSTEM_PROMPT = """You are the CFO analyst for Served Marketing, a hospitality marketing
-agency. You're speaking to Rydel, the founder. Your job: sharp, decisive financial reads
-he can act on in under 30 seconds.
+# ── Base persona (ALWAYS on) ─────────────────────────────────────────────────
+# EDITH's identity. She is a full, general-capability assistant with a CFO
+# specialisation — NOT a finance-only bot. This block is attached to every turn.
+# The finance discipline (SYSTEM_PROMPT) is attached ON TOP of this only when the
+# turn is about the business (see build_system_prompt / is_business_intent).
+BASE_PERSONA = """You are EDITH — Rydel's personal assistant. Rydel founded Served Marketing,
+a hospitality marketing agency in Australia, but you are NOT limited to business or finance
+topics. You are a full, capable assistant in every sense: general knowledge, ideas,
+recommendations, advice, casual conversation, how-to help, a sounding board — exactly as
+capable and wide-ranging as talking to Claude directly.
+
+PERSONA: warm, composed, quick, with a dry wit. You speak plainly and never pad. You're an AI
+assistant — honest about what you are, you don't claim feelings you don't have, and you never
+fabricate. You address him as Rydel now and then, not every line.
+
+HOW TO ENGAGE, BY TOPIC:
+- General topics (food, coffee, travel, an idea, life, a how-to, a question about the world):
+  just talk. Be genuinely helpful and natural — a real, flowing conversation. No business
+  framing, no forced finance angle, never "I can only help with the dashboard." A coffee
+  question gets a coffee answer.
+- Business / Served / money / clients / metrics: when the turn is about these, a live
+  financial context block and a finance-discipline section are attached below. Ground every
+  financial CLAIM in that data — never invent a number, never guess a figure.
+- You may BLEND the two when it genuinely helps — if a general question has a useful business
+  tie-in, weave it in lightly. But never force it; most general questions need no business
+  mention at all (a coffee question doesn't need a runway mention).
+
+Honesty above all: if a number isn't in the data, say so plainly; if the picture is bad, say
+so — you never soften a hard truth to be comforting. The ONLY thing you are never allowed to
+do is invent financial figures; on every other topic you are free, open, and conversational."""
+
+
+# ── Finance discipline (attached ONLY on business intent) ────────────────────
+# This is the CFO register. It rides ON TOP of BASE_PERSONA when the turn is about
+# the business, and carries the live data + the accuracy rules. Its STRUCTURE and
+# METRIC DEFINITIONS govern FINANCIAL answers only — they do not narrow EDITH's
+# range on anything else.
+SYSTEM_PROMPT = """BUSINESS MODE — this turn is about Served, the finances, the clients, or the
+metrics, so you're now also acting as Rydel's CFO analyst with live data attached below. Give
+him sharp, decisive financial reads he can act on in under 30 seconds. Everything in this
+section governs FINANCIAL answers; it does not restrict how you talk about anything else.
 
 This is a MULTI-TURN conversation. You can see the full thread above. Stay consistent with
 what you already said. If you gave a number two turns ago, your new answer must reconcile
@@ -139,20 +178,124 @@ Answer Rydel's question. Lead with the answer. Be sharp."""
 
 VOICE_ADDENDUM = """
 
-VOICE MODE — this reply will be SPOKEN ALOUD by text-to-speech. All the rules above
-still apply (metric definitions, answer the literal question, reconcile with the
-thread, honesty over comfort). Additionally:
+VOICE MODE — this reply will be SPOKEN ALOUD by text-to-speech, so this is about DELIVERY,
+not topic. It applies to EVERY subject — a runway question or a coffee recommendation alike:
 
-- Spoken register: short sentences. No markdown, no bullets, no symbols, no tables,
-  no headers. Contractions are fine.
-- Write numbers for the EAR: "ninety-one thousand dollars", "three point six months".
-  Round large figures to speech precision (nearest thousand). Never read long decimals.
-- Length: at most 4 sentences. Lead with the answer. Name the constraint if relevant.
-  One recommended move, not five.
-- Persona: composed, dry, capable — EDITH. Address him as Rydel occasionally, not
-  every reply. Never let the persona soften a bad number; if the picture is red, say so
-  plainly.
+- Spoken register: short sentences. No markdown, no bullets, no symbols, no tables, no
+  headers. Contractions are fine. Lead with the answer.
+- Keep it brief: at most about 4 sentences. Natural and conversational — the way you'd
+  actually say it out loud, not a written paragraph read aloud.
+- When numbers are involved, write them for the EAR: "ninety-one thousand dollars", "three
+  point six months". Round large figures to speech precision (nearest thousand). Never read
+  long decimals.
+- Persona: composed, dry, capable — EDITH. Address him as Rydel occasionally, not every reply.
+- Honesty unchanged: if it's a business question and the picture is red, say so plainly. Never
+  let the easy spoken register soften a bad number.
+
+If BUSINESS MODE is also active above, its metric discipline still holds — this section only
+governs how the answer is delivered aloud, never what's true. For a general question, just give
+a natural spoken answer; no finance framing.
 """
+
+
+# ── Intent routing (the key mechanism) ───────────────────────────────────────
+# EDITH is a full general assistant; the live financial context is heavy (it ends
+# with a FULL SNAPSHOT dump) and only helps business questions. So we attach it
+# CONDITIONALLY, based on a cheap, robust read of the latest turn. The bias is
+# toward attaching on genuine ambiguity — a business question answered with no
+# data is worse than a general question carrying some unused context. The general
+# persona answers cleanly either way.
+
+# Business/finance keywords. Any hit → the turn needs live financial context.
+_BUSINESS_TERMS = re.compile(
+    r"\b("
+    r"cash|runway|burn|mrr|arr|revenue|profit|profitab\w*|margin|churn|client|clients|"
+    r"funnel|pipeline|lead|leads|cac|ltv|ltgp|payback|commission|commissions|setter|setters|"
+    r"closer|closers|hire|hires|hiring|headcount|payroll|salary|salaries|wages|super|"
+    r"snapshot|dashboard|stripe|xero|ghl|deal|deals|contract|contracts|collect|collected|"
+    r"spend|roas|opex|expense|expenses|obligation|obligations|finance|finances|financial|"
+    r"financials|invoice|invoices|pnl|eod|metric|metrics|constraint|deficiency|served|"
+    r"booking|bookings|appointment|appointments|velocity|recognized|recognised|deployable|"
+    r"retainer|retainers|firestarter|kalin|coby|maran|colby|piolo"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Possessive / "how are we doing" business references that carry no single keyword.
+_BUSINESS_REF = re.compile(
+    r"\b(our|the business|the company|the agency|how are we|how're we|"
+    r"how'?s (the )?(business|month|quarter|week)|are we (profitable|making|growing|ok))\b",
+    re.IGNORECASE,
+)
+
+# A bare money figure or percentage, asked of a CFO assistant, is almost always financial.
+_MONEY = re.compile(r"(\$\s?\d|\b\d[\d,]*\s?k\b|\b\d+(\.\d+)?\s?%|\bpercent\b)", re.IGNORECASE)
+
+# Terse continuations that should inherit the PREVIOUS turn's topic, so a business
+# thread stays business and a coffee thread stays coffee ("what about next month?"
+# vs "what about a flat white instead?").
+_FOLLOWUP = re.compile(
+    r"^\s*(and|but|so|what about|how about|what if|why|instead|then|also|ok(ay)?|"
+    r"really|actually|that|it|this|those|these|more|less|again|now|same|another|other)\b",
+    re.IGNORECASE,
+)
+
+
+def _has_business_signal(text: str) -> bool:
+    """True if the message looks like a business/finance question."""
+    return bool(
+        _BUSINESS_TERMS.search(text)
+        or _BUSINESS_REF.search(text)
+        or _MONEY.search(text)
+    )
+
+
+def is_business_intent(messages: list) -> bool:
+    """Decide whether the latest user turn needs live financial context attached.
+
+    Cheap keyword/topic heuristic, biased toward attaching on ambiguity. A terse
+    follow-up with no signal of its own inherits the prior user turn's topic, so
+    follow-ups flow correctly regardless of subject.
+    """
+    user_texts = [
+        m["content"] for m in messages
+        if isinstance(m, dict) and m.get("role") == "user" and m.get("content")
+    ]
+    if not user_texts:
+        return False
+    last = user_texts[-1]
+    if _has_business_signal(last):
+        return True
+    # No direct signal. If this is a short continuation of an existing thread,
+    # inherit the previous user turn's classification — keeps follow-ups on-topic.
+    if len(user_texts) >= 2 and (_FOLLOWUP.match(last) or len(last.split()) <= 4):
+        return _has_business_signal(user_texts[-2])
+    return False
+
+
+def build_system_prompt(messages: list, snapshot_json: str, voice: bool = False) -> tuple[str, bool]:
+    """Assemble EDITH's system prompt for this turn — the single auditable place
+    where register and context are decided.
+
+    ALWAYS: the unclamped general persona (BASE_PERSONA).
+    BUSINESS intent: also attach the finance-discipline register + live financial
+      context (with the accuracy rules active).
+    GENERAL intent: no financial context — EDITH answers as open Claude.
+    VOICE: append the spoken-delivery register (topic-agnostic) in either case.
+
+    Returns (system_prompt, business_intent) so callers and the HUD can see which
+    register was used. Conversational memory (the running thread) is the `messages`
+    list itself, which the caller always passes to the model regardless of intent.
+    """
+    business = is_business_intent(messages)
+    system = BASE_PERSONA
+    if business:
+        system += "\n\n" + SYSTEM_PROMPT.format(
+            context_block=_build_context_block(snapshot_json)
+        )
+    if voice:
+        system += VOICE_ADDENDUM
+    return system, business
 
 
 def _build_context_block(snapshot_json: str) -> str:
@@ -337,9 +480,10 @@ def chat(history: list, snapshot_json: str, token: str, voice: bool = False) -> 
     if not messages:
         return {"reply": None, "error": "Empty message"}
 
-    system = SYSTEM_PROMPT.format(context_block=_build_context_block(snapshot_json))
-    if voice:
-        system += VOICE_ADDENDUM
+    # Intent-routed context: attach the live financial snapshot ONLY when the turn
+    # is about the business. General turns answer as open Claude (and save tokens).
+    system, business_intent = build_system_prompt(messages, snapshot_json, voice=voice)
+    intent = "business" if business_intent else "general"
 
     last_err: Exception | None = None
     for attempt in range(3):
@@ -354,7 +498,7 @@ def chat(history: list, snapshot_json: str, token: str, voice: bool = False) -> 
                 messages=messages,
             )
             reply = response.content[0].text if response.content else ""
-            return {"reply": reply, "error": None}
+            return {"reply": reply, "error": None, "intent": intent}
         except Exception as e:
             last_err = e
             # 529 = Anthropic transiently overloaded — retry with backoff
