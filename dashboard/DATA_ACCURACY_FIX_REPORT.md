@@ -133,12 +133,20 @@ tests pass. (Not caused by this work, but in scope per the security rules + "tes
 
 ---
 
-## 4. DEPLOY STATUS
+## 4. DEPLOY STATUS — DEPLOYED & VERIFIED LIVE (2026-06-19, commit 5b685ac)
 
-All changes verified **locally** (171/171 tests + live-data checks against the real sheets &
-prod snapshot). **Deploy to Railway is an outward, gated action** (per DECISIONS.md) — not done
-autonomously. Recommended: review the 5-file diff, deploy, then confirm live that
-`won_but_unlogged` shows in the DQ panel and `current_month_mrr` is populated.
+Rydel approved deploy. Pushed to `main` → Railway auto-deployed (~15s to live, detected via the
+new `no-store` header). Forced a prod rebuild and verified the live `/cfo/snapshot`:
+- `generated_at` 2026-06-19T12:25 (fresh rebuild on new code)
+- `forward_mrr.current_month_mrr` = **75396.18** (was None — phantom key fixed)
+- `won_but_unlogged` flag fires on **2 deals** (Leopard Deli, Lucas Doan/The D's)
+- `sheets.data_quality`: won_but_unlogged 2, missing_close 2, missing_cash 2
+- **No email leak** in the live snapshot (redaction confirmed in prod)
+- `Cache-Control: no-store` present on `/cfo/snapshot`
+
+**DQ count moved 9 → 10 — expected and correct:** I *added* the `won_but_unlogged` flag
+(surfacing a previously-hidden gap). `current_month_mrr` was a phantom key, never a `degraded`
+entry, so fixing it does not lower the count. The +1 is honesty, not a regression.
 
 **Files changed:** `forward_mrr.py`, `sheets_pull.py`, `sales_analytics_pull.py`,
 `dashboard/routes.py`, `app.py` (+70 / −6).
