@@ -178,11 +178,14 @@ def refresh_snapshot():
     return jsonify({"status": "refreshed", "ok": snap.get("ok"), "degraded_count": len(snap.get("degraded", []))})
 
 
-# accounting.reports.read is the BROAD reports scope — covers Profit & Loss AND
-# Balance Sheet / Bank Summary (needed for live bank-account closing balances).
-# Replaces the granular accounting.reports.profitandloss.read (which was P&L-only).
-# Expanding the scope requires a one-time re-consent at /xero/connect.
-XERO_SCOPES = "offline_access accounting.reports.read accounting.settings.read"
+# Scope set must match exactly what the Xero app has enabled, or the consent flow
+# 500s with invalid_scope. Three scopes only:
+#   offline_access              — issues a refresh token (stops the silent expiry
+#                                 that broke Xero before)
+#   accounting.reports.read     — Balance Sheet / Bank Summary / P&L reports
+#   accounting.transactions.read— bank account + transaction data (Bank Summary)
+# (Dropped accounting.settings.read — not enabled on the app and unused in code.)
+XERO_SCOPES = "offline_access accounting.reports.read accounting.transactions.read"
 
 
 @app.route("/xero/connect", methods=["GET"])
