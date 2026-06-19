@@ -71,9 +71,15 @@ or the DB is unreachable → persistence is a no-op, recall returns an empty blo
 DB env, `memory_status() = {online: False, reason: "DATABASE_URL not set"}`, recall returns
 empty, `record_turn` no-ops — no crash. Tests: **183/183 green**.
 
-## 8. REMAINING — the chat-path hook (deferred to avoid colliding with the streaming session)
-Persistence + recall need ~3 lines in the chat handler. Apply once the streaming chat path is
-stable (it now is — committed as `6243f40`/`f7bac63`). Drop-in patch:
+## 8. Chat-path hook — APPLIED + VERIFIED END-TO-END (commit e6ba6b8)
+DONE. Wired into BOTH `/api/chat` and `/api/chat-stream`: resume/start conversation → persist
+user turn (async) → inject recall block into the system prompt (`memory_block` param on
+`chat`/`chat_stream`/`build_system_prompt`, default "" = unchanged) → persist assistant turn +
+async distillation on completion. **Verified live in prod:** stated a codename in conversation
+A, archived A, then in a SEPARATE conversation B EDITH recalled "Bluefin Tuna Launch, March
+2027" from Postgres with provenance. EDITH now remembers across sessions end-to-end.
+
+The patch that was applied:
 
 ```python
 # in dashboard/routes.py api_chat / api_chat_stream, after reading `history` + token:

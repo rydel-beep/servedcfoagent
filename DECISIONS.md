@@ -164,3 +164,14 @@
   connects via internal URL (status online:true), migrate-on-boot ran, /dashboard/memory live +
   auth-gated, 183/183 tests green. NOT YET LIVE: the chat-path hook (EDITH won't persist real
   conversations until those ~3 lines land — streaming path is now stable so it's unblocked).
+
+## 2026-06-19 — Memory chat-path hook APPLIED + verified end-to-end (commit e6ba6b8)
+
+- Wired persist + selective recall into BOTH /api/chat and /api/chat-stream (streaming session
+  had landed, so editing chat.py/routes.py was safe). build_system_prompt/chat/chat_stream gained
+  an optional memory_block (default "" = unchanged). Recall injected for BOTH registers (labelled
+  NOT financial truth). User+assistant turns persisted async; distillation fired async on done.
+- VERIFIED LIVE in prod: stated a codename in conversation A → archived A → in a SEPARATE
+  conversation B, EDITH correctly recalled "Bluefin Tuna Launch, March 2027" from Postgres, with
+  provenance (result.recalled). clear-all privacy control verified. 183/183 tests green.
+- EDITH now remembers across sessions/devices end-to-end. Memory subsystem COMPLETE.
