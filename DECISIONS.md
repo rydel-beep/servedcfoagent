@@ -150,3 +150,17 @@
     sentence 1 while the rest streams. Tests 182 pass (+5). Ear-test (mic/speakers) is Rydel's to
     run; server-side streaming timings are live-measured. Excluded unrelated pre-existing
     Postgres-memory WIP (db.py/config.py/requirements.txt) from these commits.
+
+## 2026-06-19 — Persistent memory (Postgres) — engine + UI DEPLOYED (see dashboard/EDITH_MEMORY_REPORT.md)
+
+- Built in NEW modules only (db.py, memory.py, dashboard/memory_routes.py + memory.html +
+  memory.js) — ZERO edits to the chat path (streaming session owns chat.py/routes.py/chat.js,
+  commits 6243f40/f7bac63). Chat integration = documented ~3-line hook (report §8), deferred.
+- psycopg3 + raw SQL (no ORM); config.DATABASE_URL prefers internal (postgres.railway.internal),
+  falls back to public. Schema: conversations/messages/memory_facts + pg_trgm trigram recall.
+- Memory != financial truth (hard boundary): recall labelled "NOT financial truth", never
+  overrides a live engine number, facts timestamped, secrets guarded out of distillation.
+- Graceful degradation if DB down (verified). DEPLOYED + verified live (commit 4d93249): prod
+  connects via internal URL (status online:true), migrate-on-boot ran, /dashboard/memory live +
+  auth-gated, 183/183 tests green. NOT YET LIVE: the chat-path hook (EDITH won't persist real
+  conversations until those ~3 lines land — streaming path is now stable so it's unblocked).
