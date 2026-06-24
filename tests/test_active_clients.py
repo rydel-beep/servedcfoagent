@@ -237,3 +237,30 @@ def test_confirmed_client_not_awaiting_stripe():
     )
     assert result["active"][0]["awaiting_stripe"] is False
     assert result["active"][0]["estimated_mrr"] is None
+
+
+# ── Roster-source-down gate (2026-06-24 audit) ────────────────
+# When the Health tab (authoritative roster) fails, the derivation must NOT present
+# the LTC-Won-only count as a confident headline — it must flag roster_source_down.
+
+def test_roster_source_down_flag_when_health_unavailable():
+    won = [{"business": f"Deal {i}", "close_date": "2026-06-01",
+            "contract": 18000, "cash": 3000, "offer": "Growth Pro"} for i in range(17)]
+    d = derive_active_clients(health_clients=[], won_deals=won, health_source_ok=False)
+    assert d["roster_source_down"] is True
+    assert d["confidence"] == "low"
+    assert "roster_source_reason" in d
+
+
+def test_roster_source_ok_when_health_present():
+    hc = [{"name": "Venue A", "status": "Active", "current_mrr": 2500, "next_mrr": 2500}]
+    d = derive_active_clients(health_clients=hc, won_deals=[], health_source_ok=True)
+    assert d["roster_source_down"] is False
+    assert d["active_count"] == 1
+
+
+def test_health_source_ok_defaults_true():
+    # Backward-compat: existing callers that omit the flag are unaffected.
+    hc = [{"name": "Venue A", "status": "Active", "current_mrr": 2500, "next_mrr": 2500}]
+    d = derive_active_clients(health_clients=hc, won_deals=[])
+    assert d["roster_source_down"] is False

@@ -555,23 +555,43 @@
     const genAt = snap.generated_at;
     const mins = genAt ? Math.round((Date.now() - new Date(genAt)) / 60000) : 999;
     const degraded = (snap.degraded || []).length;
-    const failing = (snap.ok === false) || degraded > 0;
+    // refresh_health distinguishes a GENUINE core-source failure (red) from known/optional
+    // degradations (Xero/GHL unconfigured, Stripe-MCP limits, data-quality flags — not red).
+    // Fall back to the old all-or-nothing rule only for pre-classifier snapshots.
+    const rh = snap.refresh_health;
+    const coreFail = rh ? (rh.core_failures || []).length : null;
+    const optDeg = rh ? (rh.optional_degraded || []).length : null;
+    const failing = rh ? coreFail > 0 : ((snap.ok === false) || degraded > 0);
     const dot = $('#status-dot');
     const txt = $('#status-text');
     if (!dot || !txt) return;
 
-    // Dot: red if sources are failing OR data is very stale; amber if aging; green otherwise.
+    // Dot: red on a genuine core failure OR very stale data; amber if aging; green otherwise.
     if (failing || mins > 24 * 60) dot.className = 'status-dot fail';
     else if (mins > 120) dot.className = 'status-dot stale';
     else dot.className = 'status-dot';
 
-    // Text: relative age, with a loud issue count when sources are failing.
-    txt.textContent = timeAgo(genAt) + (degraded > 0 ? ' · ⚠ ' + degraded : '');
+    // Text: relative age. Loud ⚠ count on real failure; muted "· N minor" for optional only.
+    let suffix = '';
+    if (rh) {
+      if (coreFail > 0) suffix = ' · ⚠ ' + coreFail;
+      else if (optDeg > 0) suffix = ' · ' + optDeg + ' minor';
+    } else if (degraded > 0) {
+      suffix = ' · ⚠ ' + degraded;
+    }
+    txt.textContent = timeAgo(genAt) + suffix;
 
     // Tooltip: the explicit "Data as of <Sydney time>" readout + health.
-    const health = snap.ok === false
-      ? (degraded + ' data-quality issue' + (degraded === 1 ? '' : 's'))
-      : 'all sources OK';
+    let health;
+    if (rh) {
+      health = coreFail > 0
+        ? (coreFail + ' source' + (coreFail === 1 ? '' : 's') + ' failing: ' + (rh.core_failures || []).join(', '))
+        : (optDeg > 0 ? 'core sources OK · ' + optDeg + ' minor data-quality flag' + (optDeg === 1 ? '' : 's') : 'all sources OK');
+    } else {
+      health = snap.ok === false
+        ? (degraded + ' data-quality issue' + (degraded === 1 ? '' : 's'))
+        : 'all sources OK';
+    }
     $('#status-pill').title = 'Data as of ' + fmtSydney(genAt) + ' · ' + health
       + '. Click ↻ to refresh.';
   }
@@ -2020,13 +2040,21 @@
     // KPI headline = total clients, sub-text shows breakdown
     const confirmedActive = (ac.confirmed_both_sources || 0) + (ac.legacy_pre_tracker || 0);
     const signing = ac.pending_health_update || 0;
+    // Roster-source-down: the Health tab (authoritative roster) failed this refresh. Never
+    // present the bogus LTC-Won-only count as a confident headline — show last-good + stale label.
+    const rosterDown = ac.roster_source_down === true;
+    const staleSince = ac.roster_stale_since;
     const clientKPI = document.getElementById('val-clients');
     if (clientKPI) {
       clientKPI.textContent = ac.active_count || '—';
+      clientKPI.title = rosterDown ? (ac.roster_source_reason || 'Roster source down — last confirmed count') : '';
     }
     const clientSub = $('#sub-clients');
     if (clientSub) {
-      if (signing > 0) {
+      if (rosterDown) {
+        clientSub.innerHTML = '<span style="color:var(--amber)">⚠ roster source down'
+          + (staleSince ? ' — last confirmed ' + timeAgo(staleSince) : '') + '</span>';
+      } else if (signing > 0) {
         clientSub.textContent = confirmedActive + ' active, ' + signing + ' awaiting Stripe';
       } else {
         clientSub.textContent = confirmedActive + ' active';
@@ -2036,10 +2064,14 @@
     // Health badge
     const healthBadge = $('#health-badge');
     if (healthBadge) {
-      healthBadge.textContent = signing > 0
-        ? ac.active_count + ' clients (' + signing + ' awaiting Stripe)'
-        : ac.active_count + ' clients';
-      const conf = ac.confidence;
+      if (rosterDown) {
+        healthBadge.textContent = ac.active_count + ' clients (stale — roster source down)';
+      } else {
+        healthBadge.textContent = signing > 0
+          ? ac.active_count + ' clients (' + signing + ' awaiting Stripe)'
+          : ac.active_count + ' clients';
+      }
+      const conf = rosterDown ? 'low' : ac.confidence;
       healthBadge.style.background = conf === 'high' ? 'var(--green-dim)' : conf === 'medium' ? 'var(--amber-dim)' : 'var(--red-dim)';
       healthBadge.style.color = conf === 'high' ? 'var(--green)' : conf === 'medium' ? 'var(--amber)' : 'var(--red)';
     }

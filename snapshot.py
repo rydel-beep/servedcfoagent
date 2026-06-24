@@ -344,6 +344,10 @@ def build_snapshot() -> dict:
                 "offer": wb.get("offer"),
             })
 
+    # The Health tab IS the authoritative roster. If its pull failed (e.g. the Finance sheet
+    # 401s), client_health is None — the derivation must NOT silently fall back to the LTC
+    # Won-deal count and present it as the active-client headline.
+    health_source_ok = health_result.get("client_health") is not None
     health_clients_list = (health_result.get("client_health") or {}).get("clients") or []
     stripe_mrr_val = stripe_data.get("mrr") if stripe_data else None
     stripe_subs_active = None
@@ -355,7 +359,41 @@ def build_snapshot() -> dict:
         won_deals=won_deals_for_derivation,
         stripe_mrr=stripe_mrr_val,
         stripe_active_subs=stripe_subs_active,
+        health_source_ok=health_source_ok,
     )
+
+    # Roster-source-down handling: substitute the last-good roster (labelled stale) so the
+    # dashboard never shows the bogus LTC-Won-only headline. Loud degraded entry + flags.
+    if not health_source_ok:
+        degraded.append({
+            "metric": "client_roster_source",
+            "reason": (
+                "Health tab (authoritative client roster) unavailable — active-client count "
+                "cannot be confirmed. Check the Finance sheet is shared/readable. Showing "
+                "last-good roster, labelled stale."
+            ),
+            "severity": "core",
+        })
+        bogus_live_count = derived_clients.get("active_count")
+        prior = load_persisted()
+        prior_ac = (prior or {}).get("active_clients") or {}
+        if prior_ac.get("active_count") and not prior_ac.get("roster_source_down"):
+            # Carry the last-good roster forward, clearly labelled stale.
+            derived_clients = {
+                **prior_ac,
+                "roster_source_down": True,
+                "roster_stale": True,
+                "roster_stale_since": (prior or {}).get("generated_at"),
+                "active_count_live_unavailable": bogus_live_count,
+                "confidence": "low",
+                "roster_source_reason": (
+                    "Health tab unavailable this refresh — showing the last confirmed roster "
+                    f"from {(prior or {}).get('generated_at')}, labelled stale. The live LTC-only "
+                    f"fallback ({bogus_live_count}) is suppressed as unreliable."
+                ),
+            }
+        # else: no clean last-good — keep the flagged (roster_source_down) derivation; the UI
+        # renders it as "roster source down — count unconfirmed", never as a confident headline.
 
     snapshot = {
         "generated_at": ts.isoformat(),
@@ -542,10 +580,13 @@ def build_snapshot() -> dict:
     # One labelled value per headline metric; every consumer displays these.
     # assert_consistency fails the build LOUDLY rather than shipping numbers
     # that contradict each other across panels.
-    from metrics_engine import build_canonical_metrics, assert_consistency
+    from metrics_engine import build_canonical_metrics, assert_consistency, classify_refresh_health
     snapshot["metrics"] = build_canonical_metrics(snapshot)
     snapshot["degraded"] = degraded if degraded else []
     snapshot["ok"] = len(degraded) == 0
+    # refresh_health drives the header pill: RED only on a genuine core-source failure,
+    # GREEN when core sources are healthy (optional/known degradations don't block green).
+    snapshot["refresh_health"] = classify_refresh_health(snapshot["degraded"])
     assert_consistency(snapshot)
 
     _persist(snapshot)
