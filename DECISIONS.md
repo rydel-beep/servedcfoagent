@@ -337,3 +337,15 @@
     balance/pending tool (6 tools, none for balance). Cash override 20 days stale; agent-side Xero
     unconfigured. Live Stripe MRR $57,241 on "1 active sub" = stripe-mcp service defect (external
     repo), already flagged degraded; does not feed the client headline.
+
+## 2026-06-24b — Canonical-source reconciliation (contradiction surfaced)
+
+50. **gid 182553893 is the SALARY tab, not the client roster.** Rydel's follow-up work order named
+    Finance tab gid `182553893` as the authoritative active-clients roster and instructed a repoint.
+    Read live: it is the **SALARY tab** (header LAST/FIRST NAME, ROLE, DEPT, STATUS, SALARY AUD/PHP;
+    18 staff; TOTAL SALARY AUD $21,174). It has zero clients. The agent ALREADY reads it for burn
+    (`pull_salary_baseline` → $21,174). **Did NOT repoint active-clients to it** — that would count
+    staff. The real roster is the **Health tab gid 1407663952** (Client Name/Status/Package/…;
+    36 Active), which the code already uses. Per CLAUDE.md "the contradiction itself is the finding."
+    The "16" was the Health-tab 401 fallback (fixed last session, committed ed0cf11), NOT Stripe.
+    HARD STOP: confirm active-clients stays on the Health tab; no salary-tab repoint.

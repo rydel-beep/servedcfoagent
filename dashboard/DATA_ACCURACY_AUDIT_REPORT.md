@@ -241,3 +241,62 @@ Until BOTH are done, cash remains the owner-confirmed manual override, loudly la
   service; already flagged degraded; fix is out of `served-cfo-agent` scope.
 - **Stripe pending** live read — needs a new MCP balance tool or Rydel's number.
 - **Xero live cash** — the two-blocker restore above.
+
+---
+
+# ADDENDUM 2026-06-24b — Canonical-source reconciliation (READ the confirmed tabs)
+
+Rydel confirmed canonical gids. I read both LIVE. One contradicts the work order and is surfaced
+here rather than acted on (per CLAUDE.md: "the contradiction itself is the finding").
+
+## Finance tab gid `182553893` — this is the **SALARY tab, NOT the client roster**
+Read live (HTTP 200, 19 rows). Header: `LAST NAME, FIRST NAME, ROLE, DEPARTMENT, STATUS,
+SALARY (AUD), SALARY (PHP)`. Contents = **18 team members** (Limjoco/Borebor/Delmendo/Real/…),
+`TOTAL SALARY (AUD) $21,174`. It contains **zero clients**.
+- The agent **already** reads this tab for **burn**: `pull_salary_baseline()` (tab "SALARY")
+  → **$21,174/mo** live. So the work order's "burn must read salary from 182553893" is ALREADY met.
+- **It is NOT an active-clients source.** Repointing the client count here would count staff
+  (or return junk). NOT DONE.
+
+## The real active-clients roster = Finance tab gid `1407663952` (the "Health" tab)
+Read live (HTTP 200, 112 rows). Header: `Client Name, Status, Package Type, Service Term, Start
+Date, End Date, Contract Value, Monthly Recognized Revenue`. **36 rows STATUS=Active** — real
+venues (The Leopard Deli, Texas Charcoal Chicken, 3 Fish, Amano, Chaan Thai, Casa de Amor, Masala
+Factory, Dcthai, …). Live `pull_client_health()` → **33 Active + 2 Web-Sub = 35** (derived
+active_count 36–37 incl. LTC new-signings), current MRR **$75,396**.
+- **The code already points active-clients at this tab.** No repoint is needed or correct.
+- The "active" definition (already implemented): Health tab `Status == "Active"` (Web-Sub counted
+  separately), confirmed-churned names excluded, LTC Won deals cross-referenced to add new signings.
+
+## Lead-to-Cash tab gid `544609965`
+Read live (HTTP 200, 31 rows). Title row "SERVED — LEAD-TO-CASH TRACKER (Team)" + a guardrail row
+"DO NOT REINTRODUCE QUERY()". This is the **team summary/scorecard view**. The agent's funnel/sales
+already pull from this book (the Lead-to-Cash Tracker tab + Team Scorecard computed cells via
+`sales_analytics_pull`); funnel metrics are populating (leads/sets/shows/closes). No change implied.
+
+## Reconciliation of the work order's premise
+- Premise "active clients is counting **Stripe** subscriptions (1 sub)" — **not borne out.**
+  `active_client_count` ← `active_clients.active_count` ← Health tab + LTC cross-ref. Stripe MRR/subs
+  are validation cross-checks only; they never feed the count. The "16 / 0 active / 16 awaiting
+  Stripe" was the **LTC-Won fallback** when the Health tab 401'd (diagnosed above) — same wrong
+  direction (a non-roster source), different mechanism. That 401 is now cleared (Rydel re-shared)
+  and the fallback is hardened (committed `ed0cf11`).
+- Premise "repoint to gid 182553893" — **would be wrong**: 182553893 is payroll. The authoritative
+  roster is gid 1407663952, already wired.
+
+## What this means for the phases
+- **Phase 1 (active clients):** the source is ALREADY correct (Health tab). The only fix the
+  symptom needed was the 401 re-share (done) + the silent-fallback hardening (committed `ed0cf11`,
+  awaiting deploy). **No repoint to 182553893** — that gid is salary. Live count: 16 → **37**.
+- **Phase 2 (refresh pill):** classifier fix committed `ed0cf11` (GREEN when core healthy). Awaiting
+  deploy. The "core sources" it greens on are exactly these canonical sheets.
+- **Phase 3 (burn/cash/Stripe):** burn salary already reads 182553893 ($21,174). Cash $140,007 +
+  Stripe $18k remain labelled-stale manual constants (Xero unrestored; no Stripe balance tool) —
+  unchanged. Xero live-cash restore still gated (OAuth + a proven closing-balance source; the MCP
+  balance tool returns movement, not balances — disproven above).
+
+## HARD STOP — one decision for Rydel
+The gid you gave for the active-clients roster (**182553893**) is the **SALARY tab**, not clients.
+The real roster is the **Health tab (gid 1407663952)**, which the code already uses (36 active).
+Confirm we keep active-clients on the Health tab (no repoint to the salary tab) — then the only
+remaining action is deploying `ed0cf11`.
