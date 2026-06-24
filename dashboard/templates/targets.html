@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EDITH · Targets &amp; Benchmarks</title>
+  <style>
+    :root{
+      --bg:#0A1220; --card:#111E30; --card2:#16263C; --line:rgba(238,244,250,.08);
+      --text:#E8EFF6; --text2:#A7BCD2; --muted:#71889F; --brand:#5B9BD0; --risk:#E0795B;
+      --ok:#4FB286; --amber:#E0B85B;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+      font-size:14px;line-height:1.5;padding:24px;max-width:880px;margin:0 auto}
+    h1{font-size:22px;font-weight:600;margin:0 0 2px}
+    h2{font-size:13px;color:var(--text2);margin:26px 0 10px;font-weight:600;text-transform:uppercase;letter-spacing:.6px}
+    a{color:var(--brand);text-decoration:none}
+    .sub{color:var(--muted);font-size:12px;margin-bottom:18px}
+    .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:8px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:4px 14px;margin-bottom:10px}
+    .trow{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+    .trow:last-child{border-bottom:none}
+    .tlabel{flex:1;min-width:0}
+    .tlabel .name{font-weight:500}
+    .tlabel .meta{color:var(--muted);font-size:11px}
+    .tlabel .tag{color:var(--ok);font-size:11px;margin-left:6px}
+    .tval{display:flex;align-items:center;gap:6px;flex-shrink:0}
+    input.num{width:84px;font:inherit;font-size:13px;text-align:right;background:rgba(0,0,0,.25);
+      color:var(--text);border:1px solid var(--line);border-radius:7px;padding:5px 8px}
+    input.num:focus{outline:none;border-color:var(--brand)}
+    .unit{color:var(--muted);font-size:12px;width:18px}
+    button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card2);
+      color:var(--text2);border-radius:7px;padding:5px 10px;font-size:12px}
+    button:hover{color:var(--text);border-color:var(--brand)}
+    button.save{border-color:rgba(91,155,208,.4)}
+    button.save:hover{border-color:var(--brand);color:#cfe4f6}
+    button.reset:hover{border-color:var(--amber);color:#f0dca6}
+    button:disabled{opacity:.4;cursor:default}
+    .empty{color:var(--muted);font-style:italic;padding:8px 0}
+    .hist{font-size:12px;color:var(--text2)}
+    .hist .h{padding:6px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px}
+    .hist .when{color:var(--muted);white-space:nowrap}
+    .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--card2);
+      border:1px solid var(--brand);color:var(--text);padding:8px 16px;border-radius:8px;font-size:13px;
+      opacity:0;transition:opacity .2s;pointer-events:none}
+    .toast.show{opacity:1}
+    .note{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+  </style>
+</head>
+<body>
+  <h1>EDITH · Targets &amp; Benchmarks</h1>
+  <div class="sub">Your manual goalposts — the targets/benchmarks the dashboard compares against.
+    These have <b>no live source</b>; you set them. (You can also say "set the LTGP:CAC target to 3.5"
+    by voice.) <a href="/dashboard/">← back to dashboard</a></div>
+
+  <div class="toolbar"><button id="refresh">↻ Refresh</button></div>
+
+  <div id="groups"></div>
+
+  <h2>Notes</h2>
+  <div class="card" id="notes-card"><div class="empty">No notes yet.</div></div>
+
+  <h2>Change history</h2>
+  <div class="card hist" id="history"><div class="empty">No changes yet.</div></div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+  (function(){
+    var TYPE_ORDER = ['target','benchmark','goalpost','assumption'];
+    var TYPE_LABEL = {target:'Targets', benchmark:'Benchmarks', goalpost:'Goalposts', assumption:'Assumptions'};
+    var UNIT_SYM = {x:'×', pct:'%', days:'d', months:'mo', aud:'$'};
+
+    function toast(msg){
+      var t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+      setTimeout(function(){t.classList.remove('show');}, 1800);
+    }
+    function fmtVal(unit, v){
+      if(v==null) return 'unset';
+      if(unit==='aud') return '$'+Number(v).toLocaleString('en-AU');
+      return v + (UNIT_SYM[unit]||'');
+    }
+    async function api(path, opts){
+      var r = await fetch('/dashboard/api/'+path, Object.assign({headers:{'Content-Type':'application/json'}}, opts||{}));
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    }
+
+    function row(key, t){
+      var div=document.createElement('div'); div.className='trow';
+      var unitSym = t.unit==='aud' ? '$' : (UNIT_SYM[t.unit]||'');
+      var tag = t.is_user_set ? '<span class="tag">· set by you</span>' : '';
+      var meta = 'default ' + fmtVal(t.unit, t.default)
+        + (t.is_user_set && t.set_at ? ' · set ' + new Date(t.set_at).toLocaleDateString('en-AU') : '');
+      div.innerHTML =
+        '<div class="tlabel"><div class="name">'+t.label+tag+'</div><div class="meta">'+meta+'</div></div>'
+        + '<div class="tval">'
+        + (t.unit==='aud'?'<span class="unit">$</span>':'')
+        + '<input class="num" type="number" step="any" value="'+(t.value==null?'':t.value)+'" data-key="'+key+'">'
+        + (t.unit!=='aud'?'<span class="unit">'+(UNIT_SYM[t.unit]||'')+'</span>':'<span class="unit"></span>')
+        + '<button class="save" data-key="'+key+'">Save</button>'
+        + '<button class="reset" data-key="'+key+'" '+(t.is_user_set?'':'disabled')+'>Reset</button>'
+        + '</div>';
+      div.querySelector('.save').addEventListener('click', function(){ save(key, div.querySelector('input').value); });
+      div.querySelector('.reset').addEventListener('click', function(){ reset(key, t.label); });
+      return div;
+    }
+
+    async function save(key, raw){
+      if(raw===''||raw==null){ toast('Enter a value'); return; }
+      try{ await api('targets/set',{method:'POST',body:JSON.stringify({key:key,value:Number(raw)})});
+        toast('Saved'); load(); }
+      catch(e){ toast('Save failed'); }
+    }
+    async function reset(key, label){
+      if(!confirm('Reset '+label+' to its default?')) return;
+      try{ await api('targets/reset',{method:'POST',body:JSON.stringify({key:key})});
+        toast('Reset to default'); load(); }
+      catch(e){ toast('Reset failed'); }
+    }
+
+    async function load(){
+      var data;
+      try{ data = await api('targets'); }
+      catch(e){ document.getElementById('groups').innerHTML='<div class="empty">Could not load targets.</div>'; return; }
+      var targets = data.targets || {};
+      var groupsEl=document.getElementById('groups'); groupsEl.innerHTML='';
+      var byType={};
+      Object.keys(targets).forEach(function(key){
+        if(key==='_notes') return;
+        var t=targets[key]; (byType[t.type]=byType[t.type]||[]).push([key,t]);
+      });
+      TYPE_ORDER.forEach(function(type){
+        var rows=byType[type]; if(!rows||!rows.length) return;
+        var h=document.createElement('h2'); h.textContent=TYPE_LABEL[type]||type; groupsEl.appendChild(h);
+        var card=document.createElement('div'); card.className='card';
+        rows.forEach(function(kt){ card.appendChild(row(kt[0], kt[1])); });
+        groupsEl.appendChild(card);
+      });
+
+      // Notes
+      var notes=(targets._notes)||[]; var nc=document.getElementById('notes-card');
+      if(notes.length){ nc.innerHTML=notes.slice().reverse().map(function(n){
+        return '<div class="note"><span>'+escapeHtml(n.text)+'</span><span class="when">'
+          + (n.set_at?new Date(n.set_at).toLocaleDateString('en-AU'):'') + '</span></div>'; }).join(''); }
+      else { nc.innerHTML='<div class="empty">No notes yet. Say "note: …" to add one.</div>'; }
+
+      // History
+      var hist=data.history||[]; var he=document.getElementById('history');
+      if(hist.length){ he.innerHTML=hist.map(function(h){
+        var lab=(targets[h.field]&&targets[h.field].label)||h.field;
+        var unit=(targets[h.field]&&targets[h.field].unit)||'';
+        var change = h.action==='note' ? 'note added'
+          : (fmtVal(unit,h.old)+' → '+fmtVal(unit,h.new));
+        return '<div class="h"><span><b>'+lab+'</b> '+change+' <span style="color:var(--muted)">('+h.set_by+')</span></span>'
+          + '<span class="when">'+(h.set_at?new Date(h.set_at).toLocaleString('en-AU'):'')+'</span></div>'; }).join(''); }
+      else { he.innerHTML='<div class="empty">No changes yet.</div>'; }
+    }
+    function escapeHtml(s){ var d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+
+    document.getElementById('refresh').addEventListener('click', load);
+    load();
+  })();
+  </script>
+</body>
+</html>

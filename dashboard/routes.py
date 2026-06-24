@@ -585,6 +585,13 @@ def api_chat_stream():
 
 # ── Manual targets / benchmarks / goalposts (Rydel-set, auth-gated) ──────────
 
+@bp.route("/targets", methods=["GET"])
+@require_auth
+def targets_page():
+    """Settings panel to view/edit/reset the manual targets + see change history."""
+    return render_template("targets.html")
+
+
 @bp.route("/api/targets", methods=["GET"])
 @require_auth
 def api_targets():

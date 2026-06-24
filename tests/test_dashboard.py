@@ -142,6 +142,56 @@ def test_query_param_token():
     print("  Query param token → cookie set")
 
 
+def test_targets_page_renders():
+    """GET /dashboard/targets returns the settings panel (authed)."""
+    client = _get_app()
+    client.post("/dashboard/login", data={"token": "test-dash-token"})
+    resp = client.get("/dashboard/targets")
+    assert resp.status_code == 200
+    assert b"Targets" in resp.data and b"Change history" in resp.data
+    print("  Targets settings page renders (200)")
+
+
+def test_targets_api_get_set_reset(tmp_path):
+    """GET/set/reset the manual targets via the API (authed), isolated store."""
+    import manual_targets
+    manual_targets.MANUAL_TARGETS_STORE = str(tmp_path / "mt.json")
+    client = _get_app()
+    client.post("/dashboard/login", data={"token": "test-dash-token"})
+
+    got = client.get("/dashboard/api/targets").get_json()
+    assert got["targets"]["ltgp_cac_target"]["value"] == 3.0
+    assert got["targets"]["ltgp_cac_target"]["is_user_set"] is False
+
+    s = client.post("/dashboard/api/targets/set",
+                    data=json.dumps({"key": "ltgp_cac_target", "value": 3.5}),
+                    content_type="application/json").get_json()
+    assert s["ok"] and s["target"]["value"] == 3.5 and s["target"]["is_user_set"] is True
+
+    got2 = client.get("/dashboard/api/targets").get_json()
+    assert got2["targets"]["ltgp_cac_target"]["value"] == 3.5
+    assert any(h["field"] == "ltgp_cac_target" for h in got2["history"])
+
+    r = client.post("/dashboard/api/targets/reset",
+                    data=json.dumps({"key": "ltgp_cac_target"}),
+                    content_type="application/json").get_json()
+    assert r["ok"] and r["target"]["is_user_set"] is False
+
+    bad = client.post("/dashboard/api/targets/set",
+                      data=json.dumps({"key": "nope", "value": 1}),
+                      content_type="application/json")
+    assert bad.status_code == 400
+    print("  Targets API get/set/reset + unknown-key guard")
+
+
+def test_targets_unauth_blocked():
+    """Targets page + API require auth."""
+    client = _get_app()
+    assert client.get("/dashboard/targets").status_code == 302
+    assert client.get("/dashboard/api/targets").status_code == 302
+    print("  Targets page/API unauth → redirect")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0
