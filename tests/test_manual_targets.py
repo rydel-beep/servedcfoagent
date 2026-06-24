@@ -16,8 +16,8 @@ from hormozi_metrics import m1_ltgp_cac, m4_gross_margin
 
 
 def _fresh(monkeypatch, tmp_path):
+    # Fresh per-test store file → no values and no pending carry over.
     monkeypatch.setattr(manual_targets, "MANUAL_TARGETS_STORE", str(tmp_path / "mt.json"))
-    manual_targets._pending.clear()
 
 
 def test_set_requires_confirmation_then_persists(monkeypatch, tmp_path):
@@ -61,7 +61,7 @@ def test_ambiguous_field_asks(monkeypatch, tmp_path):
     reply, handled = manual_targets.handle_turn("set the target to 3.5", "tok")
     assert handled and "which" in reply.lower()
     # nothing pending committed
-    assert "tok" not in manual_targets._pending
+    assert manual_targets._get_pending("tok") is None
 
 
 def test_query_and_summary(monkeypatch, tmp_path):
@@ -120,3 +120,17 @@ def test_hormozi_gross_margin_settable(monkeypatch, tmp_path):
     assert m4_gross_margin(snap, {})["status"] == "watch"
     # lower the floor to 40 and target to 45 → 47 now healthy
     assert m4_gross_margin(snap, {"gross_margin_floor": 40.0, "gross_margin_target": 45.0})["status"] == "healthy"
+
+
+def test_pending_is_store_backed_survives_worker_switch(monkeypatch, tmp_path):
+    # The confirmation must survive a "yes" landing on a different gunicorn worker —
+    # i.e. it lives in the shared store file, not process memory. Simulate by reading
+    # pending back fresh (any worker re-_load()s the same file).
+    _fresh(monkeypatch, tmp_path)
+    manual_targets.handle_turn("set the ROAS target to 4.5", "tok")
+    pend = manual_targets._get_pending("tok")
+    assert pend and pend["key"] == "roas_target" and pend["new"] == 4.5
+    # A different "worker" (no in-memory state) confirms via the same store file.
+    reply, handled = manual_targets.handle_turn("yes", "tok")
+    assert handled and "now 4.5" in reply
+    assert manual_targets._get_pending("tok") is None  # cleared after commit
