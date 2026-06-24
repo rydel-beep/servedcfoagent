@@ -120,9 +120,10 @@ def build_verdicts(snap: dict, hormozi: dict) -> dict:
     for rng in by_rev:
         if rng.get("targeting_flag") and rng.get("leads", 0) >= 5:
             wasted_leads = rng["leads"]
-            # Cost per wasted lead ≈ total ad spend / total leads
+            # Cost per wasted lead ≈ total ad spend / total leads.
+            # Use the dashboard-wide resolved ad spend (live Meta), not the Xero line.
             total_leads = funnel.get("leads_in") or 1
-            ad_spend = _safe_float(_get(snap, "xero.xero_ad_spend"))
+            ad_spend = _safe_float(_get(snap, "ad_spend_resolved.value"))
             cost_per_lead = ad_spend / total_leads if ad_spend > 0 and total_leads > 0 else 0
             dollar_impact = round(wasted_leads * cost_per_lead, 2)
             leaks.append({

@@ -170,6 +170,38 @@ def _run_integrity_checks(snap: dict, hormozi: dict) -> list[str]:
     return warnings
 
 
+def _resolve_ad_spend(meta_block: dict | None, xero_ad_spend: float | None) -> dict:
+    """THE one ad-spend resolution for the whole dashboard (30d window).
+
+    Meta live (primary) → Meta last-known (labelled) → Xero Advertising line
+    (labelled) → None. Never the old hardcoded $8,002. Every consumer — burn,
+    waterfall, financial_position, CAC/ROAS, verdicts — reads this single value.
+    """
+    if meta_block and meta_block.get("primary_spend") is not None:
+        live = meta_block.get("fetch_ok") is not False
+        wd = meta_block.get("primary_window_days") or 30
+        return {
+            "value": meta_block["primary_spend"],
+            "source": "meta_live" if live else "meta_last_known",
+            "window_days": wd,
+            "currency": meta_block.get("currency"),
+            "as_of": meta_block.get("last_fetched"),
+            "label": f"Meta spend ({'live' if live else 'last-known'}, trailing {wd}d)",
+            "note": ("Meta Marketing API — agency-wide. Excludes Google (future)." if live
+                     else "Meta fetch failed — last-known value; reconfirm."),
+            "xero_ref": xero_ad_spend,
+        }
+    if xero_ad_spend is not None:
+        return {
+            "value": xero_ad_spend, "source": "xero_advertising", "window_days": 30,
+            "currency": "AUD", "as_of": None,
+            "label": "Ad spend (Xero Advertising line)",
+            "note": "Fallback — Meta live spend unavailable.", "xero_ref": xero_ad_spend,
+        }
+    return {"value": None, "source": None, "window_days": None, "currency": None,
+            "as_of": None, "label": "Ad spend unavailable", "note": None, "xero_ref": None}
+
+
 def build_snapshot() -> dict:
     """Pull all sources in parallel and assemble a single snapshot dict."""
     ts = now_sydney()
@@ -266,11 +298,19 @@ def build_snapshot() -> dict:
     if profit:
         profit["payroll"] = payroll
 
+    # ── Resolve THE one ad-spend (Meta live → Xero line → None) BEFORE burn ──
+    # Computed here so burn, financial_position, waterfall, CAC/ROAS and verdicts
+    # all read the identical figure. Never the old hardcoded $8,002.
+    meta_block = meta_result.get("meta_spend")
+    ad_spend_resolved = _resolve_ad_spend(meta_block, (xero_data or {}).get("xero_ad_spend"))
+
     # ── Full-outflow monthly burn breakdown ─────────────────────────────────
     burn = get_monthly_burn(
         xero_data=xero_data,
         true_team_cost=true_team_cost,
         salary_baseline=payroll_baseline,
+        ad_spend_override=ad_spend_resolved["value"],
+        ad_spend_source=ad_spend_resolved["source"],
     )
 
     # Build revenue views cross-reference
@@ -421,33 +461,8 @@ def build_snapshot() -> dict:
         "ok": len(degraded) == 0,
     }
 
-    # ── Resolve the authoritative ad-spend for unit economics ─────────────────
-    # Meta live spend (primary) → Xero Advertising line (fallback) → None. One value,
-    # window-consistent with the funnel's trailing-30d, every consumer reads this.
-    meta_block = meta_result.get("meta_spend")
-    xero_ad = (xero_data or {}).get("xero_ad_spend")
-    if meta_block and meta_block.get("primary_spend") is not None:
-        snapshot["ad_spend_resolved"] = {
-            "value": meta_block["primary_spend"],
-            "source": "meta_live",
-            "window_days": meta_block.get("primary_window_days"),
-            "currency": meta_block.get("currency"),
-            "as_of": meta_block.get("last_fetched"),
-            "label": f"Meta spend (live, trailing {meta_block.get('primary_window_days')}d)",
-            "note": "Meta Marketing API — agency-wide. Excludes Google (future).",
-        }
-    elif xero_ad is not None:
-        snapshot["ad_spend_resolved"] = {
-            "value": xero_ad, "source": "xero_advertising", "window_days": 30,
-            "currency": "AUD", "as_of": None,
-            "label": "Ad spend (Xero Advertising line)",
-            "note": "Fallback — Meta live spend unavailable.",
-        }
-    else:
-        snapshot["ad_spend_resolved"] = {
-            "value": None, "source": None, "window_days": None, "currency": None,
-            "as_of": None, "label": "Ad spend unavailable", "note": None,
-        }
+    # Single resolved ad-spend (computed before burn) — the dashboard-wide source.
+    snapshot["ad_spend_resolved"] = ad_spend_resolved
 
     # Hormozi metrics + verdict layer (computed AFTER snapshot assembled)
     hormozi = compute_hormozi(snapshot, true_team_cost=true_team_cost)
@@ -479,7 +494,7 @@ def build_snapshot() -> dict:
         xero_opex=xero_d.get("operating_expenses"),
         xero_net_profit=xero_d.get("net_profit"),
         true_team_cost=true_team_cost,
-        ad_spend=snapshot["ad_spend_resolved"].get("value"),
+        ad_spend=ad_spend_resolved["value"],
         current_mrr=current_mrr,
         total_burn=burn.get("total_recurring_burn"),
     )

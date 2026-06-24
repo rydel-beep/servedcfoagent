@@ -894,7 +894,14 @@
     const gp = xero.gross_profit;
     const opex = xero.operating_expenses;
     const net = xero.net_profit;
-    const adSpend = xero.xero_ad_spend;
+    // Ad spend = the dashboard-wide resolved figure (live Meta), NOT the Xero line.
+    // The P&L headline (Rev/COGS/GP/OpEx/Net) stays Xero-sourced; only the OpEx
+    // breakdown shows live ad spend (Other OpEx absorbs the Xero-vs-Meta variance).
+    const ar = snap.ad_spend_resolved || {};
+    const adSpend = (ar.value != null) ? ar.value : xero.xero_ad_spend;
+    const adSpendSub = ar.source === 'meta_live' ? 'Meta (live, 30d)'
+      : ar.source === 'meta_last_known' ? 'Meta (last-known, 30d)'
+      : ar.source === 'xero_advertising' ? 'Xero advertising line' : 'ad spend';
     const wages = xero.xero_wages;
 
     if (rev == null) {
@@ -934,7 +941,7 @@
     const details = [];
     if (trueTeam != null) details.push({ label: 'Team Cost', value: fmt$(trueTeam), sub: 'payroll + owner + super' });
     if (totalComm > 0) details.push({ label: 'Commissions', value: fmt$(totalComm), sub: 'closer + setter' });
-    if (adSpend != null) details.push({ label: 'Ad Spend', value: fmt$(adSpend), sub: 'Xero advertising' });
+    if (adSpend != null) details.push({ label: 'Ad Spend', value: fmt$(adSpend), sub: adSpendSub });
 
     // "Other" = opex - known items
     if (opex != null) {

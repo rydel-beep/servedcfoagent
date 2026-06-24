@@ -40,7 +40,8 @@ SUBSCRIPTIONS_OVERRIDE = 3867.0
 # ── Fallback values when Xero is unavailable ────────────────────────────
 # Last known from Xero P&L. Used ONLY when Xero is down so the dashboard
 # and PDF aren't blank. Updated when Xero values change materially.
-AD_SPEND_FALLBACK = 8002.0       # Xero Advertising account (trailing 30d avg)
+# NOTE: the old AD_SPEND_FALLBACK ($8,002) was RETIRED 2026-06-24 — ad spend now
+# comes from the dashboard-wide resolved figure (live Meta), never a hardcode.
 OTHER_OPEX_FALLBACK = 817.0      # Consulting + bank fees + office (recurring)
 
 # ── Line-item classification ──────────────────────────────────────────────
@@ -84,6 +85,8 @@ def get_monthly_burn(
     xero_data: dict | None,
     true_team_cost: float,
     salary_baseline: float | None = None,
+    ad_spend_override: float | None = None,
+    ad_spend_source: str | None = None,
 ) -> dict:
     """Compute categorised monthly burn from Xero P&L line items.
 
@@ -95,6 +98,10 @@ def get_monthly_burn(
         take-home, not the full true_team_cost which includes gross pay + super.
     salary_baseline : core team payroll via Wise from SALARY tab (~$18,891)
         Used to split Contractors NO GST into team vs subcontractor portions.
+    ad_spend_override : the dashboard-wide resolved ad spend (live Meta, 30d).
+        When provided it REPLACES the Xero advertising line so burn matches the
+        rest of the dashboard. The Xero line is kept as ad_spend_xero_ref.
+    ad_spend_source : label for the override's origin (meta_live / xero_advertising / ...).
 
     Returns
     -------
@@ -104,22 +111,29 @@ def get_monthly_burn(
     owner_pay = OWNER_TAKEHOME_MONTHLY
 
     if not xero_data:
-        # Use hardcoded known values for burn components that don't need Xero
+        # No Xero P&L. Ad spend comes from the resolved override (live Meta) if any —
+        # NEVER the retired hardcoded $8,002.
         subscriptions = SUBSCRIPTIONS_OVERRIDE
-        ad_spend = AD_SPEND_FALLBACK
+        if ad_spend_override is not None:
+            ad_spend = ad_spend_override
+            ad_note = f"Resolved ad spend ({ad_spend_source or 'unknown'})"
+        else:
+            ad_spend = 0.0
+            ad_note = "Ad spend unavailable (no Meta, no Xero) — burn excludes ad spend"
         other_opex = OTHER_OPEX_FALLBACK
         total = team_wise + owner_pay + ad_spend + subscriptions + other_opex
         return {
             "available": False,
-            "reason": "No Xero P&L data -- using hardcoded burn components",
+            "reason": "No Xero P&L data -- using resolved ad spend + hardcoded non-ad components",
             "total_recurring_burn": round(total, 2),
             "team": round(team_wise, 2),
             "owner_pay": round(owner_pay, 2),
             "ad_spend": round(ad_spend, 2),
-            "ad_spend_note": "Fallback estimate (Xero unavailable)",
+            "ad_spend_note": ad_note,
+            "ad_spend_source": ad_spend_source,
             "subscriptions": round(subscriptions, 2),
             "other_opex": round(other_opex, 2),
-            "source": "salary_tab + hardcoded_fallback",
+            "source": "salary_tab + resolved_ad_spend + hardcoded_non_ad",
         }
 
     opex_lines = xero_data.get("opex_line_items") or []
@@ -219,6 +233,16 @@ def get_monthly_burn(
     # ── Use hardcoded subscriptions override ──
     subscriptions = SUBSCRIPTIONS_OVERRIDE
 
+    # ── Ad spend: the resolved dashboard-wide figure (live Meta) REPLACES the Xero
+    # advertising line so burn matches the waterfall / CAC / economics. The Xero line
+    # is retained as a cross-reference. ──
+    ad_spend_xero_ref = round(ad_spend, 2)
+    if ad_spend_override is not None:
+        ad_spend = ad_spend_override
+        ad_note = f"Resolved ad spend ({ad_spend_source or 'unknown'}); Xero line ${ad_spend_xero_ref:,.0f} for ref"
+    else:
+        ad_note = "Xero Advertising line (no resolved override)"
+
     # ── Totals ──
     # Fixed recurring burn = cash leaving the bank every month
     # Team Wise + owner take-home (not gross — PAYG/super are lumpy quarterly)
@@ -244,6 +268,9 @@ def get_monthly_burn(
         "owner_pay": round(owner_pay, 2),
         "owner_pay_note": "Take-home $1,700/wk x 4. PAYG + super excluded (quarterly)",
         "ad_spend": round(ad_spend, 2),
+        "ad_spend_note": ad_note,
+        "ad_spend_source": ad_spend_source,
+        "ad_spend_xero_ref": ad_spend_xero_ref,
         "subscriptions": round(subscriptions, 2),
         "subscriptions_note": "Hardcoded override — Xero miscodes across accounts",
         "other_opex": round(other_opex, 2),
