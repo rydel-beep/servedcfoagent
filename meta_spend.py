@@ -48,13 +48,17 @@ def _account_id() -> str:
     return a if a.startswith("act_") else f"act_{a}"
 
 
-def _graph_get(path: str, params: dict) -> tuple[dict | None, str | None]:
-    """GET the Graph API with backoff on rate-limit / transient errors.
+_MAX_PAGES = 12  # safety cap; 90 daily rows / ~25 per page → ~4 pages
 
-    Returns (json, error_string). Never raises. The access token is passed in
-    params by the caller and is never logged.
+
+def _graph_request(url: str, params: dict | None) -> tuple[dict | None, str | None]:
+    """One GET (full url, or path resolved against the API base) with backoff.
+
+    Returns (json, error_string). Never raises. Token (in params or the url's
+    query for a paging cursor) is never logged.
     """
-    url = f"https://graph.facebook.com/{META_API_VERSION}/{path}"
+    if not url.startswith("http"):
+        url = f"https://graph.facebook.com/{META_API_VERSION}/{url}"
     backoff = 2.0
     last_err = None
     for attempt in range(_MAX_RETRIES + 1):
@@ -62,11 +66,10 @@ def _graph_get(path: str, params: dict) -> tuple[dict | None, str | None]:
             resp = requests.get(url, params=params, timeout=(5, HTTP_TIMEOUT))
         except requests.RequestException as e:
             last_err = f"request failed: {e}"
-            logger.warning("Meta Graph %s attempt %d: %s", path, attempt, last_err)
+            logger.warning("Meta Graph attempt %d: %s", attempt, last_err)
         else:
             if resp.status_code == 200:
                 return resp.json(), None
-            # Parse Meta's structured error
             try:
                 err = resp.json().get("error", {})
             except ValueError:
@@ -76,11 +79,9 @@ def _graph_get(path: str, params: dict) -> tuple[dict | None, str | None]:
             last_err = f"HTTP {resp.status_code} code={code}: {msg}"
             transient = resp.status_code in (500, 502, 503, 529) or code in _RETRY_CODES
             if not transient:
-                # Don't retry auth/permission/validation errors — surface immediately.
                 return None, last_err
-            logger.warning("Meta Graph %s attempt %d transient: %s", path, attempt, last_err)
+            logger.warning("Meta Graph attempt %d transient: %s", attempt, last_err)
         if attempt < _MAX_RETRIES:
-            # Watch X-Business-Use-Case-Usage in a fuller impl; fixed backoff here.
             try:
                 import time
                 time.sleep(backoff)
@@ -88,6 +89,38 @@ def _graph_get(path: str, params: dict) -> tuple[dict | None, str | None]:
                 pass
             backoff *= 2
     return None, last_err
+
+
+def _graph_get(path: str, params: dict) -> tuple[dict | None, str | None]:
+    """Single-object GET (no pagination) — for the account meta call."""
+    return _graph_request(path, params)
+
+
+def _graph_get_all(path: str, params: dict) -> tuple[list | None, str | None]:
+    """Paginated GET — follows paging.next until exhausted. Returns ALL data rows.
+
+    Meta's Insights endpoint paginates (default ~25 rows/page, oldest-first). A
+    single GET silently truncates to the oldest page, leaving recent windows at $0.
+    This follows the cursor so every day in the range is summed.
+    """
+    first, err = _graph_request(path, params)
+    if first is None:
+        return None, err
+    rows = list(first.get("data", []))
+    next_url = (first.get("paging") or {}).get("next")
+    pages = 1
+    while next_url and pages < _MAX_PAGES:
+        # paging.next is a full URL carrying the cursor + access token already.
+        nxt, err = _graph_request(next_url, None)
+        if nxt is None:
+            # Partial result — surface loudly rather than silently truncating.
+            return rows, f"pagination stopped early at page {pages}: {err}"
+        rows.extend(nxt.get("data", []))
+        next_url = (nxt.get("paging") or {}).get("next")
+        pages += 1
+    if next_url:
+        return rows, f"pagination hit page cap ({_MAX_PAGES}) — range may be incomplete"
+    return rows, None
 
 
 def _load_store() -> dict:
@@ -177,18 +210,20 @@ def pull_meta_spend() -> dict:
         currency = acct_json.get("currency")
         tz_name = acct_json.get("timezone_name")
 
-    # Daily insights series (one call, time_increment=1 → per-day rows for every window).
-    ins_json, ins_err = _graph_get(f"{acct}/insights", {
+    # Daily insights series (time_increment=1 → per-day rows). PAGINATED — Meta
+    # returns ~25 days/page oldest-first; we follow the cursor for the full range.
+    ins_rows, ins_err = _graph_get_all(f"{acct}/insights", {
         "fields": "spend,impressions,clicks",
         "level": "account",
         "time_increment": 1,
+        "limit": 90,
         "time_range": json.dumps({"since": str(since), "until": str(today)}),
         "access_token": token,
     })
 
     store = _load_store()
 
-    if ins_json is None:
+    if ins_rows is None:
         # Live fetch failed — keep last-good store, surface loudly, never fabricate.
         degraded.append({
             "metric": "meta_spend",
@@ -200,10 +235,18 @@ def pull_meta_spend() -> dict:
         meta = _assemble(store, today, currency, tz_name, acct, fetch_ok=False)
         return {"meta_spend": meta, "degraded": degraded}
 
+    # ins_rows non-None but ins_err set = partial pagination — use what we got, flag loudly.
+    if ins_err:
+        degraded.append({
+            "metric": "meta_spend",
+            "reason": f"Meta Insights returned a partial series ({ins_err}). Recent windows may understate.",
+            "severity": "optional",
+        })
+
     # Merge fetched days into the store — OVERWRITE (retroactive; never freeze).
     now_iso = today_sydney().isoformat()
     fetched_days = 0
-    for row in ins_json.get("data", []):
+    for row in ins_rows:
         ds = row.get("date_start")
         if not ds:
             continue
