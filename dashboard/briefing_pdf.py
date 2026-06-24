@@ -395,7 +395,7 @@ def generate_briefing_pdf(snap: dict) -> bytes:
     ]
     pdf._body_text("  |  ".join(burn_items))
     if cost_source == "burn_fallback":
-        pdf._body_text("(Ad spend, subs, other from last-known values -- Xero offline)")
+        pdf._body_text("(Subs + other from last-known values -- Xero offline. Ad spend is live Meta.)")
 
     gm = _get(rec_basis, "gross_margin_pct") or _get(cash_basis, "gross_margin_pct")
     analysis = _build_financial_analysis(cash_net, rec_net, gm, total_burn, current_mrr)

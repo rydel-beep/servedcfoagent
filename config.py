@@ -103,7 +103,7 @@ CASH_CONFIRMED_DATE = os.getenv("CASH_CONFIRMED_DATE", "2026-06-04")
 # ── Meta Marketing API (live ad spend, read-only) ────────────────────────────
 # Reuse the Ad Monitor's System User token (ads_read). Set on the CFO Railway
 # service; NEVER hardcode or put in client code. Absent → meta_spend degrades to
-# None and ad spend falls back to Xero (then AD_SPEND_FALLBACK).
+# None and ad spend falls back to the Xero Advertising line (labelled), never a hardcode.
 META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "")
 META_AD_ACCOUNT_ID = os.getenv("META_AD_ACCOUNT_ID", "")  # digits or act_<digits>
 META_API_VERSION = os.getenv("META_API_VERSION", "v21.0")

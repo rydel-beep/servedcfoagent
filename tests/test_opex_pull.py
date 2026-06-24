@@ -3,7 +3,7 @@ tests/test_opex_pull.py
 -----------------------
 Tests for the categorised monthly burn breakdown.
 """
-from opex_pull import get_monthly_burn, SUBSCRIPTIONS_OVERRIDE, OWNER_TAKEHOME_MONTHLY, AD_SPEND_FALLBACK, OTHER_OPEX_FALLBACK
+from opex_pull import get_monthly_burn, SUBSCRIPTIONS_OVERRIDE, OWNER_TAKEHOME_MONTHLY, OTHER_OPEX_FALLBACK
 
 
 SAMPLE_XERO = {
@@ -42,8 +42,24 @@ def test_total_burn_exceeds_team_cost():
 
 
 def test_ad_spend_extracted():
+    # No override → ad spend is the Xero advertising line (sample = 8002).
     result = get_monthly_burn(SAMPLE_XERO, TEAM_COST, SALARY_BASELINE)
     assert result["ad_spend"] == 8002
+    assert result["ad_spend_xero_ref"] == 8002
+
+
+def test_ad_spend_override_replaces_xero_line():
+    # The dashboard-wide resolved figure (live Meta) REPLACES the Xero line; the
+    # Xero line is retained as a cross-reference and burn reflects the override.
+    result = get_monthly_burn(SAMPLE_XERO, TEAM_COST, SALARY_BASELINE,
+                              ad_spend_override=9040.6, ad_spend_source="meta_live")
+    assert result["ad_spend"] == 9040.6
+    assert result["ad_spend_xero_ref"] == 8002
+    assert result["ad_spend_source"] == "meta_live"
+    # Burn total uses the override, not the Xero line.
+    assert abs(result["total_recurring_burn"] -
+               (result["team"] + result["owner_pay"] + 9040.6
+                + result["subscriptions"] + result["other_opex"])) < 0.01
 
 
 def test_subscriptions_uses_hardcoded_override():
@@ -112,14 +128,22 @@ def test_cogs_ratio():
     assert result["cogs_ratio_pct"] == expected
 
 
-def test_no_xero_data_fallback():
-    """When Xero is down, burn includes hardcoded fallbacks for all components."""
-    result = get_monthly_burn(None, TEAM_COST, SALARY_BASELINE)
+def test_no_xero_data_uses_resolved_ad_spend():
+    """Xero down: ad spend comes from the resolved override (live Meta), never $8,002."""
+    result = get_monthly_burn(None, TEAM_COST, SALARY_BASELINE,
+                              ad_spend_override=9040.6, ad_spend_source="meta_live")
     assert not result["available"]
     assert result["team"] == SALARY_BASELINE
     assert result["owner_pay"] == OWNER_TAKEHOME_MONTHLY
-    assert result["ad_spend"] == AD_SPEND_FALLBACK
+    assert result["ad_spend"] == 9040.6  # the retired $8,002 hardcode is gone
     assert result["subscriptions"] == SUBSCRIPTIONS_OVERRIDE
     assert result["other_opex"] == OTHER_OPEX_FALLBACK
-    expected_total = SALARY_BASELINE + OWNER_TAKEHOME_MONTHLY + AD_SPEND_FALLBACK + SUBSCRIPTIONS_OVERRIDE + OTHER_OPEX_FALLBACK
+    expected_total = SALARY_BASELINE + OWNER_TAKEHOME_MONTHLY + 9040.6 + SUBSCRIPTIONS_OVERRIDE + OTHER_OPEX_FALLBACK
     assert result["total_recurring_burn"] == expected_total
+
+
+def test_no_xero_no_override_excludes_ad_spend():
+    """Xero down AND no Meta: ad spend is 0 with a loud note — never a hardcoded guess."""
+    result = get_monthly_burn(None, TEAM_COST, SALARY_BASELINE)
+    assert result["ad_spend"] == 0.0
+    assert "unavailable" in result["ad_spend_note"].lower()

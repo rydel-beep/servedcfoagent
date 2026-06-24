@@ -374,3 +374,17 @@
     pages); a mid-pagination failure returns partial rows + a loud degraded flag, never silent
     truncation. Live re-verify: fetched_days 25→90; 7d $2,652 / 30d $9,038.89 / 60d $17,358 /
     90d $23,628 (AUD, acct tz Australia/Sydney). 213 tests pass (+2 pagination).
+
+## 2026-06-24d — Repoint ALL ad-spend consumers to the single live-Meta source
+
+53. **One ad-spend source dashboard-wide.** The Meta build wired CAC/LTGP:CAC/ROAS to
+    ad_spend_resolved but left Profit Waterfall, cash burn, financial_position, verdicts, and the
+    briefing PDF on the stale Xero advertising line ($7,384; was the $8,002 hardcode pre-Xero) — a
+    live contradiction (economics $9,041 vs waterfall $7,384). Fix: `snapshot._resolve_ad_spend`
+    computed BEFORE get_monthly_burn and passed in as ad_spend_override; burn/financial_position/
+    hormozi/waterfall/verdicts/PDF all read the identical resolved value (Meta live 30d, window-
+    matched). Burn keeps the Xero line as ad_spend_xero_ref cross-ref. Waterfall P&L headline stays
+    Xero-reconciled; only the OpEx breakdown shows live ad spend (Other OpEx absorbs the variance).
+    KILLED AD_SPEND_FALLBACK ($8,002) — no Meta+no Xero → ad spend 0 + loud note, never a hardcode.
+    Cross-section verified: all consumers = $9,041.62 for 30d. 215 tests pass (+3). Report:
+    dashboard/AD_SPEND_CONSUMER_FIX_REPORT.md.
