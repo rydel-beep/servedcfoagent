@@ -60,6 +60,9 @@ def build_canonical_metrics(snapshot: dict) -> dict:
     xero = snapshot.get("xero") or {}
     costs = snapshot.get("costs") or {}
     funnel = _get(snapshot, "sales", "funnel", default={}) or {}
+    meta = snapshot.get("meta_spend") or {}
+    ad_res = snapshot.get("ad_spend_resolved") or {}
+    hz = snapshot.get("hormozi") or {}
 
     def m(value, kind, source, window=None, definition=None):
         out = {"value": value, "kind": kind, "source": source}
@@ -150,6 +153,21 @@ def build_canonical_metrics(snapshot: dict) -> dict:
             window="monthly",
             definition="Recognized MRR / active clients (RECOGNIZED tab). Use for unit economics.",
         ),
+        "ad_spend": m(
+            ad_res.get("value"), "FLOW", "ad_spend_resolved.value",
+            window=f"trailing {ad_res.get('window_days')}d" if ad_res.get("window_days") else None,
+            definition=(f"Resolved ad spend ({ad_res.get('source') or 'none'}). "
+                        "Meta live (primary) → Xero Advertising (fallback). Feeds CAC/ROAS."),
+        ),
+        "meta_spend_30d": m(
+            _get(meta, "windows", f"{30}d", "spend"), "FLOW", "meta_spend.windows.30d.spend",
+            window="trailing 30d",
+            definition="Live Meta ad spend, trailing 30d, agency-wide (read-only Insights).",
+        ),
+        "roas_meta": m(
+            _get(hz, "roas", "value"), "FLOW", "hormozi.roas.value", window="funnel window",
+            definition="New contracted revenue / ad spend, window-consistent. Meta-based.",
+        ),
     }
 
 
@@ -179,6 +197,8 @@ OPTIONAL_DEGRADED_METRICS = {
     "zero_mrr_active_clients", "cash_override_stale", "owner_pay_excess",
     "integrity_check", "recognized_range_check", "recognized_row_count",
     "recognized_footer_mismatch",
+    # Meta ad spend is an additive enhancement; its absence/quirks don't fail a refresh.
+    "meta_spend", "meta_spend_currency",
 }
 
 

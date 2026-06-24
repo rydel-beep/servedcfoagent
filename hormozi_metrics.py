@@ -17,6 +17,19 @@ def _get(snap: dict, path: str):
     return obj
 
 
+def _resolved_ad_spend(snap: dict):
+    """Authoritative ad spend for unit economics: Meta live (primary) → Xero (fallback).
+
+    Returns (value, source, window_days). snapshot.ad_spend_resolved is built in
+    snapshot.py; fall back to the raw Xero line for older snapshots without it.
+    """
+    r = snap.get("ad_spend_resolved")
+    if isinstance(r, dict) and r.get("value") is not None:
+        return r.get("value"), r.get("source"), r.get("window_days")
+    legacy = _get(snap, "xero.xero_ad_spend")
+    return legacy, ("xero_advertising" if legacy is not None else None), 30
+
+
 def _metric(
     value, benchmark, status: str, dollar_gap, read: str,
     confidence: str, inputs_used: dict,
@@ -42,7 +55,7 @@ def m1_ltgp_cac(snap: dict) -> dict:
     setter_comm = _get(snap, "costs.setter_commission") or 0
     closer_comm = _get(snap, "costs.closer_commission") or 0
     setter_payout = _get(snap, "sales.payout.total_owed") or 0
-    ad_spend = _get(snap, "xero.xero_ad_spend")
+    ad_spend, ad_spend_source, ad_spend_window = _resolved_ad_spend(snap)
 
     inputs = {
         "avg_contract": avg_contract,
@@ -52,7 +65,8 @@ def m1_ltgp_cac(snap: dict) -> dict:
         "closer_commission": closer_comm,
         "setter_payout": setter_payout,
         "ad_spend": ad_spend,
-        "ad_spend_source": "xero_advertising_account_pl" if ad_spend is not None else None,
+        "ad_spend_source": ad_spend_source,
+        "ad_spend_window_days": ad_spend_window,
     }
 
     # Confidence
@@ -129,7 +143,7 @@ def m2_cac_breakdown(snap: dict) -> dict:
     setter_comm = _get(snap, "costs.setter_commission") or 0
     closer_comm = _get(snap, "costs.closer_commission") or 0
     setter_payout = _get(snap, "sales.payout.total_owed") or 0
-    ad_spend = _get(snap, "xero.xero_ad_spend")
+    ad_spend, ad_spend_source, ad_spend_window = _resolved_ad_spend(snap)
     offer_mix = _get(snap, "sales.deep.money.offer_mix") or []
 
     inputs = {
@@ -138,7 +152,8 @@ def m2_cac_breakdown(snap: dict) -> dict:
         "closer_commission": closer_comm,
         "setter_payout": setter_payout,
         "ad_spend": ad_spend,
-        "ad_spend_source": "xero_advertising_account_pl" if ad_spend is not None else None,
+        "ad_spend_source": ad_spend_source,
+        "ad_spend_window_days": ad_spend_window,
         "offer_mix": offer_mix,
     }
 
@@ -212,7 +227,7 @@ def m3_payback_days(snap: dict) -> dict:
     setter_comm = _get(snap, "costs.setter_commission") or 0
     closer_comm = _get(snap, "costs.closer_commission") or 0
     setter_payout = _get(snap, "sales.payout.total_owed") or 0
-    ad_spend = _get(snap, "xero.xero_ad_spend")
+    ad_spend, ad_spend_source, ad_spend_window = _resolved_ad_spend(snap)
     cash_collected = _get(snap, "sheets.cash_collected")
 
     # Fallback avg_cash
@@ -223,7 +238,8 @@ def m3_payback_days(snap: dict) -> dict:
         "avg_cash": avg_cash,
         "closes": closes,
         "ad_spend": ad_spend,
-        "ad_spend_source": "xero_advertising_account_pl" if ad_spend is not None else None,
+        "ad_spend_source": ad_spend_source,
+        "ad_spend_window_days": ad_spend_window,
         "setter_payout": setter_payout,
         "closer_commission": closer_comm,
     }
@@ -436,7 +452,7 @@ def m7_ltv_to_cac(snap: dict) -> dict:
     setter_comm = _get(snap, "costs.setter_commission") or 0
     closer_comm = _get(snap, "costs.closer_commission") or 0
     setter_payout = _get(snap, "sales.payout.total_owed") or 0
-    ad_spend = _get(snap, "xero.xero_ad_spend")
+    ad_spend, ad_spend_source, ad_spend_window = _resolved_ad_spend(snap)
 
     inputs = {
         "avg_contract": avg_contract,
@@ -465,6 +481,66 @@ def m7_ltv_to_cac(snap: dict) -> dict:
     return _metric(ratio, None, "unknown", None, read, "high" if ad_spend else "medium", inputs)
 
 
+# ── M8: ROAS (Meta-based) ─────────────────────────────────────────────────
+
+def m8_roas(snap: dict) -> dict:
+    """Return on ad spend = new contracted revenue / ad spend, window-consistent.
+
+    Defined as (closes × avg_contract) / ad_spend over the SAME window — i.e. new
+    business won per $1 of ad spend. Labelled Meta-based (Google not yet included).
+    """
+    closes = _get(snap, "sales.funnel.closes")
+    avg_contract = _get(snap, "sales.deep.money.avg_contract")
+    ad_spend, ad_spend_source, ad_spend_window = _resolved_ad_spend(snap)
+    funnel_window = _get(snap, "sales.window_days") or 30
+
+    inputs = {
+        "closes": closes,
+        "avg_contract": avg_contract,
+        "ad_spend": ad_spend,
+        "ad_spend_source": ad_spend_source,
+        "ad_spend_window_days": ad_spend_window,
+        "funnel_window_days": funnel_window,
+        "platform": "meta" if ad_spend_source == "meta_live" else ad_spend_source,
+        "definition": "new contracted revenue (closes × avg_contract) / ad spend, same window",
+        "window_consistent": (ad_spend_window == funnel_window),
+    }
+
+    missing = []
+    if not closes:
+        missing.append("closes")
+    if avg_contract is None:
+        missing.append("avg_contract")
+    if ad_spend is None:
+        missing.append("ad_spend")
+    confidence = "low" if len(missing) >= 2 else ("medium" if missing else "high")
+
+    if not closes or avg_contract is None or not ad_spend or ad_spend == 0:
+        return _metric(
+            None, 3.0, "unknown", None,
+            f"Cannot compute — missing: {', '.join(missing) or 'ad_spend is zero'}",
+            confidence, inputs,
+        )
+
+    new_revenue = closes * avg_contract
+    roas = round(new_revenue / ad_spend, 2)
+    inputs["new_contracted_revenue"] = round(new_revenue, 2)
+    inputs["roas"] = roas
+    label = "Meta" if ad_spend_source == "meta_live" else "Xero-ad-line"
+
+    if roas >= 3.0:
+        status = "healthy"
+    elif roas >= 1.5:
+        status = "watch"
+    else:
+        status = "critical"
+    read = (f"${roas:.2f} of new contracted revenue per $1 of {label} ad spend "
+            f"(${new_revenue:,.0f} won / ${ad_spend:,.0f} spend, {funnel_window}d) — "
+            f"Meta-based; Google not yet included")
+
+    return _metric(roas, 3.0, status, None, read, confidence, inputs)
+
+
 # ── Compute all metrics ───────────────────────────────────────────────────
 
 def compute_all(snap: dict, true_team_cost: float | None = None) -> dict:
@@ -478,4 +554,5 @@ def compute_all(snap: dict, true_team_cost: float | None = None) -> dict:
         "gross_margin": m4_gross_margin(snap),
         "op_efficiency": m5_op_efficiency(snap, true_team_cost),
         "sales_velocity": m6_sales_velocity(snap),
+        "roas": m8_roas(snap),
     }

@@ -349,3 +349,20 @@
     36 Active), which the code already uses. Per CLAUDE.md "the contradiction itself is the finding."
     The "16" was the Health-tab 401 fallback (fixed last session, committed ed0cf11), NOT Stripe.
     HARD STOP: confirm active-clients stays on the Health tab; no salary-tab repoint.
+
+## 2026-06-24c — Live Meta ad spend → CAC/LTGP:CAC/ROAS
+
+51. **Live Meta spend feeds unit economics (read-only).** Built `meta_spend.py` (Insights edge,
+    raw Graph API, no SDK dep) reusing the Ad Monitor's `META_ACCESS_TOKEN`/`META_AD_ACCOUNT_ID`
+    (act_1071149830652711). RETROACTIVE: every refresh re-fetches a daily series and OVERWRITES
+    stored days (never freeze; Meta attribution firms over ~72h); trailing 7d flagged provisional;
+    persisted to state/meta_spend_daily.json. Windows 7/30/60/90 + month. Resolved ad spend
+    (snapshot.ad_spend_resolved + hormozi._resolved_ad_spend): Meta live (primary, 30d) → Xero
+    Advertising (fallback) → None — replaces the stale $8,002 AD_SPEND_FALLBACK. CAC/LTGP:CAC/
+    payback/LTV:CAC repointed; NEW m8_roas = (closes×avg_contract)/spend, window-consistent,
+    Meta-labelled (Google = future hook at the single resolution point). meta_spend degraded =
+    severity:optional → pill stays GREEN (Meta absence ≠ refresh failure); failure shows last-known
+    + loud flag, never silent stale. Currency≠AUD flags (no silent FX). 211 tests pass (+7).
+    Rydel chose: set META_* on CFOagent (gated — token not in CFO env yet); agency-wide scope.
+    HARD STOP: set the two env vars on CFOagent, then live-verify (spot-check vs Ads Manager +
+    print CAC/LTGP:CAC/ROAS before/after). Report: dashboard/META_SPEND_REPORT.md.
