@@ -97,3 +97,29 @@ live verify.**
 ## Future hook — Google Ads
 `ad_spend_resolved` is the single resolution point. Adding Google = a `google_spend` engine + summing
 into the resolved value and re-labelling ratios "blended." No ratio code changes. Not faked today.
+
+---
+
+## Live verification (2026-06-24) — token set, pagination bug caught + fixed
+
+Rydel set `META_*` on CFOagent; the feature went live. First live read exposed a bug:
+7d/30d/60d spend = **$0** but 90d = $5,068 over only **25 days**. Root cause: Meta's Insights
+endpoint **paginates** (~25 days/page, oldest-first) and the single GET only read page 1 (the
+oldest days) — recent days were dropped, so recent windows silently read $0. Fixed with
+`_graph_get_all` (follows `paging.next`; partial-on-error returns rows + loud flag, never silent
+truncation).
+
+**Live numbers after the fix** (account `act_1071149830652711`, **currency AUD**, acct tz
+Australia/Sydney, fetched_days 25 → **90**):
+
+| Window | Live Meta spend |
+|---|---|
+| 7d | $2,652.05 |
+| 30d | **$9,038.89** |
+| 60d | $17,357.51 |
+| 90d | $23,628.18 |
+| month-to-date | $7,294.19 |
+
+**Before → after (ad spend feeding CAC):** $8,002 (stale Xero fallback) → **$9,038.89 (live Meta
+30d)**. CAC / LTGP:CAC / ROAS now recompute off this; the LTGP:CAC moves accordingly (the
+correction, not a bug). Final live before/after of the ratios is printed after the fix redeploys.

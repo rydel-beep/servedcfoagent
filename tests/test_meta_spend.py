@@ -53,15 +53,15 @@ def test_fetch_overwrites_retroactively(monkeypatch, tmp_path):
     today = meta_spend.today_sydney()
     d0 = str(today)
 
+    monkeypatch.setattr(meta_spend, "_graph_get",
+                        lambda p, q: ({"currency": "AUD", "timezone_name": "Australia/Sydney"}, None))
     calls = {"n": 0}
-    def fake_graph(path, params):
-        if path.endswith("/insights"):
-            calls["n"] += 1
-            spend = "100.00" if calls["n"] == 1 else "175.00"  # attribution firms up
-            return {"data": [{"date_start": d0, "date_stop": d0,
-                              "spend": spend, "impressions": "10", "clicks": "2"}]}, None
-        return {"currency": "AUD", "timezone_name": "Australia/Sydney", "name": "Served"}, None
-    monkeypatch.setattr(meta_spend, "_graph_get", fake_graph)
+    def fake_insights(path, params):
+        calls["n"] += 1
+        spend = "100.00" if calls["n"] == 1 else "175.00"  # attribution firms up
+        return [{"date_start": d0, "date_stop": d0, "spend": spend,
+                 "impressions": "10", "clicks": "2"}], None
+    monkeypatch.setattr(meta_spend, "_graph_get_all", fake_insights)
 
     r1 = meta_spend.pull_meta_spend()
     assert r1["meta_spend"]["windows"]["7d"]["spend"] == 100.0
@@ -69,7 +69,6 @@ def test_fetch_overwrites_retroactively(monkeypatch, tmp_path):
     # Re-fetched day OVERWRITES (not appends/freezes): 175, not 275.
     assert r2["meta_spend"]["windows"]["7d"]["spend"] == 175.0
     assert r2["meta_spend"]["currency"] == "AUD"
-    # The recent day is flagged provisional.
     assert any(d["provisional"] for d in r2["meta_spend"]["daily"])
 
 
@@ -79,15 +78,50 @@ def test_fetch_failure_keeps_last_good(monkeypatch, tmp_path):
     monkeypatch.setattr(meta_spend, "META_ACCESS_TOKEN", "tok")
     monkeypatch.setattr(meta_spend, "META_AD_ACCOUNT_ID", "123")
     today = meta_spend.today_sydney()
-    # Seed a good store, then a failing fetch.
     import json
     store_file.write_text(json.dumps({str(today): {"spend": 90.0, "impressions": 5, "clicks": 1}}))
-    monkeypatch.setattr(meta_spend, "_graph_get", lambda p, q: (None, "HTTP 500 code=2: transient"))
+    monkeypatch.setattr(meta_spend, "_graph_get", lambda p, q: (None, "acct err"))
+    monkeypatch.setattr(meta_spend, "_graph_get_all", lambda p, q: (None, "HTTP 500 code=2: transient"))
     r = meta_spend.pull_meta_spend()
     assert r["meta_spend"] is not None  # last-good shown
     assert r["meta_spend"]["fetch_ok"] is False
     assert r["meta_spend"]["windows"]["7d"]["spend"] == 90.0
     assert any("failed" in d["reason"].lower() for d in r["degraded"])
+
+
+def test_pagination_follows_cursor(monkeypatch):
+    # _graph_get_all MUST follow paging.next — a single page silently truncates the
+    # range (the live bug: page 1 = oldest 25 days, recent windows read $0).
+    pages = [
+        ({"data": [{"date_start": "2026-03-01", "spend": "10"}],
+          "paging": {"next": "https://graph.facebook.com/PAGE2"}}, None),
+        ({"data": [{"date_start": "2026-06-20", "spend": "20"}],
+          "paging": {"next": "https://graph.facebook.com/PAGE3"}}, None),
+        ({"data": [{"date_start": "2026-06-24", "spend": "30"}]}, None),  # no next → done
+    ]
+    seq = {"i": 0}
+    def fake_req(url, params):
+        out = pages[seq["i"]]; seq["i"] += 1; return out
+    monkeypatch.setattr(meta_spend, "_graph_request", fake_req)
+    rows, err = meta_spend._graph_get_all("act_1/insights", {"access_token": "t"})
+    assert err is None
+    assert len(rows) == 3
+    assert {r["date_start"] for r in rows} == {"2026-03-01", "2026-06-20", "2026-06-24"}
+
+
+def test_pagination_partial_on_error(monkeypatch):
+    # If a later page fails, return what we have + a loud error (no silent truncation).
+    pages = [
+        ({"data": [{"date_start": "2026-03-01", "spend": "10"}],
+          "paging": {"next": "https://graph.facebook.com/PAGE2"}}, None),
+        (None, "HTTP 500 code=2"),
+    ]
+    seq = {"i": 0}
+    def fake_req(url, params):
+        out = pages[seq["i"]]; seq["i"] += 1; return out
+    monkeypatch.setattr(meta_spend, "_graph_request", fake_req)
+    rows, err = meta_spend._graph_get_all("act_1/insights", {"access_token": "t"})
+    assert len(rows) == 1 and err is not None and "pagination" in err
 
 
 def test_roas_meta_primary_window_consistent():

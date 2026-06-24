@@ -366,3 +366,11 @@
     Rydel chose: set META_* on CFOagent (gated — token not in CFO env yet); agency-wide scope.
     HARD STOP: set the two env vars on CFOagent, then live-verify (spot-check vs Ads Manager +
     print CAC/LTGP:CAC/ROAS before/after). Report: dashboard/META_SPEND_REPORT.md.
+
+52. **Pagination bug caught at live-verify.** First deploy showed Meta 7/30/60d = $0 but 90d =
+    $5,068 over only 25 days. Cause: Meta Insights paginates (~25 days/page, OLDEST first); the
+    single GET grabbed page 1 only → recent days dropped → recent windows silently $0 (the exact
+    "silently-wrong" failure mode). Fix: `_graph_get_all` follows `paging.next` to the end (cap 12
+    pages); a mid-pagination failure returns partial rows + a loud degraded flag, never silent
+    truncation. Live re-verify: fetched_days 25→90; 7d $2,652 / 30d $9,038.89 / 60d $17,358 /
+    90d $23,628 (AUD, acct tz Australia/Sydney). 213 tests pass (+2 pagination).
