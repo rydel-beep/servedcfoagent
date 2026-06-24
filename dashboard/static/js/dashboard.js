@@ -2322,7 +2322,9 @@
     const container = $('#lead-roi-table');
     const note = $('#lead-roi-note');
     const bySrc = get(snap, 'sales.deep.lead_quality.by_source') || [];
-    const adSpend = get(snap, 'xero.xero_ad_spend');
+    // Resolved ad spend: Meta live (primary) → Xero Advertising (fallback).
+    const _ar = get(snap, 'ad_spend_resolved.value');
+    const adSpend = (_ar != null) ? _ar : get(snap, 'xero.xero_ad_spend');
 
     if (bySrc.length === 0) {
       container.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">No source data</div>';
@@ -2473,6 +2475,26 @@
 
     const cac = get(h, 'cac_loaded.value');
     setMetric('val-cac', fmt$(cac), statusClass(get(h, 'cac_loaded.status')));
+
+    // Ad spend (resolved: Meta live → Xero fallback) + source/freshness label.
+    const ar = snap.ad_spend_resolved || {};
+    setMetric('val-adspend', ar.value != null ? fmt$(ar.value) : '—');
+    const srcEl = document.getElementById('adspend-src');
+    if (srcEl) {
+      if (ar.source === 'meta_live') {
+        const ms = snap.meta_spend || {};
+        srcEl.textContent = '(Meta live' + (ms.last_fetched ? ', ' + timeAgo(ms.last_fetched) : '') +
+          (ms.fetch_ok === false ? ' · ⚠ last-known' : '') + ')';
+      } else if (ar.source === 'xero_advertising') {
+        srcEl.textContent = '(Xero line — Meta unavailable)';
+      } else {
+        srcEl.textContent = '(unavailable)';
+      }
+    }
+
+    // ROAS (Meta-based): new contracted revenue per $1 ad spend.
+    const roas = get(h, 'roas.value');
+    setMetric('val-roas', roas != null ? fmtX(roas) : '—', statusClass(get(h, 'roas.status')));
   }
 
   function setMetric(id, text, cls) {

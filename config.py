@@ -100,6 +100,22 @@ CASH_TAX_RESERVED = float(os.getenv("CASH_TAX_RESERVED", "20000"))
 # The snapshot flags the cash position as stale when this is > 7 days old.
 CASH_CONFIRMED_DATE = os.getenv("CASH_CONFIRMED_DATE", "2026-06-04")
 
+# ── Meta Marketing API (live ad spend, read-only) ────────────────────────────
+# Reuse the Ad Monitor's System User token (ads_read). Set on the CFO Railway
+# service; NEVER hardcode or put in client code. Absent → meta_spend degrades to
+# None and ad spend falls back to Xero (then AD_SPEND_FALLBACK).
+META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "")
+META_AD_ACCOUNT_ID = os.getenv("META_AD_ACCOUNT_ID", "")  # digits or act_<digits>
+META_API_VERSION = os.getenv("META_API_VERSION", "v21.0")
+# Retroactive backfill: Meta attribution firms up over ~72h. We re-fetch a daily
+# series every refresh (never freeze), and mark the trailing N days provisional.
+META_BACKFILL_DAYS = int(os.getenv("META_BACKFILL_DAYS", "7"))
+# Windows the dashboard's selector uses; ROAS/CAC default to the 30d window.
+META_SPEND_WINDOWS = [7, 30, 60, 90]
+META_PRIMARY_WINDOW = 30
+# Daily spend store (per-day granularity + last-fetched), survives restarts.
+META_SPEND_STORE = os.getenv("META_SPEND_STORE", "state/meta_spend_daily.json")
+
 # ── Anthropic chat model ─────────────────────────────────────────────────────
 # Single source of truth for the model every Claude-calling endpoint uses, so the
 # string can never drift across endpoints again. Override via the CHAT_MODEL env

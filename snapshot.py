@@ -33,6 +33,7 @@ from deficiency_analysis import build_deficiency_analysis
 from hiring_model import compute_hiring_analysis
 from opex_pull import get_monthly_burn
 from team_roster import pull_team_roster
+from meta_spend import pull_meta_spend
 import history_store
 
 logger = logging.getLogger(__name__)
@@ -183,6 +184,7 @@ def build_snapshot() -> dict:
         f_sales = pool.submit(pull_sales_analytics)
         f_health = pool.submit(pull_client_health)
         f_roster = pool.submit(pull_team_roster)
+        f_meta = pool.submit(pull_meta_spend)
 
     stripe_result = f_stripe.result()
     ghl_result = f_ghl.result()
@@ -193,6 +195,7 @@ def build_snapshot() -> dict:
     sales_result = f_sales.result()
     health_result = f_health.result()
     roster_result = f_roster.result()
+    meta_result = f_meta.result()
 
     # Merge degraded lists
     degraded = (
@@ -205,6 +208,7 @@ def build_snapshot() -> dict:
         + sales_result.get("degraded", [])
         + health_result.get("degraded", [])
         + roster_result.get("degraded", [])
+        + meta_result.get("degraded", [])
     )
 
     # Build costs block from actual sheet commission values
@@ -412,9 +416,38 @@ def build_snapshot() -> dict:
         "active_clients": derived_clients,
         "team_roster": roster_result,
         "monthly_burn": burn,
+        "meta_spend": meta_result.get("meta_spend"),
         "degraded": degraded if degraded else [],
         "ok": len(degraded) == 0,
     }
+
+    # ── Resolve the authoritative ad-spend for unit economics ─────────────────
+    # Meta live spend (primary) → Xero Advertising line (fallback) → None. One value,
+    # window-consistent with the funnel's trailing-30d, every consumer reads this.
+    meta_block = meta_result.get("meta_spend")
+    xero_ad = (xero_data or {}).get("xero_ad_spend")
+    if meta_block and meta_block.get("primary_spend") is not None:
+        snapshot["ad_spend_resolved"] = {
+            "value": meta_block["primary_spend"],
+            "source": "meta_live",
+            "window_days": meta_block.get("primary_window_days"),
+            "currency": meta_block.get("currency"),
+            "as_of": meta_block.get("last_fetched"),
+            "label": f"Meta spend (live, trailing {meta_block.get('primary_window_days')}d)",
+            "note": "Meta Marketing API — agency-wide. Excludes Google (future).",
+        }
+    elif xero_ad is not None:
+        snapshot["ad_spend_resolved"] = {
+            "value": xero_ad, "source": "xero_advertising", "window_days": 30,
+            "currency": "AUD", "as_of": None,
+            "label": "Ad spend (Xero Advertising line)",
+            "note": "Fallback — Meta live spend unavailable.",
+        }
+    else:
+        snapshot["ad_spend_resolved"] = {
+            "value": None, "source": None, "window_days": None, "currency": None,
+            "as_of": None, "label": "Ad spend unavailable", "note": None,
+        }
 
     # Hormozi metrics + verdict layer (computed AFTER snapshot assembled)
     hormozi = compute_hormozi(snapshot, true_team_cost=true_team_cost)
@@ -446,7 +479,7 @@ def build_snapshot() -> dict:
         xero_opex=xero_d.get("operating_expenses"),
         xero_net_profit=xero_d.get("net_profit"),
         true_team_cost=true_team_cost,
-        ad_spend=xero_d.get("xero_ad_spend"),
+        ad_spend=snapshot["ad_spend_resolved"].get("value"),
         current_mrr=current_mrr,
         total_burn=burn.get("total_recurring_burn"),
     )
@@ -573,6 +606,7 @@ def build_snapshot() -> dict:
             "sales": bool(sales_result.get("sales")),
             "client_health": bool(health_result.get("client_health")),
             "team_roster": bool(roster_result.get("roster")),
+            "meta_spend": bool(meta_result.get("meta_spend")),
         }.items()
     }
 
