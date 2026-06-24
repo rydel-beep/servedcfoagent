@@ -1,5 +1,38 @@
 # DECISIONS
 
+## 2026-06-24 — Missing recently-closed clients (Cally Hotel / Lucas) audit + fix
+
+1. **Root cause was a READ bug, not missing data.** Cally Hotel (Lucas Reid) is fully logged
+   in the tracker (Won, close 6/24, cash $3,355) and present in the snapshot's `active_clients`.
+   EDITH couldn't speak to it because `dashboard/chat.py._build_context_block` built the ACTIVE
+   CLIENTS block with keys that don't exist (`total_clients`/`total_mrr`/`avg_mrr` → None) and
+   omitted the per-client list. In voice/lean mode (no full-snapshot dump) that left EDITH with
+   zero client names. Fixed: real keys (`active_count`, `total_mrr_derived`) + a compact roster
+   that ships in both text and voice.
+
+2. **"Lucas" = Lucas Reid (Cally Hotel), per Rydel.** So both reported names are the same
+   fully-logged client → the failure was purely read bug + refresh lag, no source gap for the
+   named client. (Separately, Lucas *Doan* / The D's bar is a genuine Won-but-unlogged row —
+   correctly excluded from cash/close totals and surfaced via the existing `won_but_unlogged`
+   flag; needs source entry if signed.)
+
+3. **Brief's canonical gid `544609965` is the WRONG tab** — it's a 30-row instructions banner,
+   not data. The real 1,199-row data tab is named "Lead-to-Cash Tracker", which the code already
+   reads by name (full sheet, no row cutoff). Flagged, did NOT repoint sources (gated change).
+
+4. **Refresh tightened** (stale 4h→90min, interval 6h→2h, both env-overridable) so a same-day
+   close auto-surfaces within ≤2h; manual `POST /cfo/refresh` still forces an unconditional rebuild.
+
+5. **Stripe↔tracker reconciliation: consumer built, gated on an MCP tool that doesn't exist yet.**
+   The Stripe MCP is aggregate-only (no per-charge data — confirmed live). Built
+   `stripe_reconcile.py` (matches charges→tracker by email→name, PII-safe output) and wired it
+   into the snapshot, but it degrades to `pending_mcp_tool` with a clear flag rather than
+   fabricate. Chose NOT to edit the separate `served-stripe-mcp` repo (out of this repo's scope);
+   documented the exact tool to add (`get_stripe_recent_charges`). Activates automatically once shipped.
+
+6. **`fpdf` test failure is pre-existing/environmental** (missing local dep in `briefing_pdf.py`,
+   untouched), not a regression. 225/226 pass.
+
 ## 2026-06-16 — Chat 404 fix (Issue A)
 
 1. **Replacement model = `claude-sonnet-4-6`.** The dead string `claude-sonnet-4-20250514`
@@ -403,3 +436,11 @@
     reads + layers it, never wipes a set target (verified set→rebuild→rebuild survives). ONLY
     no-live-source values; live metrics never editable (out of scope). 225 tests pass (+10).
     Report: dashboard/TARGETS_BENCHMARKS_REPORT.md.
+
+55. **Targets settings panel.** Added the graphical panel (the follow-up from DECISIONS 54) as a
+    self-contained auth-gated page at /dashboard/targets (memory-page pattern — avoids the
+    UI-layering-entangled dashboard.html). Groups targets/benchmarks/goalposts/assumptions, each
+    row: current value (editable, unit-aware) + default + "set by you" tag + Save/Reset; plus Notes
+    and full change-history. Consumes the existing GET/set/reset API. Discoverable via the Cmd-K
+    palette ("Targets & benchmarks"). +3 dashboard tests (page renders, API get/set/reset, unauth
+    blocked). Report: dashboard/TARGETS_BENCHMARKS_REPORT.md.

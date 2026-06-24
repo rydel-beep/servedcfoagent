@@ -71,9 +71,11 @@ Returns `(reply, handled)`; `handled=False` falls through to EDITH normally.
 - Every change is appended to `history[]` (field, old→new, set_by, set_at, action) in the store.
 - **API (auth-gated):** `GET /api/targets` → all current values + history; `POST /api/targets/set`
   {key, value} (settings-panel direct set); `POST /api/targets/reset` {key} → default.
-- **Voice/text management:** "what targets have I set?" (list), "reset the X to default" (reset) —
-  both work through the same store. A graphical settings panel can consume `GET /api/targets`
-  (data + history are exposed); the inline "set by you" tags surface set goalposts in context today.
+- **Settings panel:** `/dashboard/targets` — a self-contained auth-gated page listing every target/
+  benchmark/goalpost/assumption with current value (editable, unit-aware) + default + "set by you"
+  tag + Save/Reset, plus Notes and the full change-history. Discoverable via the Cmd-K palette
+  ("Targets & benchmarks"). Consumes GET/POST `/dashboard/api/targets[/set|/reset]`.
+- **Voice/text management:** "what targets have I set?" / "reset the X to default" also work.
 
 ## Guardrails honoured
 - ONLY manual/no-live-source values; nothing live-sourced is editable (out of scope, untouched).
