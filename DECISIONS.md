@@ -312,3 +312,40 @@
     session search returns hits. NOTE: first test ran mid-rollout and self-poisoned the thread with
     "memory is broken" assistant turns; removed those test-only messages (restored conv #1 to 54),
     clean test passed. Tests 193 pass (+5). Excluded parallel UI-layering WIP from my commits.
+
+## 2026-06-24 — Data accuracy audit (wrong client count + always-red pill + cash/Stripe)
+
+46. **Root cause (Phase 0, verified live).** The Finance Google Sheet (`1n7OcGr…CTg`, holds the
+    Health tab = authoritative client roster) returns **HTTP 401** — its public/link sharing was
+    revoked after 2026-06-19. `pull_client_health()` → None → `derive_active_clients()` falls back
+    to the LTC tracker's Won deals (a *different*, still-public sheet) → headline becomes
+    "N clients (0 active, N awaiting Stripe)" where N = LTC Won-deal count (16, now 17). NOT a
+    Stripe miscount. Reproduced live: health=[] + 17 won → active_count 17, all pending.
+
+47. **Refresh pill always red = structural.** Pill fails on `ok===false || degraded>0`, and
+    `ok = len(degraded)==0`. `degraded[]` is never empty (Xero+GHL unconfigured, Stripe-MCP
+    limitations, benign data-quality flags) → pill could never be green even on a healthy day.
+
+48. **Rydel's decisions (gate after Phase 0):** (a) he re-shares the Finance sheet (no code change
+    needed to restore the roster); (b) approved BOTH code fixes — gate the active-clients fallback
+    so a down roster is labelled-stale not confidently-wrong, and fix the pill to distinguish core
+    failure (red) from optional/known-degraded (not red); (c) restore Xero live cash (gated — prove
+    closing-balance semantics via read-only Xero MCP first, then print agent-side OAuth restore
+    steps + HARD STOP).
+
+49. **Stripe pending $18k / cash $140,007 are manual constants**, not live reads. Stripe MCP has no
+    balance/pending tool (6 tools, none for balance). Cash override 20 days stale; agent-side Xero
+    unconfigured. Live Stripe MRR $57,241 on "1 active sub" = stripe-mcp service defect (external
+    repo), already flagged degraded; does not feed the client headline.
+
+## 2026-06-24b — Canonical-source reconciliation (contradiction surfaced)
+
+50. **gid 182553893 is the SALARY tab, not the client roster.** Rydel's follow-up work order named
+    Finance tab gid `182553893` as the authoritative active-clients roster and instructed a repoint.
+    Read live: it is the **SALARY tab** (header LAST/FIRST NAME, ROLE, DEPT, STATUS, SALARY AUD/PHP;
+    18 staff; TOTAL SALARY AUD $21,174). It has zero clients. The agent ALREADY reads it for burn
+    (`pull_salary_baseline` → $21,174). **Did NOT repoint active-clients to it** — that would count
+    staff. The real roster is the **Health tab gid 1407663952** (Client Name/Status/Package/…;
+    36 Active), which the code already uses. Per CLAUDE.md "the contradiction itself is the finding."
+    The "16" was the Health-tab 401 fallback (fixed last session, committed ed0cf11), NOT Stripe.
+    HARD STOP: confirm active-clients stays on the Health tab; no salary-tab repoint.

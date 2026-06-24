@@ -101,6 +101,7 @@ def derive_active_clients(
     won_deals: list[dict],
     stripe_mrr: float | None = None,
     stripe_active_subs: int | None = None,
+    health_source_ok: bool = True,
 ) -> dict:
     """
     Derive the active-client list from source data.
@@ -112,6 +113,13 @@ def derive_active_clients(
             Each has: business, close_date, contract, cash, offer, refund
         stripe_mrr: aggregate Stripe MRR for validation
         stripe_active_subs: Stripe active subscription count for validation
+        health_source_ok: whether the Health tab (authoritative roster) loaded. The Health
+            tab IS the roster — LTC Won deals only ever ADD new signings on top of it. When the
+            Health tab is unavailable (e.g. the Finance sheet 401s), this derivation collapses
+            to LTC-Won-only and would present a confidently wrong count ("N clients, 0 active,
+            N awaiting Stripe", N = Won-deal count). When False, the result is flagged
+            roster_source_down so callers refuse to display the bogus count and fall back to the
+            last-good roster, labelled stale. A labelled-stale number beats a confident-wrong one.
 
     Returns dict with active, discrepancies, counts, confidence.
     """
@@ -304,7 +312,7 @@ def derive_active_clients(
         if cd and (latest_close is None or str(cd) > str(latest_close)):
             latest_close = cd
 
-    return {
+    result = {
         "active": active,
         "discrepancies": discrepancies,
         "active_count": len(active),
@@ -320,3 +328,19 @@ def derive_active_clients(
         "confidence": confidence,
         "latest_close_date": str(latest_close) if latest_close else None,
     }
+
+    # Roster-source integrity gate. The Health tab is the authoritative roster; without it
+    # this count is unreliable (LTC-Won-only). Flag loudly so the snapshot layer substitutes
+    # the last-good roster and the UI shows a labelled-stale state instead of a wrong headline.
+    if not health_source_ok:
+        result["roster_source_down"] = True
+        result["confidence"] = "low"
+        result["roster_source_reason"] = (
+            "Health tab (authoritative client roster) unavailable — count derived from "
+            "LTC Won deals only and is NOT the real active-client roster. Showing last-good "
+            "count, labelled stale."
+        )
+    else:
+        result["roster_source_down"] = False
+
+    return result

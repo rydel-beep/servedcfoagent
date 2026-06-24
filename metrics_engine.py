@@ -103,10 +103,16 @@ def build_canonical_metrics(snapshot: dict) -> dict:
             ch.get("next_mrr"), "FLOW", "client_health.next_mrr",
             window="monthly", definition="Next-month recognized MRR (churn-adjusted).",
         ),
-        "active_client_count": m(
+        "active_client_count": (lambda v: (
+            {**v, "stale": True,
+             "stale_reason": ac.get("roster_source_reason")
+                 or "Health tab unavailable — roster not confirmed this refresh.",
+             "stale_since": ac.get("roster_stale_since")}
+            if ac.get("roster_source_down") else v
+        ))(m(
             ac.get("active_count"), "BALANCE", "active_clients.active_count",
             definition="Derived: Health tab + LTC Won cross-reference, churned excluded. The only count to display.",
-        ),
+        )),
         "stripe_cash_collected_30d": m(
             _get(stripe, "revenue", "current", "total_aud"), "FLOW",
             "stripe.revenue.current.total_aud", window="trailing 30d",
@@ -144,6 +150,58 @@ def build_canonical_metrics(snapshot: dict) -> dict:
             window="monthly",
             definition="Recognized MRR / active clients (RECOGNIZED tab). Use for unit economics.",
         ),
+    }
+
+
+# ── Refresh health classifier (pill green/red logic) ─────────────────────────
+# A snapshot ALWAYS carries degraded entries (Xero + GHL are unconfigured by
+# design, the Stripe MCP has permanent limitations, and bookkeeping data-quality
+# flags are normal). The old pill turned RED on `len(degraded) > 0`, so it could
+# never be green. This classifier separates a GENUINE core-source refresh failure
+# (a pull that should have worked didn't) from those known/optional degradations.
+#
+# RED  → at least one core-source failure (the refresh genuinely failed).
+# GREEN → no core failures (optional/known degradations are fine; surfaced as a
+#         muted count and in the Data Quality panel, never as a red pill).
+#
+# Entries are classified by: explicit `severity` on the entry ("core"/"optional"),
+# else membership in OPTIONAL_DEGRADED_METRICS, else default to CORE (a genuine,
+# unclassified failure must be visible — better a loud red than a silent miss).
+
+OPTIONAL_DEGRADED_METRICS = {
+    # Integrations unconfigured by design (absence is not a refresh failure).
+    "xero", "ghl", "ghl_pipeline",
+    # Stripe MCP permanent limitations (the MCP service, not this refresh).
+    "customer_count", "revenue_previous", "stripe_mrr_subs_mismatch",
+    # Bookkeeping / data-quality flags — source data quirks, not pull failures.
+    "closer_commission", "setter_commission", "won_but_unlogged",
+    "payroll_baseline_mismatch", "funnel_cross_check", "client_reconciliation",
+    "zero_mrr_active_clients", "cash_override_stale", "owner_pay_excess",
+    "integrity_check", "recognized_range_check", "recognized_row_count",
+    "recognized_footer_mismatch",
+}
+
+
+def classify_refresh_health(degraded: list[dict] | None) -> dict:
+    """Split degraded[] into genuine core failures vs known/optional degradations.
+
+    Returns {status: 'green'|'red', core_failures: [...], optional_degraded: [...]}.
+    """
+    core: list[str] = []
+    optional: list[str] = []
+    for d in (degraded or []):
+        metric = (d or {}).get("metric", "") or "unknown"
+        severity = (d or {}).get("severity")
+        if severity == "core":
+            core.append(metric)
+        elif severity == "optional" or metric in OPTIONAL_DEGRADED_METRICS:
+            optional.append(metric)
+        else:
+            core.append(metric)  # unclassified → treat as a genuine failure (visible)
+    return {
+        "status": "red" if core else "green",
+        "core_failures": core,
+        "optional_degraded": optional,
     }
 
 
