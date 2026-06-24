@@ -11,8 +11,9 @@ MRR, cash, ...) and Sheets write-back. There is no live source to mask and no
 refresh conflict — a snapshot rebuild just reads this store and layers it on top.
 
 Persistence: a JSON file on the Railway volume (/data), so a redeploy never wipes a
-set target. Confirmation state is per-token in memory (a confirm follows within
-seconds). All writes are auth-gated by the caller (dashboard auth).
+set target. Confirmation state ALSO lives in that file (keyed by auth token, TTL'd) —
+gunicorn runs multiple workers, so a "yes" may hit a different worker than the "set".
+All writes are auth-gated by the caller (dashboard auth).
 """
 from __future__ import annotations
 
@@ -79,10 +80,49 @@ def _load() -> dict:
                 if isinstance(d, dict):
                     d.setdefault("values", {})
                     d.setdefault("history", [])
+                    d.setdefault("pending", {})
                     return d
     except (OSError, json.JSONDecodeError) as e:
         logger.warning("manual_targets store unreadable: %s", e)
-    return {"values": {}, "history": []}
+    return {"values": {}, "history": [], "pending": {}}
+
+
+# Confirmation state lives in the STORE (a shared file), not in process memory —
+# gunicorn runs multiple workers, so a "yes" can land on a different worker than the
+# "set". A pending change older than this many seconds is treated as expired.
+_PENDING_TTL_SECONDS = 600
+
+
+def _get_pending(token: str):
+    store = _load()
+    pend = store.get("pending", {}).get(token)
+    if not pend:
+        return None
+    at = pend.get("at")
+    if at:
+        try:
+            from datetime import datetime
+            age = (now_sydney() - datetime.fromisoformat(at)).total_seconds()
+            if age > _PENDING_TTL_SECONDS:
+                _clear_pending(token)
+                return None
+        except (ValueError, TypeError):
+            pass
+    return pend
+
+
+def _set_pending(token: str, pend: dict) -> None:
+    store = _load()
+    pend = {**pend, "at": now_sydney().isoformat()}
+    store.setdefault("pending", {})[token] = pend
+    _save(store)
+
+
+def _clear_pending(token: str) -> None:
+    store = _load()
+    if token in store.get("pending", {}):
+        del store["pending"][token]
+        _save(store)
 
 
 def _save(store: dict) -> None:
@@ -184,7 +224,6 @@ def _parse_value(text: str, unit: str):
 
 # ── The update flow (set / query / reset / note) with confirmation ───────────
 
-_pending: dict[str, dict] = {}  # token → pending change awaiting confirmation
 
 
 def handle_turn(text: str, token: str, set_by: str = "Rydel") -> tuple[str | None, bool]:
@@ -200,11 +239,11 @@ def handle_turn(text: str, token: str, set_by: str = "Rydel") -> tuple[str | Non
     t = text.strip()
 
     # 1) Resolve a pending confirmation first.
-    pend = _pending.get(token)
+    pend = _get_pending(token)
     if pend:
         if _AFFIRM.match(t):
             _commit(pend, set_by)
-            _pending.pop(token, None)
+            _clear_pending(token)
             if pend["action"] == "reset":
                 return (f"Done — {pend['label']} reset to its default "
                         f"({fmt_value(pend['key'], pend['new'])}).", True)
@@ -213,7 +252,7 @@ def handle_turn(text: str, token: str, set_by: str = "Rydel") -> tuple[str | Non
             return (f"Done — {pend['label']} is now {fmt_value(pend['key'], pend['new'])} "
                     f"(was {fmt_value(pend['key'], pend['old'])}).", True)
         if _DENY.match(t):
-            _pending.pop(token, None)
+            _clear_pending(token)
             return (f"Okay — leaving {pend['label']} at "
                     f"{fmt_value(pend['key'], pend['old'])}.", True)
         # Neither yes nor no while a change is pending — re-ask once, stay handled
@@ -222,7 +261,7 @@ def handle_turn(text: str, token: str, set_by: str = "Rydel") -> tuple[str | Non
         if re.search(r"\b(target|benchmark|goal|set|note|reset)\b", t, re.I) is None:
             return (f"I still have {pend['label']} → {fmt_value(pend['key'], pend['new'])} "
                     f"waiting — yes to confirm, or no to cancel.", True)
-        _pending.pop(token, None)  # a fresh command supersedes
+        _clear_pending(token)  # a fresh command supersedes
 
     low = t.lower()
 
@@ -230,8 +269,8 @@ def handle_turn(text: str, token: str, set_by: str = "Rydel") -> tuple[str | Non
     mnote = re.match(r"\s*(?:add a |make a )?note(?:\s+on[\w \-]*)?\s*[:\-]\s*(.+)", t, re.I)
     if mnote:
         note_text = mnote.group(1).strip()
-        _pending[token] = {"action": "note", "key": "_notes", "label": "note",
-                           "old": None, "new": note_text}
+        _set_pending(token, {"action": "note", "key": "_notes", "label": "note",
+                           "old": None, "new": note_text})
         return (f"Add this note — “{note_text}”? (yes/no)", True)
 
     # 3) QUERY: "what's my LTGP:CAC target" / "what targets have I set"
@@ -255,8 +294,8 @@ def handle_turn(text: str, token: str, set_by: str = "Rydel") -> tuple[str | Non
             return ("Reset which one? Name the target or benchmark "
                     "(e.g. “reset the gross margin benchmark”).", True)
         old = get_resolved().get(key, DEFAULTS[key]["default"])
-        _pending[token] = {"action": "reset", "key": key, "label": DEFAULTS[key]["label"],
-                           "old": old, "new": DEFAULTS[key]["default"]}
+        _set_pending(token, {"action": "reset", "key": key, "label": DEFAULTS[key]["label"],
+                           "old": old, "new": DEFAULTS[key]["default"]})
         return (f"Reset {DEFAULTS[key]['label']} to default "
                 f"({fmt_value(key, DEFAULTS[key]['default'])})? (yes/no)", True)
 
@@ -273,8 +312,8 @@ def handle_turn(text: str, token: str, set_by: str = "Rydel") -> tuple[str | Non
         if val is None:
             return (f"What value for the {DEFAULTS[key]['label']}? I didn't catch a number.", True)
         old = get_resolved().get(key, DEFAULTS[key]["default"])
-        _pending[token] = {"action": "set", "key": key, "label": DEFAULTS[key]["label"],
-                           "old": old, "new": val}
+        _set_pending(token, {"action": "set", "key": key, "label": DEFAULTS[key]["label"],
+                           "old": old, "new": val})
         old_str = fmt_value(key, old) if old is not None else "unset"
         return (f"Setting {DEFAULTS[key]['label']} from {old_str} to {fmt_value(key, val)} "
                 f"— confirm? (yes/no)", True)
@@ -285,8 +324,8 @@ def handle_turn(text: str, token: str, set_by: str = "Rydel") -> tuple[str | Non
         val = _parse_value(t, "pct")
         if val is not None:
             old = get_resolved().get(key, DEFAULTS[key]["default"])
-            _pending[token] = {"action": "set", "key": key, "label": DEFAULTS[key]["label"],
-                               "old": old, "new": val}
+            _set_pending(token, {"action": "set", "key": key, "label": DEFAULTS[key]["label"],
+                               "old": old, "new": val})
             old_str = fmt_value(key, old) if old is not None else "unset"
             return (f"Setting {DEFAULTS[key]['label']} from {old_str} to {fmt_value(key, val)} "
                     f"— confirm? (yes/no)", True)
