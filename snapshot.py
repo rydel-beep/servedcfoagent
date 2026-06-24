@@ -464,8 +464,21 @@ def build_snapshot() -> dict:
     # Single resolved ad-spend (computed before burn) — the dashboard-wide source.
     snapshot["ad_spend_resolved"] = ad_spend_resolved
 
+    # Manual targets/benchmarks/goalposts (Rydel-set, no live source). Read on every
+    # rebuild and layered on top — a rebuild NEVER wipes a set target. compute_hormozi
+    # uses these so healthy/below-target classification reflects Rydel's goalposts.
+    try:
+        import manual_targets
+        snapshot["targets"] = manual_targets.get_all()
+        resolved_targets = manual_targets.get_resolved()
+    except Exception as e:
+        logger.error("manual_targets load failed (non-critical): %s", e)
+        snapshot["targets"] = {}
+        resolved_targets = {}
+
     # Hormozi metrics + verdict layer (computed AFTER snapshot assembled)
-    hormozi = compute_hormozi(snapshot, true_team_cost=true_team_cost)
+    hormozi = compute_hormozi(snapshot, true_team_cost=true_team_cost,
+                              targets=resolved_targets)
     verdicts = build_verdicts(snapshot, hormozi)
     snapshot["hormozi"] = hormozi
     snapshot["verdicts"] = verdicts

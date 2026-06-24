@@ -116,6 +116,15 @@ META_PRIMARY_WINDOW = 30
 # Daily spend store (per-day granularity + last-fetched), survives restarts.
 META_SPEND_STORE = os.getenv("META_SPEND_STORE", "state/meta_spend_daily.json")
 
+# ── Manual targets / benchmarks / goalposts (Rydel-set, no live source) ──────
+# Persisted on the Railway volume so a redeploy/rebuild never wipes a set target.
+# Falls back to ./state for local dev. These are MANUAL inputs — Rydel is the
+# source of truth; nothing here masks a live-sourced metric.
+if os.path.isdir("/data"):
+    MANUAL_TARGETS_STORE = os.getenv("MANUAL_TARGETS_STORE", "/data/manual_targets.json")
+else:
+    MANUAL_TARGETS_STORE = os.getenv("MANUAL_TARGETS_STORE", "state/manual_targets.json")
+
 # ── Anthropic chat model ─────────────────────────────────────────────────────
 # Single source of truth for the model every Claude-calling endpoint uses, so the
 # string can never drift across endpoints again. Override via the CHAT_MODEL env
