@@ -388,3 +388,18 @@
     KILLED AD_SPEND_FALLBACK ($8,002) — no Meta+no Xero → ad spend 0 + loud note, never a hardcode.
     Cross-section verified: all consumers = $9,041.62 for 30d. 215 tests pass (+3). Report:
     dashboard/AD_SPEND_CONSUMER_FIX_REPORT.md.
+
+## 2026-06-24e — Command-driven manual targets/benchmarks/goalposts (Category A)
+
+54. **Rydel sets manual goalposts by voice/text.** New manual_targets.py: JSON store on /data
+    (survives redeploy), DEFAULTS registry, get_resolved/get_all/history/set/reset. handle_turn()
+    parses set/query/reset/note from NL with a CONFIRMATION loop (echo parsed value → write only on
+    "yes"; ambiguous field → ask) — wired into /api/chat + /api/chat-stream BEFORE the model
+    (local-match short-circuit, music-control pattern). compute_hormozi takes targets=get_resolved()
+    so LTGP:CAC/ROAS/payback/gross-margin/op-eff healthy-line reflects Rydel's goalposts; snapshot
+    exposes snapshot["targets"] (value/default/is_user_set/set_by/set_at). Frontend KPI subs +
+    month-perf chips show the set value + "set by you" tag. API: GET /api/targets (+history),
+    POST /api/targets/set + /reset (auth-gated). MERGE-ON-REFRESH: store is separate; a rebuild
+    reads + layers it, never wipes a set target (verified set→rebuild→rebuild survives). ONLY
+    no-live-source values; live metrics never editable (out of scope). 225 tests pass (+10).
+    Report: dashboard/TARGETS_BENCHMARKS_REPORT.md.

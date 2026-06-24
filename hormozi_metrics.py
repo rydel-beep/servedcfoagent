@@ -47,8 +47,10 @@ def _metric(
 
 # ── M1: LTGP:CAC ──────────────────────────────────────────────────────────
 
-def m1_ltgp_cac(snap: dict) -> dict:
+def m1_ltgp_cac(snap: dict, targets: dict | None = None) -> dict:
     """Lifetime gross profit to fully-loaded customer acquisition cost."""
+    target = (targets or {}).get("ltgp_cac_target", 3.0)
+    watch_line = target * 2 / 3  # proportional watch band below the target
     avg_contract = _get(snap, "sales.deep.money.avg_contract")
     gross_margin_pct = _get(snap, "xero.gross_margin_pct")
     closes = _get(snap, "sales.funnel.closes")
@@ -89,7 +91,7 @@ def m1_ltgp_cac(snap: dict) -> dict:
 
     if avg_contract is None or gross_margin_pct is None or not closes:
         return _metric(
-            None, 3.0, "unknown", None,
+            None, target, "unknown", None,
             f"Cannot compute — missing: {', '.join(missing)}",
             confidence, inputs,
         )
@@ -102,7 +104,7 @@ def m1_ltgp_cac(snap: dict) -> dict:
 
     if cac_loaded is None or cac_loaded == 0:
         return _metric(
-            None, 3.0, "unknown", None,
+            None, target, "unknown", None,
             "CAC is zero — no acquisition costs recorded",
             confidence, inputs,
         )
@@ -111,26 +113,27 @@ def m1_ltgp_cac(snap: dict) -> dict:
     inputs["ltgp"] = round(ltgp, 2)
     inputs["cac_loaded"] = cac_loaded
     inputs["ratio"] = ratio
+    inputs["target"] = target
 
-    if ratio >= 3.0:
+    if ratio >= target:
         status = "healthy"
         read = (f"${ltgp:,.0f} gross profit per ${cac_loaded:,.0f} acquisition cost "
-                f"({ratio}×) — above the 3× line")
+                f"({ratio}×) — above the {target:g}× line")
         dollar_gap = None
-    elif ratio >= 2.0:
+    elif ratio >= watch_line:
         status = "watch"
-        gap = round((3.0 * cac_loaded - ltgp) * closes, 2)
+        gap = round((target * cac_loaded - ltgp) * closes, 2)
         read = (f"${ltgp:,.0f} gross profit per ${cac_loaded:,.0f} acquisition cost "
-                f"({ratio}×) — approaching the 3× floor; ${gap:,.0f}/mo gap to close")
+                f"({ratio}×) — approaching the {target:g}× floor; ${gap:,.0f}/mo gap to close")
         dollar_gap = gap
     else:
         status = "critical"
-        gap = round((3.0 * cac_loaded - ltgp) * closes, 2)
+        gap = round((target * cac_loaded - ltgp) * closes, 2)
         read = (f"${ltgp:,.0f} gross profit per ${cac_loaded:,.0f} acquisition cost "
-                f"({ratio}×) — below 3×; buying revenue that doesn't pay back fast enough")
+                f"({ratio}×) — below {target:g}×; buying revenue that doesn't pay back fast enough")
         dollar_gap = gap
 
-    return _metric(ratio, 3.0, status, dollar_gap, read, confidence, inputs)
+    return _metric(ratio, target, status, dollar_gap, read, confidence, inputs)
 
 
 # ── M2: Fully-loaded CAC breakdown ────────────────────────────────────────
@@ -220,8 +223,10 @@ def m2_cac_breakdown(snap: dict) -> dict:
 
 # ── M3: Payback period ────────────────────────────────────────────────────
 
-def m3_payback_days(snap: dict) -> dict:
+def m3_payback_days(snap: dict, targets: dict | None = None) -> dict:
     """How many days to recover CAC from cash collected."""
+    target = (targets or {}).get("payback_target", 30)
+    watch_line = target * 2
     avg_cash = _get(snap, "sales.deep.money.avg_cash")
     closes = _get(snap, "sales.funnel.closes")
     setter_comm = _get(snap, "costs.setter_commission") or 0
@@ -256,7 +261,7 @@ def m3_payback_days(snap: dict) -> dict:
 
     if not closes or not avg_cash or avg_cash == 0:
         return _metric(
-            None, 30, "unknown", None,
+            None, target, "unknown", None,
             f"Cannot compute — missing: {', '.join(missing)}",
             confidence, inputs,
         )
@@ -269,38 +274,42 @@ def m3_payback_days(snap: dict) -> dict:
     inputs["cac_loaded"] = round(cac_loaded, 2)
     inputs["daily_cash_per_close"] = round(daily_cash, 2)
     inputs["payback_days"] = payback
+    inputs["target"] = target
 
     if payback is None:
         return _metric(
-            None, 30, "unknown", None,
+            None, target, "unknown", None,
             "Daily cash per close is zero", confidence, inputs,
         )
 
-    if payback <= 30:
+    if payback <= target:
         status = "healthy"
         dollar_gap = None
         read = (f"New clients pay back in {payback:.0f} days — "
                 f"you can self-fund growth from cashflow")
-    elif payback <= 60:
+    elif payback <= watch_line:
         status = "watch"
-        exposure = round((payback - 30) * (closes / 30) * avg_cash, 2)
+        exposure = round((payback - target) * (closes / 30) * avg_cash, 2)
         dollar_gap = exposure
         read = (f"New clients pay back in {payback:.0f} days — "
-                f"{payback - 30:.0f} days of working-capital exposure per close")
+                f"{payback - target:.0f} days of working-capital exposure per close")
     else:
         status = "critical"
-        exposure = round((payback - 30) * (closes / 30) * avg_cash, 2)
+        exposure = round((payback - target) * (closes / 30) * avg_cash, 2)
         dollar_gap = exposure
         read = (f"New clients pay back in {payback:.0f} days — "
                 f"every close is a cash drain for {payback:.0f} days")
 
-    return _metric(payback, 30, status, dollar_gap, read, confidence, inputs)
+    return _metric(payback, target, status, dollar_gap, read, confidence, inputs)
 
 
 # ── M4: Gross margin ──────────────────────────────────────────────────────
 
-def m4_gross_margin(snap: dict) -> dict:
+def m4_gross_margin(snap: dict, targets: dict | None = None) -> dict:
     """Current gross margin vs agency benchmark."""
+    _t = targets or {}
+    benchmark = _t.get("gross_margin_floor", 45.0)
+    healthy_target = _t.get("gross_margin_target", 50.0)
     margin = _get(snap, "xero.gross_margin_pct")
     revenue = _get(snap, "xero.revenue")
     gross_profit = _get(snap, "xero.gross_profit")
@@ -310,13 +319,11 @@ def m4_gross_margin(snap: dict) -> dict:
 
     if margin is None:
         return _metric(
-            None, 45.0, "unknown", None,
+            None, benchmark, "unknown", None,
             "Gross margin unavailable — Xero not connected",
             confidence, inputs,
         )
 
-    benchmark = 45.0
-    healthy_target = 50.0
     if margin >= healthy_target:
         status = "healthy"
         dollar_gap = None
@@ -339,8 +346,10 @@ def m4_gross_margin(snap: dict) -> dict:
 
 # ── M5: Operating efficiency ──────────────────────────────────────────────
 
-def m5_op_efficiency(snap: dict, true_team_cost: float | None = None) -> dict:
+def m5_op_efficiency(snap: dict, true_team_cost: float | None = None,
+                     targets: dict | None = None) -> dict:
     """Revenue per fixed-cost dollar (true_team_cost as denominator)."""
+    op_target = (targets or {}).get("op_efficiency_target", 1.5)
     revenue = _get(snap, "xero.revenue")
     opex = _get(snap, "xero.operating_expenses")
     fixed_cost = true_team_cost
@@ -363,7 +372,7 @@ def m5_op_efficiency(snap: dict, true_team_cost: float | None = None) -> dict:
 
     if revenue is None or fixed_cost is None or fixed_cost == 0:
         return _metric(
-            None, 1.5, "unknown", None,
+            None, op_target, "unknown", None,
             f"Cannot compute — missing: {', '.join(missing)}",
             confidence, inputs,
         )
@@ -371,14 +380,16 @@ def m5_op_efficiency(snap: dict, true_team_cost: float | None = None) -> dict:
     ratio = round(revenue / fixed_cost, 2)
     inputs["ratio"] = ratio
     inputs["fixed_cost_used"] = fixed_cost
+    inputs["target"] = op_target
 
-    benchmark = 1.5
-    if ratio >= 1.5:
+    benchmark = op_target
+    watch_line = op_target * 2 / 3
+    if ratio >= benchmark:
         status = "healthy"
         dollar_gap = None
         read = (f"Every $1 of fixed cost generates ${ratio:.2f} of revenue — "
                 f"above the ${benchmark:.2f} target")
-    elif ratio >= 1.0:
+    elif ratio >= watch_line:
         status = "watch"
         needed_rev = round(benchmark * fixed_cost, 2)
         dollar_gap = round(needed_rev - revenue, 2)
@@ -483,12 +494,14 @@ def m7_ltv_to_cac(snap: dict) -> dict:
 
 # ── M8: ROAS (Meta-based) ─────────────────────────────────────────────────
 
-def m8_roas(snap: dict) -> dict:
+def m8_roas(snap: dict, targets: dict | None = None) -> dict:
     """Return on ad spend = new contracted revenue / ad spend, window-consistent.
 
     Defined as (closes × avg_contract) / ad_spend over the SAME window — i.e. new
     business won per $1 of ad spend. Labelled Meta-based (Google not yet included).
     """
+    target = (targets or {}).get("roas_target", 3.0)
+    watch_line = target / 2
     closes = _get(snap, "sales.funnel.closes")
     avg_contract = _get(snap, "sales.deep.money.avg_contract")
     ad_spend, ad_spend_source, ad_spend_window = _resolved_ad_spend(snap)
@@ -517,7 +530,7 @@ def m8_roas(snap: dict) -> dict:
 
     if not closes or avg_contract is None or not ad_spend or ad_spend == 0:
         return _metric(
-            None, 3.0, "unknown", None,
+            None, target, "unknown", None,
             f"Cannot compute — missing: {', '.join(missing) or 'ad_spend is zero'}",
             confidence, inputs,
         )
@@ -526,11 +539,12 @@ def m8_roas(snap: dict) -> dict:
     roas = round(new_revenue / ad_spend, 2)
     inputs["new_contracted_revenue"] = round(new_revenue, 2)
     inputs["roas"] = roas
+    inputs["target"] = target
     label = "Meta" if ad_spend_source == "meta_live" else "Xero-ad-line"
 
-    if roas >= 3.0:
+    if roas >= target:
         status = "healthy"
-    elif roas >= 1.5:
+    elif roas >= watch_line:
         status = "watch"
     else:
         status = "critical"
@@ -538,21 +552,28 @@ def m8_roas(snap: dict) -> dict:
             f"(${new_revenue:,.0f} won / ${ad_spend:,.0f} spend, {funnel_window}d) — "
             f"Meta-based; Google not yet included")
 
-    return _metric(roas, 3.0, status, None, read, confidence, inputs)
+    return _metric(roas, target, status, None, read, confidence, inputs)
 
 
 # ── Compute all metrics ───────────────────────────────────────────────────
 
-def compute_all(snap: dict, true_team_cost: float | None = None) -> dict:
-    """Return all Hormozi metrics keyed by name."""
+def compute_all(snap: dict, true_team_cost: float | None = None,
+                targets: dict | None = None) -> dict:
+    """Return all Hormozi metrics keyed by name.
+
+    targets: Rydel-set benchmark/goalpost overrides (manual_targets.get_resolved()).
+    Each metric uses targets.get(key, <documented default>) for its benchmark line,
+    so the healthy/below-target classification reflects Rydel's goalposts.
+    """
+    t = targets or {}
     return {
-        "ltgp_cac": m1_ltgp_cac(snap),
-        "ltgp_to_cac": m1_ltgp_cac(snap),  # alias for KPI strip
+        "ltgp_cac": m1_ltgp_cac(snap, t),
+        "ltgp_to_cac": m1_ltgp_cac(snap, t),  # alias for KPI strip
         "ltv_to_cac": m7_ltv_to_cac(snap),
         "cac_loaded": m2_cac_breakdown(snap),
-        "payback_days": m3_payback_days(snap),
-        "gross_margin": m4_gross_margin(snap),
-        "op_efficiency": m5_op_efficiency(snap, true_team_cost),
+        "payback_days": m3_payback_days(snap, t),
+        "gross_margin": m4_gross_margin(snap, t),
+        "op_efficiency": m5_op_efficiency(snap, true_team_cost, t),
         "sales_velocity": m6_sales_velocity(snap),
-        "roas": m8_roas(snap),
+        "roas": m8_roas(snap, t),
     }

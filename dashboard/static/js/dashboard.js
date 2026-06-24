@@ -70,6 +70,24 @@
     return '';
   }
 
+  // Manual targets/benchmarks: format the goalpost value + "set by you" tag.
+  function tgtFmt(unit, v) {
+    if (v == null) return 'unset';
+    if (unit === 'x') return v + '×';
+    if (unit === 'pct') return v + '%';
+    if (unit === 'days') return v + 'd';
+    if (unit === 'months') return v + 'mo';
+    if (unit === 'aud') return '$' + Number(v).toLocaleString('en-AU');
+    return String(v);
+  }
+  function benchLabel(snap, key, prefix) {
+    var t = (snap.targets || {})[key];
+    if (!t || t.value == null) return prefix + '—';
+    var s = prefix + tgtFmt(t.unit, t.value);
+    if (t.is_user_set) s += ' · set by you';
+    return s;
+  }
+
   function get(obj, path) {
     for (const p of path.split('.')) {
       if (!obj || typeof obj !== 'object') return null;
@@ -841,7 +859,7 @@
       marginEl.innerHTML = fmtPct(margin) + kpiArrow(margin, prevMargin);
       marginEl.className = 'kpi-value ' + statusClass(get(h, 'gross_margin.status'));
     }
-    $('#sub-margin').textContent = margin != null ? 'benchmark: 45%' : '';
+    $('#sub-margin').textContent = margin != null ? benchLabel(snap, 'gross_margin_floor', 'benchmark: ') : '';
 
     // LTGP:CAC
     const ltgpcac = get(h, 'ltgp_cac.value');
@@ -850,7 +868,7 @@
       ltgpEl.textContent = fmtX(ltgpcac);
       ltgpEl.className = 'kpi-value ' + statusClass(get(h, 'ltgp_cac.status'));
     }
-    $('#sub-ltgpcac').textContent = ltgpcac != null ? 'benchmark: 3.0\u00d7' : 'gross profit / acq cost';
+    $('#sub-ltgpcac').textContent = ltgpcac != null ? benchLabel(snap, 'ltgp_cac_target', 'benchmark: ') : 'gross profit / acq cost';
 
     // LTV:CAC
     const ltvcac = get(h, 'ltv_to_cac.value');
@@ -1393,11 +1411,11 @@
     const badge = $('#month-perf-badge');
 
     const metrics = [
-      { key: 'ltgp_cac', label: 'LTGP:CAC', fmt: v => fmtX(v), bench: '3.0\u00d7' },
-      { key: 'cac_loaded', label: 'CAC (Loaded)', fmt: v => fmt$(v), bench: null },
-      { key: 'payback_days', label: 'Payback', fmt: v => fmtDays(v), bench: '30d' },
-      { key: 'gross_margin', label: 'Gross Margin', fmt: v => fmtPct(v), bench: '45%' },
-      { key: 'ltv_to_cac', label: 'LTV:CAC', fmt: v => fmtX(v), bench: null },
+      { key: 'ltgp_cac', label: 'LTGP:CAC', fmt: v => fmtX(v), tkey: 'ltgp_cac_target' },
+      { key: 'cac_loaded', label: 'CAC (Loaded)', fmt: v => fmt$(v), tkey: null },
+      { key: 'payback_days', label: 'Payback', fmt: v => fmtDays(v), tkey: 'payback_target' },
+      { key: 'gross_margin', label: 'Gross Margin', fmt: v => fmtPct(v), tkey: 'gross_margin_floor' },
+      { key: 'ltv_to_cac', label: 'LTV:CAC', fmt: v => fmtX(v), tkey: null },
       { key: 'sales_velocity', label: 'Sales Velocity', fmt: v => v != null ? '$' + Math.round(v) + '/day' : '—', bench: null },
     ];
 
@@ -1411,7 +1429,7 @@
       const data = h[m.key] || {};
       const status = data.status || 'unknown';
       const value = data.value;
-      const benchmarkStr = m.bench ? `Benchmark: <strong>${m.bench}</strong>` : '';
+      const benchmarkStr = m.tkey ? `Benchmark: <strong>${benchLabel(snap, m.tkey, '')}</strong>` : '';
       const confidenceStr = data.confidence ? `Confidence: ${data.confidence}` : '';
 
       if (status !== 'unknown') totalWithStatus++;

@@ -479,6 +479,15 @@ def api_chat():
     # writing the new turn — this is what makes a refresh RESUME instead of restart.
     history = memory.resume_thread(conv_id, history)
     memory.record_turn(conv_id, "user", user_msg, channel=channel)
+
+    # Manual target/benchmark/note command? Handle locally (no model), with a
+    # confirmation loop. Only manual (no-live-source) values; auth already enforced.
+    import manual_targets
+    tgt_reply, handled = manual_targets.handle_turn(user_msg, token)
+    if handled:
+        memory.record_turn(conv_id, "assistant", tgt_reply, channel=channel, intent="command")
+        return jsonify({"reply": tgt_reply, "error": None, "intent": "command"})
+
     recall = memory.build_recall_context(user_msg, conversation_id=conv_id)
 
     result = chat_fn(history, snapshot_json, token, voice=voice, memory_block=recall["block"])
@@ -521,10 +530,23 @@ def api_chat_stream():
     # Rebuild the thread from the DB on refresh BEFORE writing the new turn (resume, not restart).
     history = memory.resume_thread(conv_id, history)
     memory.record_turn(conv_id, "user", user_msg, channel=channel)
-    recall = memory.build_recall_context(user_msg, conversation_id=conv_id)
 
     def sse(event: str, payload) -> str:
         return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
+
+    # Manual target/benchmark/note command? Short-circuit the model: emit the canned
+    # reply as a single done event (the client plays/renders it the same way).
+    import manual_targets
+    tgt_reply, handled = manual_targets.handle_turn(user_msg, token)
+    if handled:
+        memory.record_turn(conv_id, "assistant", tgt_reply, channel=channel, intent="command")
+        def gen_cmd():
+            yield sse("meta", {"intent": "command", "context_tokens": 0})
+            yield sse("done", {"reply": tgt_reply})
+        return Response(gen_cmd(), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+    recall = memory.build_recall_context(user_msg, conversation_id=conv_id)
 
     @stream_with_context
     def generate():
@@ -559,3 +581,42 @@ def api_chat_stream():
             "Connection": "keep-alive",
         },
     )
+
+
+# ── Manual targets / benchmarks / goalposts (Rydel-set, auth-gated) ──────────
+
+@bp.route("/api/targets", methods=["GET"])
+@require_auth
+def api_targets():
+    """Current manual targets/benchmarks + recent change history (settings panel)."""
+    import manual_targets
+    return jsonify({"targets": manual_targets.get_all(), "history": manual_targets.history()})
+
+
+@bp.route("/api/targets/set", methods=["POST"])
+@require_auth
+def api_targets_set():
+    """Direct set from the settings panel (no confirmation — explicit UI action)."""
+    import manual_targets
+    data = request.get_json(silent=True) or {}
+    key = data.get("key")
+    value = data.get("value")
+    if key not in manual_targets.DEFAULTS:
+        return jsonify({"error": f"Unknown target '{key}'"}), 400
+    try:
+        rec = manual_targets.set_value(key, float(value))
+    except (TypeError, ValueError):
+        return jsonify({"error": "value must be numeric"}), 400
+    return jsonify({"ok": True, "target": rec})
+
+
+@bp.route("/api/targets/reset", methods=["POST"])
+@require_auth
+def api_targets_reset():
+    """Reset a target to its documented default."""
+    import manual_targets
+    data = request.get_json(silent=True) or {}
+    key = data.get("key")
+    if key not in manual_targets.DEFAULTS:
+        return jsonify({"error": f"Unknown target '{key}'"}), 400
+    return jsonify({"ok": True, "target": manual_targets.reset_value(key)})
