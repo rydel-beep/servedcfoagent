@@ -2327,18 +2327,35 @@
 
   // ── Funnel ───────────────────────────────────────────────
   function renderFunnel(snap) {
-    // Use window data if non-30d selected
-    const windows = get(snap, 'sales.windows') || [];
-    const windowData = currentWindow !== 30 ? windows.find(w => w.window_days === currentWindow) : null;
-    const f = windowData || get(snap, 'sales.funnel') || {};
     const funnelLabel = $('#funnel-window-label');
-    if (funnelLabel) funnelLabel.textContent = currentWindow + 'd';
-    const stages = [
-      { label: 'Leads', count: windowData ? f.leads : f.leads_in, pct: null },
-      { label: 'Sets', count: windowData ? f.sets : f.sets, pct: windowData ? f.lead_to_set_pct : f.lead_to_set_pct },
-      { label: 'Shows', count: windowData ? f.shows : f.shows, pct: windowData ? f.set_to_show_pct : f.set_to_show_pct },
-      { label: 'Closes', count: windowData ? f.closes : f.closes, pct: windowData ? f.show_to_close_pct : f.show_to_close_pct },
-    ];
+    // Prefer the range engine's COHORT funnel (by lead Input Date) for the selected window —
+    // same numbers as the cohort line in the month-perf card and EDITH's "lead flow" answer.
+    // Falls back to the snapshot funnel until the engine fetch resolves.
+    const cohort = rangeEcon && rangeEcon.cohort && rangeEcon.cohort.leads_in ? rangeEcon.cohort : null;
+    let stages, leadToClose, closesCount, leadsCount;
+    if (cohort) {
+      if (funnelLabel) funnelLabel.textContent = currentWindow + 'd · cohort (by lead Input Date)';
+      stages = [
+        { label: 'Leads', count: cohort.leads_in, pct: null },
+        { label: 'Sets', count: cohort.sets, pct: cohort.lead_to_set_pct },
+        { label: 'Shows', count: cohort.shows, pct: cohort.set_to_show_pct },
+        { label: 'Closes', count: cohort.closes, pct: cohort.show_to_close_pct },
+      ];
+      leadToClose = cohort.lead_to_close_pct; closesCount = cohort.closes; leadsCount = cohort.leads_in;
+    } else {
+      // Use window data if non-30d selected
+      const windows = get(snap, 'sales.windows') || [];
+      const windowData = currentWindow !== 30 ? windows.find(w => w.window_days === currentWindow) : null;
+      const f = windowData || get(snap, 'sales.funnel') || {};
+      if (funnelLabel) funnelLabel.textContent = currentWindow + 'd · cohort (by lead Input Date)';
+      stages = [
+        { label: 'Leads', count: windowData ? f.leads : f.leads_in, pct: null },
+        { label: 'Sets', count: f.sets, pct: f.lead_to_set_pct },
+        { label: 'Shows', count: f.shows, pct: f.set_to_show_pct },
+        { label: 'Closes', count: f.closes, pct: f.show_to_close_pct },
+      ];
+      leadToClose = f.lead_to_close_pct; closesCount = f.closes; leadsCount = f.leads_in;
+    }
     const maxCount = Math.max(...stages.map(s => s.count || 0), 1);
 
     const container = $('#funnel-bars');
@@ -2361,8 +2378,9 @@
 
     const stats = $('#funnel-stats');
     const parts = [];
-    if (f.lead_to_close_pct != null) parts.push(`<span class="funnel-stat">Lead-to-close: <strong>${f.lead_to_close_pct}%</strong></span>`);
-    if (f.closes != null && f.leads_in) parts.push(`<span class="funnel-stat">${f.closes}/${f.leads_in} converted</span>`);
+    if (leadToClose != null) parts.push(`<span class="funnel-stat">Lead-to-close: <strong>${leadToClose}%</strong></span>`);
+    if (closesCount != null && leadsCount) parts.push(`<span class="funnel-stat">${closesCount}/${leadsCount} converted</span>`);
+    parts.push(`<span class="funnel-stat" style="opacity:.7">cohort view — of this window's NEW leads (≠ deals closed in-window)</span>`);
     stats.innerHTML = parts.join('');
   }
 
@@ -2642,10 +2660,13 @@
     const note = document.getElementById('econ-window-label');
     if (note) note.textContent = win + (c.closes != null ? ' · ' + c.closes + ' closes' : '') + ' · mirror';
     (res.caveats || []).length && console.info('unit-economics caveats:', res.caveats);
-    // Re-render the month-performance card so its LTGP:CAC / CAC / LTV:CAC use this window
-    // too (it reads rangeEcon now). Guard against missing snap; no recursion (it doesn't
-    // call applyRangeEconomics).
-    if (typeof currentSnap !== 'undefined' && currentSnap) renderMonthPerformance(currentSnap);
+    // Re-render the month-performance card AND the funnel so they use this window's engine
+    // data (both read rangeEcon now). Guard against missing snap; no recursion (neither
+    // calls applyRangeEconomics).
+    if (typeof currentSnap !== 'undefined' && currentSnap) {
+      renderMonthPerformance(currentSnap);
+      renderFunnel(currentSnap);
+    }
   }
 
   // ── Tables ───────────────────────────────────────────────
