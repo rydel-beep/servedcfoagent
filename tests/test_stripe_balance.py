@@ -84,3 +84,24 @@ def test_balance_read_failure_degrades(monkeypatch):
     r = stripe_balance.read_stripe_money_states()
     assert r["stripe_money"] is None
     assert any("balance" in d["reason"].lower() for d in r["degraded"])
+
+
+def test_total_available_consistency_with_three_states():
+    """check_consistency must accept total_available = bank + available + incoming + in_transit
+    (the live-key case that previously crashed the build because the old invariant used 2 terms)."""
+    from metrics_engine import check_consistency
+    cp = {
+        "cash_in_bank": 140007.29,
+        "stripe_available": 0.0,
+        "stripe_incoming": 13713.24,
+        "stripe_in_transit_to_bank": 11524.95,
+        "tax_reserved": 20000, "aggressive_deployable": 120007.29,
+        "delivery_reserve": 0, "conservative_deployable": 120007.29,
+        "total_available": round(140007.29 + 0.0 + 13713.24 + 11524.95, 2),
+        "total_monthly_burn": 30000, "runway_months": 4.7,
+    }
+    errs = check_consistency({"cash_position": cp})
+    assert not any("total_available" in e for e in errs), errs
+    # A wrong total IS caught.
+    cp_bad = {**cp, "total_available": 999999.0}
+    assert any("total_available" in e for e in check_consistency({"cash_position": cp_bad}))
