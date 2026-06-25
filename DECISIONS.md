@@ -497,3 +497,17 @@
     /dashboard/data-sources panel + "what's plugged in/is your data current" voice query (last-checked
     vs last-changed, status, errors — loud on failure). Read-only; graceful Postgres-down. 246 tests
     pass (+8). Report: dashboard/SHEET_MIRROR_REPORT.md.
+
+## 2026-06-25 — Range-aware unit economics + mirror to all 7 tabs
+
+60. **Mirror expanded to all 7 tabs** (Setter Deep-Dive, RECOGNIZED, SALARY added). finance_sheets_pull
+    ._fetch_tab + forward_mrr read the mirror first now too.
+61. **Range-aware unit economics** (range_unit_economics.py): LTGP:CAC / ROAS / LTV:CAC for ANY range,
+    window-consistent BY CONSTRUCTION (one range drives every input). Rydel-confirmed: attribution =
+    SPEND-IN-WINDOW; ROAS revenue = CASH COLLECTED (was contracted); LTV = full contract value (no
+    margin, current). Closes/contract/cash/closer windowed by Close Date (LTC Tracker, by header);
+    setter by payout date (log); ad spend by spend date (meta_spend.spend_in_range, store-or-live).
+    NL range parsing (in May / last 3 weeks / between X&Y / this-vs-last-month / Q1 / YTD) wired into
+    the chat router AFTER targets. Driver decomposition in every reply + comparisons attribute the Δ.
+    GET /dashboard/api/unit-economics (dashboard + voice share one engine → no drift). Zero/small
+    windows flagged, no div-by-zero. 252 tests pass (+6). Report: dashboard/RANGE_UNIT_ECONOMICS_REPORT.md.

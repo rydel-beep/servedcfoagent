@@ -497,6 +497,15 @@ def api_chat():
         memory.record_turn(conv_id, "assistant", tgt_reply, channel=channel, intent="command")
         return jsonify({"reply": tgt_reply, "error": None, "intent": "command"})
 
+    # Range-aware unit economics ("LTGP:CAC in May", "ROAS last 3 weeks", "this month vs last") —
+    # computed deterministically, window-consistent. Runs after targets so "set the LTGP:CAC target"
+    # still routes to targets.
+    import range_unit_economics
+    ue_reply, ue_handled = range_unit_economics.handle_unit_econ_command(user_msg)
+    if ue_handled:
+        memory.record_turn(conv_id, "assistant", ue_reply, channel=channel, intent="command")
+        return jsonify({"reply": ue_reply, "error": None, "intent": "command"})
+
     recall = memory.build_recall_context(user_msg, conversation_id=conv_id)
 
     result = chat_fn(history, snapshot_json, token, voice=voice, memory_block=recall["block"])
@@ -554,6 +563,11 @@ def api_chat_stream():
             break
     if _cmd_reply is None:
         _r, _handled = manual_targets.handle_turn(user_msg, token)
+        if _handled:
+            _cmd_reply = _r
+    if _cmd_reply is None:
+        import range_unit_economics
+        _r, _handled = range_unit_economics.handle_unit_econ_command(user_msg)
         if _handled:
             _cmd_reply = _r
     if _cmd_reply is not None:
@@ -680,5 +694,28 @@ def api_resync():
         logger.error("resync snapshot rebuild failed: %s", e)
         res["snapshot_error"] = str(e)[:160]
     resp = jsonify({"ok": True, "sync": res})
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@bp.route("/api/unit-economics", methods=["GET"])
+@require_auth
+def api_unit_economics():
+    """Range-aware LTGP:CAC / ROAS / LTV:CAC, window-consistent. ?start=&end= (ISO) or ?days=N.
+
+    The dashboard window buttons and EDITH's spoken answers route through this same engine,
+    so they never drift for the same window.
+    """
+    import range_unit_economics
+    from helpers import today_sydney
+    start = request.args.get("start")
+    end = request.args.get("end")
+    if not (start and end):
+        from datetime import timedelta
+        days = request.args.get("days", 30, type=int)
+        today = today_sydney()
+        start, end = str(today - timedelta(days=days - 1)), str(today)
+    res = range_unit_economics.unit_economics(start, end)
+    resp = jsonify(res)
     resp.headers["Cache-Control"] = "no-store"
     return resp
