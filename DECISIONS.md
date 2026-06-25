@@ -461,3 +461,10 @@
     non-AUD flagged. Degrades to the labelled manual $18k when no key. 233 tests pass (+4). Report:
     dashboard/STRIPE_MONEY_STATE_REPORT.md. NOTE: snapshot.py also carries a PARALLEL session's
     uncommitted stripe_reconcile WIP — committed only my hunks (checkout-reapply).
+
+57. **Hotfix — total_available consistency for 3 states.** First Stripe-states deploy 500'd
+    /cfo/refresh once the key went live: cash_position.total_available = bank + available + incoming
+    + in-transit, but check_consistency still asserted bank + incoming (2-term). No-key tests passed
+    (extra terms 0). Fixed the invariant to the 4-term sum + regression test (19e94a2). Live-verified:
+    available -$107 (~$0), incoming $13,713.24 (exact match to Rydel's Stripe), in-transit $11,524.95;
+    $18k guess gone; pill green.
