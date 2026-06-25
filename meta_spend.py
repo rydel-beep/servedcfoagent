@@ -151,6 +151,64 @@ def _f(v) -> float:
         return 0.0
 
 
+def spend_in_range(start: str, end: str) -> dict:
+    """Meta ad spend for an arbitrary [start, end] window (ISO dates, inclusive).
+
+    Uses the persisted daily store when it fully covers the range (fast); otherwise
+    fetches that exact range live from Insights (one call). For the range-aware engine.
+    Returns {spend, days_covered, source, degraded}.
+    """
+    import datetime as _dt
+    degraded = []
+    try:
+        s = _dt.date.fromisoformat(start)
+        e = _dt.date.fromisoformat(end)
+    except (TypeError, ValueError):
+        return {"spend": None, "source": None,
+                "degraded": [{"metric": "meta_spend_range", "reason": "bad dates", "severity": "optional"}]}
+
+    store = _load_store()
+    dates = []
+    for ds in store:
+        try:
+            dates.append(_dt.date.fromisoformat(ds))
+        except ValueError:
+            pass
+    covers = dates and min(dates) <= s and max(dates) >= e
+    if covers:
+        total = 0.0
+        n = 0
+        for ds, row in store.items():
+            try:
+                d = _dt.date.fromisoformat(ds)
+            except ValueError:
+                continue
+            if s <= d <= e:
+                total += _f(row.get("spend"))
+                n += 1
+        return {"spend": round(total, 2), "days_covered": n, "source": "meta_daily_store",
+                "degraded": degraded}
+
+    # Out of the store's coverage → fetch this exact range live (one Insights call).
+    if not META_ACCESS_TOKEN or not META_AD_ACCOUNT_ID:
+        return {"spend": None, "source": None,
+                "degraded": [{"metric": "meta_spend_range",
+                              "reason": "range outside daily store and no Meta key", "severity": "optional"}]}
+    acct = _account_id()
+    rows, err = _graph_get_all(f"{acct}/insights", {
+        "fields": "spend", "level": "account", "time_increment": 1, "limit": 90,
+        "time_range": json.dumps({"since": start, "until": end}),
+        "access_token": META_ACCESS_TOKEN,
+    })
+    if rows is None:
+        return {"spend": None, "source": "meta_live_range",
+                "degraded": [{"metric": "meta_spend_range",
+                              "reason": f"live range fetch failed ({err})", "severity": "optional"}]}
+    total = sum(_f(r.get("spend")) for r in rows)
+    return {"spend": round(total, 2), "days_covered": len(rows), "source": "meta_live_range",
+            "degraded": degraded}
+
+
 def _window_sum(store: dict, today, days: int) -> dict:
     """Sum the daily store over the trailing `days` calendar days ending today (inclusive)."""
     start = today - timedelta(days=days - 1)
