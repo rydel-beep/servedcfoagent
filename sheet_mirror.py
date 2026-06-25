@@ -51,9 +51,15 @@ MIRRORED_TABS: dict[str, dict] = {
                           "feeds": "computed funnel cells, setter scorecard payout"},
     "setter_payout_log": {"book": SHEET_CONFIG["sheet_id"],         "tab": "SETTER PAYOUT LOG",
                           "feeds": "setter commission ($50/set + 5% cash) for loaded CAC"},
+    "setter_deep_dive":  {"book": SHEET_CONFIG["sheet_id"],         "tab": "Setter Deep-Dive",
+                          "feeds": "setter activity (dials, speed-to-lead)"},
     "health":            {"book": FINANCE_SHEET_CONFIG["sheet_id"], "tab": "Health (roster)",
                           "gid": 1407663952,
                           "feeds": "active-client roster, current/next MRR, churn risk"},
+    "recognized":        {"book": FINANCE_SHEET_CONFIG["sheet_id"], "tab": "RECOGNIZED",
+                          "feeds": "recognized revenue, forward-MRR (churn-adjusted)"},
+    "salary":            {"book": FINANCE_SHEET_CONFIG["sheet_id"], "tab": "SALARY",
+                          "feeds": "payroll baseline, team_model, true_team_cost, burn"},
 }
 
 _sync_lock = threading.Lock()      # background loop + manual resync must not collide
