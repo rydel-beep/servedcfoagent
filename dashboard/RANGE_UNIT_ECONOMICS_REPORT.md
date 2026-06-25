@@ -154,3 +154,23 @@ converting* — and must NOT be the CAC denominator (mixing a 7-day cohort with 
 would be window-inconsistent — exactly the bug we removed). For unit economics, deals **closed in the
 window by Close Date** (8 for trailing-30d) is the correct, window-consistent denominator. No change
 needed — the reconciled engine is right; the Scorecard stays as the funnel-health view it is.
+
+---
+
+## Dashboard tile fix + cohort-conversion view (follow-up)
+
+**Dashboard fix:** the Month-Performance card (and KPI strip) read `snap.hormozi` directly and had no
+per-value element IDs, so the post-render tile override missed them — the card kept showing the old
+LTGP:CAC. Fixed by caching the engine result (`rangeEcon`) and having `renderMonthPerformance` read
+the economics metrics (LTGP:CAC / CAC / LTV:CAC) from it; `applyRangeEconomics` re-renders the card
+after each window change. Now every economics display (tiles, KPI strip, month-perf card) shows the
+SAME windowed number as EDITH's voice.
+
+**Cohort-conversion view (surfaced alongside the money view):** `cohort_funnel(w0,w1)` computes, for
+leads whose **Input Date** falls in the window: leads-in → set → showed → closed, plus lead→close %.
+This reproduces the Team Scorecard's lead→close basis exactly (its 27-lead week = 14.8% = 4/27).
+Exposed in `unit_economics()["cohort"]`, the `/api/unit-economics` response, a voice command
+("how's this month's lead flow converting?" → "73 leads in → … → 4 closed, lead→close 5.5%"), and a
+labelled line in the Month-Performance card — explicitly distinct from the close-date money view.
+Two lenses, clearly separated: **cohort = is this window's lead flow converting** (by Input Date);
+**money = what closed this window and what it cost** (by Close Date). 254 tests pass (+2).
