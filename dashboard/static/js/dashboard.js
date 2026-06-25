@@ -358,7 +358,8 @@
     html += '<div class="brief-stat-sub" style="color:' + runwayColor + ';">' +
       (runway != null ? runway + ' months runway' : 'runway unknown') +
       ' at ' + fmt$(cp.total_monthly_burn) + '/mo burn' +
-      (cp.stripe_incoming ? ' &middot; +' + fmt$(cp.stripe_incoming) + ' in transit' : '') + '</div>';
+      (cp.stripe_in_transit_to_bank ? ' &middot; +' + fmt$(cp.stripe_in_transit_to_bank) + ' in transit to bank'
+        : (cp.stripe_incoming ? ' &middot; +' + fmt$(cp.stripe_incoming) + ' Stripe incoming' : '')) + '</div>';
     html += '</div>';
 
     var delta = ch.mrr_delta;
@@ -1032,12 +1033,31 @@
       </div>`;
     }
 
-    // Stripe incoming
+    // Stripe money states — three distinct states (live read when a key is present).
+    const smLive = cashPos.stripe_money_source === 'stripe_live';
+    const smTag = smLive ? '' : ' (manual est.)';
+    // 1. Settled in Stripe, payable now
+    if (cashPos.stripe_available != null) {
+      html += `<div class="cash-card">
+        <div class="cash-card-label">Stripe Available</div>
+        <div class="cash-card-value" style="color:var(--accent)">${fmt$(cashPos.stripe_available)}</div>
+        <div class="cash-card-sub">settled in Stripe, payable now</div>
+      </div>`;
+    }
+    // 2. Collected, settling into Stripe (the upcoming payout)
     if (cashPos.stripe_incoming != null && cashPos.stripe_incoming > 0) {
       html += `<div class="cash-card">
-        <div class="cash-card-label">Stripe Incoming</div>
+        <div class="cash-card-label">Stripe Incoming${smTag}</div>
         <div class="cash-card-value" style="color:var(--accent)">${fmt$(cashPos.stripe_incoming)}</div>
-        <div class="cash-card-sub">pending payout</div>
+        <div class="cash-card-sub">${smLive ? 'collected, settling into Stripe' : 'manual estimate — add a Stripe key'}</div>
+      </div>`;
+    }
+    // 3. Left Stripe, in transit to CommBank (1-3 day settle lag)
+    if (cashPos.stripe_in_transit_to_bank != null && cashPos.stripe_in_transit_to_bank > 0) {
+      html += `<div class="cash-card">
+        <div class="cash-card-label">In Transit to Bank</div>
+        <div class="cash-card-value" style="color:var(--accent)">${fmt$(cashPos.stripe_in_transit_to_bank)}</div>
+        <div class="cash-card-sub">paid out, not yet in CommBank</div>
       </div>`;
     }
 
