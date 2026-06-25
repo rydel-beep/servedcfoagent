@@ -101,3 +101,27 @@ LTV:CAC (contract value), LTGP (contract × margin); "as of" from the mirror.
 **Tests:** 252 pass (+6: range parsing, window-consistent May math, zero/spend-no-close edges,
 cash-ROAS basis, command handler). Acceptance gate (voice "LTGP:CAC in May" → correct
 window-consistent figure + driver explanation) verified on the deployed app.
+
+---
+
+## Closes reconciliation + dashboard wired through the engine (follow-up)
+
+**The discrepancy (diagnosed):** the range engine first counted a "close" as any row with a Close
+Date + contract value (loose) — 8 in trailing-30d. The dashboard's CAC tile used the **Team
+Scorecard's pre-computed `closes` cell** (4, opaque formula, fixed window). Two methodologies → two
+CACs ($2.2k vs $4.4k) for the same window.
+
+**The fix (one canonical methodology):** a close = **Call Outcome (col 23) == "won"** with a Close
+Date in the window — the same definition the velocity calc already uses. Transparent, per-deal, and
+range-flexible (the Scorecard cell can't be re-windowed). The loose `contract>0 OR offer` test is
+gone. `_ltc_col_map` now resolves the Call Outcome column by header; `_ltc_in_window` requires
+`outcome == "won"`. (The Scorecard's `closes` cell remains for the legacy funnel display, but it is
+no longer what drives unit economics.)
+
+**Dashboard wired through the engine (Phase 4 complete):** the CAC / LTGP:CAC / LTV:CAC / ROAS tiles
+now call `GET /dashboard/api/unit-economics?days=<selected window>` (`applyRangeEconomics`) on load
+and on every window-button / perf-tab change — so the **tiles and EDITH's spoken answers use one
+engine and can't drift**. Each tile carries the full breakdown on hover (window + components +
+basis). Only `dashboard.js` changed (the parallel session's `dashboard.html` untouched). Tests: 252
+pass; engine close-count test updated to assert Call-Outcome-won (a "lost" deal in-window is
+excluded).

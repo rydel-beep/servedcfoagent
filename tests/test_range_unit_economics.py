@@ -31,18 +31,21 @@ def test_parse_range_variants():
     assert p("how's business") is None
 
 
-# A tiny faithful LTC tracker (header + 3 deals; close dates in/out of May).
-_LTC = [
-    ["", "Input Date", "", "Lead Name", "", "", "", "Biz", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "Offer Pitched", "Offer Sold", "Close Date", "4 · MONEY Contract Value", "", "", "", "Cash Collected"] + [""]*7 + ["Commission Closer"],
-]
-def _row(close, contract, cash, closer, offer="Scale Engine"):
+# A tiny faithful LTC tracker. Col 23 = Call Outcome ("won" = a close, the canonical def).
+_HDR = [""]*41
+_HDR[3]="Lead Name"; _HDR[23]="Call Outcome"; _HDR[26]="Offer Sold"; _HDR[27]="Close Date"
+_HDR[28]="4 · MONEY Contract Value"; _HDR[32]="Cash Collected"; _HDR[40]="Commission Closer"
+_LTC = [_HDR]
+def _row(close, contract, cash, closer, outcome="won"):
     r = [""]*41
-    r[3]="Lead"; r[26]=offer; r[27]=close; r[28]=str(contract); r[32]=str(cash); r[40]=str(closer)
+    r[3]="Lead"; r[23]=outcome; r[26]="Scale Engine"; r[27]=close
+    r[28]=str(contract); r[32]=str(cash); r[40]=str(closer)
     return r
 _LTC += [
-    _row("5/10/2026", 16000, 5000, 1500),   # in May
-    _row("5/20/2026", 18000, 6000, 1500),   # in May
-    _row("6/24/2026", 14000, 4000, 1500),   # NOT May
+    _row("5/10/2026", 16000, 5000, 1500),               # May, won
+    _row("5/20/2026", 18000, 6000, 1500),               # May, won
+    _row("5/22/2026", 9000, 2000, 0, outcome="lost"),   # May but NOT won → excluded
+    _row("6/24/2026", 14000, 4000, 1500),               # NOT May
 ]
 # Setter log: lead/setter/won/cash/fee/bonus/.../notes(date)
 def _pl(setter, fee, bonus, date):

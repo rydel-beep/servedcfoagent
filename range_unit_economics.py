@@ -76,6 +76,8 @@ def _ltc_col_map(header: list[str]) -> dict:
             idx["cash"] = k
         elif "commission closer" in cl and "closer" not in idx:
             idx["closer"] = k
+        elif "call outcome" in cl and "outcome" not in idx:
+            idx["outcome"] = k
         elif "offer sold" in cl and "offer" not in idx:
             idx["offer"] = k
         elif "lead name" in cl and "name" not in idx:
@@ -101,10 +103,12 @@ def _ltc_in_window(w0: dt.date, w1: dt.date) -> dict:
         cd = _date(r[cm["close_date"]]) if cm["close_date"] < len(r) else None
         if cd is None or not (w0 <= cd <= w1):
             continue
-        contract = _money(r[cm["contract"]]) if cm.get("contract", 99) < len(r) else None
-        offer = (r[cm["offer"]].strip() if cm.get("offer", 99) < len(r) else "")
-        if not ((contract and contract > 0) or offer):  # a won/closed deal
+        # A close = Call Outcome == "won" (the canonical definition used across the agent),
+        # NOT merely "has a contract value". Keeps the count transparent + per-deal.
+        outcome = (r[cm["outcome"]].strip().lower() if cm.get("outcome", 99) < len(r) else "")
+        if outcome != "won":
             continue
+        contract = _money(r[cm["contract"]]) if cm.get("contract", 99) < len(r) else None
         cash = _money(r[cm["cash"]]) if cm.get("cash", 99) < len(r) else None
         closer = _money(r[cm["closer"]]) if cm.get("closer", 99) < len(r) else None
         name = (r[cm["name"]].strip() if cm.get("name", 99) < len(r) else "")

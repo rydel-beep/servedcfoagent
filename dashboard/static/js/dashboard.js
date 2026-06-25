@@ -1531,6 +1531,8 @@
           renderClosers(currentSnap);
           renderCommissionDetail(currentSnap);
         }
+        // Economics tiles recompute for the new window via the same engine.
+        applyRangeEconomics(currentWindow);
       });
     });
   }
@@ -1573,6 +1575,7 @@
         renderSetters(currentSnap);
         renderClosers(currentSnap);
         renderCommissionDetail(currentSnap);
+        applyRangeEconomics(currentWindow);
       });
     });
 
@@ -2543,6 +2546,10 @@
     // ROAS (Meta-based): new contracted revenue per $1 ad spend.
     const roas = get(h, 'roas.value');
     setMetric('val-roas', roas != null ? fmtX(roas) : '—', statusClass(get(h, 'roas.status')));
+
+    // Override the economics tiles with the range engine for the selected window
+    // (reconciled methodology — these are what EDITH speaks too).
+    applyRangeEconomics(currentWindow);
   }
 
   function setMetric(id, text, cls) {
@@ -2550,6 +2557,47 @@
     if (!el) return;
     el.textContent = text;
     el.className = 'metric-value' + (cls ? ' ' + cls : '');
+  }
+
+  // ── Unit economics via the range engine (tiles == EDITH's spoken answer) ──
+  // The CAC / LTGP:CAC / LTV:CAC / ROAS tiles route through the SAME engine EDITH
+  // uses (GET /api/unit-economics), windowed to the selected range. Closes are
+  // counted by Call-Outcome-won close date (the reconciled methodology) — so the
+  // dashboard and her voice answers can't drift, and the window buttons re-compute.
+  function ueStatus(v, good, watch) {
+    if (v == null) return '';
+    if (v >= good) return 'healthy';
+    if (v >= watch) return 'watch';
+    return 'critical';
+  }
+  function setMetricTitle(id, title) {
+    const el = document.getElementById(id);
+    if (el && title) el.title = title;
+  }
+  async function applyRangeEconomics(days) {
+    let res;
+    try {
+      res = await (await fetch('/dashboard/api/unit-economics?days=' + days, { cache: 'no-store' })).json();
+    } catch (e) { return; }
+    if (!res || res.error) return;
+    const c = res.components || {};
+    setMetric('val-cac', res.cac_loaded != null ? fmt$(res.cac_loaded) : '—', '');
+    setMetric('val-ltgpcac', res.ltgp_cac != null ? fmtX(res.ltgp_cac) : '—', ueStatus(res.ltgp_cac, 3, 2));
+    setMetric('val-ltgpcac-kpi', res.ltgp_cac != null ? fmtX(res.ltgp_cac) : '—', ueStatus(res.ltgp_cac, 3, 2));
+    setMetric('val-ltvcac', res.ltv_cac != null ? fmtX(res.ltv_cac) : '—', ueStatus(res.ltv_cac, 3, 2));
+    setMetric('val-roas', res.roas != null ? fmtX(res.roas) : '—', ueStatus(res.roas, 3, 2));
+    // Breakdown on hover (window + components + basis) — every displayed ratio inspectable.
+    const win = (c.window ? c.window.days + 'd (' + c.window.start + '→' + c.window.end + ')' : days + 'd');
+    setMetricTitle('val-cac', 'Loaded CAC, ' + win + ': ' + (c.cac_breakdown || 'n/a') + ' · spend-in-window, Meta-only');
+    setMetricTitle('val-ltgpcac', 'LTGP:CAC, ' + win + ': LTGP $' + (c.ltgp || 0).toLocaleString() +
+      ' ÷ CAC $' + (res.cac_loaded || 0).toLocaleString() + ' · ' + (c.closes != null ? c.closes + ' closes' : ''));
+    setMetricTitle('val-ltvcac', 'LTV:CAC, ' + win + ': avg contract $' + (c.avg_contract || 0).toLocaleString() +
+      ' ÷ CAC $' + (res.cac_loaded || 0).toLocaleString() + ' (full contract value)');
+    setMetricTitle('val-roas', 'ROAS, ' + win + ': $' + (c.cash_collected_total || 0).toLocaleString() +
+      ' cash ÷ $' + (c.ad_spend || 0).toLocaleString() + ' spend (cash-collected basis, ad-spend-only)');
+    const note = document.getElementById('econ-window-label');
+    if (note) note.textContent = win + (c.closes != null ? ' · ' + c.closes + ' closes' : '') + ' · mirror';
+    (res.caveats || []).length && console.info('unit-economics caveats:', res.caveats);
   }
 
   // ── Tables ───────────────────────────────────────────────
