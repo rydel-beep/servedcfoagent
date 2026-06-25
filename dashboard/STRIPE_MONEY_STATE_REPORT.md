@@ -62,3 +62,29 @@ Until the key is added, the honest interim is to keep the `$18,000` clearly **la
 estimate** (it already is, with the "reconfirm" staleness flag) rather than ship another guess.
 
 **Nothing was changed. Awaiting Rydel's key.**
+
+---
+
+## LIVE VERIFICATION (2026-06-25) — key added, three states reading true
+
+Rydel added the restricted read-only `STRIPE_SECRET_KEY`. Live on prod (`stripe_money_source:
+stripe_live`), reading 8 real payout objects + the balance:
+
+| State | EDITH (live read) | Rydel's Stripe (verified) |
+|---|---|---|
+| 1. Available (settled in Stripe) | **-$107.43** (≈$0) | A$0.00 ✓ |
+| 2. Incoming (balance.pending, settling) | **$13,713.24** | A$13,713.24 ✓ EXACT |
+| 3. In transit to bank (recent payouts not yet arrived) | **$11,524.95** | $11,524.95 (25 Jun payout) ✓ |
+| recently_paid_settling (paid, arrival passed → CommBank 1-3d lag) | **$11,756.19** | the 22-24 Jun payouts |
+
+The **$18,000 guess is gone**. The three states are shown distinctly + correctly labelled. Note the
+22-24 Jun payouts (arrival_date passed) sit in `recently_paid_settling` (Stripe says delivered;
+allow the 1-3d CommBank lag) rather than `in_transit_to_bank` (arrival not yet reached) — both shown,
+so the full picture is visible.
+
+### Hotfix (DECISIONS 57)
+The first deploy 500'd `/cfo/refresh` once the key was live: `total_available` now sums four terms
+(bank + available + incoming + in-transit) but `metrics_engine.check_consistency` still asserted the
+old two-term (bank + incoming) invariant → `ConsistencyError`. The no-key tests passed because those
+extra terms were 0. Updated the invariant to the four-term sum + regression test; build is GREEN
+again. Deployed 19e94a2.
