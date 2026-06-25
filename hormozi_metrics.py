@@ -30,6 +30,18 @@ def _resolved_ad_spend(snap: dict):
     return legacy, ("xero_advertising" if legacy is not None else None), 30
 
 
+def _resolved_setter_comm(snap: dict):
+    """Window-matched setter commission for loaded CAC: $50/set + 5%-of-cash, read ACTUAL
+    from the SETTER PAYOUT LOG (snapshot.loaded_cac). Falls back to the scorecard
+    $50/qualified-set figure if the log is unavailable. Returns (value, source).
+    """
+    lc = snap.get("loaded_cac") or {}
+    v = lc.get("setter_comm")
+    if v is not None:
+        return v, "setter_payout_log_actual"
+    return (_get(snap, "sales.payout.total_owed") or 0), "scorecard_50_per_set_only"
+
+
 def _metric(
     value, benchmark, status: str, dollar_gap, read: str,
     confidence: str, inputs_used: dict,
@@ -56,7 +68,7 @@ def m1_ltgp_cac(snap: dict, targets: dict | None = None) -> dict:
     closes = _get(snap, "sales.funnel.closes")
     setter_comm = _get(snap, "costs.setter_commission") or 0
     closer_comm = _get(snap, "costs.closer_commission") or 0
-    setter_payout = _get(snap, "sales.payout.total_owed") or 0
+    setter_payout, setter_comm_source = _resolved_setter_comm(snap)
     ad_spend, ad_spend_source, ad_spend_window = _resolved_ad_spend(snap)
 
     inputs = {
@@ -65,7 +77,9 @@ def m1_ltgp_cac(snap: dict, targets: dict | None = None) -> dict:
         "closes": closes,
         "setter_commission": setter_comm,
         "closer_commission": closer_comm,
+        "closer_commission_source": "sheet_commission_closer_actual",
         "setter_payout": setter_payout,
+        "setter_comm_source": setter_comm_source,
         "ad_spend": ad_spend,
         "ad_spend_source": ad_spend_source,
         "ad_spend_window_days": ad_spend_window,
@@ -145,7 +159,7 @@ def m2_cac_breakdown(snap: dict) -> dict:
     closes = _get(snap, "sales.funnel.closes")
     setter_comm = _get(snap, "costs.setter_commission") or 0
     closer_comm = _get(snap, "costs.closer_commission") or 0
-    setter_payout = _get(snap, "sales.payout.total_owed") or 0
+    setter_payout, setter_comm_source = _resolved_setter_comm(snap)
     ad_spend, ad_spend_source, ad_spend_window = _resolved_ad_spend(snap)
     offer_mix = _get(snap, "sales.deep.money.offer_mix") or []
 
@@ -153,7 +167,9 @@ def m2_cac_breakdown(snap: dict) -> dict:
         "closes": closes,
         "setter_commission": setter_comm,
         "closer_commission": closer_comm,
+        "closer_commission_source": "sheet_commission_closer_actual",
         "setter_payout": setter_payout,
+        "setter_comm_source": setter_comm_source,
         "ad_spend": ad_spend,
         "ad_spend_source": ad_spend_source,
         "ad_spend_window_days": ad_spend_window,
@@ -202,21 +218,27 @@ def m2_cac_breakdown(snap: dict) -> dict:
             })
     inputs["per_offer_cac"] = per_offer
 
+    # Fully-loaded breakdown (Meta-only ad spend; comms actual-from-sheet/log).
+    setter_lbl = "log" if setter_comm_source == "setter_payout_log_actual" else "scorecard"
+    bd = (f"Loaded: ad ${ad_spend or 0:,.0f} (Meta) + closer ${closer_comm:,.0f} (sheet) "
+          f"+ setter ${setter_payout:,.0f} ({setter_lbl}) = ${total_acq_cost:,.0f} ÷ {closes} closes")
+    inputs["breakdown"] = bd
+
     if avg_gp is not None and cac_loaded > avg_gp:
         status = "critical"
         per_close_loss = round(cac_loaded - avg_gp, 2)
         dollar_gap = round(per_close_loss * closes, 2)
         read = (f"CAC ${cac_loaded:,.0f} exceeds gross profit per close ${avg_gp:,.0f} "
-                f"— losing ${per_close_loss:,.0f}/deal, ${dollar_gap:,.0f}/mo")
+                f"— losing ${per_close_loss:,.0f}/deal, ${dollar_gap:,.0f}/mo. {bd}")
     elif avg_gp is not None:
         status = "healthy"
         dollar_gap = None
         read = (f"CAC ${cac_loaded:,.0f} vs gross profit ${avg_gp:,.0f}/close — "
-                f"acquisition cost is covered")
+                f"acquisition cost is covered. {bd}")
     else:
         status = "unknown"
         dollar_gap = None
-        read = f"CAC ${cac_loaded:,.0f}/close — gross profit unknown (Xero needed for benchmark)"
+        read = f"CAC ${cac_loaded:,.0f}/close — gross profit unknown (Xero needed for benchmark). {bd}"
 
     return _metric(cac_loaded, avg_gp, status, dollar_gap, read, confidence, inputs)
 
@@ -231,7 +253,7 @@ def m3_payback_days(snap: dict, targets: dict | None = None) -> dict:
     closes = _get(snap, "sales.funnel.closes")
     setter_comm = _get(snap, "costs.setter_commission") or 0
     closer_comm = _get(snap, "costs.closer_commission") or 0
-    setter_payout = _get(snap, "sales.payout.total_owed") or 0
+    setter_payout, setter_comm_source = _resolved_setter_comm(snap)
     ad_spend, ad_spend_source, ad_spend_window = _resolved_ad_spend(snap)
     cash_collected = _get(snap, "sheets.cash_collected")
 
@@ -462,7 +484,7 @@ def m7_ltv_to_cac(snap: dict) -> dict:
     closes = _get(snap, "sales.funnel.closes")
     setter_comm = _get(snap, "costs.setter_commission") or 0
     closer_comm = _get(snap, "costs.closer_commission") or 0
-    setter_payout = _get(snap, "sales.payout.total_owed") or 0
+    setter_payout, setter_comm_source = _resolved_setter_comm(snap)
     ad_spend, ad_spend_source, ad_spend_window = _resolved_ad_spend(snap)
 
     inputs = {
