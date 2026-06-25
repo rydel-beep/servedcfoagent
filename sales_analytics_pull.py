@@ -30,7 +30,18 @@ logger = logging.getLogger(__name__)
 
 
 def _fetch_tab(tab: str) -> list[list[str]]:
-    """Fetch a tab from the Lead-to-Cash sheet as raw rows."""
+    """Fetch a tab from the Lead-to-Cash sheet as raw rows.
+
+    Prefer the fresh Postgres mirror (DB-speed, no API hit); fall back to a live
+    Sheets read if the tab isn't mirrored / is stale / the DB is down.
+    """
+    try:
+        import sheet_mirror
+        mirrored = sheet_mirror.read_by_name(tab)
+        if mirrored is not None:
+            return mirrored
+    except Exception as e:
+        logger.info("mirror read for %s unavailable (%s) — live fetch", tab, e)
     sid = SHEET_CONFIG["sheet_id"]
     url = (
         f"https://docs.google.com/spreadsheets/d/{sid}"
