@@ -31,14 +31,15 @@ def test_parse_range_variants():
     assert p("how's business") is None
 
 
-# A tiny faithful LTC tracker. Col 23 = Call Outcome ("won" = a close, the canonical def).
+# A tiny faithful LTC tracker. The sheet has TWO "Call Outcome" cols: col 16 = SETTER
+# outcome ("SET"), col 23 = CLOSER outcome ("won" = a close). The engine must read col 23.
 _HDR = [""]*41
-_HDR[3]="Lead Name"; _HDR[23]="Call Outcome"; _HDR[26]="Offer Sold"; _HDR[27]="Close Date"
-_HDR[28]="4 · MONEY Contract Value"; _HDR[32]="Cash Collected"; _HDR[40]="Commission Closer"
+_HDR[3]="Lead Name"; _HDR[16]="Call Outcome"; _HDR[23]="Call Outcome"; _HDR[26]="Offer Sold"
+_HDR[27]="Close Date"; _HDR[28]="4 · MONEY Contract Value"; _HDR[32]="Cash Collected"; _HDR[40]="Commission Closer"
 _LTC = [_HDR]
 def _row(close, contract, cash, closer, outcome="won"):
     r = [""]*41
-    r[3]="Lead"; r[23]=outcome; r[26]="Scale Engine"; r[27]=close
+    r[3]="Lead"; r[16]="SET"; r[23]=outcome; r[26]="Scale Engine"; r[27]=close
     r[28]=str(contract); r[32]=str(cash); r[40]=str(closer)
     return r
 _LTC += [
