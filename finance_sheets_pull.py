@@ -58,7 +58,17 @@ _H_MONTH_START = 9
 
 
 def _fetch_tab(tab: str) -> list[list[str]]:
-    """Fetch a tab from the finance sheet as raw rows."""
+    """Fetch a tab from the finance sheet as raw rows.
+
+    Prefer the fresh Postgres mirror; fall back to a live read if not mirrored / stale / DB down.
+    """
+    try:
+        import sheet_mirror
+        mirrored = sheet_mirror.read_by_name(tab)
+        if mirrored is not None:
+            return mirrored
+    except Exception as e:
+        logger.info("mirror read for %s unavailable (%s) — live fetch", tab, e)
     sid = FINANCE_SHEET_CONFIG["sheet_id"]
     url = (
         f"https://docs.google.com/spreadsheets/d/{sid}"

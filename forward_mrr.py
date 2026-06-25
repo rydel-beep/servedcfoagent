@@ -80,6 +80,14 @@ def _fetch_recognized_tab() -> list[list[str]]:
     """
     sid = FINANCE_SHEET_CONFIG["sheet_id"]
     tab = FINANCE_SHEET_CONFIG["recognized_tab"]  # "RECOGNIZED"
+    # Prefer the fresh Postgres mirror; fall back to a live read if not mirrored / stale / DB down.
+    try:
+        import sheet_mirror
+        mirrored = sheet_mirror.read_by_name(tab)
+        if mirrored is not None:
+            return mirrored
+    except Exception as e:
+        logger.info("mirror read for %s unavailable (%s) — live fetch", tab, e)
     url = (
         f"https://docs.google.com/spreadsheets/d/{sid}"
         f"/gviz/tq?tqx=out:csv&sheet={requests.utils.quote(tab)}"

@@ -19,10 +19,12 @@ class _Resp:
 
 def test_mirrored_tabs_focused_scope():
     keys = set(sheet_mirror.MIRRORED_TABS)
-    assert keys == {"ltc_tracker", "team_scorecard", "setter_payout_log", "health"}
+    assert keys == {"ltc_tracker", "team_scorecard", "setter_payout_log", "setter_deep_dive",
+                    "health", "recognized", "salary"}
     # Health mirrors BY GID (its name points at the wrong tab); others by name.
     assert sheet_mirror.MIRRORED_TABS["health"]["gid"] == 1407663952
     assert "gid" not in sheet_mirror.MIRRORED_TABS["ltc_tracker"]
+    assert sheet_mirror.MIRRORED_TABS["salary"]["tab"] == "SALARY"
 
 
 def test_live_fetch_name_vs_gid(monkeypatch):
