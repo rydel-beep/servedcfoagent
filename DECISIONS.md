@@ -482,3 +482,18 @@
     tracker name-join matched only 7/164, so windowed by PAYOUT date (labelled). Before→after: CAC
     $4,114 → $4,366; LTGP:CAC 2.86 → 2.69×; ROAS unchanged (ad-spend-only, m8 untouched). Breakdown
     surfaced in the CAC read. 238 tests pass (+4). Report: dashboard/LOADED_CAC_REPORT.md.
+
+## 2026-06-25 — Postgres sheet-mirror (live-backed cache)
+
+59. **Live-backed cache (sheets → sync → Postgres mirror → EDITH).** EDITH read a slow periodic
+    snapshot, so recent sheet edits (e.g. last closes) were invisible. Built sheet_mirror.py: a
+    faithful jsonb mirror (sheet_mirror + sheet_sync_state) on the existing memory Postgres; sync_tab
+    atomic + content-hash change detection (skip unchanged; replace-on-change incl. removals; loud
+    failure keeps last-good). Focused scope (Rydel): Lead-to-Cash Tracker, Team Scorecard, SETTER
+    PAYOUT LOG (by name) + Health (BY GID 1407663952 — the tab named "Health" is an MRR-projection
+    view; gid is the real roster). Reads re-sourced: _fetch_tab/_fetch_tab_by_gid/loaded_cac read the
+    mirror first, live fallback if stale/absent/DB-down. Background sync 90s + voice/text "resync"
+    (sync_all + snapshot rebuild → names latest close) + /dashboard/api/resync. Transparency:
+    /dashboard/data-sources panel + "what's plugged in/is your data current" voice query (last-checked
+    vs last-changed, status, errors — loud on failure). Read-only; graceful Postgres-down. 246 tests
+    pass (+8). Report: dashboard/SHEET_MIRROR_REPORT.md.

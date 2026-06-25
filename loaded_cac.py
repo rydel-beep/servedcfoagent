@@ -76,14 +76,22 @@ def read_setter_comp(window_start: str | None = None, window_end: str | None = N
     except (TypeError, ValueError):
         w1, w0 = today, today - timedelta(days=30)
 
-    sid = SHEET_CONFIG["sheet_id"]
-    url = (f"https://docs.google.com/spreadsheets/d/{sid}"
-           f"/gviz/tq?tqx=out:csv&sheet={requests.utils.quote(_TAB_NAME)}")
+    # Prefer the fresh Postgres mirror; fall back to a live read if not mirrored / stale / DB down.
+    rows = None
     try:
-        resp = requests.get(url, timeout=(5, HTTP_TIMEOUT))
-        if resp.status_code != 200:
-            raise requests.RequestException(f"HTTP {resp.status_code}")
-        rows = list(csv.reader(io.StringIO(resp.text)))
+        import sheet_mirror
+        rows = sheet_mirror.read_by_name(_TAB_NAME)
+    except Exception:
+        rows = None
+    try:
+        if rows is None:
+            sid = SHEET_CONFIG["sheet_id"]
+            url = (f"https://docs.google.com/spreadsheets/d/{sid}"
+                   f"/gviz/tq?tqx=out:csv&sheet={requests.utils.quote(_TAB_NAME)}")
+            resp = requests.get(url, timeout=(5, HTTP_TIMEOUT))
+            if resp.status_code != 200:
+                raise requests.RequestException(f"HTTP {resp.status_code}")
+            rows = list(csv.reader(io.StringIO(resp.text)))
     except requests.RequestException as e:
         degraded.append({
             "metric": "loaded_cac_setter",

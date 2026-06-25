@@ -459,6 +459,13 @@ def _deferred_startup():
                 _db.migrate()
         except Exception as _e:  # never let memory setup block the app
             logger.error("Memory migrate-on-boot skipped: %s", _e)
+        # Sheet mirror: create tables + start the background sync loop (live-backed cache).
+        try:
+            import sheet_mirror
+            sheet_mirror.migrate()
+            sheet_mirror.start_sync_loop()
+        except Exception as _e:
+            logger.error("Sheet-mirror boot skipped: %s", _e)
         _startup_refresh()
         _start_scheduled_refresh()
 

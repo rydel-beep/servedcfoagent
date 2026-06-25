@@ -77,7 +77,17 @@ def _fetch_tab(tab: str) -> list[list[str]]:
 
 
 def _fetch_tab_by_gid(gid: int) -> list[list[str]]:
-    """Fetch a tab from the Finance sheet by GID (more reliable than tab name)."""
+    """Fetch a tab from the Finance sheet by GID (more reliable than tab name).
+
+    Prefer the fresh Postgres mirror; fall back to a live read if not mirrored / stale / DB down.
+    """
+    try:
+        import sheet_mirror
+        mirrored = sheet_mirror.read_by_gid(gid)
+        if mirrored is not None:
+            return mirrored
+    except Exception as e:
+        logger.info("mirror read for gid %s unavailable (%s) — live fetch", gid, e)
     sid = FINANCE_SHEET_CONFIG["sheet_id"]
     url = (
         f"https://docs.google.com/spreadsheets/d/{sid}"

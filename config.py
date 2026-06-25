@@ -123,6 +123,15 @@ META_PRIMARY_WINDOW = 30
 # Daily spend store (per-day granularity + last-fetched), survives restarts.
 META_SPEND_STORE = os.getenv("META_SPEND_STORE", "state/meta_spend_daily.json")
 
+# ── Postgres sheet-mirror (live-backed cache) ────────────────────────────────
+# A faithful Postgres mirror of the source sheet tabs. Only the sync job hits the
+# Sheets API; EDITH reads the mirror (ms, no rate limit). Reuses the memory Postgres.
+SHEET_SYNC_INTERVAL_SECONDS = int(os.getenv("SHEET_SYNC_INTERVAL_SECONDS", "90"))
+SHEET_MIRROR_ENABLED = os.getenv("SHEET_MIRROR_ENABLED", "1") not in ("0", "false", "False")
+# A mirrored tab is "stale" (read falls back to live) if its last successful sync is
+# older than this many seconds.
+SHEET_MIRROR_MAX_STALE_SECONDS = int(os.getenv("SHEET_MIRROR_MAX_STALE_SECONDS", "600"))
+
 # ── Manual targets / benchmarks / goalposts (Rydel-set, no live source) ──────
 # Persisted on the Railway volume so a redeploy/rebuild never wipes a set target.
 # Falls back to ./state for local dev. These are MANUAL inputs — Rydel is the

@@ -242,6 +242,8 @@
     items.push({ label: 'Export sales summary', hint: 'action', run: function() { var b = $('#btn-export-sales'); if (b) b.click(); } });
     items.push({ label: 'Ask EDITH\u2026', hint: '/ to chat', run: function() { var b = $('#btn-chat-toggle'); if (b) b.click(); } });
     items.push({ label: 'Targets & benchmarks', hint: 'settings', run: function() { window.location.href = '/dashboard/targets'; } });
+    items.push({ label: 'Data sources & freshness', hint: 'settings', run: function() { window.location.href = '/dashboard/data-sources'; } });
+    items.push({ label: 'Resync data now', hint: 'action', run: function() { fetch('/dashboard/api/resync', {method:'POST'}).then(function(){ location.reload(); }); } });
     return items;
   }
 

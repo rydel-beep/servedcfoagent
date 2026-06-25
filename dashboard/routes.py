@@ -480,6 +480,15 @@ def api_chat():
     history = memory.resume_thread(conv_id, history)
     memory.record_turn(conv_id, "user", user_msg, channel=channel)
 
+    # Data-layer commands: "resync"/"sync now" (immediate mirror sync + rebuild) and
+    # "what's plugged into your system / is your data current" — handled locally (no model).
+    import sheet_mirror
+    for _h in (sheet_mirror.handle_resync_command, sheet_mirror.handle_sources_query):
+        _reply, _handled = _h(user_msg)
+        if _handled:
+            memory.record_turn(conv_id, "assistant", _reply, channel=channel, intent="command")
+            return jsonify({"reply": _reply, "error": None, "intent": "command"})
+
     # Manual target/benchmark/note command? Handle locally (no model), with a
     # confirmation loop. Only manual (no-live-source) values; auth already enforced.
     import manual_targets
@@ -534,15 +543,24 @@ def api_chat_stream():
     def sse(event: str, payload) -> str:
         return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 
-    # Manual target/benchmark/note command? Short-circuit the model: emit the canned
-    # reply as a single done event (the client plays/renders it the same way).
-    import manual_targets
-    tgt_reply, handled = manual_targets.handle_turn(user_msg, token)
-    if handled:
-        memory.record_turn(conv_id, "assistant", tgt_reply, channel=channel, intent="command")
+    # Local commands (short-circuit the model, emit one done event): data-layer
+    # resync / sources query first, then manual targets.
+    import sheet_mirror, manual_targets
+    _cmd_reply = None
+    for _h in (sheet_mirror.handle_resync_command, sheet_mirror.handle_sources_query):
+        _r, _handled = _h(user_msg)
+        if _handled:
+            _cmd_reply = _r
+            break
+    if _cmd_reply is None:
+        _r, _handled = manual_targets.handle_turn(user_msg, token)
+        if _handled:
+            _cmd_reply = _r
+    if _cmd_reply is not None:
+        memory.record_turn(conv_id, "assistant", _cmd_reply, channel=channel, intent="command")
         def gen_cmd():
             yield sse("meta", {"intent": "command", "context_tokens": 0})
-            yield sse("done", {"reply": tgt_reply})
+            yield sse("done", {"reply": _cmd_reply})
         return Response(gen_cmd(), mimetype="text/event-stream",
                         headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
@@ -627,3 +645,40 @@ def api_targets_reset():
     if key not in manual_targets.DEFAULTS:
         return jsonify({"error": f"Unknown target '{key}'"}), 400
     return jsonify({"ok": True, "target": manual_targets.reset_value(key)})
+
+
+# ── Sheet mirror: data-sources panel + immediate resync (auth-gated) ──────────
+
+@bp.route("/data-sources", methods=["GET"])
+@require_auth
+def data_sources_page():
+    """Transparency panel — what's plugged into EDITH + per-tab freshness."""
+    return render_template("data_sources.html")
+
+
+@bp.route("/api/data-sources", methods=["GET"])
+@require_auth
+def api_data_sources():
+    import sheet_mirror
+    return jsonify({"sources": sheet_mirror.get_sources(),
+                    "interval_seconds": __import__("config").SHEET_SYNC_INTERVAL_SECONDS})
+
+
+@bp.route("/api/resync", methods=["POST"])
+@require_auth
+def api_resync():
+    """Force an immediate sync of all mirrored tabs, then rebuild the snapshot."""
+    import sheet_mirror
+    res = sheet_mirror.sync_all()
+    try:
+        from snapshot import build_snapshot
+        snap = build_snapshot()
+        import app as app_module
+        app_module._current_snapshot = snap
+        res["snapshot_generated_at"] = snap.get("generated_at")
+    except Exception as e:
+        logger.error("resync snapshot rebuild failed: %s", e)
+        res["snapshot_error"] = str(e)[:160]
+    resp = jsonify({"ok": True, "sync": res})
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
