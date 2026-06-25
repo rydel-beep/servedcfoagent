@@ -66,6 +66,7 @@ def _date(s) -> dt.date | None:
 def _ltc_col_map(header: list[str]) -> dict:
     """Resolve Lead-to-Cash Tracker column indices by header name (robust to reordering)."""
     idx = {}
+    outcome_cols = []  # the sheet has TWO "Call Outcome" cols: setter (early) + closer (later)
     for k, c in enumerate(header):
         cl = (c or "").lower()
         if "close date" in cl and "close_date" not in idx:
@@ -76,12 +77,18 @@ def _ltc_col_map(header: list[str]) -> dict:
             idx["cash"] = k
         elif "commission closer" in cl and "closer" not in idx:
             idx["closer"] = k
-        elif "call outcome" in cl and "outcome" not in idx:
-            idx["outcome"] = k
+        elif "call outcome" in cl:
+            outcome_cols.append(k)
         elif "offer sold" in cl and "offer" not in idx:
             idx["offer"] = k
         elif "lead name" in cl and "name" not in idx:
             idx["name"] = k
+    # The CLOSER's Call Outcome (which carries "won") is in the closer funnel — the last
+    # Call Outcome at/before Close Date, NOT the setter's earlier "SET/DQ" one (col 16).
+    if outcome_cols:
+        cd = idx.get("close_date")
+        before = [k for k in outcome_cols if cd is None or k < cd]
+        idx["outcome"] = max(before) if before else max(outcome_cols)
     return idx
 
 

@@ -125,3 +125,9 @@ engine and can't drift**. Each tile carries the full breakdown on hover (window 
 basis). Only `dashboard.js` changed (the parallel session's `dashboard.html` untouched). Tests: 252
 pass; engine close-count test updated to assert Call-Outcome-won (a "lost" deal in-window is
 excluded).
+
+**Hotfix (two Call Outcome columns):** the tracker has TWO "Call Outcome" columns — col 16 is the
+SETTER's ("SET"/"DQ"), col 23 is the CLOSER's ("won"/"lost"). The first build's header-match grabbed
+col 16 → 0 closes. `_ltc_col_map` now picks the closer's Call Outcome (the last one at/before Close
+Date). Live trailing-30d: 8 won deals, $132,300 contract, $44,075 cash, $7,200 closer comm. Regression
+test asserts the closer column is read even when both are present.
