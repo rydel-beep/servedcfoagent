@@ -528,3 +528,12 @@
     spend/comms/cash). Different windows + different bases; both correct. The Scorecard's 4 is a
     weekly funnel-conversion KPI, NOT the CAC denominator. Reconciled engine (close-date-in-window)
     confirmed correct.
+
+64. **Dashboard economics fixed + cohort-conversion view added.** (a) The month-perf card/KPI strip
+    read snap.hormozi (no element IDs) so the tile override missed them → cached the engine result
+    (rangeEcon) and route the card's LTGP:CAC/CAC/LTV:CAC through it; all economics displays now match
+    EDITH's voice for the selected window. (b) Added cohort_funnel(w0,w1) — leads-in→set→showed→closed
+    + lead→close % by lead INPUT DATE (reproduces the Scorecard's 14.8%=4/27 exactly). Surfaced in
+    unit_economics()["cohort"], /api/unit-economics, a voice command ("how's lead flow converting"),
+    and a labelled line in the month-perf card, alongside (and explicitly distinct from) the close-date
+    money view. 254 tests pass.

@@ -34,12 +34,14 @@ def test_parse_range_variants():
 # A tiny faithful LTC tracker. The sheet has TWO "Call Outcome" cols: col 16 = SETTER
 # outcome ("SET"), col 23 = CLOSER outcome ("won" = a close). The engine must read col 23.
 _HDR = [""]*41
-_HDR[3]="Lead Name"; _HDR[16]="Call Outcome"; _HDR[23]="Call Outcome"; _HDR[26]="Offer Sold"
-_HDR[27]="Close Date"; _HDR[28]="4 · MONEY Contract Value"; _HDR[32]="Cash Collected"; _HDR[40]="Commission Closer"
+_HDR[1]="Input Date"; _HDR[3]="Lead Name"; _HDR[16]="Call Outcome"; _HDR[22]="Show Status"
+_HDR[23]="Call Outcome"; _HDR[26]="Offer Sold"; _HDR[27]="Close Date"
+_HDR[28]="4 · MONEY Contract Value"; _HDR[32]="Cash Collected"; _HDR[40]="Commission Closer"
 _LTC = [_HDR]
-def _row(close, contract, cash, closer, outcome="won"):
+def _row(close, contract, cash, closer, outcome="won", input=None, show="Showed"):
     r = [""]*41
-    r[3]="Lead"; r[16]="SET"; r[23]=outcome; r[26]="Scale Engine"; r[27]=close
+    r[1]=input if input is not None else close   # Input Date (cohort window)
+    r[3]="Lead"; r[16]="SET"; r[22]=show; r[23]=outcome; r[26]="Scale Engine"; r[27]=close
     r[28]=str(contract); r[32]=str(cash); r[40]=str(closer)
     return r
 _LTC += [
@@ -114,3 +116,23 @@ def test_roas_cash_basis(monkeypatch):
     _mock(monkeypatch, spend=2000.0)
     r = rue.unit_economics("2026-05-01", "2026-05-31")
     assert r["roas"] == round(11000.0 / 2000.0, 2)  # cash / spend, not contracted
+
+
+def test_cohort_by_input_date(monkeypatch):
+    import datetime as dt
+    _mock(monkeypatch)
+    # May cohort by INPUT DATE: rows with input in May = the 3 May rows (10th/20th won, 22nd lost).
+    cf = rue.cohort_funnel(dt.date(2026, 5, 1), dt.date(2026, 5, 31))
+    assert cf["leads_in"] == 3 and cf["closes"] == 2          # 2 of the 3 May-input leads won
+    assert cf["lead_to_close_pct"] == round(100 * 2 / 3, 1)   # 66.7%
+    # The money view (by Close Date) and cohort (by Input Date) are surfaced together.
+    res = rue.unit_economics("2026-05-01", "2026-05-31")
+    assert res["cohort"]["leads_in"] == 3 and res["components"]["closes"] == 2
+
+
+def test_cohort_voice_command(monkeypatch):
+    _mock(monkeypatch)
+    reply, handled = rue.handle_unit_econ_command("how is this month's lead flow converting?")
+    assert handled and "cohort" in reply.lower() and "lead→close" in reply.lower()
+    # A pure money question must NOT be hijacked by the cohort branch.
+    assert "LTGP:CAC for" in rue.handle_unit_econ_command("what's our LTGP:CAC in May 2026?")[0]

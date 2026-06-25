@@ -1427,6 +1427,26 @@
   }
 
   // ── Month Performance ────────────────────────────────────
+  // Cache of the latest range-engine result (set by applyRangeEconomics). The economics
+  // displays (tiles + month-perf card) read from this so they all show ONE number for the
+  // selected window — same as EDITH's voice. null until the first fetch resolves.
+  let rangeEcon = null;
+  // Month-perf metric key → range-engine field. These three are window-recomputed.
+  const ECON_OVERRIDE = { ltgp_cac: 'ltgp_cac', cac_loaded: 'cac_loaded', ltv_to_cac: 'ltv_cac' };
+  function econReadFor(key) {
+    if (!rangeEcon) return null;
+    const c = rangeEcon.components || {};
+    const win = c.window ? c.window.days + 'd' : '';
+    if (key === 'cac_loaded') return c.cac_breakdown ? '(' + win + ') ' + c.cac_breakdown : null;
+    if (key === 'ltgp_cac' && rangeEcon.ltgp_cac != null)
+      return '(' + win + ') LTGP $' + Math.round(c.ltgp || 0).toLocaleString() + ' ÷ CAC $' +
+             Math.round(rangeEcon.cac_loaded || 0).toLocaleString() + ', ' + c.closes + ' closes';
+    if (key === 'ltv_to_cac' && rangeEcon.ltv_cac != null)
+      return '(' + win + ') avg contract $' + Math.round(c.avg_contract || 0).toLocaleString() +
+             ' ÷ CAC $' + Math.round(rangeEcon.cac_loaded || 0).toLocaleString();
+    return null;
+  }
+
   function renderMonthPerformance(snap) {
     const h = snap.hormozi || {};
     const grid = $('#month-perf-grid');
@@ -1450,8 +1470,17 @@
 
     metrics.forEach(m => {
       const data = h[m.key] || {};
-      const status = data.status || 'unknown';
-      const value = data.value;
+      let status = data.status || 'unknown';
+      let value = data.value;
+      let readText = data.read;
+      // Route the economics metrics through the range engine for the selected window,
+      // so this card agrees with the tiles and EDITH's spoken answer (no drift).
+      if (rangeEcon && ECON_OVERRIDE[m.key] != null) {
+        value = rangeEcon[ECON_OVERRIDE[m.key]];
+        status = value == null ? 'unknown'
+               : (m.key === 'cac_loaded' ? 'unknown' : (ueStatus(value, 3, 2) || 'unknown'));
+        readText = econReadFor(m.key) || readText;
+      }
       const benchmarkStr = m.tkey ? `Benchmark: <strong>${benchLabel(snap, m.tkey, '')}</strong>` : '';
       const confidenceStr = data.confidence ? `Confidence: ${data.confidence}` : '';
 
@@ -1466,14 +1495,28 @@
         </div>
       `;
 
-      if (data.read) {
+      if (readText) {
         readsHtml += `
           <div class="mp-read ${status}">
-            <span class="mp-read-label">${m.label}:</span>${esc(data.read)}
+            <span class="mp-read-label">${m.label}:</span>${esc(readText)}
           </div>
         `;
       }
     });
+
+    // Surface the COHORT-conversion view alongside the money metrics: of the window's
+    // NEW leads (by Input Date), how many converted — distinct from the close-date money
+    // view above. (Same engine EDITH uses for "how's lead flow converting".)
+    if (rangeEcon && rangeEcon.cohort && rangeEcon.cohort.leads_in) {
+      const cf = rangeEcon.cohort;
+      readsHtml = `
+        <div class="mp-read">
+          <span class="mp-read-label">Cohort conversion (by lead Input Date):</span>
+          ${cf.leads_in} leads in → ${cf.sets} set → ${cf.shows} showed → ${cf.closes} closed
+          · lead→close <strong>${cf.lead_to_close_pct}%</strong> — how this window's NEW leads are
+          converting (distinct from the money view above, which counts deals that CLOSED in the window).
+        </div>` + readsHtml;
+    }
 
     grid.innerHTML = gridHtml;
     reads.innerHTML = readsHtml;
@@ -2580,6 +2623,7 @@
       res = await (await fetch('/dashboard/api/unit-economics?days=' + days, { cache: 'no-store' })).json();
     } catch (e) { return; }
     if (!res || res.error) return;
+    rangeEcon = res;  // cache so the month-perf card reads the same window's numbers
     const c = res.components || {};
     setMetric('val-cac', res.cac_loaded != null ? fmt$(res.cac_loaded) : '—', '');
     setMetric('val-ltgpcac', res.ltgp_cac != null ? fmtX(res.ltgp_cac) : '—', ueStatus(res.ltgp_cac, 3, 2));
@@ -2598,6 +2642,10 @@
     const note = document.getElementById('econ-window-label');
     if (note) note.textContent = win + (c.closes != null ? ' · ' + c.closes + ' closes' : '') + ' · mirror';
     (res.caveats || []).length && console.info('unit-economics caveats:', res.caveats);
+    // Re-render the month-performance card so its LTGP:CAC / CAC / LTV:CAC use this window
+    // too (it reads rangeEcon now). Guard against missing snap; no recursion (it doesn't
+    // call applyRangeEconomics).
+    if (typeof currentSnap !== 'undefined' && currentSnap) renderMonthPerformance(currentSnap);
   }
 
   // ── Tables ───────────────────────────────────────────────
