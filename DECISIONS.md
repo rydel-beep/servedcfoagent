@@ -444,3 +444,20 @@
     and full change-history. Consumes the existing GET/set/reset API. Discoverable via the Cmd-K
     palette ("Targets & benchmarks"). +3 dashboard tests (page renders, API get/set/reset, unauth
     blocked). Report: dashboard/TARGETS_BENCHMARKS_REPORT.md.
+
+## 2026-06-25 — Stripe money-state accuracy (read real balance/payout objects)
+
+56. **Real Stripe money states via a read-only key.** Phase 0: every Stripe money figure was an
+    aggregate/manual guess — "$18,000 incoming" = the CASH_STRIPE_INCOMING constant; "$88k cash" =
+    MCP gross-charges flow; payouts = aggregate sum (no per-payout status). No secret key in env; MCP
+    aggregate-only (6 tools, no Balance/Payout objects). HARD STOP → Rydel adds a restricted
+    read-only key. Built stripe_balance.py (read-only GET /v1/balance + /v1/payouts) computing THREE
+    states: available (balance.available, settled), pending_incoming (balance.pending, settling),
+    in_transit_to_bank (recent payouts pending/in_transit/paid-not-yet-arrived; failed dropped;
+    paid-arrival-passed → recently_paid_settling, not double-counted). Wired into cash_position
+    (replaces the $18k card with 3 distinct labelled state cards + true total_available, no
+    double-count) + snapshot["stripe_money"] + source_freshness; metrics_engine canonical entries +
+    stripe_money_states tagged optional (no key → graceful, pill not red on its own). AUD-only,
+    non-AUD flagged. Degrades to the labelled manual $18k when no key. 233 tests pass (+4). Report:
+    dashboard/STRIPE_MONEY_STATE_REPORT.md. NOTE: snapshot.py also carries a PARALLEL session's
+    uncommitted stripe_reconcile WIP — committed only my hunks (checkout-reapply).

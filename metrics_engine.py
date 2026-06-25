@@ -63,6 +63,7 @@ def build_canonical_metrics(snapshot: dict) -> dict:
     meta = snapshot.get("meta_spend") or {}
     ad_res = snapshot.get("ad_spend_resolved") or {}
     hz = snapshot.get("hormozi") or {}
+    sm = snapshot.get("stripe_money") or {}
 
     def m(value, kind, source, window=None, definition=None):
         out = {"value": value, "kind": kind, "source": source}
@@ -168,6 +169,18 @@ def build_canonical_metrics(snapshot: dict) -> dict:
             _get(hz, "roas", "value"), "FLOW", "hormozi.roas.value", window="funnel window",
             definition="New contracted revenue / ad spend, window-consistent. Meta-based.",
         ),
+        "stripe_available": m(
+            sm.get("available"), "BALANCE", "stripe_money.available",
+            definition="Settled in Stripe, payable now (balance.available). Live read.",
+        ),
+        "stripe_incoming": m(
+            sm.get("pending_incoming"), "BALANCE", "stripe_money.pending_incoming",
+            definition="Collected, settling into Stripe (balance.pending) — the upcoming payout.",
+        ),
+        "stripe_in_transit_to_bank": m(
+            sm.get("in_transit_to_bank"), "BALANCE", "stripe_money.in_transit_to_bank",
+            definition="Recent payouts that left Stripe but aren't in CommBank yet (1-3d lag).",
+        ),
     }
 
 
@@ -199,6 +212,8 @@ OPTIONAL_DEGRADED_METRICS = {
     "recognized_footer_mismatch",
     # Meta ad spend is an additive enhancement; its absence/quirks don't fail a refresh.
     "meta_spend", "meta_spend_currency",
+    # Stripe money-state read (needs a read-only key); absence/quirks degrade gracefully.
+    "stripe_money_states", "stripe_payouts", "stripe_money_currency",
 }
 
 

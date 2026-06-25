@@ -525,6 +525,15 @@ def build_snapshot() -> dict:
         snapshot["forward_mrr"] = None
         degraded.append({"metric": "forward_mrr", "reason": f"Build failed: {e}"})
 
+    # ── Real Stripe money states (balance + payouts, read-only) ──────────────
+    # Replaces the aggregate "$18,000 pending" guess with the true three states.
+    # Sequential (not in the pool) to stay clear of a parallel edit to the pool block.
+    from stripe_balance import read_stripe_money_states
+    stripe_money_res = read_stripe_money_states()
+    stripe_money = stripe_money_res.get("stripe_money")
+    snapshot["stripe_money"] = stripe_money
+    degraded.extend(stripe_money_res.get("degraded", []))
+
     # ── Cash-on-hand (Rydel-confirmed override or Xero-derived) ───────────────
     from config import (CASH_ON_HAND_OVERRIDE, CASH_STRIPE_INCOMING,
                         CASH_DEPLOYABLE_BUFFER, CASH_TAX_RESERVED,
@@ -553,39 +562,75 @@ def build_snapshot() -> dict:
     except ValueError:
         logger.warning("CASH_CONFIRMED_DATE %r is not YYYY-MM-DD", CASH_CONFIRMED_DATE)
 
+    # ── Stripe money states feed the cash card ───────────────────────────────
+    # Live (key present): real balance.available / balance.pending / in-transit payouts.
+    # No key: fall back to the manual CASH_STRIPE_INCOMING, clearly labelled an estimate.
+    if stripe_money:
+        stripe_available = stripe_money.get("available")          # state 1: settled in Stripe
+        stripe_incoming = stripe_money.get("pending_incoming")    # state 2: settling into Stripe
+        stripe_in_transit = stripe_money.get("in_transit_to_bank")  # state 3: left Stripe → bank
+        stripe_money_source = "stripe_live"
+        stripe_incoming_note = (
+            f"BALANCE — Stripe balance.pending (collected, settling into Stripe). "
+            f"Live read as of {stripe_money.get('as_of', '')[:16]}."
+        )
+    else:
+        stripe_available = None
+        stripe_incoming = CASH_STRIPE_INCOMING
+        stripe_in_transit = None
+        stripe_money_source = "manual_estimate"
+        stripe_incoming_note = (
+            "BALANCE — MANUAL ESTIMATE (no Stripe key). Add a read-only STRIPE_SECRET_KEY "
+            "for the real balance.pending. Reconfirm."
+        )
+
+    # Conservative: delivery-obligation reserve = incoming × COGS ratio
+    incoming_for_reserve = stripe_incoming or 0
+    delivery_reserve = 0.0
+    if cogs_ratio and incoming_for_reserve > 0:
+        delivery_reserve = round(incoming_for_reserve * (cogs_ratio / 100), 2)
+
     # Dual deployable cash
     aggressive_deployable = round(cash_in_bank - tax_reserved, 2)
-
-    # Conservative: also subtract delivery-obligation reserve
-    # = upfront cash for undelivered work × COGS ratio
-    # Approximation: use Stripe incoming as proxy for cash committed to delivery
-    delivery_reserve = 0.0
-    if cogs_ratio and CASH_STRIPE_INCOMING > 0:
-        delivery_reserve = round(CASH_STRIPE_INCOMING * (cogs_ratio / 100), 2)
-
     conservative_deployable = round(aggressive_deployable - delivery_reserve, 2)
 
     # Runway on total burn
     runway_months = round(cash_in_bank / total_burn, 1) if total_burn > 0 else None
 
+    # True near-term cash = bank (landed) + Stripe settled-available + Stripe settling-incoming
+    # + in-transit-to-bank. No double-count: recently_paid (arrival passed) is assumed already
+    # in the bank balance, so it is NOT added here.
+    total_available = round(
+        cash_in_bank + (stripe_available or 0) + (stripe_incoming or 0) + (stripe_in_transit or 0), 2
+    )
+
     snapshot["cash_position"] = {
         # BALANCES (point-in-time levels) — never sum these with period flows.
         "cash_in_bank": cash_in_bank,
-        "cash_in_bank_note": "BALANCE — landed in bank. Owner-confirmed override.",
-        "stripe_incoming": CASH_STRIPE_INCOMING,
-        "stripe_incoming_note": (
-            "BALANCE — in transit: Stripe balance + pending payout, collected but "
-            "not yet banked. Manually confirmed (no balance feed from Stripe MCP)."
+        "cash_in_bank_note": "BALANCE — landed in CommBank. Owner-confirmed override.",
+        # Three distinct Stripe money states (live read when key present).
+        "stripe_available": stripe_available,
+        "stripe_available_note": "BALANCE — settled in Stripe, payable now (balance.available).",
+        "stripe_incoming": stripe_incoming,
+        "stripe_incoming_note": stripe_incoming_note,
+        "stripe_in_transit_to_bank": stripe_in_transit,
+        "stripe_in_transit_note": (
+            "BALANCE — left Stripe (recent payouts pending/in_transit/paid-not-yet-arrived), "
+            "not yet settled in CommBank (1–3 day lag)."
         ),
+        "stripe_money_source": stripe_money_source,
         "tax_reserved": tax_reserved,
-        "total_available": round(cash_in_bank + CASH_STRIPE_INCOMING, 2),
-        "total_available_note": "True near-term cash = bank (landed) + Stripe in-transit. Both balances.",
+        "total_available": total_available,
+        "total_available_note": (
+            "True near-term cash = CommBank (landed) + Stripe available + Stripe incoming "
+            "+ in-transit-to-bank. All balances; recently-paid (already in bank) not double-counted."
+        ),
         "aggressive_deployable": aggressive_deployable,
         "aggressive_note": "Cash minus tax reserve — treats all upfront cash as available",
         "conservative_deployable": conservative_deployable,
         "conservative_note": "Also excludes delivery-obligation reserve (cost to deliver work already paid for)",
         "delivery_reserve": delivery_reserve,
-        "delivery_reserve_note": f"Stripe incoming ${CASH_STRIPE_INCOMING:,.0f} x COGS ratio {cogs_ratio}%"
+        "delivery_reserve_note": f"Stripe incoming ${incoming_for_reserve:,.0f} x COGS ratio {cogs_ratio}%"
             if cogs_ratio else "COGS ratio unavailable",
         "cogs_ratio_pct": cogs_ratio,
         # FLOW (per-period)
@@ -635,6 +680,7 @@ def build_snapshot() -> dict:
             "client_health": bool(health_result.get("client_health")),
             "team_roster": bool(roster_result.get("roster")),
             "meta_spend": bool(meta_result.get("meta_spend")),
+            "stripe_money": bool(stripe_money),
         }.items()
     }
 

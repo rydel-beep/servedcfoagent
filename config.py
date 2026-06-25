@@ -13,6 +13,13 @@ STRIPE_MCP_BASE = os.getenv(
     "STRIPE_MCP_BASE",
     "https://served-stripe-mcp-production-a5a2.up.railway.app",
 )
+# Restricted READ-ONLY Stripe key (Balance + Payouts + Balance transactions = Read).
+# Lets the app read the REAL /v1/balance + /v1/payouts objects — the three money states —
+# instead of the aggregate-only MCP. Absent → money-state reader degrades gracefully.
+# Server-side only; NEVER commit. Accepts STRIPE_SECRET_KEY or STRIPE_RESTRICTED_KEY.
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY") or os.getenv("STRIPE_RESTRICTED_KEY", "")
+# How far back to read recent payouts for the "in transit to bank" state.
+STRIPE_PAYOUT_LOOKBACK_DAYS = int(os.getenv("STRIPE_PAYOUT_LOOKBACK_DAYS", "14"))
 
 # ── GHL Sales Pipeline ──────────────────────────────────────────────────────
 GHL_BASE = "https://services.leadconnectorhq.com"
