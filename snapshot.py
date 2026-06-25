@@ -476,6 +476,20 @@ def build_snapshot() -> dict:
         snapshot["targets"] = {}
         resolved_targets = {}
 
+    # Fully-loaded CAC: real setter commission ($50/set + 5% cash) read actual from the
+    # SETTER PAYOUT LOG (by name; the gid 400s), window-matched to the sales window. Replaces
+    # the scorecard $50/set-only figure CAC used. Closer comm already actual-from-sheet.
+    try:
+        from loaded_cac import read_setter_comp
+        _sales_block = sales_result.get("sales") or {}
+        loaded_setter = read_setter_comp(_sales_block.get("window_start"),
+                                         _sales_block.get("window_end"))
+        snapshot["loaded_cac"] = loaded_setter
+        degraded.extend(loaded_setter.get("degraded", []))
+    except Exception as e:
+        logger.error("loaded_cac setter read failed (non-critical): %s", e)
+        snapshot["loaded_cac"] = {"setter_comm": None}
+
     # Hormozi metrics + verdict layer (computed AFTER snapshot assembled)
     hormozi = compute_hormozi(snapshot, true_team_cost=true_team_cost,
                               targets=resolved_targets)

@@ -468,3 +468,17 @@
     (extra terms 0). Fixed the invariant to the 4-term sum + regression test (19e94a2). Live-verified:
     available -$107 (~$0), incoming $13,713.24 (exact match to Rydel's Stripe), in-transit $11,524.95;
     $18k guess gone; pill green.
+
+## 2026-06-25 — Fully-loaded CAC (real setter comm from the log)
+
+58. **CAC setter component completed.** CAC already included closer ($7,200 actual) + setter, but
+    the setter half used the scorecard $50/qualified-set figure only ($500), missing 5%-of-cash.
+    The real per-deal $50+5% lives in the SETTER PAYOUT LOG, which reads by gid 552970662 → HTTP 400
+    but by NAME "SETTER PAYOUT LOG" → 200 (different column layout). New loaded_cac.py reads it by
+    name, window-matched → $1,507.27 (15 deals: $750 fees + $757.27 bonuses). hormozi
+    _resolved_setter_comm uses it (actual-from-log) with scorecard fallback (labelled). Rydel
+    confirmed: LTGP stays CONTRACT-basis (×margin = $11,758, not cash collected); setter = $50/set +
+    5% from the log; window by close/set date — BUT the log has no close/set-date column and the
+    tracker name-join matched only 7/164, so windowed by PAYOUT date (labelled). Before→after: CAC
+    $4,114 → $4,366; LTGP:CAC 2.86 → 2.69×; ROAS unchanged (ad-spend-only, m8 untouched). Breakdown
+    surfaced in the CAC read. 238 tests pass (+4). Report: dashboard/LOADED_CAC_REPORT.md.
