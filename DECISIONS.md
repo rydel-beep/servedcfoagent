@@ -511,3 +511,11 @@
     the chat router AFTER targets. Driver decomposition in every reply + comparisons attribute the Δ.
     GET /dashboard/api/unit-economics (dashboard + voice share one engine → no drift). Zero/small
     windows flagged, no div-by-zero. 252 tests pass (+6). Report: dashboard/RANGE_UNIT_ECONOMICS_REPORT.md.
+
+62. **Closes methodology reconciled + dashboard wired through the range engine.** The range engine
+    counted closes loosely (contract>0 → 8/30d) while the dashboard used the Scorecard's opaque
+    `closes` cell (4) — divergent CACs. Reconciled to ONE definition: a close = Call Outcome == "won"
+    + Close Date in window (the canonical per-deal, range-flexible definition the velocity calc uses).
+    Dashboard CAC/LTGP:CAC/LTV:CAC/ROAS tiles now route through GET /api/unit-economics for the
+    selected window (applyRangeEconomics, dashboard.js only) → tiles == EDITH's spoken answer, no
+    drift; breakdown on hover. Scorecard cell kept for the legacy funnel display only. 252 tests pass.
