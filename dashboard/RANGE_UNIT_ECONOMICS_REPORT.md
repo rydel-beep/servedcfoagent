@@ -131,3 +131,26 @@ SETTER's ("SET"/"DQ"), col 23 is the CLOSER's ("won"/"lost"). The first build's 
 col 16 → 0 closes. `_ltc_col_map` now picks the closer's Call Outcome (the last one at/before Close
 Date). Live trailing-30d: 8 won deals, $132,300 contract, $44,075 cash, $7,200 closer comm. Regression
 test asserts the closer column is read even when both are present.
+
+---
+
+## Why the Team Scorecard reads "Closes = 4" (diagnosis — no code change)
+
+The Scorecard's 4 and the engine's 8 are different metrics on different windows — both correct:
+
+| | Team Scorecard "Closes = 4" | Range engine "8" |
+|---|---|---|
+| Window | **one 7-day week** (2026-05-26 → 06-01) | trailing **30 days** |
+| Basis | **lead Input Date (cohort)** — "of this week's NEW leads, how many converted" | **Close Date** — "deals that closed in the window" |
+| Measures | sales-process conversion of a weekly lead cohort | money / CAC denominator |
+
+**Proof it's a 7-day cohort:** the Scorecard's "Leads in = 27" equals exactly the leads with Input
+Date in 2026-05-26→06-01 (a full 30d would be 98). And every Scorecard ratio ties out to a single
+27→9→8→4 cohort: Lead→Set 33.3% = 9/27, Set→Show 88.9% = 8/9, Show→Close 50% = 4/8, **Lead→Close
+14.8% = 4/27**. The Sets row note states it outright: "counted by lead Input Date (cohort view)".
+
+**Conclusion:** the Scorecard's 4 is a weekly cohort-conversion KPI — *how well last week's leads are
+converting* — and must NOT be the CAC denominator (mixing a 7-day cohort with 30-day spend/comms/cash
+would be window-inconsistent — exactly the bug we removed). For unit economics, deals **closed in the
+window by Close Date** (8 for trailing-30d) is the correct, window-consistent denominator. No change
+needed — the reconciled engine is right; the Scorecard stays as the funnel-health view it is.

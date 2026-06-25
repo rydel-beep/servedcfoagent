@@ -519,3 +519,12 @@
     Dashboard CAC/LTGP:CAC/LTV:CAC/ROAS tiles now route through GET /api/unit-economics for the
     selected window (applyRangeEconomics, dashboard.js only) → tiles == EDITH's spoken answer, no
     drift; breakdown on hover. Scorecard cell kept for the legacy funnel display only. 252 tests pass.
+
+63. **Scorecard "Closes = 4" diagnosed (no code change).** The Team Scorecard's closes (4) is a
+    7-DAY COHORT metric counted by lead Input Date (2026-05-26→06-01: "of this week's 27 new leads,
+    4 converted") — proven: Leads-in=27 = exactly the Input-Date-in-that-week count (30d=98), and
+    every Scorecard ratio ties to one 27→9→8→4 cohort (Lead→Close 14.8% = 4/27). The engine's 8 is
+    deals CLOSED in trailing-30d by Close Date — the money/CAC denominator (window-consistent with
+    spend/comms/cash). Different windows + different bases; both correct. The Scorecard's 4 is a
+    weekly funnel-conversion KPI, NOT the CAC denominator. Reconciled engine (close-date-in-window)
+    confirmed correct.
