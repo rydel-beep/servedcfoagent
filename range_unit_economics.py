@@ -191,7 +191,8 @@ def cohort_funnel(w0: dt.date, w1: dt.date) -> dict:
         from sales_analytics_pull import _fetch_tab
         rows = _fetch_tab("Lead-to-Cash Tracker")
     out = {"leads_in": 0, "sets": 0, "shows": 0, "closes": 0,
-           "lead_to_close_pct": None, "set_to_show_pct": None, "show_to_close_pct": None,
+           "lead_to_set_pct": None, "set_to_show_pct": None, "show_to_close_pct": None,
+           "lead_to_close_pct": None,
            "basis": "by lead Input Date (cohort) — 'how is this window's lead flow converting?'"}
     if not rows:
         return out
@@ -212,6 +213,7 @@ def cohort_funnel(w0: dt.date, w1: dt.date) -> dict:
             out["closes"] += 1
     li, st, sh, cl = out["leads_in"], out["sets"], out["shows"], out["closes"]
     if li:
+        out["lead_to_set_pct"] = round(100 * st / li, 1)
         out["lead_to_close_pct"] = round(100 * cl / li, 1)
     if st:
         out["set_to_show_pct"] = round(100 * sh / st, 1)

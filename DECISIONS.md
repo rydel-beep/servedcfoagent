@@ -537,3 +537,10 @@
     unit_economics()["cohort"], /api/unit-economics, a voice command ("how's lead flow converting"),
     and a labelled line in the month-perf card, alongside (and explicitly distinct from) the close-date
     money view. 254 tests pass.
+
+65. **Funnel section wired to the cohort engine.** renderFunnel now prefers the range engine's
+    cohort_funnel (rangeEcon.cohort) for the selected window — same leads→set→showed→closed numbers
+    as the month-perf cohort line and EDITH's "lead flow" answer — labelled "cohort (by lead Input
+    Date)" with a note it's the window's NEW leads (≠ deals closed in-window). Falls back to the
+    snapshot funnel until the engine resolves; applyRangeEconomics re-renders it on window change.
+    Added lead_to_set_pct to cohort_funnel. 254 tests pass.
