@@ -289,10 +289,17 @@ def check_consistency(snapshot: dict) -> list[str]:
     con = cp.get("conservative_deployable")
     if agg is not None and res is not None and con is not None and not _close(con, agg - res):
         errors.append(f"conservative_deployable {con} != aggressive {agg} - reserve {res}")
-    transit = cp.get("stripe_incoming")
+    # total_available = bank + Stripe available + Stripe incoming + in-transit-to-bank
+    # (the three real money states; recently-paid is assumed already in the bank balance).
+    s_avail = cp.get("stripe_available") or 0
+    s_incoming = cp.get("stripe_incoming") or 0
+    s_transit = cp.get("stripe_in_transit_to_bank") or 0
     total = cp.get("total_available")
-    if cash is not None and transit is not None and total is not None and not _close(total, cash + transit):
-        errors.append(f"total_available {total} != bank {cash} + in-transit {transit}")
+    if cash is not None and total is not None and not _close(total, cash + s_avail + s_incoming + s_transit):
+        errors.append(
+            f"total_available {total} != bank {cash} + available {s_avail} + incoming {s_incoming} "
+            f"+ in-transit {s_transit}"
+        )
 
     # 4. Commissions: the costs block must equal the sheet totals it claims to be.
     sheets = snapshot.get("sheets") or {}
