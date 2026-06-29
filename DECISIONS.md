@@ -586,3 +586,15 @@
     business-mode DATA RULES reinforce names-are-facts. 273 tests (+4). chat.py persona region is
     parallel-clean (parallel only touches _build_context_block 369+) → checkout-reapply.
     Report: dashboard/DETERMINISTIC_RECALL_REPORT.md.
+
+70. **Desktop chat-overlap fixed (with rendered proof).** Playwright became runnable (chromium
+    installed) → verified against the ACTUAL rendered view for the first time. Root cause: the
+    "ambient yields" mechanism (body.chat-open JS + CSS) lives only in the parallel session's
+    UNCOMMITTED tree — never deployed; live, body.chat-open is never set and there are 0 chat-open CSS
+    rules, so the HUD (#edith-hud z230, .jarvis-orb/.jarvis-caption z250, .edith-wave z249) renders
+    over the chat-panel (z200) in the shared right-side zone. Prior fixes updated z-scale VARIABLES but
+    the elements use hardcoded z. Fix (CSS-only, dashboard.css): key off the live .chat-panel.open via
+    :has() — yield the ambient HUD entirely (visibility/opacity/pointer-events) + raise chat to z400/390
+    when open; untouched when closed. Verified live-injected at 1024/1280/1440/1536/1920: chat z=400,
+    ZERO overlaps, screenshot clean. Report: dashboard/DESKTOP_CHAT_OVERLAP_REPORT.md; PNGs in
+    dashboard/verification/desktop-chat-overlap/. chat.css via checkout-reapply (parallel WIP preserved).
