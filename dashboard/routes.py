@@ -513,6 +513,13 @@ def api_chat():
         memory.record_turn(conv_id, "assistant", pb_reply, channel=channel, intent="command")
         return jsonify({"reply": pb_reply, "error": None, "intent": "command"})
 
+    # Leads visibility: "who's the latest lead?", "recent leads" — from the mirrored tracker.
+    import leads_view
+    ld_reply, ld_handled = leads_view.handle_leads_command(user_msg)
+    if ld_handled:
+        memory.record_turn(conv_id, "assistant", ld_reply, channel=channel, intent="command")
+        return jsonify({"reply": ld_reply, "error": None, "intent": "command"})
+
     recall = memory.build_recall_context(user_msg, conversation_id=conv_id)
 
     result = chat_fn(history, snapshot_json, token, voice=voice, memory_block=recall["block"])
@@ -580,6 +587,11 @@ def api_chat_stream():
     if _cmd_reply is None:
         import payback_reconciliation
         _r, _handled = payback_reconciliation.handle_payback_command(user_msg)
+        if _handled:
+            _cmd_reply = _r
+    if _cmd_reply is None:
+        import leads_view
+        _r, _handled = leads_view.handle_leads_command(user_msg)
         if _handled:
             _cmd_reply = _r
     if _cmd_reply is not None:
@@ -749,5 +761,17 @@ def api_payback():
         start, end = str(today - timedelta(days=days - 1)), str(today)
     res = payback_reconciliation.compute_payback(start, end)
     resp = jsonify(res)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@bp.route("/api/leads", methods=["GET"])
+@require_auth
+def api_leads():
+    """Most recently entered leads from the mirrored tracker. ?limit=N (default 10). PII-safe
+    (no email/phone in output)."""
+    import leads_view
+    limit = request.args.get("limit", 10, type=int)
+    resp = jsonify(leads_view.recent_leads(limit=limit))
     resp.headers["Cache-Control"] = "no-store"
     return resp

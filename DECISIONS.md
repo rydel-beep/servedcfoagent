@@ -568,3 +568,10 @@
     small-sample-flagged (<3); blended shown alongside (labelled). Confident matches only (unmatched
     excluded+listed, never fabricated). PII-safe (emails server-side only). GET /api/payback + voice
     ("payback on Growth Pro"). Range-aware. 265 tests (+7). Report: dashboard/PAYBACK_RECONCILIATION_REPORT.md.
+
+68. **Leads visibility (leads_view.py).** Live test: EDITH named closes but not the latest LEAD. Phase 0
+    verified gid 1923956551 = the SAME Lead-to-Cash Tracker already mirrored (full LEAD INTAKE→close
+    pipeline; lead = Input Date+Lead Name row, close = Call Outcome won). Mirror already had the data —
+    gap was surfacing. leads_view.recent_leads/latest_lead read the mirror, newest by Input Date+Time;
+    voice ("who's the latest lead?"/"recent leads"), resync confirmation now names latest lead + latest
+    close, GET /api/leads. PII-safe (email/phone never returned). 269 tests (+4). Read by tab NAME.

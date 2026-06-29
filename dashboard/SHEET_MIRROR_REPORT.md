@@ -150,3 +150,30 @@ degraded. Read-only from Sheets throughout.
 command detection, graceful no-DB). Live DB sync/read + the **"last 5 closes" acceptance gate**
 (resync by voice → EDITH names the latest closes) verified on the deployed app (the Railway-internal
 Postgres isn't reachable from local).
+
+---
+
+## Addendum — Leads visibility (2026-06-29)
+
+**The gap:** a live test showed EDITH could name recent CLOSES (Lovefish, The Cally Hotel) but not
+the latest LEAD entered — she said she "only sees aggregated snapshot data."
+
+**Phase 0 (verified, not assumed):** gid `1923956551` Rydel pointed at = **the same Lead-to-Cash
+Tracker already mirrored** (53 cols; header "1 · LEAD INTAKE": Lead ID, Input Date, Input Time, Lead
+Name, Email, Phone, Lead Source, Business Name → through the close columns). The 1-row diff is the
+banner row. So the **mirror already holds every lead** — leads and closes are the same rows (a LEAD =
+a row with Input Date + Lead Name; a CLOSE = Call Outcome == "won"). The gap was purely **surfacing**:
+the snapshot exposed closes, never "latest lead." Mirror reads by NAME ("Lead-to-Cash Tracker") as
+required.
+
+**Fix (`leads_view.py`):** reads the mirrored tracker, returns the most-recently-entered leads sorted
+by Input Date + Time (newest first). Surfaced via:
+- voice/text: "who's the latest lead?" → names it; "recent leads" → a short list;
+- the **resync confirmation** now names the latest LEAD alongside the latest CLOSE;
+- `GET /dashboard/api/leads?limit=N`.
+PII-safe: Email/Phone columns exist but are **never returned or logged** — only Lead Name, Business,
+Source, intake time (auth-locked surface).
+
+**Acceptance (this addendum's headline):** "who's the latest lead?" → EDITH names the newest tracker
+lead (e.g. The Takeout Co., 2026-06-29); "last few closes" still correct; enter a lead → "resync" →
+EDITH knows it immediately. 269 tests pass (+4).
