@@ -2470,3 +2470,26 @@ body.focus-mode .stark-bigring, body.focus-mode .stark-header-stream { display: 
 .calib-blip.ok { background: rgba(52,201,142,0.12); color: var(--green); }
 .calib-blip.rej { background: var(--bg-inset); color: var(--text-muted); }
 @media (max-width: 960px) { .calib-panel { right: 14px; bottom: 220px; } }
+
+/* ════════════════════════════════════════════════════════════════════════
+   CHAT OPEN → AMBIENT HUD YIELDS (desktop overlap fix, 2026-06-29)
+   The HUD/orb/radar/waveform dock in the same right-side zone as the chat panel
+   and sit ABOVE it (z 230–250 vs the panel's 200), so they render over the
+   conversation. The committed app never sets body.chat-open (that mechanism is
+   un-deployed), so this keys off the LIVE .chat-panel.open class via :has():
+   when the chat is open the ambient layer yields entirely, and the chat is raised
+   above everything. Scoped to the open state — the HUD is untouched when closed.
+   ════════════════════════════════════════════════════════════════════════ */
+body:has(.chat-panel.open) #edith-hud,
+body:has(.chat-panel.open) .jarvis-orb,
+body:has(.chat-panel.open) .jarvis-caption,
+body:has(.chat-panel.open) .jarvis-help,
+body:has(.chat-panel.open) .edith-wave,
+body:has(.chat-panel.open) .edith-caption,
+body:has(.chat-panel.open) .ambient-ticker {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+body:has(.chat-panel.open) #chat-panel { z-index: 400 !important; }
+body:has(.chat-panel.open) #chat-overlay { z-index: 390 !important; }
