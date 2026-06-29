@@ -548,33 +548,36 @@ def build_snapshot() -> dict:
     snapshot["stripe_money"] = stripe_money
     degraded.extend(stripe_money_res.get("degraded", []))
 
-    # ── Cash-on-hand (Rydel-confirmed override or Xero-derived) ───────────────
-    from config import (CASH_ON_HAND_OVERRIDE, CASH_STRIPE_INCOMING,
-                        CASH_DEPLOYABLE_BUFFER, CASH_TAX_RESERVED,
-                        CASH_CONFIRMED_DATE)
+    # ── Cash-on-hand — LIVE from Xero (Bank Summary closing balances) ─────────
+    # CommBank Transaction #2352 + Online Saver #4041 + BAS/Tax #2353 (include-BAS,
+    # Rydel-confirmed 2026-06-29); Amex excluded. Closing balance (point-in-time), NOT
+    # period movement. Loud fallback to last-known if the live read fails — never silent stale.
+    from config import (CASH_ON_HAND_LAST_KNOWN, CASH_STRIPE_INCOMING,
+                        CASH_DEPLOYABLE_BUFFER, CASH_TAX_RESERVED)
 
-    cash_in_bank = CASH_ON_HAND_OVERRIDE
+    xero_cash = (xero_data or {}).get("cash_on_hand")
+    if xero_cash and xero_cash.get("cash_on_hand") is not None and not xero_cash.get("missing_accounts"):
+        cash_in_bank = xero_cash["cash_on_hand"]
+        cash_source = "xero_live"
+        cash_as_of = xero_cash.get("as_of")
+        cash_breakdown = xero_cash.get("breakdown")
+        cash_in_bank_note = (f"BALANCE — live Xero closing balances ({xero_cash.get('accounts')}), "
+                             f"as of {cash_as_of}.")
+    else:
+        cash_in_bank = CASH_ON_HAND_LAST_KNOWN
+        cash_source = "last_known_fallback"
+        cash_as_of = None
+        cash_breakdown = None
+        cash_in_bank_note = (f"⚠ Cash on hand — XERO UNAVAILABLE; showing LAST-KNOWN "
+                             f"${CASH_ON_HAND_LAST_KNOWN:,.0f}. Live read failed — verify/reconnect Xero.")
+        degraded.append({
+            "metric": "cash_on_hand_xero",
+            "reason": "Live Xero cash read unavailable — using last-known fallback (loud, not silent stale)",
+        })
+
     tax_reserved = CASH_TAX_RESERVED
     total_burn = burn.get("total_recurring_burn") or true_team_cost
     cogs_ratio = burn.get("cogs_ratio_pct")
-
-    # Staleness of the manually confirmed cash figures
-    cash_confirmed_age_days = None
-    try:
-        from datetime import date
-        confirmed = date.fromisoformat(CASH_CONFIRMED_DATE)
-        cash_confirmed_age_days = (ts.date() - confirmed).days
-        if cash_confirmed_age_days > 7:
-            degraded.append({
-                "metric": "cash_override_stale",
-                "reason": (
-                    f"Cash-on-hand override last confirmed {CASH_CONFIRMED_DATE} "
-                    f"({cash_confirmed_age_days}d ago) — reconfirm bank balance and Stripe "
-                    f"in-transit, then update CASH_CONFIRMED_DATE"
-                ),
-            })
-    except ValueError:
-        logger.warning("CASH_CONFIRMED_DATE %r is not YYYY-MM-DD", CASH_CONFIRMED_DATE)
 
     # ── Stripe money states feed the cash card ───────────────────────────────
     # Live (key present): real balance.available / balance.pending / in-transit payouts.
@@ -621,7 +624,9 @@ def build_snapshot() -> dict:
     snapshot["cash_position"] = {
         # BALANCES (point-in-time levels) — never sum these with period flows.
         "cash_in_bank": cash_in_bank,
-        "cash_in_bank_note": "BALANCE — landed in CommBank. Owner-confirmed override.",
+        "cash_in_bank_note": cash_in_bank_note,
+        "cash_in_bank_breakdown": cash_breakdown,
+        "cash_as_of": cash_as_of,
         # Three distinct Stripe money states (live read when key present).
         "stripe_available": stripe_available,
         "stripe_available_note": "BALANCE — settled in Stripe, payable now (balance.available).",
@@ -650,9 +655,8 @@ def build_snapshot() -> dict:
         # FLOW (per-period)
         "total_monthly_burn": round(total_burn, 2),
         "runway_months": runway_months,
-        "source": "override" if CASH_ON_HAND_OVERRIDE > 0 else "xero",
-        "confirmed_date": CASH_CONFIRMED_DATE,
-        "confirmed_age_days": cash_confirmed_age_days,
+        "source": cash_source,
+        "cash_as_of": cash_as_of,
     }
 
     # Hiring context — derives from financial_position (no double-count)

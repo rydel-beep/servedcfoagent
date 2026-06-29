@@ -997,16 +997,15 @@
 
     let html = '<div class="cash-grid">';
 
-    // Cash in bank
+    // Cash in bank \u2014 live Xero closing balances; loud label if on last-known fallback.
     if (cashPos.cash_in_bank != null) {
-      const confirmedAge = cashPos.confirmed_age_days;
-      const confirmedStale = confirmedAge != null && confirmedAge > 7;
+      const live = cashPos.source === 'xero_live';
+      const asOf = cashPos.cash_as_of ? ('Xero, as of ' + cashPos.cash_as_of) : 'Xero';
+      const sub = live ? asOf : '\u26a0 Xero unavailable \u2014 last-known';
       html += `<div class="cash-card">
-        <div class="cash-card-label">Cash in Bank <span class="info-icon" data-metric="cash_in_bank">&#9432;</span></div>
+        <div class="cash-card-label">Cash on hand <span class="info-icon" data-metric="cash_in_bank">&#9432;</span></div>
         <div class="cash-card-value" style="color:var(--green)">${fmt$(cashPos.cash_in_bank)}</div>
-        <div class="cash-card-sub" ${confirmedStale ? 'style="color:var(--amber)"' : ''}>${cashPos.source === 'override'
-          ? 'confirmed ' + (cashPos.confirmed_date || '') + (confirmedStale ? ' \u26a0 reconfirm' : '')
-          : 'from Xero'}</div>
+        <div class="cash-card-sub" ${live ? '' : 'style="color:var(--amber)"'}>${sub}</div>
       </div>`;
     }
 
@@ -3081,7 +3080,7 @@
     // Cash on hand
     var cashPos = snap.cash_position || {};
     if (cashPos.cash_in_bank != null) {
-      html += '<div class="kpi"><div class="kpi-label">Cash on Hand</div><div class="kpi-value">' + fmt$(cashPos.cash_in_bank) + '</div><div class="kpi-sub">' + (cashPos.source === 'override' ? 'confirmed' : 'xero') + '</div></div>';
+      html += '<div class="kpi"><div class="kpi-label">Cash on Hand</div><div class="kpi-value">' + fmt$(cashPos.cash_in_bank) + '</div><div class="kpi-sub">' + (cashPos.source === 'xero_live' ? 'Xero live' : '⚠ last-known') + '</div></div>';
     }
 
     // Team cost ratio

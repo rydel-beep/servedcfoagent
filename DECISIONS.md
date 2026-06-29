@@ -544,3 +544,17 @@
     Date)" with a note it's the window's NEW leads (≠ deals closed in-window). Falls back to the
     snapshot funnel until the engine resolves; applyRangeEconomics re-renders it on window change.
     Added lead_to_set_pct to cohort_funnel. 254 tests pass.
+
+## 2026-06-29 — Cash on hand wired LIVE from Xero (+ connection verification)
+
+66. **Xero connection verified + cash on hand wired live.** Phase 0 (6 checks) all PASS: token
+    valid (refresh works), ONE tenant "Served Marketing" (legal THE 97 GROUP PTY LTD, AU/AUD) matching
+    saved tenant_id, offline_access + banksummary/balancesheet/profitandloss granular scopes
+    (transactions.read absent by design, not needed), live read OK, target accounts resolve (#2352
+    d93b6904, #4041 e7dc87e2, BAS #2353 50a4af6a; Amex excluded; "notn in use" shares #2352's NUMBER
+    so matched by NAME marker), positive CLOSING balances (Trap 1 cleared). Cash-definition
+    contradiction surfaced (brief said exclude-BAS but expected ~$172k, which needs BAS) → Rydel chose
+    **$172k flat include-BAS**. Cash on hand = closing bal #2352 $43,680 + #4041 $56,594 + BAS #2353
+    $71,574 = $171,847.80. Wired in xero_pull.pull_xero (Bank Summary, same single-use refresh token)
+    → snapshot cash_in_bank, with LOUD last-known fallback. Removed stale $140,007/"confirmed 06-04"
+    override. 258 tests pass (+4). Report: dashboard/CASH_ON_HAND_REPORT.md.
