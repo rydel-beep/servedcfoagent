@@ -506,6 +506,13 @@ def api_chat():
         memory.record_turn(conv_id, "assistant", ue_reply, channel=channel, intent="command")
         return jsonify({"reply": ue_reply, "error": None, "intent": "command"})
 
+    # True payback (Stripe-reconciled, per offer): "payback on Growth Pro", "payback by offer".
+    import payback_reconciliation
+    pb_reply, pb_handled = payback_reconciliation.handle_payback_command(user_msg)
+    if pb_handled:
+        memory.record_turn(conv_id, "assistant", pb_reply, channel=channel, intent="command")
+        return jsonify({"reply": pb_reply, "error": None, "intent": "command"})
+
     recall = memory.build_recall_context(user_msg, conversation_id=conv_id)
 
     result = chat_fn(history, snapshot_json, token, voice=voice, memory_block=recall["block"])
@@ -568,6 +575,11 @@ def api_chat_stream():
     if _cmd_reply is None:
         import range_unit_economics
         _r, _handled = range_unit_economics.handle_unit_econ_command(user_msg)
+        if _handled:
+            _cmd_reply = _r
+    if _cmd_reply is None:
+        import payback_reconciliation
+        _r, _handled = payback_reconciliation.handle_payback_command(user_msg)
         if _handled:
             _cmd_reply = _r
     if _cmd_reply is not None:
@@ -716,6 +728,26 @@ def api_unit_economics():
         today = today_sydney()
         start, end = str(today - timedelta(days=days - 1)), str(today)
     res = range_unit_economics.unit_economics(start, end)
+    resp = jsonify(res)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@bp.route("/api/payback", methods=["GET"])
+@require_auth
+def api_payback():
+    """True payback per deal / per offer via Stripe payment reconciliation. ?start=&end= or ?days=N
+    (default last 90d). Read-only Stripe; PII-safe (no emails in output)."""
+    import payback_reconciliation
+    from helpers import today_sydney
+    start = request.args.get("start")
+    end = request.args.get("end")
+    if not (start and end):
+        from datetime import timedelta
+        days = request.args.get("days", 90, type=int)
+        today = today_sydney()
+        start, end = str(today - timedelta(days=days - 1)), str(today)
+    res = payback_reconciliation.compute_payback(start, end)
     resp = jsonify(res)
     resp.headers["Cache-Control"] = "no-store"
     return resp
