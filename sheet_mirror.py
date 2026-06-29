@@ -336,6 +336,16 @@ def handle_resync_command(text: str, rebuild_snapshot: bool = True) -> tuple[str
     reply = "Synced — " + "; ".join(parts) + "."
     if latest:
         reply += f" Latest close: {latest}."
+    # Latest LEAD entered (distinct from latest close) — the leads-visibility gap.
+    try:
+        from leads_view import latest_lead
+        ll = latest_lead()
+        if ll:
+            biz = f" ({ll['business']})" if ll.get("business") and ll["business"] != ll["name"] else ""
+            reply += (f" Latest lead: {ll['name']}{biz} — {ll['date']}"
+                      + (f" {ll['time']}" if ll.get("time") else "") + ".")
+    except Exception as e:
+        logger.info("resync latest_lead unavailable: %s", e)
     return reply, True
 
 
