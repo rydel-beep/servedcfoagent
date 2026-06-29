@@ -95,11 +95,17 @@ else:
     XERO_TOKEN_FILE = "state/xero_tokens.json"
 
 # ── Cash-on-Hand Override ────────────────────────────────────────────────────
-# Xero bank balances can lag due to reconciliation timing. This override lets
-# Rydel set the real number. Set to 0 or empty to use Xero-derived figure.
-# Confirmed 2026-06-04: bank $140,007.29, Stripe incoming $18k,
-# buffer $61k ($40k deployable, $20k tax reserved).
-CASH_ON_HAND_OVERRIDE = float(os.getenv("CASH_ON_HAND_OVERRIDE", "140007.29"))
+# Cash on hand is now read LIVE from Xero (Bank Summary closing balances of the three
+# CommBank accounts below; Amex excluded). This figure is only a LAST-KNOWN FALLBACK,
+# shown loudly-labelled when the live Xero read fails — never a silent stale number.
+# Rydel-confirmed 2026-06-29 (override $172k include-BAS decision): #2352 + #4041 + BAS #2353.
+CASH_ON_HAND_LAST_KNOWN = float(os.getenv("CASH_ON_HAND_LAST_KNOWN",
+                                          os.getenv("CASH_ON_HAND_OVERRIDE", "171847.80")))
+# Account-name markers for the cash-on-hand accounts (matched in the Bank Summary report
+# by name, NOT account number — "notn in use" shares #2352's number). Rydel-confirmed:
+# Business Transaction #2352 + Bus Online Saver #4041 + BAS/Tax #2353 (include-BAS). Amex excluded.
+CASH_ACCOUNT_MARKERS = [m.strip() for m in
+                        os.getenv("CASH_ACCOUNT_MARKERS", "#2352,#4041,#2353").split(",") if m.strip()]
 CASH_STRIPE_INCOMING = float(os.getenv("CASH_STRIPE_INCOMING", "18000"))
 CASH_DEPLOYABLE_BUFFER = float(os.getenv("CASH_DEPLOYABLE_BUFFER", "40000"))
 CASH_TAX_RESERVED = float(os.getenv("CASH_TAX_RESERVED", "20000"))

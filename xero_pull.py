@@ -111,6 +111,65 @@ def _fetch_profit_and_loss(access_token: str, tenant_id: str) -> dict | None:
         return None
 
 
+def _fetch_bank_summary(access_token: str, tenant_id: str) -> dict | None:
+    """Fetch the Bank Summary report — gives each bank account's CLOSING BALANCE
+    (point-in-time as of toDate). Read-only; uses accounting.reports.banksummary.read."""
+    today = today_sydney()
+    from datetime import date
+    frm = date(today.year, today.month, 1)
+    try:
+        resp = requests.get(
+            f"{XERO_API_BASE}/api.xro/2.0/Reports/BankSummary",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Xero-Tenant-Id": tenant_id,
+                "Accept": "application/json",
+            },
+            params={"fromDate": str(frm), "toDate": str(today)},
+            timeout=(5, HTTP_TIMEOUT),
+        )
+        if resp.status_code != 200:
+            logger.error("Xero BankSummary API %d: %s", resp.status_code, resp.text[:300])
+            return None
+        return resp.json()
+    except requests.RequestException as e:
+        logger.error("Xero BankSummary request failed: %s", e)
+        return None
+
+
+def _extract_cash_on_hand(report: dict, markers: list[str]) -> dict:
+    """Sum the CLOSING balance (last column) of the accounts whose name contains one of
+    `markers` (e.g. '#2352'). Matched by NAME not number — 'notn in use' shares #2352's
+    number. Returns {total, breakdown:[{marker,name,balance}], missing:[markers not found]}."""
+    rep = (report.get("Reports") or [{}])[0]
+    found: dict[str, dict] = {}
+
+    def walk(rows):
+        for r in rows or []:
+            if r.get("Rows"):
+                walk(r["Rows"])
+            cells = r.get("Cells")
+            if not cells or len(cells) < 2:
+                continue
+            name = (cells[0].get("Value") or "").strip()
+            if not name:
+                continue
+            for mk in markers:
+                if mk in name and mk not in found:
+                    try:
+                        bal = float(str(cells[-1].get("Value")).replace(",", "").replace("$", ""))
+                    except (TypeError, ValueError):
+                        bal = None
+                    found[mk] = {"marker": mk, "name": name, "balance": bal}
+
+    walk(rep.get("Rows", []))
+    breakdown = [found[mk] for mk in markers if mk in found]
+    missing = [mk for mk in markers if mk not in found]
+    vals = [b["balance"] for b in breakdown if b["balance"] is not None]
+    total = round(sum(vals), 2) if vals else None
+    return {"total": total, "breakdown": breakdown, "missing": missing}
+
+
 def _extract_row_value(rows: list[dict], title: str) -> float | None:
     """Find a row by Title and return its total value."""
     for row in rows:
@@ -343,9 +402,33 @@ def pull_xero() -> dict:
     from datetime import timedelta
     start = today - timedelta(days=WINDOW_CURRENT)
 
+    # Cash on hand — live CLOSING balances of the CommBank accounts (same refreshed token;
+    # Xero refresh tokens are single-use, so we must NOT refresh again here).
+    from config import CASH_ACCOUNT_MARKERS
+    cash_block = None
+    bs = _fetch_bank_summary(tokens["access_token"], tokens["tenant_id"])
+    if not bs:
+        degraded.append({"metric": "xero_cash_on_hand",
+                         "reason": "Xero BankSummary call failed — cash on hand falls back to last-known"})
+    else:
+        cash = _extract_cash_on_hand(bs, CASH_ACCOUNT_MARKERS)
+        if cash["missing"] or cash["total"] is None:
+            degraded.append({"metric": "xero_cash_on_hand",
+                             "reason": f"cash accounts missing/unreadable: {cash['missing'] or 'no balance'}"})
+        cash_block = {
+            "cash_on_hand": cash["total"],
+            "breakdown": cash["breakdown"],
+            "missing_accounts": cash["missing"],
+            "as_of": str(today),
+            "accounts": "CommBank #2352 + #4041 + BAS #2353 (Amex excluded)",
+            "basis": "Bank Summary closing balance (point-in-time), include-BAS (Rydel 2026-06-29)",
+            "source": "xero_bank_summary",
+        }
+
     return {
         "xero": {
             **parsed,
+            "cash_on_hand": cash_block,
             "period": {
                 "label": f"trailing {WINDOW_CURRENT} days",
                 "start": str(start),
