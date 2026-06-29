@@ -43,3 +43,34 @@ include BAS** (no reserve carve-out). Cash on hand = #2352 + #4041 + BAS #2353; 
   "Cash on hand · Xero, as of <date>" (the "confirmed … reconfirm" label is gone).
 
 Tests: 258 pass (+4 cash extraction: sum, Amex/notn-in-use exclusion, closing-not-opening, missing-flag).
+
+## Live verification (2026-06-29, deployed)
+
+Forced a refresh → snapshot read live Xero:
+```
+cash_in_bank  $183,948.51   source: xero_live   as_of 2026-06-29   (degraded: none)
+  #2352 Business Transaction   $26,699.97
+  #4041 Bus Online Saver       $81,593.51
+  #2353 BAS / Tax              $75,655.03
+```
+**It's genuinely live** — $183,948.51 today vs $171,847.80 on 06-26: the bank balances moved
+(#2352 −$17k spent, #4041 +$25k, BAS +$4k) over 3 days. A frozen number wouldn't change; this tracks
+the real accounts each refresh.
+
+## Phase 2 — cash reconciliation (coherent, no double-count)
+
+The cash card keeps **bank cash separate from Stripe money-states** (from the Stripe round) — no
+flow+balance summing:
+```
+Cash on hand (Xero bank, point-in-time) ...... $183,948.51   ← #2352 + #4041 + BAS #2353
+Stripe available (settled, payable now) ......     −$24.76
+Stripe incoming (settling into Stripe) .......   $3,161.11
+Stripe in-transit-to-bank ....................       $0.00
+                          total near-term cash = $187,084.86   ← the 4-term invariant, no double-count
+```
+- **Runway** recomputed off the corrected base: **4.5 months** ($183,948 ÷ $40,956 burn) — up from the
+  old stale-$140k basis.
+- **Health/DQ:** the live Xero read carries **no cash/xero degraded entry** (the pill no longer has a
+  cash-source failure dragging it down). Remaining `ok:false` contributors are other optional sources,
+  unrelated to cash.
+- War-chest views (aggressive/conservative deployable) recompute off the new cash base automatically.
