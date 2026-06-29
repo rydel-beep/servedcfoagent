@@ -575,3 +575,14 @@
     gap was surfacing. leads_view.recent_leads/latest_lead read the mirror, newest by Input Date+Time;
     voice ("who's the latest lead?"/"recent leads"), resync confirmation now names latest lead + latest
     close, GET /api/leads. PII-safe (email/phone never returned). 269 tests (+4). Read by tab NAME.
+
+69. **Deterministic factual recall + anti-fabrication guardrail.** Verify run caught the model
+    fabricating "Bondi Beach Restaurant — biggest deal of the quarter" on "last few closes". Root
+    cause: (a) persona style example literally said 'closed the Bondi deal!' (primed the name); (b)
+    HARD LINE only forbade inventing NUMBERS, implicitly licensing invented ENTITIES. Fix: closes_view.py
+    deterministic handlers ("last few closes"/"recent deals" → real won deals verbatim; "biggest deal"
+    → real max contract or honest defer) wired before the model. Persona rewritten: never invent a
+    specific fact (figure/name/deal/date/count); removed the Bondi example + labelled beats as non-data;
+    business-mode DATA RULES reinforce names-are-facts. 273 tests (+4). chat.py persona region is
+    parallel-clean (parallel only touches _build_context_block 369+) → checkout-reapply.
+    Report: dashboard/DETERMINISTIC_RECALL_REPORT.md.

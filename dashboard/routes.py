@@ -520,6 +520,14 @@ def api_chat():
         memory.record_turn(conv_id, "assistant", ld_reply, channel=channel, intent="command")
         return jsonify({"reply": ld_reply, "error": None, "intent": "command"})
 
+    # Deterministic close recall: "last few closes", "biggest deal" — verbatim from the mirror,
+    # never the model (which once fabricated a "Bondi Beach Restaurant" close).
+    import closes_view
+    cl_reply, cl_handled = closes_view.handle_closes_command(user_msg)
+    if cl_handled:
+        memory.record_turn(conv_id, "assistant", cl_reply, channel=channel, intent="command")
+        return jsonify({"reply": cl_reply, "error": None, "intent": "command"})
+
     recall = memory.build_recall_context(user_msg, conversation_id=conv_id)
 
     result = chat_fn(history, snapshot_json, token, voice=voice, memory_block=recall["block"])
@@ -592,6 +600,11 @@ def api_chat_stream():
     if _cmd_reply is None:
         import leads_view
         _r, _handled = leads_view.handle_leads_command(user_msg)
+        if _handled:
+            _cmd_reply = _r
+    if _cmd_reply is None:
+        import closes_view
+        _r, _handled = closes_view.handle_closes_command(user_msg)
         if _handled:
             _cmd_reply = _r
     if _cmd_reply is not None:
