@@ -558,3 +558,13 @@
     $71,574 = $171,847.80. Wired in xero_pull.pull_xero (Bank Summary, same single-use refresh token)
     → snapshot cash_in_bank, with LOUD last-known fallback. Removed stale $140,007/"confirmed 06-04"
     override. 258 tests pass (+4). Report: dashboard/CASH_ON_HAND_REPORT.md.
+
+67. **True payback via Stripe reconciliation (payback_reconciliation.py).** Phase 0: existing rk_live
+    key reads all per-payment endpoints (no new key); Offer Sold col 26 populated; deal→Stripe match
+    ~50% (email-exact 4/10 + name-search 1; tracker email ≠ billing email). Rydel: build now + unmatched
+    list. Engine: per-customer Stripe charge timeline (refunds subtracted, charges-only to avoid
+    invoice double-count) → per-deal payback = cumulative cash crosses loaded CAC per close (range
+    engine, not bare ad spend); never-recovered = ongoing (not false-finite); per-offer median
+    small-sample-flagged (<3); blended shown alongside (labelled). Confident matches only (unmatched
+    excluded+listed, never fabricated). PII-safe (emails server-side only). GET /api/payback + voice
+    ("payback on Growth Pro"). Range-aware. 265 tests (+7). Report: dashboard/PAYBACK_RECONCILIATION_REPORT.md.
