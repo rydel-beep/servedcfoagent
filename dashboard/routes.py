@@ -516,7 +516,8 @@ def api_chat():
     # Deterministic COUNTS (leads/closes for a period) — raw mirror rows, never the scorecard
     # or model. Runs before the display handlers so "how many leads in June" → raw count.
     import leads_view, closes_view
-    for _h in (leads_view.handle_lead_count_command, closes_view.handle_close_count_command):
+    for _h in (leads_view.handle_lead_count_command, closes_view.handle_close_count_command,
+               leads_view.handle_substage_count_command, leads_view.handle_client_count_command):
         _r, _handled = _h(user_msg)
         if _handled:
             memory.record_turn(conv_id, "assistant", _r, channel=channel, intent="command")
@@ -608,6 +609,7 @@ def api_chat_stream():
     if _cmd_reply is None:
         import leads_view, closes_view
         for _h in (leads_view.handle_lead_count_command, closes_view.handle_close_count_command,
+                   leads_view.handle_substage_count_command, leads_view.handle_client_count_command,
                    leads_view.handle_leads_command, closes_view.handle_closes_command):
             _r, _handled = _h(user_msg)
             if _handled:

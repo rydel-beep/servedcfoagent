@@ -33,3 +33,20 @@ model never generates a count. Display handlers (latest/recent lead, biggest dea
 verified count questions don't collide with them.
 
 275 tests pass (+2). The wrong "4" is gone; "how many leads in June" → 88.
+
+## Sweep — the other count questions locked to raw rows (2026-06-30)
+
+Same treatment extended so NO "how many" routes to the model/scorecard:
+| Question | Source (deterministic) | June |
+|---|---|---|
+| how many leads | raw rows by Input Date | **88** |
+| how many sets / appointments | raw rows, setter Call Outcome == SET, by Input Date (cohort) | **26** |
+| how many shows | raw rows, Show Status == Showed, by Input Date (cohort) | **13** |
+| how many closes / deals | raw won deals by Close Date | **6** |
+| how many (active) clients | snapshot `active_clients.active_count` (derived roster: Health reconciled with won deals, churned excluded) | **37** |
+
+`leads_view.handle_substage_count_command` (sets/shows, cohort by Input Date, labelled) and
+`leads_view.handle_client_count_command` (derived active-client count) wired before the model in both
+chat endpoints. Sub-stage counts are labelled "cohort by Input Date" so they're never conflated with
+leads or with the scorecard's own set/show formula. The June funnel from raw rows: 88 → 26 → 13 → 6.
+277 tests pass (+4 total this round).
