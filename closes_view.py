@@ -136,6 +136,40 @@ def _fmt(d: dict) -> str:
     return f"{who} (closed {d['close_date']}{offer}{val})"
 
 
+_CLOSE_COUNT_RE = re.compile(
+    r"(how many|number of|count of)\s+\w*\s*(closes?|deals?|wins?|clients? closed)|"
+    r"(closes?|deals?)\s+(count|did we (close|win)|in (june|july|may|april|the))", re.I)
+
+
+def count_closes(w0: dt.date | None, w1: dt.date | None) -> int:
+    """Won deals with a Close Date in [w0,w1] (None,None = all-time). Raw rows, not scorecard."""
+    n = 0
+    for d in _won_deals():
+        cd = d["close_date"]
+        if (w0 is None or cd >= w0) and (w1 is None or cd <= w1):
+            n += 1
+    return n
+
+
+def handle_close_count_command(text: str) -> tuple[str | None, bool]:
+    """'How many closes in June / this month' → raw count by Close Date (won deals)."""
+    if not text or not _CLOSE_COUNT_RE.search(text):
+        return None, False
+    from helpers import today_sydney
+    today = today_sydney()
+    try:
+        from range_unit_economics import parse_range
+        rng = parse_range(text, today)
+    except Exception:
+        rng = None
+    if not rng:
+        if re.search(r"\b(total|all|ever|do we have)\b", text, re.I):
+            return f"{count_closes(None, None)} closes total in the tracker (won deals, by Close Date).", True
+        rng = (today.replace(day=1), today, f"{today.strftime('%B')} (month to date)")
+    return (f"{count_closes(rng[0], rng[1])} closes in {rng[2]} — won deals counted from the raw "
+            f"tracker by Close Date."), True
+
+
 def handle_closes_command(text: str) -> tuple[str | None, bool]:
     """Deterministic recent-closes / biggest-deal — verbatim from the mirror, no model embroidery."""
     if not text:
