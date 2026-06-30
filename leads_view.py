@@ -26,6 +26,7 @@ _TAB = "Lead-to-Cash Tracker"
 
 def _col_map(header: list[str]) -> dict:
     idx = {}
+    outs = []
     for k, c in enumerate(header):
         cl = (c or "").lower()
         if "input date" in cl and "date" not in idx:
@@ -38,6 +39,12 @@ def _col_map(header: list[str]) -> dict:
             idx["source"] = k
         elif "business name" in cl and "business" not in idx:
             idx["business"] = k
+        elif "show status" in cl and "show" not in idx:
+            idx["show"] = k
+        elif "call outcome" in cl:
+            outs.append(k)
+    if outs:
+        idx["setter_outcome"] = min(outs)  # the SETTER's "SET/DQ" outcome (the earlier column)
     return idx
 
 
@@ -195,3 +202,73 @@ def handle_lead_count_command(text: str) -> tuple[str | None, bool]:
         return "I can't read the tracker rows right now to count leads.", True
     return (f"{r['count']} leads in {rng[2]} — counted from the raw tracker by Input Date "
             f"(entered leads, not a scorecard figure)."), True
+
+
+def _count_substage(stage: str, w0: dt.date | None, w1: dt.date | None) -> int | None:
+    """Cohort count of a funnel sub-stage among leads whose Input Date is in [w0,w1].
+    stage='set' → setter Call Outcome == SET; stage='show' → Show Status == Showed. Raw rows."""
+    rows = _rows()
+    if not rows:
+        return None
+    hi = next((i for i, r in enumerate(rows[:6]) if any("lead name" in (c or "").lower() for c in r)), 0)
+    cm = _col_map(rows[hi])
+    if "date" not in cm:
+        return None
+    col = cm.get("setter_outcome") if stage == "set" else cm.get("show")
+    if col is None:
+        return None
+    want = "set" if stage == "set" else "showed"
+    n = 0
+    for r in rows[hi + 1:]:
+        d = _date(r[cm["date"]]) if cm["date"] < len(r) else None
+        if d is None or (w0 and d < w0) or (w1 and d > w1):
+            continue
+        if col < len(r) and r[col].strip().lower() == want:
+            n += 1
+    return n
+
+
+_SUBSTAGE_RE = re.compile(
+    r"(how many|number of|count of)\s+\w*\s*(sets?|shows?|appointments?|appts?|booked)\b|"
+    r"(sets?|shows?)\s+(count|in (june|july|may|april|the))", re.I)
+
+
+def handle_substage_count_command(text: str) -> tuple[str | None, bool]:
+    """'How many sets/shows in <period>' → cohort count from raw rows (by lead Input Date)."""
+    if not text or not _SUBSTAGE_RE.search(text):
+        return None, False
+    tl = text.lower()
+    stage = "show" if ("show" in tl) else ("set" if re.search(r"\b(set|sets|appointment|appt|booked)\b", tl) else None)
+    if stage is None:
+        return None, False
+    from helpers import today_sydney
+    today = today_sydney()
+    try:
+        from range_unit_economics import parse_range
+        rng = parse_range(text, today)
+    except Exception:
+        rng = None
+    if not rng:
+        rng = (today.replace(day=1), today, f"{today.strftime('%B')} (month to date)")
+    n = _count_substage(stage, rng[0], rng[1])
+    if n is None:
+        return f"I can't read the tracker rows to count {stage}s right now.", True
+    label = "sets booked" if stage == "set" else "shows"
+    return (f"{n} {label} in {rng[2]} — counted from the raw tracker (of leads that came in that "
+            f"window, by Input Date), not a scorecard figure."), True
+
+
+def handle_client_count_command(text: str) -> tuple[str | None, bool]:
+    """'How many (active) clients' → the canonical derived active-client count from the snapshot."""
+    if not text or not re.search(r"(how many|number of|count of)\s+\w*\s*(active\s+)?clients?", text, re.I):
+        return None, False
+    try:
+        from snapshot import load_persisted
+        ac = (load_persisted() or {}).get("active_clients") or {}
+        n = ac.get("active_count")
+    except Exception:
+        n = None
+    if n is None:
+        return "I can't read the active-client roster right now.", True
+    return (f"{n} active clients (derived roster — Health tab reconciled with recent won deals, "
+            f"churned excluded)."), True

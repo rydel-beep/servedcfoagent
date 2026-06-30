@@ -607,3 +607,10 @@
     = 88 June / 109 May / 1028 all-time) and closes_view.count_closes + handle_close_count_command (won
     deals by Close Date), wired BEFORE the model in both chat endpoints. Scorecard never sources a count.
     275 tests (+2). Report: dashboard/LEADS_COUNT_FIX_REPORT.md.
+
+72. **Count sweep — sets/shows/clients locked to raw rows.** Extended the deterministic-count pattern
+    so no "how many" reaches the model: sets (setter Call Outcome==SET, cohort by Input Date = 26 June),
+    shows (Show Status==Showed = 13), clients (snapshot active_clients.active_count = 37, derived roster).
+    leads_view.handle_substage_count_command + handle_client_count_command, wired before the model. Sub-
+    stages labelled "cohort by Input Date" (not conflated with the scorecard's own set/show formula).
+    June funnel from raw: 88→26→13→6. 277 tests (+4).

@@ -76,3 +76,35 @@ def test_lead_count_command_deterministic(monkeypatch):
     assert leads_view.handle_leads_command("how many leads in June 2026?")[1] is False
     # non-count question ignored
     assert leads_view.handle_lead_count_command("what's the weather")[1] is False
+
+
+# Full-width rows (col 16 = setter outcome, col 22 = show status) for sub-stage counts.
+def _wide_hdr():
+    h=[""]*30; h[1]="Input Date"; h[3]="Lead Name"; h[16]="Call Outcome"; h[22]="Show Status"; h[23]="Call Outcome"; return h
+def _wide_row(date, setter, show):
+    r=[""]*30; r[1]=date; r[3]="Lead"; r[16]=setter; r[22]=show; return r
+_WIDE=[_wide_hdr(),
+    _wide_row("2026-06-10","SET","Showed"),
+    _wide_row("2026-06-12","SET","No-show"),
+    _wide_row("2026-06-15","DQ",""),
+    _wide_row("2026-05-20","SET","Showed"),   # May, excluded from June
+]
+
+def test_substage_counts_cohort(monkeypatch):
+    import datetime as dt, sheet_mirror
+    monkeypatch.setattr(sheet_mirror, "read_by_name", lambda n: _WIDE if "Lead-to-Cash" in n else None)
+    assert leads_view._count_substage("set", dt.date(2026,6,1), dt.date(2026,6,30)) == 2   # 2 June SETs
+    assert leads_view._count_substage("show", dt.date(2026,6,1), dt.date(2026,6,30)) == 1  # 1 June Showed
+    reply, handled = leads_view.handle_substage_count_command("how many sets in June 2026?")
+    assert handled and reply.startswith("2 sets booked in June 2026")
+    assert leads_view.handle_substage_count_command("how many shows in June 2026?")[0].startswith("1 shows in June 2026")
+    # not a count question
+    assert leads_view.handle_substage_count_command("how's the weather")[1] is False
+
+
+def test_client_count_from_snapshot(monkeypatch):
+    import snapshot
+    monkeypatch.setattr(snapshot, "load_persisted", lambda: {"active_clients": {"active_count": 37}})
+    reply, handled = leads_view.handle_client_count_command("how many active clients do we have?")
+    assert handled and reply.startswith("37 active clients")
+    assert leads_view.handle_client_count_command("what's our cash")[1] is False
