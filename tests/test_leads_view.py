@@ -56,3 +56,23 @@ def test_degrades_when_no_data(monkeypatch):
     _mock(monkeypatch, rows=[])
     r = leads_view.recent_leads()
     assert r["leads"] == [] and r["degraded"]
+
+
+def test_lead_count_by_input_date(monkeypatch):
+    import datetime as dt
+    _mock(monkeypatch)
+    # fixture has 3 leads: 2026-06-29 x2, 2026-06-28 x1
+    assert leads_view.count_leads(dt.date(2026,6,1), dt.date(2026,6,30))["count"] == 3
+    assert leads_view.count_leads(dt.date(2026,6,29), dt.date(2026,6,29))["count"] == 2
+    assert leads_view.count_leads(None, None)["count"] == 3   # all-time
+
+
+def test_lead_count_command_deterministic(monkeypatch):
+    _mock(monkeypatch)
+    reply, handled = leads_view.handle_lead_count_command("how many leads in June 2026?")
+    assert handled and reply.startswith("3 leads in June 2026") and "scorecard" in reply
+    assert leads_view.handle_lead_count_command("how many leads total")[0].startswith("3 leads total")
+    # a count question must NOT be caught by the display handler (different intent)
+    assert leads_view.handle_leads_command("how many leads in June 2026?")[1] is False
+    # non-count question ignored
+    assert leads_view.handle_lead_count_command("what's the weather")[1] is False

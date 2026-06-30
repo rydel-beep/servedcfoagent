@@ -598,3 +598,12 @@
     when open; untouched when closed. Verified live-injected at 1024/1280/1440/1536/1920: chat z=400,
     ZERO overlaps, screenshot clean. Report: dashboard/DESKTOP_CHAT_OVERLAP_REPORT.md; PNGs in
     dashboard/verification/desktop-chat-overlap/. chat.css via checkout-reapply (parallel WIP preserved).
+
+71. **Leads-count fix (scorecard 4 → raw 88).** "How many leads in June" said ~4 (Team Scorecard
+    "Leads in" cell, a narrow rolling window) while the raw tracker has 88 June rows. Root cause:
+    counts weren't deterministic — handle_leads_command only does display ("latest/recent"), so
+    "how many" fell to the model, which grabbed the scorecard aggregate. Fix: leads_view.count_leads
+    + handle_lead_count_command (raw rows by Input Date; lead = Input Date + Lead Name, Rydel-confirmed
+    = 88 June / 109 May / 1028 all-time) and closes_view.count_closes + handle_close_count_command (won
+    deals by Close Date), wired BEFORE the model in both chat endpoints. Scorecard never sources a count.
+    275 tests (+2). Report: dashboard/LEADS_COUNT_FIX_REPORT.md.

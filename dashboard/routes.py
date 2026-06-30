@@ -513,8 +513,16 @@ def api_chat():
         memory.record_turn(conv_id, "assistant", pb_reply, channel=channel, intent="command")
         return jsonify({"reply": pb_reply, "error": None, "intent": "command"})
 
+    # Deterministic COUNTS (leads/closes for a period) — raw mirror rows, never the scorecard
+    # or model. Runs before the display handlers so "how many leads in June" → raw count.
+    import leads_view, closes_view
+    for _h in (leads_view.handle_lead_count_command, closes_view.handle_close_count_command):
+        _r, _handled = _h(user_msg)
+        if _handled:
+            memory.record_turn(conv_id, "assistant", _r, channel=channel, intent="command")
+            return jsonify({"reply": _r, "error": None, "intent": "command"})
+
     # Leads visibility: "who's the latest lead?", "recent leads" — from the mirrored tracker.
-    import leads_view
     ld_reply, ld_handled = leads_view.handle_leads_command(user_msg)
     if ld_handled:
         memory.record_turn(conv_id, "assistant", ld_reply, channel=channel, intent="command")
@@ -598,15 +606,13 @@ def api_chat_stream():
         if _handled:
             _cmd_reply = _r
     if _cmd_reply is None:
-        import leads_view
-        _r, _handled = leads_view.handle_leads_command(user_msg)
-        if _handled:
-            _cmd_reply = _r
-    if _cmd_reply is None:
-        import closes_view
-        _r, _handled = closes_view.handle_closes_command(user_msg)
-        if _handled:
-            _cmd_reply = _r
+        import leads_view, closes_view
+        for _h in (leads_view.handle_lead_count_command, closes_view.handle_close_count_command,
+                   leads_view.handle_leads_command, closes_view.handle_closes_command):
+            _r, _handled = _h(user_msg)
+            if _handled:
+                _cmd_reply = _r
+                break
     if _cmd_reply is not None:
         memory.record_turn(conv_id, "assistant", _cmd_reply, channel=channel, intent="command")
         def gen_cmd():

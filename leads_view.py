@@ -114,6 +114,29 @@ def latest_lead() -> dict | None:
     return r["leads"][0] if r.get("leads") else None
 
 
+def count_leads(w0: dt.date | None, w1: dt.date | None) -> dict:
+    """Count ENTERED leads (a row with an Input Date + Lead Name) in [w0,w1]. None,None = all-time.
+    Counts the mirror's RAW rows directly — never a scorecard aggregate."""
+    rows = _rows()
+    if not rows:
+        return {"count": None, "degraded": [{"metric": "lead_count", "reason": "tracker unavailable"}]}
+    hi = next((i for i, r in enumerate(rows[:6]) if any("lead name" in (c or "").lower() for c in r)), 0)
+    cm = _col_map(rows[hi])
+    if "date" not in cm or "name" not in cm:
+        return {"count": None, "degraded": [{"metric": "lead_count", "reason": "lead columns not found"}]}
+    n = 0
+    for r in rows[hi + 1:]:
+        name = (r[cm["name"]].strip() if cm.get("name", 99) < len(r) else "")
+        if not name:
+            continue
+        d = _date(r[cm["date"]]) if cm["date"] < len(r) else None
+        if d is None:
+            continue
+        if (w0 is None or d >= w0) and (w1 is None or d <= w1):
+            n += 1
+    return {"count": n}
+
+
 # ── Voice / text command ─────────────────────────────────────────────────────
 
 _LEADS_RE = re.compile(
@@ -139,3 +162,36 @@ def handle_leads_command(text: str) -> tuple[str | None, bool]:
     if single:
         return f"Latest lead: {fmt(leads[0])}.", True
     return "Most recent leads: " + "; ".join(fmt(L) for L in leads) + ".", True
+
+
+# Lead COUNTS for a period — deterministic from raw rows, NEVER the scorecard or model.
+_LEAD_COUNT_RE = re.compile(
+    r"(how many|number of|count of|how much)\s+\w*\s*leads?|"
+    r"leads?\s+(count|did we get|came in|in (june|july|may|april|the))", re.I)
+_ALLTIME_RE = re.compile(r"\b(total|all|altogether|in (the )?(system|tracker|pipeline)|do we have|ever)\b", re.I)
+
+
+def handle_lead_count_command(text: str) -> tuple[str | None, bool]:
+    """'How many leads in June / this month / between X and Y' → raw count by Input Date."""
+    if not text or not _LEAD_COUNT_RE.search(text):
+        return None, False
+    from helpers import today_sydney
+    today = today_sydney()
+    rng = None
+    try:
+        from range_unit_economics import parse_range
+        rng = parse_range(text, today)
+    except Exception:
+        rng = None
+    if not rng and _ALLTIME_RE.search(text):
+        r = count_leads(None, None)
+        if r.get("count") is None:
+            return "I can't read the tracker rows right now to count leads.", True
+        return f"{r['count']} leads total in the tracker (every entered lead, by Input Date).", True
+    if not rng:
+        rng = (today.replace(day=1), today, f"{today.strftime('%B')} (month to date)")
+    r = count_leads(rng[0], rng[1])
+    if r.get("count") is None:
+        return "I can't read the tracker rows right now to count leads.", True
+    return (f"{r['count']} leads in {rng[2]} — counted from the raw tracker by Input Date "
+            f"(entered leads, not a scorecard figure)."), True
