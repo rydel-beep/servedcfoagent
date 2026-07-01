@@ -624,3 +624,11 @@
     dashboard liability line + liabilities_view.handle_amex_command ("what do we owe on Amex"). Separate
     from cash, never netted. Phase 2 affordability routes to analysis but per-person salaries not yet in
     context (follow-up). 283 tests (+8). Report: dashboard/COMMAND_ROUTING_AND_AMEX_REPORT.md.
+
+74. **Deterministic salary lookup (grounds affordability math).** salary_view.py reads per-person
+    AUD+PHP verbatim from the SALARY tab (col5/col6, values-as-of date, implied FX from tab totals).
+    Pure lookups ("what do we pay Gabie" → $831/₱35,000; "total payroll" → $21,174/₱910,000 @ ₱43/A$1)
+    answered before the model. Affordability/change questions guarded OUT of the lookup (_CHANGE_Q) but
+    the verified roster is injected into the model context (salary_context) so cost/FX math uses real
+    figures, not memory. 287 tests (+4). Wired in both chat endpoints. Report update in
+    COMMAND_ROUTING_AND_AMEX_REPORT.md.

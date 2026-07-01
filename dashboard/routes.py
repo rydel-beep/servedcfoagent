@@ -515,10 +515,10 @@ def api_chat():
 
     # Deterministic COUNTS (leads/closes for a period) — raw mirror rows, never the scorecard
     # or model. Runs before the display handlers so "how many leads in June" → raw count.
-    import leads_view, closes_view, liabilities_view
+    import leads_view, closes_view, liabilities_view, salary_view
     for _h in (leads_view.handle_lead_count_command, closes_view.handle_close_count_command,
                leads_view.handle_substage_count_command, leads_view.handle_client_count_command,
-               liabilities_view.handle_amex_command):
+               liabilities_view.handle_amex_command, salary_view.handle_salary_command):
         _r, _handled = _h(user_msg)
         if _handled:
             memory.record_turn(conv_id, "assistant", _r, channel=channel, intent="command")
@@ -540,7 +540,15 @@ def api_chat():
 
     recall = memory.build_recall_context(user_msg, conversation_id=conv_id)
 
-    result = chat_fn(history, snapshot_json, token, voice=voice, memory_block=recall["block"])
+    # Ground affordability/salary questions on VERIFIED SALARY-tab figures (deterministic), so the
+    # model does its cost/FX math on real numbers instead of memory.
+    import salary_view
+    _mem_block = recall["block"]
+    _sal_ctx = salary_view.salary_context(user_msg)
+    if _sal_ctx:
+        _mem_block = _sal_ctx + "\n\n" + (_mem_block or "")
+
+    result = chat_fn(history, snapshot_json, token, voice=voice, memory_block=_mem_block)
 
     reply = result.get("reply")
     if reply:
@@ -608,10 +616,10 @@ def api_chat_stream():
         if _handled:
             _cmd_reply = _r
     if _cmd_reply is None:
-        import leads_view, closes_view, liabilities_view
+        import leads_view, closes_view, liabilities_view, salary_view
         for _h in (leads_view.handle_lead_count_command, closes_view.handle_close_count_command,
                    leads_view.handle_substage_count_command, leads_view.handle_client_count_command,
-                   liabilities_view.handle_amex_command,
+                   liabilities_view.handle_amex_command, salary_view.handle_salary_command,
                    leads_view.handle_leads_command, closes_view.handle_closes_command):
             _r, _handled = _h(user_msg)
             if _handled:
@@ -626,13 +634,19 @@ def api_chat_stream():
                         headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
     recall = memory.build_recall_context(user_msg, conversation_id=conv_id)
+    # Ground affordability/salary questions on VERIFIED SALARY-tab figures (deterministic).
+    import salary_view
+    _mem_block = recall["block"]
+    _sal_ctx = salary_view.salary_context(user_msg)
+    if _sal_ctx:
+        _mem_block = _sal_ctx + "\n\n" + (_mem_block or "")
 
     @stream_with_context
     def generate():
         final_reply = ""
         try:
             for event_type, payload in chat_stream_fn(history, snapshot_json, token,
-                                                      voice=voice, memory_block=recall["block"]):
+                                                      voice=voice, memory_block=_mem_block):
                 if event_type == "delta":
                     yield sse("delta", {"text": payload})
                 elif event_type == "meta":
