@@ -132,7 +132,8 @@ def test_cohort_by_input_date(monkeypatch):
 
 def test_cohort_voice_command(monkeypatch):
     _mock(monkeypatch)
-    reply, handled = rue.handle_unit_econ_command("how is this month's lead flow converting?")
+    # Explicit month (not "this month") so the test is stable as the calendar rolls over.
+    reply, handled = rue.handle_unit_econ_command("how are June 2026 leads converting?")
     assert handled and "cohort" in reply.lower() and "lead→close" in reply.lower()
     # A pure money question must NOT be hijacked by the cohort branch.
     assert "LTGP:CAC for" in rue.handle_unit_econ_command("what's our LTGP:CAC in May 2026?")[0]

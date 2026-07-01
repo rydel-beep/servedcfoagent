@@ -134,3 +134,25 @@ def test_pending_is_store_backed_survives_worker_switch(monkeypatch, tmp_path):
     reply, handled = manual_targets.handle_turn("yes", "tok")
     assert handled and "now 4.5" in reply
     assert manual_targets._get_pending("tok") is None  # cleared after commit
+
+
+def test_affordability_questions_do_not_trigger_command(monkeypatch, tmp_path):
+    """Genuine financial questions with numbers must NOT hit the targets command menu."""
+    import manual_targets as mt
+    monkeypatch.setattr(mt, "STORE", str(tmp_path / "t.json"), raising=False)
+    for q in ["can we afford to bump standard SMM salary to 35k PHP, then push Gabie to 40k?",
+              "what if we raise Gabie to 40k",
+              "can we afford a 40k hire",
+              "should we change our LTGP:CAC to 3",
+              "how much runway do we have"]:
+        mt._clear_pending("tok")
+        assert mt.handle_turn(q, "tok")[1] is False, q
+
+
+def test_real_set_commands_still_work(monkeypatch, tmp_path):
+    import manual_targets as mt
+    monkeypatch.setattr(mt, "STORE", str(tmp_path / "t2.json"), raising=False)
+    for q in ["set the LTGP:CAC target to 3.5", "gross margin benchmark to 50%",
+              "CAC ceiling to 4000", "move the ROAS target to 5", "set the MRR goal to 100k"]:
+        mt._clear_pending("tok")
+        assert mt.handle_turn(q, "tok")[1] is True, q

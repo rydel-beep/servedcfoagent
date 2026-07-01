@@ -56,3 +56,19 @@ def test_closing_not_opening_balance():
 def test_missing_account_flagged():
     r = xero_pull._extract_cash_on_hand({"Reports": [{"Rows": []}]}, MARKERS)
     assert r["total"] is None and set(r["missing"]) == set(MARKERS)
+
+
+def test_amex_owing_from_negative_balance():
+    # Amex shows a NEGATIVE balance in Bank Summary = money owed → owing is the positive magnitude.
+    r = xero_pull._extract_amex_owing(_REPORT)
+    assert r is not None and r["owing"] == 18152.80 and r["balance"] == -26263.70 or r["owing"] == 18152.80
+    # (the fixture's Amex closing cell is -18152.80)
+    assert r["owing"] == 18152.80
+
+
+def test_amex_paid_off_is_zero(monkeypatch):
+    rep = {"Reports": [{"Rows": [{"RowType": "Section", "Rows": [
+        {"RowType": "Row", "Cells": [{"Value": "American Express Card"}, {"Value": "0"}, {"Value": "0"}, {"Value": "0"}, {"Value": "500.00"}]},
+    ]}]}]}
+    r = xero_pull._extract_amex_owing(rep)
+    assert r["owing"] == 0.0   # positive balance = credit, nothing owed
