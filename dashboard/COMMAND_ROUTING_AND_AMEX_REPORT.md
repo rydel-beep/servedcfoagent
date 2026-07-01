@@ -39,3 +39,17 @@ Surfaced as: a **liability line on the dashboard** ("Amex owing: −$X, as of <d
 deterministic voice answer (`liabilities_view.handle_amex_command`: "what do we owe on Amex?" → the figure
 verbatim). Never netted into cash, never double-counted; Xero-fail → "can't read the Amex balance". 283
 tests pass (+8 this round).
+
+## Phase 2 (follow-up) — deterministic salary lookup (grounds affordability)
+
+`salary_view.py` reads per-person AUD + PHP monthly salaries VERBATIM from the Finance SALARY tab
+(col5 $ / col6 ₱; "values as of" date; implied FX from the tab's own totals — no silent conversion).
+- **Pure lookups** answered deterministically before the model: "what do we pay Gabie?" → "Gabie De
+  Leon, SMM Full time: $831/mo (₱35,000)"; "SMM salaries" → the team breakdown; "total payroll" →
+  $21,174/mo (₱910,000) across 18, implied FX ₱43/A$1.
+- **Affordability/change questions are NOT hijacked** (`_CHANGE_Q` guard) — they go to the model, but
+  the verified salary roster is **injected into the model's context** (`salary_context`) with an
+  instruction to use those exact figures and never estimate. So the cost/FX math is built on the real
+  numbers, not memory. (Cross-check: the model's earlier "Chloie/Divine ₱29,000, Gabie ₱35,000" matched
+  the tab exactly — this makes that grounding guaranteed, not luck.)
+287 tests pass (+4).
