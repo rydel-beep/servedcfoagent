@@ -69,6 +69,18 @@ _FIELD_ALIASES: list[tuple[re.Pattern, str]] = [
 _AFFIRM = re.compile(r"^\s*(yes|yep|yeah|yup|confirm(ed)?|do it|go|go ahead|sure|ok(ay)?|correct|right)\b", re.I)
 _DENY = re.compile(r"^\s*(no|nope|nah|cancel|stop|leave it|don'?t|never ?mind|forget it)\b", re.I)
 
+# A genuine QUESTION never triggers a set-command, even if it contains a metric + a number
+# ("can we afford to change our LTGP:CAC to 3?" is analysis, not target-setting).
+_QUESTION_RE = re.compile(
+    r"\b(can (we|i|you)|could (we|i)|should (we|i)|would (it|we)|what if|what would|"
+    r"how (much|many|do|would|will|about|long|is|are)|do (we|i)|are we|is (it|that|this)|"
+    r"afford|worth (it)?|makes sense|thoughts on|feasible)\b", re.I)
+# An explicit target-noun signals target-setting intent (vs a cost/salary "raise").
+_TARGET_NOUN = re.compile(r"\b(target|benchmark|ceiling|goalpost|floor|assumption|\bgoal\b)\b", re.I)
+# Explicit SET verbs — deliberately EXCLUDES bump/raise/lower/push (those are cost/salary verbs
+# that appear in affordability questions, not target-setting).
+_SET_VERB = re.compile(r"\b(set|change|update|move|put|adjust|lock (in )?|make .* (the )?(target|benchmark|ceiling))\b", re.I)
+
 
 # ── Store I/O ────────────────────────────────────────────────────────────────
 
@@ -255,13 +267,15 @@ def handle_turn(text: str, token: str, set_by: str = "Rydel") -> tuple[str | Non
             _clear_pending(token)
             return (f"Okay — leaving {pend['label']} at "
                     f"{fmt_value(pend['key'], pend['old'])}.", True)
-        # Neither yes nor no while a change is pending — re-ask once, stay handled
-        # only if it still looks like a confirmation context; otherwise drop pending
-        # and let the new turn be parsed fresh below.
-        if re.search(r"\b(target|benchmark|goal|set|note|reset)\b", t, re.I) is None:
+        # Neither yes nor no while a change is pending. Only re-ask if the turn is a bare/short
+        # ambiguous reply; anything that reads as a fresh question or command SUPERSEDES the pending
+        # (drop it, fall through) so a real question is never hijacked by a stale confirmation.
+        looks_fresh = bool(_QUESTION_RE.search(t)) or len(t.split()) > 4 or \
+            re.search(r"\b(target|benchmark|goal|set|note|reset|change|update)\b", t, re.I)
+        if not looks_fresh:
             return (f"I still have {pend['label']} → {fmt_value(pend['key'], pend['new'])} "
                     f"waiting — yes to confirm, or no to cancel.", True)
-        _clear_pending(token)  # a fresh command supersedes
+        _clear_pending(token)  # a fresh question/command supersedes the pending confirmation
 
     low = t.lower()
 
@@ -299,10 +313,16 @@ def handle_turn(text: str, token: str, set_by: str = "Rydel") -> tuple[str | Non
         return (f"Reset {DEFAULTS[key]['label']} to default "
                 f"({fmt_value(key, DEFAULTS[key]['default'])})? (yes/no)", True)
 
-    # 5) SET: "set the LTGP:CAC target to 3.5" / "move the gross margin benchmark to 50%"
-    if re.search(r"\b(set|move|change|make|update|bump|raise|lower|put)\b", low) and \
-       re.search(r"\b(target|benchmark|goal|goalpost|ceiling|assumption|assume|to|=)\b", low) and \
-       re.search(r"\d", t):
+    # 5) SET: "set the LTGP:CAC target to 3.5" / "move the gross margin benchmark to 50%".
+    # Fires ONLY on explicit target-setting: a KNOWN dashboard-target metric (the strongest gate —
+    # salary/cost/person questions name no metric) + a number + (a target-noun OR an explicit set
+    # verb), and NOT phrased as a question. This keeps genuine financial questions with numbers
+    # ("can we afford to bump SMM to 35k, push Gabie to 40k") OUT of the command path.
+    # Fire on a target-noun (explicit target-setting, even if the metric is unnamed → we ask which),
+    # OR an explicit set-verb applied to a KNOWN metric. A bare set-verb with NO target-noun and NO
+    # known metric ("change SMM salary to 35k") is NOT target-setting → falls through to analysis.
+    if (not _QUESTION_RE.search(low)) and re.search(r"\d", t) and \
+       (_TARGET_NOUN.search(low) or (_SET_VERB.search(low) and _resolve_field(t))):
         key = _resolve_field(t)
         if not key:
             return ("Which target? Say e.g. “set the LTGP:CAC target to 3.5”, "

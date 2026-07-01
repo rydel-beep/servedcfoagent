@@ -170,6 +170,35 @@ def _extract_cash_on_hand(report: dict, markers: list[str]) -> dict:
     return {"total": total, "breakdown": breakdown, "missing": missing}
 
 
+def _extract_amex_owing(report: dict) -> dict | None:
+    """Amex is a credit card (a LIABILITY), shown in the Bank Summary with a NEGATIVE balance =
+    money owed. Returns {owing, name, as_of_balance} — owing = -balance when negative, else 0.
+    Kept SEPARATE from cash on hand (which correctly excludes Amex)."""
+    rep = (report.get("Reports") or [{}])[0]
+    hit = {}
+
+    def walk(rows):
+        for r in rows or []:
+            if r.get("Rows"):
+                walk(r["Rows"])
+            cells = r.get("Cells")
+            if not cells or len(cells) < 2:
+                continue
+            name = (cells[0].get("Value") or "").strip()
+            if ("american express" in name.lower() or "amex" in name.lower()) and "name" not in hit:
+                try:
+                    bal = float(str(cells[-1].get("Value")).replace(",", "").replace("$", ""))
+                except (TypeError, ValueError):
+                    bal = None
+                hit.update({"name": name, "balance": bal})
+
+    walk(rep.get("Rows", []))
+    if not hit or hit.get("balance") is None:
+        return None
+    bal = hit["balance"]
+    return {"owing": round(-bal, 2) if bal < 0 else 0.0, "balance": bal, "name": hit["name"]}
+
+
 def _extract_row_value(rows: list[dict], title: str) -> float | None:
     """Find a row by Title and return its total value."""
     for row in rows:
@@ -425,10 +454,21 @@ def pull_xero() -> dict:
             "source": "xero_bank_summary",
         }
 
+    # Amex owing — a LIABILITY (credit card), read from the same Bank Summary (negative balance =
+    # money owed). Kept SEPARATE from cash on hand; never netted silently.
+    amex_block = None
+    if bs:
+        amex = _extract_amex_owing(bs)
+        if amex is not None:
+            amex_block = {"owing": amex["owing"], "as_of": str(today),
+                          "account": amex["name"], "source": "xero_bank_summary",
+                          "note": "Credit-card liability — excluded from cash on hand; shown separately."}
+
     return {
         "xero": {
             **parsed,
             "cash_on_hand": cash_block,
+            "amex_owing": amex_block,
             "period": {
                 "label": f"trailing {WINDOW_CURRENT} days",
                 "start": str(start),

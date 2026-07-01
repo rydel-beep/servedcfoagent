@@ -614,3 +614,13 @@
     leads_view.handle_substage_count_command + handle_client_count_command, wired before the model. Sub-
     stages labelled "cohort by Input Date" (not conflated with the scorecard's own set/show formula).
     June funnel from raw: 88→26→13→6. 277 tests (+4).
+
+73. **Command misrouting fixed + Amex owing surfaced.** (a) "Can we afford to bump SMM to 35k, push Gabie
+    to 40k" hit the targets menu: the SET-trigger fired on set-verb(incl bump/raise) + "to" + digit, with
+    no metric requirement and no question-guard. Tightened: fires only if NOT a question (_QUESTION_RE) AND
+    a number AND (target-noun OR set-verb+known-metric); cost verbs dropped; ambiguous explicit commands
+    still ask "which target?"; stale pending no longer nags. (b) Amex owing (credit-card liability, Bank
+    Summary negative balance $18,153) read via xero_pull._extract_amex_owing → snapshot.xero.amex_owing;
+    dashboard liability line + liabilities_view.handle_amex_command ("what do we owe on Amex"). Separate
+    from cash, never netted. Phase 2 affordability routes to analysis but per-person salaries not yet in
+    context (follow-up). 283 tests (+8). Report: dashboard/COMMAND_ROUTING_AND_AMEX_REPORT.md.

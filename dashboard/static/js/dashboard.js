@@ -1009,6 +1009,16 @@
       </div>`;
     }
 
+    // Amex owing — a LIABILITY, shown separately from cash (cash correctly excludes it).
+    const amex = get(snap, 'xero.amex_owing');
+    if (amex && amex.owing != null && amex.owing > 0) {
+      html += `<div class="cash-card">
+        <div class="cash-card-label">Amex owing</div>
+        <div class="cash-card-value" style="color:var(--red)">-${fmt$(amex.owing)}</div>
+        <div class="cash-card-sub">credit-card liability, as of ${amex.as_of || 'Xero'} · not in cash</div>
+      </div>`;
+    }
+
     // Dual deployable cash
     if (cashPos.aggressive_deployable != null) {
       html += `<div class="cash-card">
