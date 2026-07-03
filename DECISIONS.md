@@ -632,3 +632,12 @@
     the verified roster is injected into the model context (salary_context) so cost/FX math uses real
     figures, not memory. 287 tests (+4). Wired in both chat endpoints. Report update in
     COMMAND_ROUTING_AND_AMEX_REPORT.md.
+
+75. **Client churn/downgrade WRITE-BACK — dashboard override (no Google write).** Rydel chose: EDITH
+    does NOT write the sheet; she records churn/downgrade in Postgres (client_overrides), the dashboard
+    applies it (count+MRR+churn via pull_client_health's existing churn-skip hook), and a "For Piolo"
+    queue lists the manual Health-sheet edits. Brief's write target gid 182553893 was the SALARY tab
+    (would corrupt payroll) → roster is Health gid 1407663952. Confirmation loop (echo exact row, yes/no,
+    ambiguous→ask), one-direction (confirm→resync→dashboard), churn auto-reconciles once the sheet
+    catches up, one-command undo + audit log, auth-gated. No permission escalation. 293 tests (+6).
+    Report: dashboard/CLIENT_WRITEBACK_REPORT.md.

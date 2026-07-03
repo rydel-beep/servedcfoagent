@@ -497,6 +497,18 @@ def api_chat():
         memory.record_turn(conv_id, "assistant", tgt_reply, channel=channel, intent="command")
         return jsonify({"reply": tgt_reply, "error": None, "intent": "command"})
 
+    # Client churn/downgrade WRITE-BACK (dashboard override, confirmation loop) + undo + Piolo queue.
+    # Checked early so a "yes/no" confirmation lands here. Auth already enforced (only Rydel writes).
+    import client_overrides
+    for _cb in (lambda m: client_overrides.handle_client_writeback_command(m, token),
+                lambda m: client_overrides.handle_undo_command(m, token),
+                client_overrides.handle_pending_updates_query,
+                client_overrides.handle_client_changes_query):
+        _r, _h = _cb(user_msg)
+        if _h:
+            memory.record_turn(conv_id, "assistant", _r, channel=channel, intent="command")
+            return jsonify({"reply": _r, "error": None, "intent": "command"})
+
     # Range-aware unit economics ("LTGP:CAC in May", "ROAS last 3 weeks", "this month vs last") —
     # computed deterministically, window-consistent. Runs after targets so "set the LTGP:CAC target"
     # still routes to targets.
@@ -605,6 +617,16 @@ def api_chat_stream():
         _r, _handled = manual_targets.handle_turn(user_msg, token)
         if _handled:
             _cmd_reply = _r
+    if _cmd_reply is None:
+        import client_overrides
+        for _cb in (lambda m: client_overrides.handle_client_writeback_command(m, token),
+                    lambda m: client_overrides.handle_undo_command(m, token),
+                    client_overrides.handle_pending_updates_query,
+                    client_overrides.handle_client_changes_query):
+            _r, _handled = _cb(user_msg)
+            if _handled:
+                _cmd_reply = _r
+                break
     if _cmd_reply is None:
         import range_unit_economics
         _r, _handled = range_unit_economics.handle_unit_econ_command(user_msg)
