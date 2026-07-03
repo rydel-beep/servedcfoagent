@@ -44,8 +44,15 @@ def _money(s) -> float | None:
         return None
 
 
+_MONTH_NAMES = {m.lower(): i for i, m in enumerate(
+    ["", "January", "February", "March", "April", "May", "June", "July", "August",
+     "September", "October", "November", "December"]) if i}
+_MONTH_NAMES.update({m[:3]: i for m, i in list(_MONTH_NAMES.items())})
+
+
 def _date(s) -> dt.date | None:
-    """Parse a date possibly embedded in text ('6/24/2026', '2026-06-24', '06/23/2026 payout')."""
+    """Parse a date in any of the tracker's formats: '6/24/2026', '2026-06-24',
+    '06/23/2026 payout', or the Set Date text form '29 June 26' / '4 June 2026'."""
     if not s:
         return None
     m = re.search(r"(\d{4})-(\d{1,2})-(\d{1,2})", str(s))
@@ -58,6 +65,13 @@ def _date(s) -> dt.date | None:
     if m:
         try:
             return dt.date(int(m.group(3)), int(m.group(1)), int(m.group(2)))  # M/D/Y
+        except ValueError:
+            return None
+    m = re.match(r"\s*(\d{1,2})\s+([A-Za-z]+)\s+(\d{2,4})", str(s))  # '29 June 26'
+    if m and m.group(2).lower() in _MONTH_NAMES:
+        try:
+            y = int(m.group(3))
+            return dt.date(y + 2000 if y < 100 else y, _MONTH_NAMES[m.group(2).lower()], int(m.group(1)))
         except ValueError:
             return None
     return None
@@ -79,6 +93,8 @@ def _ltc_col_map(header: list[str]) -> dict:
             idx["cash"] = k
         elif "commission closer" in cl and "closer" not in idx:
             idx["closer"] = k
+        elif "set date" in cl and "set_date" not in idx:
+            idx["set_date"] = k
         elif "show status" in cl and "show_status" not in idx:
             idx["show_status"] = k
         elif "call outcome" in cl:
@@ -267,7 +283,8 @@ def unit_economics(range_start: str, range_end: str) -> dict:
         "avg_contract": round(contract_total / closes, 2) if closes else None,
         "cash_collected_total": cash_total,
         "gross_margin_pct": margin,
-        "attribution": "spend-in-window", "roas_revenue_basis": "cash_collected",
+        "attribution": "spend-in-window", "roas_revenue_basis": "contracted",
+        "new_deal_cash": cash_total,  # cash from won deals in-window ("cash collected" per Rydel)
         "ad_spend_label": "Meta-only (Google not yet integrated)",
         "as_of": (load_persisted_as_of()),
     }
@@ -286,7 +303,9 @@ def unit_economics(range_start: str, range_end: str) -> dict:
                 ltgp_cac = round(ltgp / cac, 2)
                 ltv_cac = round(comp["avg_contract"] / cac, 2)
         if ad_spend and ad_spend > 0:
-            roas = round(cash_total / ad_spend, 2)  # cash-collected basis
+            # ROAS = CONTRACTED revenue ÷ Meta spend (Rydel-locked 2026-07-03; the single ROAS).
+            roas = round(contract_total / ad_spend, 2)
+            comp["roas_breakdown"] = (f"${contract_total:,.0f} contracted ÷ ${ad_spend:,.0f} Meta spend")
 
     return {
         "ltgp_cac": ltgp_cac,
@@ -415,8 +434,8 @@ def _one_line(metric: str, res: dict, label: str) -> str:
         v = res["roas"]
         if v is None:
             return f"ROAS for {label}: n/a ({'; '.join(res['caveats']) or 'no spend'})."
-        return (f"ROAS for {label}: {v}× — ${c['cash_collected_total']:,.0f} cash collected ÷ "
-                f"${c['ad_spend'] or 0:,.0f} Meta spend.")
+        return (f"ROAS for {label}: {v}× — ${c['contract_value_total']:,.0f} contracted revenue ÷ "
+                f"${c['ad_spend'] or 0:,.0f} Meta spend (contracted basis).")
     if metric.startswith("ltv"):
         v = res["ltv_cac"]
         if v is None:

@@ -125,13 +125,15 @@ def test_pagination_partial_on_error(monkeypatch):
 
 
 def test_roas_meta_primary_window_consistent():
-    snap = {"ad_spend_resolved": {"value": 6000.0, "source": "meta_live", "window_days": 30},
-            "sales": {"funnel": {"closes": 6}, "deep": {"money": {"avg_contract": 16300}},
-                      "window_days": 30}}
-    r = m8_roas(snap)
-    assert r["value"] == round(6 * 16300 / 6000, 2)
-    assert r["inputs_used"]["window_consistent"] is True
-    assert r["inputs_used"]["platform"] == "meta"
+    # ROAS delegates to the one engine — CONTRACTED revenue ÷ Meta spend (Rydel-locked).
+    contracted = 6 * 16300
+    eng = {"roas": round(contracted / 6000, 2), "caveats": [],
+           "components": {"contract_value_total": contracted, "ad_spend": 6000.0,
+                          "closes": 6, "window": {"days": 30}}}
+    r = m8_roas({}, {}, eng)
+    assert r["value"] == round(contracted / 6000, 2)
+    assert r["inputs_used"]["contracted_revenue"] == contracted
+    assert "contracted" in r["read"].lower()
 
 
 def test_resolver_prefers_meta_then_xero():

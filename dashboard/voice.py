@@ -394,14 +394,14 @@ def build_greeting(snap: dict) -> dict:
             line += f", heading for {round(weather['high_c'])}"
         parts.append(line + ".")
 
-    # Instagram-story safe: sales MOTION (appointments, closes, close rate,
-    # cash collected over 30d), never balance-sheet exposure (cash position,
-    # runway, burn stay out of the greeting — ask EDITH directly for those).
-    funnel = ((snap or {}).get("sales") or {}).get("funnel") or {}
-    sets_n, closes_n = funnel.get("sets"), funnel.get("closes")
-    close_rate = funnel.get("show_to_close_pct")
-    collected = ((((snap or {}).get("stripe") or {}).get("revenue") or {})
-                 .get("current") or {}).get("total_aud")
+    # Sales MOTION from the ONE engine, stashed in hormozi._sales_headline (same numbers as chat/
+    # tiles — no scorecard, no drift): appointments = tracker sets, closes = tracker Call-Outcome-won,
+    # "cash collected" = new-deal tracker cash (Rydel-locked). Never balance-sheet exposure.
+    headline = ((snap or {}).get("hormozi") or {}).get("_sales_headline") or {}
+    sets_n = headline.get("sets")
+    closes_n = headline.get("closes")
+    close_rate = headline.get("close_rate")
+    collected = headline.get("new_deal_cash")
 
     sales_bits = []
     if sets_n is not None:

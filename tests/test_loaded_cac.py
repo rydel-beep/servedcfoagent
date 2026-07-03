@@ -55,14 +55,13 @@ def test_resolver_prefers_log_then_scorecard():
 
 
 def test_cac_uses_loaded_setter_and_breaks_down():
-    snap = {"loaded_cac": {"setter_comm": 1507.27},
-            "ad_spend_resolved": {"value": 8757.5, "source": "meta_live", "window_days": 30},
-            "costs": {"closer_commission": 7200.0, "setter_commission": 0.0},
-            "sales": {"funnel": {"closes": 4}, "deep": {"money": {"avg_contract": 16537.5}},
-                      "payout": {"total_owed": 500}},
-            "xero": {"gross_margin_pct": 71.1}}
-    cac = m2_cac_breakdown(snap)
-    assert cac["value"] == round((8757.5 + 7200 + 1507.27) / 4, 2) == 4366.19
-    iu = cac["inputs_used"]
-    assert iu["setter_payout"] == 1507.27 and iu["setter_comm_source"] == "setter_payout_log_actual"
-    assert "Loaded: ad" in iu["breakdown"] and "setter $1,507 (log)" in iu["breakdown"]
+    # CAC delegates to the one engine — loaded (ad + closer + setter) ÷ tracker-won closes.
+    bd = "ad $8,758 + closer $7,200 + setter $1,507 = $17,465 ÷ 4 closes"
+    eng = {"cac_loaded": 4366.19, "caveats": [],
+           "components": {"cac_loaded": 4366.19, "cac_breakdown": bd, "closes": 4,
+                          "avg_contract": 16537.5, "gross_margin_pct": 71.1, "window": {"days": 30}}}
+    cac = m2_cac_breakdown({}, eng)
+    assert cac["value"] == 4366.19
+    assert cac["inputs_used"]["breakdown"] == bd
+    # loaded CAC = ad + closer + setter, all in the breakdown
+    assert "closer $7,200" in bd and "setter $1,507" in bd
