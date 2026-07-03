@@ -84,11 +84,12 @@ def test_window_consistent_may(monkeypatch):
     # LTGP = avg_contract 17000 × 0.70 = 11900 ; LTGP:CAC = 11900/3825
     assert c["avg_contract"] == 17000.0
     assert r["ltgp_cac"] == round(11900 / 3825, 2)
-    # ROAS = cash 11000 / spend 4000 = 2.75 (cash basis)
-    assert r["roas"] == 2.75
+    # ROAS = CONTRACTED 34000 / spend 4000 = 8.5 (contracted basis, Rydel-locked 2026-07-03)
+    assert r["roas"] == 8.5
     # LTV:CAC = avg_contract 17000 / CAC 3825
     assert r["ltv_cac"] == round(17000 / 3825, 2)
-    assert c["attribution"] == "spend-in-window" and c["roas_revenue_basis"] == "cash_collected"
+    assert c["attribution"] == "spend-in-window" and c["roas_revenue_basis"] == "contracted"
+    assert c["new_deal_cash"] == 11000.0  # cash from won deals, kept under its own name
 
 
 def test_zero_closes_no_divzero(monkeypatch):
@@ -112,10 +113,11 @@ def test_command_handler(monkeypatch):
     assert rue.handle_unit_econ_command("how's the coffee?")[1] is False
 
 
-def test_roas_cash_basis(monkeypatch):
+def test_roas_contracted_basis(monkeypatch):
     _mock(monkeypatch, spend=2000.0)
     r = rue.unit_economics("2026-05-01", "2026-05-31")
-    assert r["roas"] == round(11000.0 / 2000.0, 2)  # cash / spend, not contracted
+    # ROAS = CONTRACTED revenue (34000) / spend (2000), NOT cash — Rydel-locked contracted basis.
+    assert r["roas"] == round(34000.0 / 2000.0, 2)
 
 
 def test_cohort_by_input_date(monkeypatch):

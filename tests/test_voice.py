@@ -319,6 +319,9 @@ def _fake_snap():
         "cash_position": {"cash_in_bank": 140007.29, "stripe_incoming": 18000,
                           "runway_months": 3.6, "total_monthly_burn": 39211},
         "sales": {"funnel": {"sets": 21, "closes": 7, "show_to_close_pct": 33.3}},
+        # The greeting now reads the ONE engine's headline (stashed in hormozi), not the scorecard.
+        "hormozi": {"_sales_headline": {"sets": 21, "closes": 7, "close_rate": 33.3,
+                                        "new_deal_cash": 80860.0}},
         "stripe": {"revenue": {"current": {"total_aud": 80860.0}}},
         "client_health": {"current_mrr": 72896.18, "next_mrr": 58236.18,
                           "mrr_delta": -14660.0, "renewal_watch": [],

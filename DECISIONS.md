@@ -641,3 +641,13 @@
     ambiguous→ask), one-direction (confirm→resync→dashboard), churn auto-reconciles once the sheet
     catches up, one-command undo + audit log, auth-gated. No permission escalation. 293 tests (+6).
     Report: dashboard/CLIENT_WRITEBACK_REPORT.md.
+
+76. **ONE engine per metric (killed the four-way contradiction).** A session gave 4 answers for one
+    metric: two engines (hormozi snapshot = contracted ROAS/scorecard closes; range engine = cash
+    ROAS/tracker closes) plus the greeting (scorecard 0/2, Stripe $70k). Rydel locked: ROAS=contracted,
+    "cash collected"=new-deal tracker cash, closes/appts=tracker Call-Outcome-won, CAC=loaded, LTGP:CAC
+    & LTV:CAC as-is. Consolidated: range engine ROAS→contracted; hormozi m1/m2/m7/m8 DELEGATE to
+    unit_economics(30d) (one call, shared) — duplicate formulas deleted; greeting reads
+    hormozi._sales_headline (engine); tiles/chat already the engine. Consistency suite asserts
+    hormozi==engine + greeting==engine + ROAS-contracted + no-duplicate-ROAS-formula (grep). 297 tests
+    (+4). Report: dashboard/ONE_ENGINE_REPORT.md.

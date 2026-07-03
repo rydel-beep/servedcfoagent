@@ -59,188 +59,75 @@ def _metric(
 
 # ── M1: LTGP:CAC ──────────────────────────────────────────────────────────
 
-def m1_ltgp_cac(snap: dict, targets: dict | None = None) -> dict:
-    """Lifetime gross profit to fully-loaded customer acquisition cost."""
+# ── THE ONE ENGINE (2026-07-03) ──────────────────────────────────────────────
+# LTGP:CAC, LTV:CAC, loaded CAC and ROAS are computed by ONE engine — the range-aware
+# unit_economics(trailing 30d) — so the snapshot, chat, voice, tiles and brief can never
+# disagree. These m1/m2/m7/m8 wrappers DELEGATE to it (no independent formula survives).
+def _engine_30d() -> dict:
+    from range_unit_economics import unit_economics
+    from helpers import today_sydney
+    import datetime as _dt
+    t = today_sydney()
+    return unit_economics(str(t - _dt.timedelta(days=29)), str(t))
+
+
+def _band(v, good: float, watch: float) -> str:
+    if v is None:
+        return "unknown"
+    if v >= good:
+        return "healthy"
+    if v >= watch:
+        return "watch"
+    return "critical"
+
+
+def _eng_inputs(c: dict, basis: str) -> dict:
+    return {"engine": "unit_economics(trailing 30d)", "basis": basis,
+            "closes": c.get("closes"), "avg_contract": c.get("avg_contract"),
+            "gross_margin_pct": c.get("gross_margin_pct"), "cac_loaded": c.get("cac_loaded"),
+            "ltgp": c.get("ltgp"), "ad_spend": c.get("ad_spend"),
+            "contract_value_total": c.get("contract_value_total"),
+            "window_days": (c.get("window") or {}).get("days")}
+
+
+def m1_ltgp_cac(snap: dict, targets: dict | None = None, eng: dict | None = None) -> dict:
+    """Lifetime gross profit to loaded CAC — delegated to the one engine (contract basis)."""
+    e = eng if eng is not None else _engine_30d()
+    c = e.get("components") or {}
+    v = e.get("ltgp_cac")
     target = (targets or {}).get("ltgp_cac_target", 3.0)
-    watch_line = target * 2 / 3  # proportional watch band below the target
-    avg_contract = _get(snap, "sales.deep.money.avg_contract")
-    gross_margin_pct = _get(snap, "xero.gross_margin_pct")
-    closes = _get(snap, "sales.funnel.closes")
-    setter_comm = _get(snap, "costs.setter_commission") or 0
-    closer_comm = _get(snap, "costs.closer_commission") or 0
-    setter_payout, setter_comm_source = _resolved_setter_comm(snap)
-    ad_spend, ad_spend_source, ad_spend_window = _resolved_ad_spend(snap)
-
-    inputs = {
-        "avg_contract": avg_contract,
-        "gross_margin_pct": gross_margin_pct,
-        "closes": closes,
-        "setter_commission": setter_comm,
-        "closer_commission": closer_comm,
-        "closer_commission_source": "sheet_commission_closer_actual",
-        "setter_payout": setter_payout,
-        "setter_comm_source": setter_comm_source,
-        "ad_spend": ad_spend,
-        "ad_spend_source": ad_spend_source,
-        "ad_spend_window_days": ad_spend_window,
-    }
-
-    # Confidence
-    missing = []
-    if avg_contract is None:
-        missing.append("avg_contract")
-    if gross_margin_pct is None:
-        missing.append("gross_margin_pct (Xero)")
-    if closes is None or closes == 0:
-        missing.append("closes")
-    if ad_spend is None:
-        missing.append("ad_spend")
-
-    if len(missing) >= 2:
-        confidence = "low"
-    elif missing:
-        confidence = "medium"
-    else:
-        confidence = "high"
-
-    if avg_contract is None or gross_margin_pct is None or not closes:
-        return _metric(
-            None, target, "unknown", None,
-            f"Cannot compute — missing: {', '.join(missing)}",
-            confidence, inputs,
-        )
-
-    ltgp = avg_contract * (gross_margin_pct / 100)
-
-    # CAC = (ad_spend + setter payouts + closer commission) / closes
-    total_acq_cost = (ad_spend or 0) + setter_payout + closer_comm
-    cac_loaded = round(total_acq_cost / closes, 2) if closes > 0 else None
-
-    if cac_loaded is None or cac_loaded == 0:
-        return _metric(
-            None, target, "unknown", None,
-            "CAC is zero — no acquisition costs recorded",
-            confidence, inputs,
-        )
-
-    ratio = round(ltgp / cac_loaded, 2)
-    inputs["ltgp"] = round(ltgp, 2)
-    inputs["cac_loaded"] = cac_loaded
-    inputs["ratio"] = ratio
-    inputs["target"] = target
-
-    if ratio >= target:
-        status = "healthy"
-        read = (f"${ltgp:,.0f} gross profit per ${cac_loaded:,.0f} acquisition cost "
-                f"({ratio}×) — above the {target:g}× line")
-        dollar_gap = None
-    elif ratio >= watch_line:
-        status = "watch"
-        gap = round((target * cac_loaded - ltgp) * closes, 2)
-        read = (f"${ltgp:,.0f} gross profit per ${cac_loaded:,.0f} acquisition cost "
-                f"({ratio}×) — approaching the {target:g}× floor; ${gap:,.0f}/mo gap to close")
-        dollar_gap = gap
-    else:
-        status = "critical"
-        gap = round((target * cac_loaded - ltgp) * closes, 2)
-        read = (f"${ltgp:,.0f} gross profit per ${cac_loaded:,.0f} acquisition cost "
-                f"({ratio}×) — below {target:g}×; buying revenue that doesn't pay back fast enough")
-        dollar_gap = gap
-
-    return _metric(ratio, target, status, dollar_gap, read, confidence, inputs)
+    inp = _eng_inputs(c, "avg contract × gross margin ÷ loaded CAC (tracker-won closes)")
+    if v is None:
+        return _metric(None, target, "unknown", None,
+                       "; ".join(e.get("caveats") or ["no closes in the 30d window"]), "medium", inp)
+    read = (f"LTGP:CAC {v}× — LTGP ${c.get('ltgp', 0):,.0f} ÷ loaded CAC ${c.get('cac_loaded', 0):,.0f} "
+            f"({c.get('closes')} closes, {inp['window_days']}d)")
+    return _metric(v, target, _band(v, target, target * 2 / 3), None, read, "high", inp)
 
 
 # ── M2: Fully-loaded CAC breakdown ────────────────────────────────────────
 
-def m2_cac_breakdown(snap: dict) -> dict:
-    """Fully-loaded CAC with per-offer attribution."""
-    avg_contract = _get(snap, "sales.deep.money.avg_contract")
-    gross_margin_pct = _get(snap, "xero.gross_margin_pct")
-    closes = _get(snap, "sales.funnel.closes")
-    setter_comm = _get(snap, "costs.setter_commission") or 0
-    closer_comm = _get(snap, "costs.closer_commission") or 0
-    setter_payout, setter_comm_source = _resolved_setter_comm(snap)
-    ad_spend, ad_spend_source, ad_spend_window = _resolved_ad_spend(snap)
-    offer_mix = _get(snap, "sales.deep.money.offer_mix") or []
-
-    inputs = {
-        "closes": closes,
-        "setter_commission": setter_comm,
-        "closer_commission": closer_comm,
-        "closer_commission_source": "sheet_commission_closer_actual",
-        "setter_payout": setter_payout,
-        "setter_comm_source": setter_comm_source,
-        "ad_spend": ad_spend,
-        "ad_spend_source": ad_spend_source,
-        "ad_spend_window_days": ad_spend_window,
-        "offer_mix": offer_mix,
-    }
-
-    missing = []
-    if closes is None or closes == 0:
-        missing.append("closes")
-    if ad_spend is None:
-        missing.append("ad_spend")
-    if gross_margin_pct is None:
-        missing.append("gross_margin_pct")
-
-    confidence = "low" if len(missing) >= 2 else ("medium" if missing else "high")
-
-    if not closes:
-        return _metric(
-            None, None, "unknown", None,
-            f"Cannot compute — missing: {', '.join(missing)}",
-            confidence, inputs,
-        )
-
-    total_acq_cost = (ad_spend or 0) + setter_payout + closer_comm
-    cac_loaded = round(total_acq_cost / closes, 2)
-
-    # Benchmark: avg gross profit per close
-    avg_gp = None
-    if avg_contract is not None and gross_margin_pct is not None:
-        avg_gp = round(avg_contract * (gross_margin_pct / 100), 2)
-
-    inputs["cac_loaded"] = cac_loaded
-    inputs["avg_gp_per_close"] = avg_gp
-
-    # Per-offer CAC attribution (proportional to offer share)
-    per_offer = []
-    if offer_mix and closes > 0:
-        for o in offer_mix:
-            share = o.get("pct", 0) / 100
-            attributed_cac = round(cac_loaded * share, 2) if share > 0 else 0
-            per_offer.append({
-                "offer": o["offer"],
-                "count": o["count"],
-                "share_pct": o["pct"],
-                "attributed_cac": attributed_cac,
-            })
-    inputs["per_offer_cac"] = per_offer
-
-    # Fully-loaded breakdown (Meta-only ad spend; comms actual-from-sheet/log).
-    setter_lbl = "log" if setter_comm_source == "setter_payout_log_actual" else "scorecard"
-    bd = (f"Loaded: ad ${ad_spend or 0:,.0f} (Meta) + closer ${closer_comm:,.0f} (sheet) "
-          f"+ setter ${setter_payout:,.0f} ({setter_lbl}) = ${total_acq_cost:,.0f} ÷ {closes} closes")
-    inputs["breakdown"] = bd
-
-    if avg_gp is not None and cac_loaded > avg_gp:
-        status = "critical"
-        per_close_loss = round(cac_loaded - avg_gp, 2)
-        dollar_gap = round(per_close_loss * closes, 2)
-        read = (f"CAC ${cac_loaded:,.0f} exceeds gross profit per close ${avg_gp:,.0f} "
-                f"— losing ${per_close_loss:,.0f}/deal, ${dollar_gap:,.0f}/mo. {bd}")
+def m2_cac_breakdown(snap: dict, eng: dict | None = None) -> dict:
+    """Fully-loaded CAC — delegated to the one engine (loaded ÷ tracker-won closes)."""
+    e = eng if eng is not None else _engine_30d()
+    c = e.get("components") or {}
+    v = e.get("cac_loaded")
+    avg_gp = round(c["avg_contract"] * (c["gross_margin_pct"] / 100), 2) \
+        if c.get("avg_contract") and c.get("gross_margin_pct") is not None else None
+    inp = _eng_inputs(c, "ad + closer + setter comms ÷ tracker-won closes (Meta-only ad spend)")
+    inp["avg_gp_per_close"] = avg_gp
+    inp["breakdown"] = c.get("cac_breakdown")
+    if v is None:
+        return _metric(None, None, "unknown", None,
+                       "; ".join(e.get("caveats") or ["no closes in the 30d window"]), "medium", inp)
+    if avg_gp is not None and v > avg_gp:
+        status, read = "critical", (f"CAC ${v:,.0f} exceeds gross profit/close ${avg_gp:,.0f}. "
+                                    f"{c.get('cac_breakdown', '')}")
     elif avg_gp is not None:
-        status = "healthy"
-        dollar_gap = None
-        read = (f"CAC ${cac_loaded:,.0f} vs gross profit ${avg_gp:,.0f}/close — "
-                f"acquisition cost is covered. {bd}")
+        status, read = "healthy", f"CAC ${v:,.0f} vs gross profit ${avg_gp:,.0f}/close — covered. {c.get('cac_breakdown', '')}"
     else:
-        status = "unknown"
-        dollar_gap = None
-        read = f"CAC ${cac_loaded:,.0f}/close — gross profit unknown (Xero needed for benchmark). {bd}"
-
-    return _metric(cac_loaded, avg_gp, status, dollar_gap, read, confidence, inputs)
+        status, read = "unknown", f"CAC ${v:,.0f}/close. {c.get('cac_breakdown', '')}"
+    return _metric(v, avg_gp, status, None, read, "high", inp)
 
 
 # ── M3: Payback period ────────────────────────────────────────────────────
@@ -478,103 +365,37 @@ def m6_sales_velocity(snap: dict) -> dict:
 
 # ── M7: LTV:CAC (full revenue, no margin) ────────────────────────────────
 
-def m7_ltv_to_cac(snap: dict) -> dict:
-    """Lifetime value (full contract, no margin) to fully-loaded CAC."""
-    avg_contract = _get(snap, "sales.deep.money.avg_contract")
-    closes = _get(snap, "sales.funnel.closes")
-    setter_comm = _get(snap, "costs.setter_commission") or 0
-    closer_comm = _get(snap, "costs.closer_commission") or 0
-    setter_payout, setter_comm_source = _resolved_setter_comm(snap)
-    ad_spend, ad_spend_source, ad_spend_window = _resolved_ad_spend(snap)
-
-    inputs = {
-        "avg_contract": avg_contract,
-        "closes": closes,
-        "ad_spend": ad_spend,
-    }
-
-    if avg_contract is None or not closes:
+def m7_ltv_to_cac(snap: dict, eng: dict | None = None) -> dict:
+    """LTV (full contract, no margin) ÷ loaded CAC — delegated to the one engine."""
+    e = eng if eng is not None else _engine_30d()
+    c = e.get("components") or {}
+    v = e.get("ltv_cac")
+    inp = _eng_inputs(c, "avg contract value (no margin) ÷ loaded CAC (tracker-won closes)")
+    if v is None:
         return _metric(None, None, "unknown", None,
-                       "Cannot compute — missing data", "low", inputs)
-
-    total_acq_cost = (ad_spend or 0) + setter_payout + closer_comm
-    cac_loaded = round(total_acq_cost / closes, 2) if closes > 0 else None
-
-    if cac_loaded is None or cac_loaded == 0:
-        return _metric(None, None, "unknown", None,
-                       "CAC is zero", "low", inputs)
-
-    ratio = round(avg_contract / cac_loaded, 2)
-    inputs["cac_loaded"] = cac_loaded
-    inputs["ratio"] = ratio
-
-    read = (f"${avg_contract:,.0f} full contract value per ${cac_loaded:,.0f} CAC "
-            f"({ratio}x) — full revenue before margin")
-
-    return _metric(ratio, None, "unknown", None, read, "high" if ad_spend else "medium", inputs)
+                       "; ".join(e.get("caveats") or ["no closes in the 30d window"]), "medium", inp)
+    read = (f"LTV:CAC {v}× — avg contract ${c.get('avg_contract', 0):,.0f} ÷ loaded CAC "
+            f"${c.get('cac_loaded', 0):,.0f} (full revenue before margin, {c.get('closes')} closes)")
+    return _metric(v, None, _band(v, 3.0, 2.0), None, read, "high", inp)
 
 
-# ── M8: ROAS (Meta-based) ─────────────────────────────────────────────────
+# ── M8: ROAS (contracted, Meta-based) ────────────────────────────────────
 
-def m8_roas(snap: dict, targets: dict | None = None) -> dict:
-    """Return on ad spend = new contracted revenue / ad spend, window-consistent.
-
-    Defined as (closes × avg_contract) / ad_spend over the SAME window — i.e. new
-    business won per $1 of ad spend. Labelled Meta-based (Google not yet included).
-    """
+def m8_roas(snap: dict, targets: dict | None = None, eng: dict | None = None) -> dict:
+    """ROAS = CONTRACTED revenue ÷ Meta spend (Rydel-locked 2026-07-03) — one engine."""
+    e = eng if eng is not None else _engine_30d()
+    c = e.get("components") or {}
+    v = e.get("roas")
     target = (targets or {}).get("roas_target", 3.0)
-    watch_line = target / 2
-    closes = _get(snap, "sales.funnel.closes")
-    avg_contract = _get(snap, "sales.deep.money.avg_contract")
-    ad_spend, ad_spend_source, ad_spend_window = _resolved_ad_spend(snap)
-    funnel_window = _get(snap, "sales.window_days") or 30
-
-    inputs = {
-        "closes": closes,
-        "avg_contract": avg_contract,
-        "ad_spend": ad_spend,
-        "ad_spend_source": ad_spend_source,
-        "ad_spend_window_days": ad_spend_window,
-        "funnel_window_days": funnel_window,
-        "platform": "meta" if ad_spend_source == "meta_live" else ad_spend_source,
-        "definition": "new contracted revenue (closes × avg_contract) / ad spend, same window",
-        "window_consistent": (ad_spend_window == funnel_window),
-    }
-
-    missing = []
-    if not closes:
-        missing.append("closes")
-    if avg_contract is None:
-        missing.append("avg_contract")
-    if ad_spend is None:
-        missing.append("ad_spend")
-    confidence = "low" if len(missing) >= 2 else ("medium" if missing else "high")
-
-    if not closes or avg_contract is None or not ad_spend or ad_spend == 0:
-        return _metric(
-            None, target, "unknown", None,
-            f"Cannot compute — missing: {', '.join(missing) or 'ad_spend is zero'}",
-            confidence, inputs,
-        )
-
-    new_revenue = closes * avg_contract
-    roas = round(new_revenue / ad_spend, 2)
-    inputs["new_contracted_revenue"] = round(new_revenue, 2)
-    inputs["roas"] = roas
-    inputs["target"] = target
-    label = "Meta" if ad_spend_source == "meta_live" else "Xero-ad-line"
-
-    if roas >= target:
-        status = "healthy"
-    elif roas >= watch_line:
-        status = "watch"
-    else:
-        status = "critical"
-    read = (f"${roas:.2f} of new contracted revenue per $1 of {label} ad spend "
-            f"(${new_revenue:,.0f} won / ${ad_spend:,.0f} spend, {funnel_window}d) — "
-            f"Meta-based; Google not yet included")
-
-    return _metric(roas, target, status, None, read, confidence, inputs)
+    inp = _eng_inputs(c, "contracted revenue ÷ Meta ad spend (spend-in-window)")
+    inp["contracted_revenue"] = c.get("contract_value_total")
+    if v is None:
+        return _metric(None, target, "unknown", None,
+                       "; ".join(e.get("caveats") or ["no closes / no spend in the 30d window"]),
+                       "medium", inp)
+    read = (f"ROAS {v}× — ${c.get('contract_value_total', 0):,.0f} contracted revenue ÷ "
+            f"${c.get('ad_spend', 0):,.0f} Meta spend ({inp['window_days']}d, contracted basis)")
+    return _metric(v, target, _band(v, target, target / 2), None, read, "high", inp)
 
 
 # ── Compute all metrics ───────────────────────────────────────────────────
@@ -583,19 +404,25 @@ def compute_all(snap: dict, true_team_cost: float | None = None,
                 targets: dict | None = None) -> dict:
     """Return all Hormozi metrics keyed by name.
 
-    targets: Rydel-set benchmark/goalpost overrides (manual_targets.get_resolved()).
-    Each metric uses targets.get(key, <documented default>) for its benchmark line,
-    so the healthy/below-target classification reflects Rydel's goalposts.
+    LTGP:CAC / LTV:CAC / loaded CAC / ROAS delegate to ONE engine (unit_economics 30d),
+    computed once here and shared — so the snapshot can never disagree with chat/tiles.
     """
     t = targets or {}
+    eng = _engine_30d()  # ONE engine call, shared by the four delegated metrics + the greeting
+    ec = eng.get("components") or {}
+    ecoh = eng.get("cohort") or {}
     return {
-        "ltgp_cac": m1_ltgp_cac(snap, t),
-        "ltgp_to_cac": m1_ltgp_cac(snap, t),  # alias for KPI strip
-        "ltv_to_cac": m7_ltv_to_cac(snap),
-        "cac_loaded": m2_cac_breakdown(snap),
+        "ltgp_cac": m1_ltgp_cac(snap, t, eng),
+        "ltgp_to_cac": m1_ltgp_cac(snap, t, eng),  # alias for KPI strip
+        "ltv_to_cac": m7_ltv_to_cac(snap, eng),
+        "cac_loaded": m2_cac_breakdown(snap, eng),
         "payback_days": m3_payback_days(snap, t),
         "gross_margin": m4_gross_margin(snap, t),
         "op_efficiency": m5_op_efficiency(snap, true_team_cost, t),
         "sales_velocity": m6_sales_velocity(snap),
-        "roas": m8_roas(snap, t),
+        "roas": m8_roas(snap, t, eng),
+        # The greeting reads THIS (same engine, no re-computation) — never the scorecard.
+        "_sales_headline": {"sets": ecoh.get("sets"), "closes": ec.get("closes"),
+                            "close_rate": ecoh.get("show_to_close_pct"),
+                            "new_deal_cash": ec.get("new_deal_cash")},
     }

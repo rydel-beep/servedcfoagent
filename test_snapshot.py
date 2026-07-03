@@ -597,26 +597,21 @@ def test_hormozi_metrics():
         "stripe": {"mrr": 49491.0},
     }
 
-    # M1: LTGP:CAC
-    m1 = m1_ltgp_cac(mock)
-    assert m1["confidence"] == "high", f"M1 confidence: {m1['confidence']}"
-    assert m1["value"] is not None, "M1 value is None"
-    # ltgp = 14650 * 0.475 = 6958.75
-    # cac = (7320.57 + 1100 + 6000) / 4 = 3605.14
-    # ratio = 6958.75 / 3605.14 = 1.93
-    expected_ratio = round(6958.75 / 3605.1425, 2)
-    assert m1["value"] == expected_ratio, f"M1 value {m1['value']} != expected {expected_ratio}"
-    assert m1["status"] == "critical", f"M1 status: {m1['status']} (expected critical, <2.0)"
-    assert m1["dollar_gap"] is not None and m1["dollar_gap"] > 0
-    print(f"  M1 LTGP:CAC = {m1['value']}× (status={m1['status']}, gap=${m1['dollar_gap']:,.0f})")
+    # M1 + M2 now DELEGATE to the one engine — pass a mock engine result and verify wrapping.
+    eng = {"ltgp_cac": 1.93, "cac_loaded": 3605.14, "ltv_cac": 4.06, "roas": 3.9, "caveats": [],
+           "components": {"ltgp": 6958.75, "cac_loaded": 3605.14, "closes": 4,
+                          "avg_contract": 14650.0, "gross_margin_pct": 47.5,
+                          "cac_breakdown": "ad + closer + setter ÷ 4 closes", "window": {"days": 30}}}
+    m1 = m1_ltgp_cac(mock, {}, eng)
+    assert m1["value"] == 1.93 and m1["status"] == "critical"   # 1.93 < 2 → critical
+    assert m1["inputs_used"]["engine"] == "unit_economics(trailing 30d)"
+    print(f"  M1 LTGP:CAC = {m1['value']}× (status={m1['status']})")
 
-    # M2: CAC breakdown
-    m2 = m2_cac_breakdown(mock)
-    assert m2["value"] is not None
-    assert m2["inputs_used"].get("per_offer_cac"), "Missing per-offer CAC"
+    # M2: CAC breakdown (delegated)
+    m2 = m2_cac_breakdown(mock, eng)
+    assert m2["value"] == 3605.14
+    assert m2["inputs_used"]["breakdown"] == "ad + closer + setter ÷ 4 closes"
     print(f"  M2 CAC = ${m2['value']:,.0f} (status={m2['status']})")
-    for po in m2["inputs_used"]["per_offer_cac"]:
-        print(f"    {po['offer']}: ${po['attributed_cac']:,.0f} ({po['share_pct']}%)")
 
     # M3: Payback
     m3 = m3_payback_days(mock)
@@ -648,12 +643,11 @@ def test_hormozi_metrics():
     assert m6["value"] == expected_vel, f"M6 {m6['value']} != {expected_vel}"
     print(f"  M6 Velocity = ${m6['value']:,.0f}/day")
 
-    # Confidence: null inputs → low
-    empty = {}
-    m1_empty = m1_ltgp_cac(empty)
-    assert m1_empty["confidence"] == "low"
-    assert m1_empty["status"] == "unknown"
-    print("  Null inputs → confidence:low, status:unknown — correct")
+    # No closes in the engine window → value None, status unknown (delegated).
+    no_closes_eng = {"ltgp_cac": None, "caveats": ["No closes in this window"], "components": {}}
+    m1_empty = m1_ltgp_cac({}, {}, no_closes_eng)
+    assert m1_empty["value"] is None and m1_empty["status"] == "unknown"
+    print("  No closes → value:None, status:unknown — correct")
 
 
 def test_verdicts():

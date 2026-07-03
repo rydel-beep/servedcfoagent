@@ -99,19 +99,14 @@ def test_non_command_falls_through(monkeypatch, tmp_path):
 
 
 def test_hormozi_uses_set_target(monkeypatch, tmp_path):
-    # A set target moves the healthy/below-target classification.
-    snap = {"sales": {"deep": {"money": {"avg_contract": 16000}}, "funnel": {"closes": 6}},
-            "xero": {"gross_margin_pct": 60},
-            "ad_spend_resolved": {"value": 6000, "source": "meta_live", "window_days": 30},
-            "costs": {}}
-    # ltgp = 16000*0.6 = 9600; cac = 6000/6 = 1000; ratio = 9.6
-    healthy = m1_ltgp_cac(snap, {"ltgp_cac_target": 3.0})
-    assert healthy["status"] == "healthy" and healthy["benchmark"] == 3.0
-    # raise target well above the ratio (9.6 < watch band 2/3·20 = 13.3) → critical
-    strict = m1_ltgp_cac(snap, {"ltgp_cac_target": 20.0})
+    # The VALUE comes from the one engine; the target only moves the status band.
+    eng = {"ltgp_cac": 9.6, "caveats": [],
+           "components": {"ltgp": 9600, "cac_loaded": 1000, "closes": 6, "window": {"days": 30}}}
+    healthy = m1_ltgp_cac({}, {"ltgp_cac_target": 3.0}, eng)
+    assert healthy["value"] == 9.6 and healthy["status"] == "healthy" and healthy["benchmark"] == 3.0
+    strict = m1_ltgp_cac({}, {"ltgp_cac_target": 20.0}, eng)   # 9.6 < 2/3·20 = 13.3 → critical
     assert strict["benchmark"] == 20.0 and strict["status"] == "critical"
-    # a target the ratio clears into the watch band only
-    assert m1_ltgp_cac(snap, {"ltgp_cac_target": 12.0})["status"] == "watch"
+    assert m1_ltgp_cac({}, {"ltgp_cac_target": 12.0}, eng)["status"] == "watch"  # 9.6 ≥ 8.0
 
 
 def test_hormozi_gross_margin_settable(monkeypatch, tmp_path):
