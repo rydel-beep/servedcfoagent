@@ -396,6 +396,14 @@ def pull_client_health() -> dict:
     # Renewal watch tracking — clients approaching contract renewal
     renewal_watch = []
 
+    # Chat-driven churn/downgrade overrides (dashboard-only; the sheet is untouched). Loaded once.
+    try:
+        import client_overrides
+        _ovr = client_overrides.active_map()
+        _ovr_norm = client_overrides._norm
+    except Exception:
+        _ovr, _ovr_norm = {}, (lambda s: s)
+
     for row in data_rows:
         name = row[_H_NAME].strip() if len(row) > _H_NAME else ""
         if not name or name.upper().startswith("TOTAL"):
@@ -410,6 +418,12 @@ def pull_client_health() -> dict:
 
         # Skip confirmed churned clients (still marked Active in sheet but known churned)
         if _is_confirmed_churned(name):
+            continue
+
+        # Chat override: churn → drop from active (count + MRR + churn recompute without it);
+        # downgrade → lower this client's MRR. The sheet still says Active until Piolo updates it.
+        _ov = _ovr.get(_ovr_norm(name))
+        if _ov and _ov.get("change_type") == "churn":
             continue
 
         # Parse contract dates — col 4 = start, col 5 = end
@@ -434,6 +448,11 @@ def pull_client_health() -> dict:
             current_mrr = 0.0
         if next_mrr is None:
             next_mrr = 0.0
+
+        # Chat override: downgrade → this client's MRR becomes the new lower figure.
+        if _ov and _ov.get("change_type") == "downgrade" and _ov.get("new_mrr") is not None:
+            current_mrr = float(_ov["new_mrr"])
+            next_mrr = float(_ov["new_mrr"])
 
         # Web Sub is now a package type, not a status
         if package == "Web Sub":
