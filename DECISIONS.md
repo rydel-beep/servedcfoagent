@@ -651,3 +651,12 @@
     hormozi._sales_headline (engine); tiles/chat already the engine. Consistency suite asserts
     hormozi==engine + greeting==engine + ROAS-contracted + no-duplicate-ROAS-formula (grep). 297 tests
     (+4). Report: dashboard/ONE_ENGINE_REPORT.md.
+
+77. **Three-tier intent routing (stop data non-sequiturs on musings).** A rambling voice musing
+    returned a random payroll row: salary_view._PAY_RE's `(what|how much).*(…|on)` greedily bridged
+    "what we do" → "more on". Fix: intent_router.py — TIER 1 commands (strict, first), TIER 2 data
+    (GATED), TIER 3 conversation (DEFAULT). is_conversational_ramble() skips TIER 2 for long
+    declarative no-data-structure turns → model. entity_relevant() suppresses an entity-scoped lookup
+    (salary) naming a person absent from the utterance (aggregates/superlatives exempt). Tightened
+    _PAY_RE (no cross-ramble bridge). Asymmetry: unsure → conversation. Gated both /api/chat and the
+    voice /api/chat-stream. 303 tests (+6). Report: dashboard/CONVERSATIONAL_FLOW_REPORT.md.

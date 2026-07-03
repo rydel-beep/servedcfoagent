@@ -509,46 +509,35 @@ def api_chat():
             memory.record_turn(conv_id, "assistant", _r, channel=channel, intent="command")
             return jsonify({"reply": _r, "error": None, "intent": "command"})
 
-    # Range-aware unit economics ("LTGP:CAC in May", "ROAS last 3 weeks", "this month vs last") —
-    # computed deterministically, window-consistent. Runs after targets so "set the LTGP:CAC target"
-    # still routes to targets.
-    import range_unit_economics
-    ue_reply, ue_handled = range_unit_economics.handle_unit_econ_command(user_msg)
-    if ue_handled:
-        memory.record_turn(conv_id, "assistant", ue_reply, channel=channel, intent="command")
-        return jsonify({"reply": ue_reply, "error": None, "intent": "command"})
-
-    # True payback (Stripe-reconciled, per offer): "payback on Growth Pro", "payback by offer".
-    import payback_reconciliation
-    pb_reply, pb_handled = payback_reconciliation.handle_payback_command(user_msg)
-    if pb_handled:
-        memory.record_turn(conv_id, "assistant", pb_reply, channel=channel, intent="command")
-        return jsonify({"reply": pb_reply, "error": None, "intent": "command"})
-
-    # Deterministic COUNTS (leads/closes for a period) — raw mirror rows, never the scorecard
-    # or model. Runs before the display handlers so "how many leads in June" → raw count.
+    # ── TIER 2: deterministic DATA handlers — GATED. A conversational ramble (long, declarative,
+    # no data-request structure) SKIPS these entirely and falls through to the model (TIER 3).
+    # Default-to-conversation: when unsure, a generic reply beats a jarring data non-sequitur.
+    import intent_router, range_unit_economics, payback_reconciliation
     import leads_view, closes_view, liabilities_view, salary_view
-    for _h in (leads_view.handle_lead_count_command, closes_view.handle_close_count_command,
-               leads_view.handle_substage_count_command, leads_view.handle_client_count_command,
-               liabilities_view.handle_amex_command, salary_view.handle_salary_command):
-        _r, _handled = _h(user_msg)
-        if _handled:
+    if not intent_router.is_conversational_ramble(user_msg):
+        _thread = " ".join((m.get("content") or "") for m in (history or [])[-6:])
+        # (handler, entity_scoped?) — entity_scoped lookups are entity-filtered (the Romano rule);
+        # superlative/recency lookups (latest lead, biggest deal) surface entities by design → exempt.
+        _tier2 = [
+            (range_unit_economics.handle_unit_econ_command, False),
+            (payback_reconciliation.handle_payback_command, False),
+            (leads_view.handle_lead_count_command, False),
+            (closes_view.handle_close_count_command, False),
+            (leads_view.handle_substage_count_command, False),
+            (leads_view.handle_client_count_command, False),
+            (liabilities_view.handle_amex_command, False),
+            (salary_view.handle_salary_command, True),     # entity-scoped → filter
+            (leads_view.handle_leads_command, False),
+            (closes_view.handle_closes_command, False),
+        ]
+        for _h, _entity_scoped in _tier2:
+            _r, _handled = _h(user_msg)
+            if not _handled:
+                continue
+            if _entity_scoped and not intent_router.entity_relevant(_r, user_msg, _thread):
+                break   # a lookup naming a person he never mentioned → suppress, fall to conversation
             memory.record_turn(conv_id, "assistant", _r, channel=channel, intent="command")
             return jsonify({"reply": _r, "error": None, "intent": "command"})
-
-    # Leads visibility: "who's the latest lead?", "recent leads" — from the mirrored tracker.
-    ld_reply, ld_handled = leads_view.handle_leads_command(user_msg)
-    if ld_handled:
-        memory.record_turn(conv_id, "assistant", ld_reply, channel=channel, intent="command")
-        return jsonify({"reply": ld_reply, "error": None, "intent": "command"})
-
-    # Deterministic close recall: "last few closes", "biggest deal" — verbatim from the mirror,
-    # never the model (which once fabricated a "Bondi Beach Restaurant" close).
-    import closes_view
-    cl_reply, cl_handled = closes_view.handle_closes_command(user_msg)
-    if cl_handled:
-        memory.record_turn(conv_id, "assistant", cl_reply, channel=channel, intent="command")
-        return jsonify({"reply": cl_reply, "error": None, "intent": "command"})
 
     recall = memory.build_recall_context(user_msg, conversation_id=conv_id)
 
@@ -627,26 +616,32 @@ def api_chat_stream():
             if _handled:
                 _cmd_reply = _r
                 break
-    if _cmd_reply is None:
-        import range_unit_economics
-        _r, _handled = range_unit_economics.handle_unit_econ_command(user_msg)
-        if _handled:
-            _cmd_reply = _r
-    if _cmd_reply is None:
-        import payback_reconciliation
-        _r, _handled = payback_reconciliation.handle_payback_command(user_msg)
-        if _handled:
-            _cmd_reply = _r
-    if _cmd_reply is None:
-        import leads_view, closes_view, liabilities_view, salary_view
-        for _h in (leads_view.handle_lead_count_command, closes_view.handle_close_count_command,
-                   leads_view.handle_substage_count_command, leads_view.handle_client_count_command,
-                   liabilities_view.handle_amex_command, salary_view.handle_salary_command,
-                   leads_view.handle_leads_command, closes_view.handle_closes_command):
+    # ── TIER 2 (voice path): GATED — a conversational ramble skips the data handlers → model.
+    # This is the surface the Romano misfire happened on. Default-to-conversation when unsure.
+    import intent_router
+    if _cmd_reply is None and not intent_router.is_conversational_ramble(user_msg):
+        import range_unit_economics, payback_reconciliation, leads_view, closes_view, liabilities_view, salary_view
+        _thread = " ".join((m.get("content") or "") for m in (history or [])[-6:])
+        _tier2 = [
+            (range_unit_economics.handle_unit_econ_command, False),
+            (payback_reconciliation.handle_payback_command, False),
+            (leads_view.handle_lead_count_command, False),
+            (closes_view.handle_close_count_command, False),
+            (leads_view.handle_substage_count_command, False),
+            (leads_view.handle_client_count_command, False),
+            (liabilities_view.handle_amex_command, False),
+            (salary_view.handle_salary_command, True),      # entity-scoped → filter (Romano rule)
+            (leads_view.handle_leads_command, False),
+            (closes_view.handle_closes_command, False),
+        ]
+        for _h, _entity_scoped in _tier2:
             _r, _handled = _h(user_msg)
-            if _handled:
-                _cmd_reply = _r
-                break
+            if not _handled:
+                continue
+            if _entity_scoped and not intent_router.entity_relevant(_r, user_msg, _thread):
+                break   # suppress a salary lookup about someone he never mentioned → conversation
+            _cmd_reply = _r
+            break
     if _cmd_reply is not None:
         memory.record_turn(conv_id, "assistant", _cmd_reply, channel=channel, intent="command")
         def gen_cmd():
