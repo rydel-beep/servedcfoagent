@@ -127,6 +127,15 @@ def derive_active_clients(
     discrepancies = []
     churned_excluded = []
 
+    # Chat-driven churn overrides (dashboard-only): exclude these from the active set too, so the
+    # COUNT drops (not just MRR) even when the client is a recent Won deal re-added from the LTC side.
+    try:
+        import client_overrides
+        _churn_ov = {_normalise(o["client_name"]) for o in client_overrides.active_overrides()
+                     if o.get("change_type") == "churn"}
+    except Exception:
+        _churn_ov = set()
+
     # Index health clients by normalised name
     health_by_norm = {}
     for h in health_clients:
@@ -154,8 +163,8 @@ def derive_active_clients(
             continue
         n = _normalise(name)
 
-        # Check churned
-        if _is_churned(name):
+        # Check churned (hardcoded set OR a chat churn override)
+        if _is_churned(name) or _normalise(name) in _churn_ov:
             churned_excluded.append(name)
             continue
 
@@ -213,7 +222,7 @@ def derive_active_clients(
         biz = w.get("business", "").strip()
         if not biz:
             continue
-        if _is_churned(biz):
+        if _is_churned(biz) or _normalise(biz) in _churn_ov:
             churned_excluded.append(biz)
             continue
 
