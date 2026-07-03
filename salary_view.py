@@ -96,9 +96,15 @@ def find_people(query: str) -> list[dict]:
 
 # ── Voice / text command ─────────────────────────────────────────────────────
 
+# Explicit pay phrasing only. The old `(what|how much).*(…|on)` used a greedy bridge that matched
+# ANY utterance with "what" and "on" (e.g. "what we do… the angle is more on…") → the Romano misfire.
+# Now the pay verb must sit within a few words of the interrogative — no cross-ramble bridging.
 _PAY_RE = re.compile(
-    r"(what|how much).*(pay|salary|salaries|paid|earn|on)\b|"
-    r"\b(salary|salaries|payroll|wage|wages)\b|what('?s| is) .* (paid|earning|on)", re.I)
+    r"\b(salary|salaries|payroll|wages?)\b|"
+    r"\bwhat do we pay\b|"
+    r"\bhow much (do|does|is|are|'?s) .{0,25}\b(pay|paid|earn|earning|make|making|get|getting|on)\b|"
+    r"\bwhat('?s| is| are) .{0,20}\b(salary|pay|paid|earning|wage)\b|"
+    r"\bpay (for|him|her|them)\b", re.I)
 # A salary-CHANGE / affordability question is ANALYSIS, not a lookup — it must go to the model
 # (grounded by salary_context), never be answered with a bare current figure.
 _CHANGE_Q = re.compile(
