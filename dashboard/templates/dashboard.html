@@ -564,7 +564,8 @@
   </div>
 </div>
 
-<!-- EDITH HUD — verbatim from edith-hud-reference.html (overlay layer) -->
+<!-- EDITH AMBIENT HUD — decorative lane, BEHIND content (--z-ambient).
+     Grid/scanline/radar/brackets/shards only. Never competes with text. -->
 <div id="edith-hud" data-state="idle">
   <div class="eh-brk eh-tl"></div><div class="eh-brk eh-tr"></div>
   <div class="eh-brk eh-bl"></div><div class="eh-brk eh-br"></div>
@@ -577,21 +578,26 @@
     <span class="eh-blip" style="top:68px;left:63px;animation-delay:1.2s" title="FUNNEL"></span>
     <span class="eh-blip" style="top:30px;left:33px;animation-delay:1.8s" title="TEAM"></span>
   </div>
-  <div id="eh-stage">
-    <div id="eh-orbwrap">
-      <svg id="eh-rings" viewBox="0 0 240 240">
-        <circle class="eh-r3" cx="120" cy="120" r="110"/>
-        <circle class="eh-r2" cx="120" cy="120" r="94"/>
-        <circle class="eh-r1" cx="120" cy="120" r="78"/>
-        <circle class="eh-swp" cx="120" cy="120" r="78"/>
-      </svg>
-      <div id="eh-halo1"></div><div id="eh-halo2"></div><div id="eh-core"></div>
-      <div id="eh-pl"></div>
-    </div>
-    <div id="eh-tick">EDITH — STANDBY</div>
-    <div id="eh-wave"></div>
-    <div id="eh-cap"></div>
+</div>
+
+<!-- EDITH ORB + VOICE STAGE — its own lane (--z-orb), ABOVE content but BELOW
+     the chat scrim. data-state is mirrored here by hud.js so the ring/core
+     state animations (which key off [data-state]) keep working now that the
+     stage lives outside #edith-hud. Steps aside when chat opens. -->
+<div id="eh-stage" data-state="idle">
+  <div id="eh-orbwrap">
+    <svg id="eh-rings" viewBox="0 0 240 240">
+      <circle class="eh-r3" cx="120" cy="120" r="110"/>
+      <circle class="eh-r2" cx="120" cy="120" r="94"/>
+      <circle class="eh-r1" cx="120" cy="120" r="78"/>
+      <circle class="eh-swp" cx="120" cy="120" r="78"/>
+    </svg>
+    <div id="eh-halo1"></div><div id="eh-halo2"></div><div id="eh-core"></div>
+    <div id="eh-pl"></div>
   </div>
+  <div id="eh-tick">EDITH — STANDBY</div>
+  <div id="eh-wave"></div>
+  <div id="eh-cap"></div>
 </div>
 
 <script>window.__SNAP__ = {{ boot_snapshot | default('null') | safe }};

@@ -22,6 +22,9 @@
     isOpen = !isOpen;
     panel.classList.toggle('open', isOpen);
     overlay.classList.toggle('open', isOpen);
+    // body.chat-open drives the "ambient yields to the conversation" CSS:
+    // ambient HUD quiets and the orb/voice cluster steps aside (see dashboard.css).
+    document.body.classList.toggle('chat-open', isOpen);
     if (isOpen) input.focus();
   }
 
