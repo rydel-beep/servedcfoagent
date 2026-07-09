@@ -139,7 +139,58 @@ def _start_scheduled_refresh() -> None:
 
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok"})
+    """Liveness + subsystem triage. Never raises (each probe is guarded) so it's usable to
+    diagnose an incident in seconds: server, DB/mirror, snapshot freshness, and which data
+    sources are degraded. Returns 200 always (the server IS up if this responds); the body
+    carries the real state."""
+    subsystems: dict = {"server": "ok"}
+
+    # DB / mirror reachability
+    try:
+        import db
+        if not db.db_configured():
+            subsystems["db"] = "not_configured"
+        else:
+            with db.get_conn() as c:
+                c.execute("SELECT 1")
+            subsystems["db"] = "ok"
+    except Exception as e:  # noqa: BLE001
+        subsystems["db"] = f"error: {type(e).__name__}"
+
+    # Snapshot presence + freshness + degraded sources
+    try:
+        from helpers import now_sydney
+        snap = load_persisted()
+        if not snap:
+            subsystems["snapshot"] = "missing"
+        else:
+            gen = snap.get("generated_at")
+            age_min = None
+            try:
+                import datetime as _dt
+                g = _dt.datetime.fromisoformat(gen)
+                age_min = round((now_sydney() - g).total_seconds() / 60, 1)
+            except Exception:
+                pass
+            deg = snap.get("degraded") or []
+            subsystems["snapshot"] = {
+                "present": True,
+                "generated_at": gen,
+                "age_minutes": age_min,
+                "stale": (age_min is not None and age_min > 180),
+                "ok": bool(snap.get("ok")),
+                "degraded_count": len(deg),
+                "degraded_sources": sorted({(d.get("metric") or "?") for d in deg})[:12],
+            }
+    except Exception as e:  # noqa: BLE001
+        subsystems["snapshot"] = f"error: {type(e).__name__}"
+
+    # Overall: 'ok' only if server+db+snapshot are healthy; else 'degraded' (never a lie).
+    snap_state = subsystems.get("snapshot")
+    healthy = (subsystems.get("db") in ("ok", "not_configured")
+               and isinstance(snap_state, dict) and snap_state.get("present")
+               and not snap_state.get("stale"))
+    return jsonify({"status": "ok" if healthy else "degraded", "subsystems": subsystems})
 
 
 def _snapshot_request_authorized() -> bool:
