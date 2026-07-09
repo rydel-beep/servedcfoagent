@@ -292,6 +292,20 @@ def api_geolocation():
     return jsonify({"ok": True, "place": (loc or {}).get("place")})
 
 
+@bp.route("/api/capacity", methods=["GET"])
+@require_auth
+def api_capacity():
+    """Team & Capacity block (owner-only, behind dashboard auth): department load, hire trigger,
+    hiring budget, constraint check. Raise signals are a separate owner-only call. Deterministic."""
+    import capacity_engine
+    from snapshot import load_persisted
+    snap = load_persisted() or {}
+    payload = capacity_engine.build_capacity(snap)
+    if request.args.get("raises") == "1":
+        payload["raise_signals"] = capacity_engine.raise_signals(snap)
+    return jsonify(payload)
+
+
 @bp.route("/api/voice-config", methods=["POST"])
 @require_auth
 def api_voice_config():
@@ -563,7 +577,9 @@ def api_chat():
         _thread = " ".join((m.get("content") or "") for m in (history or [])[-6:])
         # (handler, entity_scoped?) — entity_scoped lookups are entity-filtered (the Romano rule);
         # superlative/recency lookups (latest lead, biggest deal) surface entities by design → exempt.
+        import capacity_engine
         _tier2 = [
+            (capacity_engine.handle_capacity_command, False),  # hiring/capacity/raise/afford questions
             (tracker_read.handle_tracker_check, False),    # "check the tracker for X" → verbatim row
             (tracker_read.handle_cash_for, False),         # "cash collected for X" / "why not include"
             (tracker_read.handle_verify_data, False),      # "verify your data" → sync-state summary
@@ -584,7 +600,9 @@ def api_chat():
                 continue
             if _entity_scoped and not intent_router.entity_relevant(_r, user_msg, _thread):
                 break   # a lookup naming a person he never mentioned → suppress, fall to conversation
-            memory.record_turn(conv_id, "assistant", _r, channel=channel, intent="command")
+            # Capacity/raise replies carry salary-derived figures → owner-only, NEVER to memory.
+            if _h is not capacity_engine.handle_capacity_command:
+                memory.record_turn(conv_id, "assistant", _r, channel=channel, intent="command")
             return jsonify({"reply": _r, "error": None, "intent": "command"})
 
     recall = memory.build_recall_context(user_msg, conversation_id=conv_id)
@@ -692,9 +710,10 @@ def api_chat_stream():
     import intent_router
     if _cmd_reply is None and not intent_router.is_conversational_ramble(user_msg):
         import range_unit_economics, payback_reconciliation, leads_view, closes_view, liabilities_view, salary_view
-        import tracker_read
+        import tracker_read, capacity_engine
         _thread = " ".join((m.get("content") or "") for m in (history or [])[-6:])
         _tier2 = [
+            (capacity_engine.handle_capacity_command, False),
             (tracker_read.handle_tracker_check, False),
             (tracker_read.handle_cash_for, False),
             (tracker_read.handle_verify_data, False),
@@ -716,9 +735,11 @@ def api_chat_stream():
             if _entity_scoped and not intent_router.entity_relevant(_r, user_msg, _thread):
                 break   # suppress a salary lookup about someone he never mentioned → conversation
             _cmd_reply = _r
+            _cmd_sensitive = (_h is capacity_engine.handle_capacity_command)
             break
     if _cmd_reply is not None:
-        memory.record_turn(conv_id, "assistant", _cmd_reply, channel=channel, intent="command")
+        if not locals().get("_cmd_sensitive"):   # capacity/raise salary figures never enter memory
+            memory.record_turn(conv_id, "assistant", _cmd_reply, channel=channel, intent="command")
         def gen_cmd():
             yield sse("meta", {"intent": "command", "context_tokens": 0})
             yield sse("done", {"reply": _cmd_reply})

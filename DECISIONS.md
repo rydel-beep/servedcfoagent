@@ -691,3 +691,16 @@
     logs a structured code-bug handoff ("show me the incident" → copy-ready block; she states she can't
     self-patch code). Wired into /api/chat + /api/chat-stream. 321 tests (+6). Report:
     dashboard/READ_BEFORE_ASSERT_REPORT.md.
+
+81. **Capacity & hiring intelligence engine.** capacity_engine.py — the who/when/what-can-we-afford
+    source of truth. Rydel's locked benchmarks (kv_store, voice-tunable): SMM 7 FT / 4.5 PT clients,
+    ads 10/manager, trigger 85% at 5wk lead, churn gate >2/mo, 40% payroll:MRR ceiling on
+    true_team_cost. Department load (SMM cap = FT×7+PT×4.5; live 110%), net velocity (closes−churn
+    30/60/90d), hire trigger (projected load at now+lead ≥ threshold, volatility-flagged), hiring
+    budget (MRR×40%−payroll; live −$6,632 = 50.5% ratio, over ceiling → honest "no room yet, MRR needs
+    $79.9k"), priced hires (PHP↔AUD), constraint check (churn elevated → LEADS with retention math,
+    "don't hire fix the leak"), raise signals (tenure+load+affordability, priced 5/10/15%, NEVER
+    verdicts). Conversational Tier 2 (afford question no longer misroutes to targets); /api/capacity
+    owner-only; salience tie-in for firing triggers. BOUNDARIES: dept-level only (per-person = phase-2,
+    no assignment data); salaries never to memory (record_turn skipped for capacity replies) or logs;
+    morale never claimed. 331 tests (+10). Report: dashboard/CAPACITY_HIRING_REPORT.md.
