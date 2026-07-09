@@ -66,5 +66,5 @@ column or Asana wire); raises are signals + pricing, never verdicts; morale neve
 measured; salaries owner-only — `capacity_engine` never calls `record_turn` or logs salary figures.
 
 ## Phase 2 (documented, not faked)
-Per-person workload needs a client-assignment source. Ads load uses total active clients as an upper
-bound (ads-client count isn't tracked — flagged, settable). Last-raise dates to be seeded once.
+Per-person workload needs a client-assignment source. Ads-client count = active clients (Rydel confirmed 2026-07-09 that every client runs ads), so Paid
+Ads load (190% — the most over-capacity dept) is a real signal, not an estimate. Last-raise dates to be seeded once.

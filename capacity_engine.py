@@ -125,8 +125,8 @@ def department_load(snap: dict) -> list[dict]:
             "assumption": "SMM services all active clients (every package includes social)",
         })
 
-    # Ads — per-head benchmark. Clients-with-ads isn't tracked, so this uses total active as an
-    # upper bound; flagged loudly (set a real ads-client count later for accuracy).
+    # Ads — per-head benchmark. Every client runs ads (Rydel-confirmed 2026-07-09), so ads-client
+    # count = active clients; this is a real load signal, not an upper-bound estimate.
     ads = [p for p in team if (p.get("dept") or "").strip().lower() in _CAPACITY_DEPTS["ads"]]
     if ads:
         ads_cap = len(ads) * b["ads_per_head"]
@@ -136,8 +136,7 @@ def department_load(snap: dict) -> list[dict]:
             "clients_carried": active, "load_pct": load,
             "headroom_clients": round(ads_cap - active, 1) if ads_cap else None,
             "benchmark": f"{b['ads_per_head']} accounts per manager (set by you)",
-            "assumption": "ASSUMES all active clients run ads — ads-client count isn't tracked; "
-                          "treat as an upper bound until set",
+            "assumption": "every client runs ads (Rydel-confirmed) — ads clients = active clients",
         })
     return out
 
@@ -234,6 +233,7 @@ def hire_trigger(snap: dict) -> dict:
             "weeks_to_threshold": weeks_to, "net_per_month_90d": v90, "net_per_month_30d": v30,
             "noisy": vel["90d"]["noisy"] or vel["30d"]["noisy"],
         })
+    triggers.sort(key=lambda t: t.get("current_load_pct") or 0, reverse=True)  # most urgent first
     return {"lead_time_weeks": lead_weeks, "threshold_pct": b["threshold_pct"], "triggers": triggers}
 
 
