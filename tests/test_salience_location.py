@@ -97,8 +97,11 @@ def test_whats_new_handler(monkeypatch):
 def test_location_strips_time_qualifiers(monkeypatch):
     _reset()
     captured = {}
-    monkeypatch.setattr(location, "set_override", lambda place: captured.setdefault("p", place) or
-                        {"place": place, "lat": 1, "lon": 1, "source": "override"})
+
+    def _cap(place):
+        captured["p"] = place
+        return {"place": place, "lat": 1, "lon": 1, "source": "override"}
+    monkeypatch.setattr(location, "set_override", _cap)
     for utter, expect in [("I'm in Melbourne this week", "Melbourne"),
                           ("I'm travelling to Gold Coast", "Gold Coast"),
                           ("I'm in New York for a few days", "New York")]:
