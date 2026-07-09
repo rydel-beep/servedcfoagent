@@ -2560,3 +2560,47 @@ body.focus-mode .stark-bigring, body.focus-mode .stark-header-stream { display: 
 .calib-blip.ok { background: rgba(52,201,142,0.12); color: var(--green); }
 .calib-blip.rej { background: var(--bg-inset); color: var(--text-muted); }
 @media (max-width: 960px) { .calib-panel { right: 14px; bottom: 220px; } }
+
+/* ── WAVE 2: DECISION ZONES ─────────────────────────────────────────────────
+   The four zones are a real decision sequence (safe → machine → action → ahead),
+   so the numbered eyebrow encodes order that the reader actually uses. Headers
+   stay quiet; the data panels remain the focus. */
+.zone { margin: 34px 0 6px; }
+.zone-head { display: flex; align-items: center; gap: 14px; padding: 0 2px 12px;
+  border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+.zone-num { font: 600 13px/1 var(--font-mono, ui-monospace, monospace);
+  color: var(--bg); background: var(--accent); width: 26px; height: 26px; border-radius: 6px;
+  display: grid; place-items: center; flex: none; box-shadow: 0 0 18px var(--accent-dim); }
+.zone-title { font-size: 15px; font-weight: 650; letter-spacing: .01em; color: var(--text); }
+.zone-sub { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+.zone-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.zone-grid > .panel { margin: 0; }
+.zone-grid > .kpi-strip, .zone-grid > #section-action-feed,
+.zone-grid > #section-exec, .zone-grid > #section-brief { grid-column: 1 / -1; }
+@media (max-width: 768px) { .zone-grid { grid-template-columns: 1fr; } .zone { margin: 22px 0 4px; } }
+
+/* Action feed (Zone 3) — one consolidated, ranked list */
+.af-headline { font-size: 13px; color: var(--text-secondary); margin: 2px 0 12px; }
+.af-empty { color: var(--text-muted); font-size: 13px; padding: 6px 0; }
+.af-item { display: flex; gap: 11px; padding: 10px 0; border-top: 1px solid var(--border); }
+.af-item:first-of-type { border-top: none; }
+.af-sev { font: 600 10px/1.6 var(--font-mono, ui-monospace, monospace); padding: 2px 6px;
+  border-radius: 4px; height: fit-content; flex: none; letter-spacing: .04em; }
+.af-S1 .af-sev { color: var(--red); background: var(--red-dim); }
+.af-S2 .af-sev { color: #E8B84B; background: rgba(232,184,75,0.12); }
+.af-S3 .af-sev { color: var(--text-muted); background: var(--bg-inset); }
+.af-title { font-size: 13px; color: var(--text); line-height: 1.4; }
+.af-action { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+/* Forecast panels (Zones 1 + 4) — always visibly a PROJECTION */
+.fc-big { font-size: 20px; font-weight: 680; margin-bottom: 8px; }
+.fc-good { color: var(--green); } .fc-warn { color: var(--red); } .fc-base { color: var(--text); }
+.fc-line { font-size: 13px; color: var(--text-secondary); margin: 5px 0; line-height: 1.45; }
+.fc-muted { color: var(--text-muted); font-size: 12px; }
+.fc-scn { display: flex; align-items: baseline; gap: 12px; padding: 7px 0; border-top: 1px solid var(--border); }
+.fc-scn-k { width: 46px; font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.fc-scn-v { font-size: 16px; font-weight: 620; }
+.fc-scn.fc-good .fc-scn-v { color: var(--green); } .fc-scn.fc-warn .fc-scn-v { color: var(--red); }
+.fc-scn-d { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+.fc-tag { margin-top: 12px; font: 600 10px/1.5 var(--font-mono, ui-monospace, monospace);
+  color: var(--text-muted); letter-spacing: .05em; text-transform: uppercase; }
