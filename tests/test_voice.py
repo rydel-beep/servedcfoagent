@@ -378,28 +378,45 @@ def test_voice_config_rejects_unauthenticated():
     assert c.post("/dashboard/api/voice-config", json={}).status_code == 302
 
 
-def test_greeting_skips_weather_gracefully(monkeypatch):
-    """Weather down → greeting still composes (time + headline + open)."""
-    import dashboard.voice as voice_mod
-    monkeypatch.setattr(voice_mod, "get_newcastle_weather", lambda: None)
-    out = voice_mod.build_greeting(_fake_snap())
-    assert out["weather"] is None
-    t = out["text"]
-    assert "Rydel" in t and "What do you need?" in t
-    assert "Newcastle" not in t
-    # Instagram-story safe: sales motion only — never balance exposure
-    assert "21 appointments booked" in t and "7 deals closed" in t
-    assert "33 percent" in t and "$81,000" in t
-    assert "140,000" not in t and "runway" not in t.lower()
+def _patch_greeting(monkeypatch, *, loc, weather, events, composed):
+    """Wire the greeting's dependencies deterministically (no network, no model)."""
+    import dashboard.voice as vm
+    import location, salience
+    monkeypatch.setattr(location, "resolve", lambda: loc)
+    monkeypatch.setattr(location, "weather_and_localtime", lambda l=None: weather)
+    monkeypatch.setattr(salience, "top", lambda snap=None, n=3: events)
+    monkeypatch.setattr(vm, "_compose_greeting", lambda *a, **k: composed)
+    return vm
 
 
-def test_greeting_includes_weather_when_available(monkeypatch):
-    import dashboard.voice as voice_mod
-    monkeypatch.setattr(voice_mod, "get_newcastle_weather",
-                        lambda: {"temp_c": 18.2, "condition": "clear", "high_c": 22.4})
-    t = voice_mod.build_greeting(_fake_snap())["text"]
-    assert "18 and clear in Newcastle" in t and "heading for 22" in t
-    assert "hope you're doing well" in t   # warm open before the numbers
+def test_greeting_fallback_leads_with_salient_event(monkeypatch):
+    """Composer down → safe deterministic fallback leads with the top event, figures VERBATIM."""
+    ev = [{"id": "close:x", "type": "close", "salience": 80, "ago": 0,
+           "spoken": "Lost Sheep Cafe closed — $14,500 (Scale Engine)"}]
+    vm = _patch_greeting(monkeypatch, loc={"place": "Newcastle", "source": "default"},
+                         weather=None, events=ev, composed=None)
+    t = vm.build_greeting({}, mark=False)["text"]
+    assert "Rydel" in t and "Lost Sheep Cafe closed — $14,500" in t   # verbatim event
+    assert "appointments booked" not in t                            # no fixed stat litany
+
+
+def test_greeting_nothing_new_is_light_hello(monkeypatch):
+    """Empty feed → a light human hello with NO forced stats, no invented news."""
+    vm = _patch_greeting(monkeypatch, loc={"place": "Newcastle", "source": "default"},
+                         weather=None, events=[], composed=None)
+    t = vm.build_greeting({}, mark=False)["text"]
+    assert "Rydel" in t and "nothing new" in t.lower()
+    assert "$" not in t and "appointments" not in t                  # no forced numbers
+
+
+def test_greeting_uses_resolved_location_and_composed_text(monkeypatch):
+    """Location follows the resolver (not hardcoded Newcastle); composed text is used verbatim."""
+    vm = _patch_greeting(monkeypatch, loc={"place": "Sydney", "source": "override"},
+                         weather={"temp_c": 19, "condition": "clear", "high_c": 22, "local_hour": 8},
+                         events=[], composed="Morning from Sydney — quiet so far.")
+    out = vm.build_greeting({}, mark=False)
+    assert out["text"] == "Morning from Sydney — quiet so far."
+    assert out["location"]["place"] == "Sydney"
 
 
 def test_greeting_time_of_day_sydney(monkeypatch):

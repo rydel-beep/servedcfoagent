@@ -660,3 +660,13 @@
     (salary) naming a person absent from the utterance (aggregates/superlatives exempt). Tightened
     _PAY_RE (no cross-ramble bridge). Asymmetry: unsure → conversation. Gated both /api/chat and the
     voice /api/chat-stream. 303 tests (+6). Report: dashboard/CONVERSATIONAL_FLOW_REPORT.md.
+
+78. **Human greetings + dynamic location + salience.** Replaced the fixed greeting template (same stat
+    litany + hardcoded Newcastle) with: location.py (override → browser-geo → last-known → Newcastle
+    default; Open-Meteo weather/local-time for resolved lat/lon), salience.py (deterministic events
+    since a durable watermark — failed/past-due/close/payout/runway/leads, ranked importance×recency,
+    dedup so known news never repeats, "what's new?" queryable), and a model-composed greeting
+    (persona + facts, figures VERBATIM, 1-3 sentences, anti-repetition, safe deterministic fallback).
+    /api/greeting session-gated (25-min idle → same greeting, no re-greet). kv_store.py = durable
+    Postgres KV for watermark/override/shapes. One-engine repoint + consistency suite untouched. 311
+    tests (+8). Report: dashboard/GREETING_SALIENCE_REPORT.md.

@@ -379,42 +379,103 @@ def get_newcastle_weather() -> dict | None:
         return None
 
 
-def build_greeting(snap: dict) -> dict:
-    """The wake-sequence greeting: time-of-day + live weather + ONE business
-    headline from the engines + the open. Deterministic — no model, no wait."""
-    now = now_sydney()
-    tod = "morning" if now.hour < 12 else ("afternoon" if now.hour < 18 else "evening")
-    parts = [f"Good {tod}, Rydel. I hope you're doing well."]
+def _time_of_day(hour: int) -> str:
+    return "morning" if hour < 12 else ("afternoon" if hour < 18 else "evening")
 
-    weather = get_newcastle_weather()
-    if weather:
-        t = round(weather["temp_c"])
-        line = f"It's {t} and {weather['condition']} in Newcastle"
-        if weather.get("high_c") is not None and round(weather["high_c"]) != t:
-            line += f", heading for {round(weather['high_c'])}"
-        parts.append(line + ".")
 
-    # Sales MOTION from the ONE engine, stashed in hormozi._sales_headline (same numbers as chat/
-    # tiles — no scorecard, no drift): appointments = tracker sets, closes = tracker Call-Outcome-won,
-    # "cash collected" = new-deal tracker cash (Rydel-locked). Never balance-sheet exposure.
-    headline = ((snap or {}).get("hormozi") or {}).get("_sales_headline") or {}
-    sets_n = headline.get("sets")
-    closes_n = headline.get("closes")
-    close_rate = headline.get("close_rate")
-    collected = headline.get("new_deal_cash")
+def _compose_greeting(tod: str, loc: dict, weather: dict | None,
+                      events: list[dict], avoid: list[str]) -> str | None:
+    """Model-composed greeting from DETERMINISTIC facts. Figures/names verbatim; 1-3 sentences;
+    fresh structure each time. Returns None on any failure (caller uses the safe fallback)."""
+    key = os.getenv("ANTHROPIC_API_KEY")
+    if not key:
+        return None
+    facts = [f"Time of day: {tod} (use as the opener register, optional)."]
+    if loc:
+        facts.append(f"Rydel is in: {loc.get('place')} (how known: {loc.get('source')}).")
+    if weather and weather.get("temp_c") is not None:
+        hi = f", high {round(weather['high_c'])}" if weather.get("high_c") is not None else ""
+        facts.append(f"Weather there: {round(weather['temp_c'])} degrees, {weather['condition']}{hi} "
+                     f"(mention ONLY if notable/useful, not every time).")
+    if events:
+        facts.append("NEW since you last greeted him — surface the top 1-2, numbers/names VERBATIM:")
+        for e in events:
+            facts.append(f"  - {e['spoken']}")
+    else:
+        facts.append("NOTHING new since last time. Give a light human hello with NO stats/numbers.")
+    avoid_line = (" Do NOT open like these recent greetings: " + " | ".join(avoid[:5])) if avoid else ""
+    try:
+        from dashboard.chat import BASE_PERSONA
+    except Exception:
+        BASE_PERSONA = "You are EDITH, Rydel's sharp chief of staff."
+    from config import CHAT_MODEL
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=key)
+        for attempt in range(3):
+            try:
+                r = client.messages.create(
+                    model=CHAT_MODEL, max_tokens=160,
+                    system=BASE_PERSONA + "\n\nYou are composing EDITH's SPOKEN boot greeting.",
+                    messages=[{"role": "user", "content":
+                        "Compose a fresh 1-3 sentence spoken greeting from the facts below. Hard rules: "
+                        "every number and name VERBATIM from the facts (invent NOTHING, no rounding drift); "
+                        "vary the structure and opener each time (you may lead with the news, the hello, "
+                        "or a question); no fixed skeleton; end naturally (not always 'What do you need?')."
+                        + avoid_line + "\n\nFACTS:\n" + "\n".join(facts)}])
+                txt = "".join(getattr(b, "text", "") for b in r.content).strip()
+                return txt or None
+            except Exception as e:  # noqa: BLE001
+                if "529" in str(e) and attempt < 2:
+                    time.sleep(1.5 * (attempt + 1))
+                    continue
+                raise
+    except Exception as e:  # noqa: BLE001
+        logger.info("greeting composer failed — using deterministic fallback: %s", e)
+        return None
 
-    sales_bits = []
-    if sets_n is not None:
-        sales_bits.append(f"{sets_n} appointments booked")
-    if closes_n is not None:
-        sales_bits.append(f"{closes_n} deals closed")
-    if sales_bits:
-        line = "You're at " + " and ".join(sales_bits)
-        if close_rate is not None:
-            line += f", closing at {round(close_rate)} percent"
-        parts.append(line + ".")
-    if collected is not None:
-        parts.append(f"Cash collected in the last thirty days: {_fmt_aud_speech(collected)}.")
 
-    parts.append("What do you need?")
-    return {"text": " ".join(parts), "weather": weather}
+def _remember_shape(text: str) -> None:
+    """Keep the last few greeting openers so the composer can avoid repeating them."""
+    try:
+        import kv_store
+        shapes = kv_store.get("greeting:recent_shapes") or []
+        opener = " ".join(text.split()[:8])
+        shapes = ([opener] + [s for s in shapes if s != opener])[:6]
+        kv_store.put("greeting:recent_shapes", shapes)
+    except Exception:
+        pass
+
+
+def build_greeting(snap: dict, mark: bool = True) -> dict:
+    """EDITH's boot greeting: resolved location + salient NEW events, composed fresh each time.
+    Figures come verbatim from the deterministic salience feed / one engine; the model varies only
+    the framing. Falls back to a safe deterministic hello if the composer is unavailable."""
+    import location
+    import salience
+    import kv_store
+
+    loc = location.resolve()
+    weather = location.weather_and_localtime(loc)
+    hour = (weather or {}).get("local_hour")
+    if hour is None:
+        hour = now_sydney().hour
+    tod = _time_of_day(hour)
+
+    events = salience.top(snap, 3)
+    avoid = kv_store.get("greeting:recent_shapes") or []
+
+    text = _compose_greeting(tod, loc, weather, events, avoid)
+    if not text:
+        # Safe deterministic fallback — hello + top event verbatim, never invented, never a crash.
+        bits = [f"Good {tod}, Rydel."]
+        bits.append(salience.summary_line(events) if events else "Quiet since we last spoke — nothing new.")
+        text = " ".join(bits)
+
+    if mark:
+        salience.mark_told(events)
+        salience.note_greeted(snap)
+        _remember_shape(text)
+
+    return {"text": text, "weather": weather, "location": loc,
+            "events": [e["spoken"] for e in events]}
