@@ -382,16 +382,44 @@ def _build_context_block(snapshot_json: str, lean: bool = False) -> str:
     if deep:
         sections.append("DEEP ANALYTICS:\n" + json.dumps(deep, indent=2))
 
-    # Active clients summary
+    # Active clients summary + per-client roster.
+    # IMPORTANT: the prior version read keys that don't exist on active_clients
+    # (total_clients / total_mrr / avg_mrr → always None) and omitted the per-client
+    # list entirely. In voice/lean mode (no FULL SNAPSHOT dump) that left EDITH with
+    # zero client names — she couldn't answer about any client by name, including
+    # same-day closes. Fixed: real keys + a compact roster that ships in BOTH modes.
     ac = snap.get("active_clients")
     if ac:
+        active_list = ac.get("active") or []
+        roster = []
+        for c in active_list:
+            if not isinstance(c, dict):
+                continue
+            mrr = c.get("current_mrr")
+            if mrr is None:
+                mrr = c.get("estimated_mrr")
+            roster.append({
+                "name": c.get("name"),
+                "status": c.get("status"),
+                "package": c.get("package") or c.get("offer") or None,
+                "mrr": mrr,
+                "close_date": c.get("close_date"),
+                "source": c.get("source"),
+            })
         summary = {
-            "total_clients": ac.get("total_clients"),
-            "total_mrr": ac.get("total_mrr"),
-            "avg_mrr": ac.get("avg_mrr"),
+            "active_count": ac.get("active_count"),
+            "total_mrr_derived": ac.get("total_mrr_derived"),
+            "confirmed_mrr": ac.get("confirmed_mrr"),
+            "estimated_mrr": ac.get("estimated_mrr"),
+            "latest_close_date": ac.get("latest_close_date"),
             "discrepancies": ac.get("discrepancies"),
+            "clients": roster,
         }
-        sections.append("ACTIVE CLIENTS:\n" + json.dumps(summary, indent=2))
+        sections.append(
+            "ACTIVE CLIENTS (per-client roster — quote names/status directly; "
+            "status 'signed_not_in_health' = newly closed, awaiting Health-tab/Stripe "
+            "confirmation):\n" + json.dumps(summary, indent=2)
+        )
 
     # Revenue views
     rv = snap.get("revenue_views")
@@ -469,6 +497,14 @@ def _build_context_block(snapshot_json: str, lean: bool = False) -> str:
     hc = snap.get("hiring_context")
     if hc:
         sections.append("HIRING CONTEXT:\n" + json.dumps(hc, indent=2))
+
+    # Stripe ↔ tracker reconciliation (paid-but-unlogged detection)
+    sr = snap.get("stripe_reconciliation")
+    if sr:
+        sections.append(
+            "STRIPE↔TRACKER RECONCILIATION (clients who paid via Stripe but may be "
+            "missing/unlogged in the tracker):\n" + json.dumps(sr, indent=2)
+        )
 
     # Degraded flags
     degraded = snap.get("degraded")

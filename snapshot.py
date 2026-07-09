@@ -34,6 +34,7 @@ from hiring_model import compute_hiring_analysis
 from opex_pull import get_monthly_burn
 from team_roster import pull_team_roster
 from meta_spend import pull_meta_spend
+from stripe_reconcile import reconcile_stripe_tracker
 import history_store
 
 logger = logging.getLogger(__name__)
@@ -229,6 +230,7 @@ def build_snapshot() -> dict:
         f_health = pool.submit(pull_client_health)
         f_roster = pool.submit(pull_team_roster)
         f_meta = pool.submit(pull_meta_spend)
+        f_reconcile = pool.submit(reconcile_stripe_tracker)
 
     # FAIL-SOFT: a source that RAISES degrades ITSELF (labelled), never takes the whole snapshot
     # down. This is what turned one bad scorecard cell into a total dashboard outage — a single
@@ -243,6 +245,7 @@ def build_snapshot() -> dict:
     health_result = _safe_result(f_health, "client_health")
     roster_result = _safe_result(f_roster, "team_roster")
     meta_result = _safe_result(f_meta, "meta_spend")
+    reconcile_result = _safe_result(f_reconcile, "stripe_reconcile")
 
     # Merge degraded lists
     degraded = (
@@ -256,6 +259,7 @@ def build_snapshot() -> dict:
         + health_result.get("degraded", [])
         + roster_result.get("degraded", [])
         + meta_result.get("degraded", [])
+        + reconcile_result.get("degraded", [])
     )
 
     # Build costs block from actual sheet commission values
@@ -472,6 +476,7 @@ def build_snapshot() -> dict:
         "team_roster": roster_result,
         "monthly_burn": burn,
         "meta_spend": meta_result.get("meta_spend"),
+        "stripe_reconciliation": reconcile_result.get("stripe_reconciliation"),
         "degraded": degraded if degraded else [],
         "ok": len(degraded) == 0,
     }

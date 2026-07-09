@@ -1,12 +1,15 @@
 /* EDITH HUD — VERBATIM from edith-hud-reference.html.
-   Adapted ONLY: #edith-hud sits as a fixed viewport overlay above the
-   dashboard (transparent, pointer-events:none), radar clears the header,
-   scanline travels the viewport. Every class, animation, timing, color and
-   size is the reference's. Under prefers-reduced-motion animations shorten —
-   elements NEVER hide (the previous builds' fatal gate). */
+   Adapted: #edith-hud is the AMBIENT lane (grid/scanline/radar/brackets/shards)
+   and sits BEHIND all content at --z-ambient, pointer-events:none, so it can
+   never compete with text. The orb + voice visuals (#eh-stage) are lifted OUT
+   of this root in the template and live in the --z-orb lane ABOVE content (see
+   below) — that split is what keeps the speaking waveform/caption from ever
+   painting over the chat. Every class, animation, timing, color and size is
+   the reference's. Under prefers-reduced-motion animations shorten — elements
+   NEVER hide (the previous builds' fatal gate). */
 
-/* ===== HUD ROOT (positioning adaptation: full-viewport overlay) ===== */
-#edith-hud{position:fixed;inset:0;z-index:230;background:transparent;
+/* ===== AMBIENT HUD ROOT — behind content, decorative only ===== */
+#edith-hud{position:fixed;inset:0;z-index:var(--z-ambient);background:transparent;
            overflow:hidden;pointer-events:none}
 
 /* corner brackets (always-on canary) — verbatim */
@@ -33,9 +36,15 @@
          animation:ehBlip 2.6s ease-in-out infinite}
 @keyframes ehBlip{0%,100%{opacity:.25}50%{opacity:1}}
 
-/* center stage — verbatim sizes; anchored above the orb region */
-#eh-stage{position:absolute;right:24px;bottom:150px;display:flex;flex-direction:column;
-          align-items:center;justify-content:center;gap:14px}
+/* ORB + VOICE STAGE — lifted out of #edith-hud (template) so it owns its own
+   stacking context in the --z-orb lane, ABOVE content but BELOW the chat scrim.
+   position:fixed because it is now a body-level element, not a child of the
+   fixed ambient root. The chat-open transform (dashboard.css) slides it clear
+   of the panel; the transition here keeps that 60fps. */
+#eh-stage{position:fixed;right:24px;bottom:150px;z-index:var(--z-orb);
+          display:flex;flex-direction:column;
+          align-items:center;justify-content:center;gap:14px;
+          transition:transform .32s cubic-bezier(.4,0,.2,1)}
 #eh-orbwrap{position:relative;width:240px;height:240px}
 #eh-rings{position:absolute;inset:0}
 #eh-rings circle{transform-origin:120px 120px;fill:none}

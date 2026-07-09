@@ -43,8 +43,11 @@ app.register_blueprint(memory_bp, url_prefix="/dashboard/memory")
 # In-memory cache of the latest snapshot
 _current_snapshot: dict | None = None
 
-# Max age (seconds) before a persisted snapshot triggers auto-refresh on startup
-_STALE_THRESHOLD = 4 * 3600  # 4 hours
+# Max age (seconds) before a persisted snapshot triggers auto-refresh.
+# Tightened from 4h → 90min so a deal closed/entered today surfaces the same day
+# without waiting out a long stale window. Manual POST /cfo/refresh still forces an
+# unconditional rebuild regardless of this threshold. Env-overridable.
+_STALE_THRESHOLD = int(os.environ.get("STALE_THRESHOLD_SECONDS", str(90 * 60)))
 # Keys that must be present — if missing, the snapshot predates current code
 _REQUIRED_KEYS = {"active_clients", "client_reconciliation"}
 
@@ -108,7 +111,7 @@ def _get_snapshot() -> dict | None:
 # Before this, the snapshot only refreshed on process restart or a manual
 # POST /cfo/refresh — observed going 4 days stale in production. A daemon
 # thread now re-pulls every REFRESH_INTERVAL_HOURS (default 6).
-_REFRESH_INTERVAL_HOURS = float(os.environ.get("REFRESH_INTERVAL_HOURS", "6"))
+_REFRESH_INTERVAL_HOURS = float(os.environ.get("REFRESH_INTERVAL_HOURS", "2"))
 
 
 def _scheduled_refresh_loop() -> None:
