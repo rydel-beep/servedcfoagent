@@ -679,3 +679,15 @@
     survives (ec59bdb); /health upgraded to subsystem triage (server/DB/snapshot-freshness/degraded
     sources) (323f4e9). Error banner already surfaced null-snapshot. 315 tests (+3). Parallel WIP
     (stripe_reconcile, refresh-cadence) preserved via checkout-reapply. Report: dashboard/OUTAGE_FIX_REPORT.md.
+
+80. **Read-before-assert + in-chat self-diagnosis.** EDITH claimed 3 clients' cash-collected cells
+    were blank; they were filled ($8,305/$15,950/$1,650). Verdict: MODEL INFERENCE — no per-row cash
+    read path existed, so the answer read nothing and the model inferred 'blank' from a cash figure.
+    Fix (tracker_read.py): read_client_row() resyncs recent/stale tabs + reads every field VERBATIM;
+    client_context() injects verbatim rows so the model can't infer a field state; handle_self_check()
+    is the challenge loop (resync → re-read → correct with root cause / confirm — truth not
+    appeasement) + recompute; diagnostic commands "check the tracker for X" / "cash collected for X" /
+    "verify your data"; distinctive-token client matching (no 'cafe'/'that' false hits). incident_log.py
+    logs a structured code-bug handoff ("show me the incident" → copy-ready block; she states she can't
+    self-patch code). Wired into /api/chat + /api/chat-stream. 321 tests (+6). Report:
+    dashboard/READ_BEFORE_ASSERT_REPORT.md.
