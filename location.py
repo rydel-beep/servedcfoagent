@@ -153,6 +153,10 @@ def handle_location_command(text: str) -> tuple[str | None, bool]:
     m = _SET_RE.search(text)
     if m:
         place = m.group(1).strip().rstrip(".")
+        # Strip trailing time/qualifier phrases so "Melbourne this week" → "Melbourne".
+        place = _re.sub(r"\s+(this week|this weekend|today|tonight|right now|now|currently|"
+                        r"at the moment|for .*|until .*|till .*|tomorrow|next week|"
+                        r"a few days|the week|all week)\s*$", "", place, flags=_re.I).strip()
         loc = set_override(place)
         if not loc:
             return f"I couldn't place “{place}” — try a city name and I'll switch your weather/time to it.", True
