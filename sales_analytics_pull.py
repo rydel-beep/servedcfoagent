@@ -106,6 +106,18 @@ def _parse_int(val: str) -> int | None:
         return None
 
 
+def _parse_float(val: str) -> float | None:
+    """Safe float from a cell — handles blanks and human placeholders (em-dash, N/A, -).
+    A non-numeric cell returns None instead of raising (which once took the whole snapshot down)."""
+    val = (val or "").strip().replace(",", "").replace("%", "")
+    if not val or val in {"—", "–", "-", "N/A", "n/a", "NA", "TBC", "tbc"}:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
 def _parse_date(val: str) -> date | None:
     val = val.strip()
     if not val:
@@ -394,7 +406,7 @@ def _pull_deep_dive() -> dict | None:
             "name": name,
             "dials": _parse_int(_cell(row, 1)),
             "sets": _parse_int(_cell(row, 2)),
-            "dials_per_set": round(float(_cell(row, 3)), 1) if _cell(row, 3).strip() else None,
+            "dials_per_set": (lambda v: round(v, 1) if v is not None else None)(_parse_float(_cell(row, 3))),
             "set_rate_pct": _parse_pct(_cell(row, 4)),
         })
 
