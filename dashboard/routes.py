@@ -292,6 +292,16 @@ def api_geolocation():
     return jsonify({"ok": True, "place": (loc or {}).get("place")})
 
 
+@bp.route("/api/action-feed", methods=["GET"])
+@require_auth
+def api_action_feed():
+    """ZONE 3 — the consolidated action feed (owner-only): salience + data-quality + reconciliation,
+    ranked by severity with plain-language actions. One feed, not scattered warnings."""
+    import action_feed
+    from snapshot import load_persisted
+    return jsonify(action_feed.build_action_feed(load_persisted() or {}))
+
+
 @bp.route("/api/forecast", methods=["GET"])
 @require_auth
 def api_forecast():
@@ -591,6 +601,7 @@ def api_chat():
         _tier2 = [
             (capacity_engine.handle_capacity_command, False),  # hiring/capacity/raise/afford questions
             (forecasting_engine.handle_forecast_command, False),  # cash-flow / MRR / runway forecasts
+            (__import__('action_feed').handle_action_feed_command, False),  # 'what needs my attention'
             (tracker_read.handle_tracker_check, False),    # "check the tracker for X" → verbatim row
             (tracker_read.handle_cash_for, False),         # "cash collected for X" / "why not include"
             (tracker_read.handle_verify_data, False),      # "verify your data" → sync-state summary
@@ -726,6 +737,7 @@ def api_chat_stream():
         _tier2 = [
             (capacity_engine.handle_capacity_command, False),
             (forecasting_engine.handle_forecast_command, False),
+            (__import__('action_feed').handle_action_feed_command, False),
             (tracker_read.handle_tracker_check, False),
             (tracker_read.handle_cash_for, False),
             (tracker_read.handle_verify_data, False),
