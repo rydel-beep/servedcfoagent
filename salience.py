@@ -79,16 +79,21 @@ def collect(snap: dict | None = None) -> list[dict]:
     except Exception:
         pass
 
-    # 2) Money at risk (Stripe) — failed charges + past-due subscriptions
+    # 2) Money at risk (Stripe) — failed charges + past-due subscriptions.
+    # RELIABILITY GATE (F2): the Stripe MCP sometimes miscounts (e.g. 1 active sub reported against
+    # $67k MRR). When the snapshot flags that mismatch, failed_charges_count from the SAME source is
+    # unreliable — don't blast it as a top alert. Suppress rather than cry wolf daily.
     st = (snap or {}).get("stripe") or {}
+    _stripe_unreliable = any("stripe_mrr_subs_mismatch" in str((d or {}).get("metric", ""))
+                             for d in ((snap or {}).get("degraded") or []))
     fc = st.get("failed_charges_count")
-    if fc:
+    if fc and not _stripe_unreliable:
         eid = f"failed:{fc}:{today_sydney()}"
         if eid not in told:
             events.append({"id": eid, "type": "failed", "salience": 100, "ago": 0,
                            "spoken": f"{fc} charge{'s' if fc != 1 else ''} failed today — worth a look"})
     pd = ((st.get("subscriptions") or {}).get("past_due"))
-    if pd:
+    if pd and not _stripe_unreliable:   # same unreliable subscriptions block → gate it too
         eid = f"pastdue:{pd}"
         if eid not in told:
             events.append({"id": eid, "type": "past_due", "salience": 95, "ago": 0,

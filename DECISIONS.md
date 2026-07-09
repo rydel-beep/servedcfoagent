@@ -704,3 +704,15 @@
     owner-only; salience tie-in for firing triggers. BOUNDARIES: dept-level only (per-person = phase-2,
     no assignment data); salaries never to memory (record_turn skipped for capacity replies) or logs;
     morale never claimed. 331 tests (+10). Report: dashboard/CAPACITY_HIRING_REPORT.md.
+
+82. **System audit (Wave 0) + S1 quick-wins.** Full audit (3 parallel sweeps + live verification):
+    the recent hardening builds LANDED (one-engine consistency green, ad-spend migration complete,
+    outage /health+fail-soft, deterministic-recall/read-before-assert gate all paths). Material
+    findings + fixes shipped this run: F1 (S1) — dashboard funnel/exec/verdicts read Scorecard cells
+    showing 0/0/0/0 while the tracker held 85 leads/24 sets/6 closes; repointed sales.funnel to raw
+    tracker 30d in pull_sales_analytics (closes by Close Date = canonical 6). F2 (S2) — greeting blasted
+    "26 charges failed" daily from the unreliable Stripe MCP (1 sub/$67k MRR); gated failed+past_due
+    salience on the stripe_mrr_subs_mismatch flag. F4 (S2) — capacity_engine.churn_in_window swallowed
+    errors silently (0 churn = data-missing); added logging. Deferred: F3/F5 (roster reconciliation,
+    bookkeeping), F6-F8 (labels/time-bombs). Wave 1 (forecasting) + Wave 2 (decision-zone UI) specs in
+    the report. 331 tests. Report: dashboard/SYSTEM_AUDIT_REPORT.md.

@@ -1437,6 +1437,28 @@ def pull_sales_analytics() -> dict:
                 "metric": "funnel_cross_check",
                 "reason": f"Funnel mismatch: {validation.get('mismatches', [])}",
             })
+        # F1 (2026-07-09 audit): the funnel's HEADLINE counts are now sourced from the RAW tracker
+        # (30d), NOT the Scorecard cells — which read a narrow window and showed 0/0/0/0 on the
+        # dashboard's exec + funnel sections while the tracker held 89 leads / 26 sets / 6 closes.
+        # One engine: the display, exec summary and verdicts all read sales.funnel, so they now show
+        # tracker truth. leads/sets/shows are by Input Date; closes by Close Date (matches the closes
+        # the greeting/unit-economics use).
+        c = validation.get("computed") or {}
+        win_closes = 0
+        for row in ltc_rows[1:]:
+            cd = _parse_date(_cell(row, 27))
+            if cd and cutoff <= cd <= today and _cell(row, 23).strip().lower() == "won":
+                win_closes += 1
+        funnel["leads_in"] = c.get("leads_in")
+        funnel["sets"] = c.get("sets")
+        funnel["shows"] = c.get("shows")
+        funnel["closes"] = win_closes
+        funnel["source"] = "raw tracker (30d) — leads/sets/shows by Input Date, closes by Close Date"
+        li, st_, sh, cl = c.get("leads_in") or 0, c.get("sets") or 0, c.get("shows") or 0, win_closes
+        funnel["lead_to_close_pct"] = round(cl / li * 100, 1) if li else None
+        funnel["lead_to_set_pct"] = round(st_ / li * 100, 1) if li else None
+        funnel["set_to_show_pct"] = round(sh / st_ * 100, 1) if st_ else None
+        funnel["show_to_close_pct"] = round(cl / sh * 100, 1) if sh else None
 
     # ── Deep analytics (all four layers) ──────────────────────────────────
     deep = None
