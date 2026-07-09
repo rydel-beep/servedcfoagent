@@ -19,9 +19,12 @@ salaries are owner-only, never in memory/logs.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 
 import kv_store
 from helpers import today_sydney
+
+logger = logging.getLogger(__name__)
 
 _K_BENCH = "capacity:benchmarks"
 
@@ -159,8 +162,8 @@ def churn_in_window(days: int, snap: dict | None = None) -> int:
                 ed = _parse_date(r[5])
                 if ed and cutoff <= ed <= today:
                     n += 1
-    except Exception:
-        pass
+    except Exception as e:  # F4: log — a swallowed error must not read as "0 churn" silently
+        logger.warning("churn_in_window roster read failed (%dd) — churn may be understated: %s", days, e)
     try:
         import client_overrides
         for o in client_overrides.active_overrides():
@@ -168,8 +171,8 @@ def churn_in_window(days: int, snap: dict | None = None) -> int:
                 ed = _parse_date(str(o.get("effective_date") or ""))
                 if ed and (today_sydney() - ed).days < days:
                     n += 1
-    except Exception:
-        pass
+    except Exception as e:
+        logger.info("churn_in_window override read failed (%dd): %s", days, e)
     return n
 
 
