@@ -355,7 +355,8 @@ def handle_client_writeback_command(text: str, token: str) -> tuple[str | None, 
     # A STRATEGIC churn question ("should I hire or fix churn", "how do I reduce churn", "our churn
     # rate") is analysis, not a write command — defer to the capacity/constraint engine + model.
     if re.search(r"\b(should i|hire or|or (fix|hire)|how (do|can|should)|why|worth|instead of|"
-                 r"reduce|cut|lower|fix (the )?churn|churn rate|our churn|churn is|about churn)\b", low):
+                 r"reduce|cut|lower|fix (the )?churn|churn rate|our churn|churn is|about churn|"
+                 r"what if|forecast|project(ion)?|scenario|doubl|tripl|halv|best case|worst case)\b", low):
         return None, False
 
     # 2) Identify the client — strip command words, match the roster.
