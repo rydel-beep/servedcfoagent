@@ -292,6 +292,16 @@ def api_geolocation():
     return jsonify({"ok": True, "place": (loc or {}).get("place")})
 
 
+@bp.route("/api/forecast", methods=["GET"])
+@require_auth
+def api_forecast():
+    """The forecasting block (owner-only): 13-week cash flow, dynamic runway, MRR scenarios,
+    accuracy. Every figure is a PROJECTION with visible, adjustable assumptions. Deterministic base."""
+    import forecasting_engine
+    from snapshot import load_persisted
+    return jsonify(forecasting_engine.build_forecast(load_persisted() or {}))
+
+
 @bp.route("/api/capacity", methods=["GET"])
 @require_auth
 def api_capacity():
@@ -577,9 +587,10 @@ def api_chat():
         _thread = " ".join((m.get("content") or "") for m in (history or [])[-6:])
         # (handler, entity_scoped?) — entity_scoped lookups are entity-filtered (the Romano rule);
         # superlative/recency lookups (latest lead, biggest deal) surface entities by design → exempt.
-        import capacity_engine
+        import capacity_engine, forecasting_engine
         _tier2 = [
             (capacity_engine.handle_capacity_command, False),  # hiring/capacity/raise/afford questions
+            (forecasting_engine.handle_forecast_command, False),  # cash-flow / MRR / runway forecasts
             (tracker_read.handle_tracker_check, False),    # "check the tracker for X" → verbatim row
             (tracker_read.handle_cash_for, False),         # "cash collected for X" / "why not include"
             (tracker_read.handle_verify_data, False),      # "verify your data" → sync-state summary
@@ -710,10 +721,11 @@ def api_chat_stream():
     import intent_router
     if _cmd_reply is None and not intent_router.is_conversational_ramble(user_msg):
         import range_unit_economics, payback_reconciliation, leads_view, closes_view, liabilities_view, salary_view
-        import tracker_read, capacity_engine
+        import tracker_read, capacity_engine, forecasting_engine
         _thread = " ".join((m.get("content") or "") for m in (history or [])[-6:])
         _tier2 = [
             (capacity_engine.handle_capacity_command, False),
+            (forecasting_engine.handle_forecast_command, False),
             (tracker_read.handle_tracker_check, False),
             (tracker_read.handle_cash_for, False),
             (tracker_read.handle_verify_data, False),

@@ -716,3 +716,14 @@
     errors silently (0 churn = data-missing); added logging. Deferred: F3/F5 (roster reconciliation,
     bookkeeping), F6-F8 (labels/time-bombs). Wave 1 (forecasting) + Wave 2 (decision-zone UI) specs in
     the report. 331 tests. Report: dashboard/SYSTEM_AUDIT_REPORT.md.
+
+83. **Wave 1 — forecasting layer.** forecasting_engine.py: 13-week cash flow (Stripe cash run-rate +
+    velocity×avg×collection − burn → curve + min week), MRR forecast + BASE/BEST/WORST scenarios +
+    live what-ifs, dynamic runway vs static, forecast-accuracy tracking (kv_store projected-vs-actual
+    bias). EXPIRY-AWARE: attrition = mid-contract churn + forward_mrr expiry drag scaled by an
+    adjustable renewal rate (default = historical 0%). Honesty architecture: all labelled PROJECTION,
+    every assumption voice-adjustable (inflow/collection/closes/churn/renewal/tax), confidence flags,
+    separate from actuals. Surfaces two truths: business is cash-positive (~+$55k/mo, static runway
+    understates) BUT at 0% historical renewal MRR declines (expiries $12.7k/mo > new deals $8.9k/mo) —
+    retention is existential. Tier-2 conversational + /api/forecast owner-only. 338 tests (+7).
+    Report: dashboard/FORECASTING_REPORT.md. Wave 2 (UI) remains.
