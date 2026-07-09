@@ -260,12 +260,36 @@ def api_brief():
 @bp.route("/api/greeting", methods=["GET"])
 @require_auth
 def api_greeting():
-    """EDITH's wake-sequence greeting: time-of-day + live Newcastle weather
-    (15-min cache, graceful skip) + one engine headline."""
+    """EDITH's boot greeting: resolved location + salient NEW events, composed fresh each time.
+    Session-gated — a quick refresh/resume within the idle gap returns the SAME greeting (no
+    re-greet, no re-watermarking). A genuinely new session composes fresh and advances the feed."""
+    import time as _t
+    import kv_store
     from snapshot import load_persisted
     from dashboard.voice import build_greeting
     snap = load_persisted() or {}
-    return jsonify(build_greeting(snap))
+    _IDLE = 25 * 60
+    last = kv_store.get("greeting:last_delivered") or {}
+    force = (request.args.get("fresh") == "1")
+    if not force and last.get("ts") and (_t.time() - last["ts"]) < _IDLE and last.get("payload"):
+        return jsonify({**last["payload"], "regreet": False})
+    payload = build_greeting(snap, mark=True)   # composes, watermarks, remembers shape
+    kv_store.put("greeting:last_delivered", {"ts": _t.time(), "payload": payload})
+    return jsonify({**payload, "regreet": True})
+
+
+@bp.route("/api/geolocation", methods=["POST"])
+@require_auth
+def api_geolocation():
+    """Dashboard-provided browser coordinates (consented) → reverse-geocode + cache as last-known,
+    so the greeting follows Rydel when he travels. Silent, best-effort."""
+    import location
+    data = request.get_json(silent=True) or {}
+    lat, lon = data.get("lat"), data.get("lon")
+    if lat is None or lon is None:
+        return jsonify({"ok": False, "error": "lat/lon required"}), 400
+    loc = location.set_geo(float(lat), float(lon))
+    return jsonify({"ok": True, "place": (loc or {}).get("place")})
 
 
 @bp.route("/api/voice-config", methods=["POST"])
@@ -509,6 +533,15 @@ def api_chat():
             memory.record_turn(conv_id, "assistant", _r, channel=channel, intent="command")
             return jsonify({"reply": _r, "error": None, "intent": "command"})
 
+    # Location override + "where am I" + "what's new" — short explicit commands/queries (TIER 1),
+    # run before the ramble gate so they always resolve deterministically.
+    import location, salience
+    for _lh in (location.handle_location_command, salience.handle_whats_new):
+        _r, _h = _lh(user_msg)
+        if _h:
+            memory.record_turn(conv_id, "assistant", _r, channel=channel, intent="command")
+            return jsonify({"reply": _r, "error": None, "intent": "command"})
+
     # ── TIER 2: deterministic DATA handlers — GATED. A conversational ramble (long, declarative,
     # no data-request structure) SKIPS these entirely and falls through to the model (TIER 3).
     # Default-to-conversation: when unsure, a generic reply beats a jarring data non-sequitur.
@@ -613,6 +646,13 @@ def api_chat_stream():
                     client_overrides.handle_pending_updates_query,
                     client_overrides.handle_client_changes_query):
             _r, _handled = _cb(user_msg)
+            if _handled:
+                _cmd_reply = _r
+                break
+    if _cmd_reply is None:
+        import location, salience
+        for _lh in (location.handle_location_command, salience.handle_whats_new):
+            _r, _handled = _lh(user_msg)
             if _handled:
                 _cmd_reply = _r
                 break
