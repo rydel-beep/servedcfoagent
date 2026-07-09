@@ -142,6 +142,19 @@ def collect(snap: dict | None = None) -> list[dict]:
                                    "spoken": f"runway dipped below {floor} months ({rw:.1f} now)"})
                 break
 
+    # 6) A hiring trigger firing — capacity crossed the threshold (watermarked like the rest).
+    try:
+        import capacity_engine
+        for t in (capacity_engine.hire_trigger(snap).get("triggers") or []):
+            if t.get("fired"):
+                eid = f"hiretrigger:{_norm(t['dept'])}"
+                if eid not in told:
+                    events.append({"id": eid, "type": "hire_trigger", "salience": 50, "ago": 0,
+                                   "spoken": f"{t['dept']} is at {t['current_load_pct']}% capacity — "
+                                             "a hire trigger just fired"})
+    except Exception:
+        pass
+
     events.sort(key=lambda e: (e["salience"], -e["ago"]), reverse=True)
     return events
 
