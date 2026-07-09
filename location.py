@@ -103,8 +103,10 @@ def set_override(place: str) -> dict | None:
 
 
 def clear_override() -> None:
-    """'I'm back home' → drop the override; resolution falls through to geo/last/default."""
+    """'I'm back home' → drop the override AND the stale last-known (which the override had set),
+    so resolution falls through to live device geo or the Newcastle default — not the trip's city."""
     kv_store.delete(_K_OVERRIDE)
+    kv_store.delete(_K_LAST)
 
 
 def set_geo(lat: float, lon: float) -> dict | None:
