@@ -202,6 +202,18 @@ def _resolve_ad_spend(meta_block: dict | None, xero_ad_spend: float | None) -> d
             "as_of": None, "label": "Ad spend unavailable", "note": None, "xero_ref": None}
 
 
+def _safe_result(future, name: str) -> dict:
+    """Resolve a source future without letting its exception abort the whole snapshot. On failure,
+    return a minimal degraded dict so downstream .get()s see 'this source is down' (labelled) rather
+    than the build crashing. One dependency down must never take the dashboard down."""
+    try:
+        return future.result()
+    except Exception as e:  # noqa: BLE001 — deliberately catch-all: no source may crash the build
+        logger.error("snapshot source %r crashed (degrading it): %s", name, e, exc_info=True)
+        return {"degraded": [{"metric": name,
+                              "reason": f"{name} pull crashed: {type(e).__name__}: {e}"}]}
+
+
 def build_snapshot() -> dict:
     """Pull all sources in parallel and assemble a single snapshot dict."""
     ts = now_sydney()
@@ -218,16 +230,19 @@ def build_snapshot() -> dict:
         f_roster = pool.submit(pull_team_roster)
         f_meta = pool.submit(pull_meta_spend)
 
-    stripe_result = f_stripe.result()
-    ghl_result = f_ghl.result()
-    sheets_result = f_sheets.result()
-    xero_result = f_xero.result()
-    salary_result = f_salary.result()
-    recognized_result = f_recognized.result()
-    sales_result = f_sales.result()
-    health_result = f_health.result()
-    roster_result = f_roster.result()
-    meta_result = f_meta.result()
+    # FAIL-SOFT: a source that RAISES degrades ITSELF (labelled), never takes the whole snapshot
+    # down. This is what turned one bad scorecard cell into a total dashboard outage — a single
+    # dependency failing must never = the dashboard failing.
+    stripe_result = _safe_result(f_stripe, "stripe")
+    ghl_result = _safe_result(f_ghl, "ghl")
+    sheets_result = _safe_result(f_sheets, "sheets")
+    xero_result = _safe_result(f_xero, "xero")
+    salary_result = _safe_result(f_salary, "salary")
+    recognized_result = _safe_result(f_recognized, "recognized_revenue")
+    sales_result = _safe_result(f_sales, "sales_analytics")
+    health_result = _safe_result(f_health, "client_health")
+    roster_result = _safe_result(f_roster, "team_roster")
+    meta_result = _safe_result(f_meta, "meta_spend")
 
     # Merge degraded lists
     degraded = (
