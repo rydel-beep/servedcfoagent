@@ -727,3 +727,13 @@
     understates) BUT at 0% historical renewal MRR declines (expiries $12.7k/mo > new deals $8.9k/mo) —
     retention is existential. Tier-2 conversational + /api/forecast owner-only. 338 tests (+7).
     Report: dashboard/FORECASTING_REPORT.md. Wave 2 (UI) remains.
+
+84. **Wave 2 — decision-zone UI + stable-base commit.** Committed the accumulated front-end WIP as a
+    stable base (7f0a0b8: layering z-index system, a chat.py null-key fix [Pattern 1], stripe
+    reconciliation, cadence); fixed a live mobile orb overlap (4fea0fa). Re-architected the flat
+    ~30-section dashboard into 4 decision zones via safe JS DOM relocation (applyZones): Am I safe /
+    Is the machine working / What needs action / Where are we going. Rendered the previously-invisible
+    backends: the consolidated Action Feed (/api/action-feed) in Zone 3, and cash-runway + MRR-scenario
+    forecasts (/api/forecast) in Zones 1 & 4, all tagged PROJECTION. Set forecast renewal_rate to 25%
+    for the Noodle Asia + Bluebells re-signs (MRR base −$3,782→−$616/mo). Screenshot-verified desktop +
+    mobile, 0 page errors. Report: dashboard/WAVE2_UI_REPORT.md.
