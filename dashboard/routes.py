@@ -542,6 +542,18 @@ def api_chat():
             memory.record_turn(conv_id, "assistant", _r, channel=channel, intent="command")
             return jsonify({"reply": _r, "error": None, "intent": "command"})
 
+    # SELF-CHECK LOOP (TIER 1): a challenge to a data claim ("that's wrong / it's not blank / I just
+    # checked") triggers in-chat resync → re-read → correct-or-confirm with root cause. Runs before
+    # the ramble gate + needs the thread (where the claim was made). Also the incident handoff.
+    import tracker_read, incident_log
+    _thread6 = " ".join((m.get("content") or "") for m in (history or [])[-6:])
+    for _sh in (lambda m: tracker_read.handle_self_check(m, _thread6),
+                incident_log.handle_incident_query):
+        _r, _h = _sh(user_msg)
+        if _h:
+            memory.record_turn(conv_id, "assistant", _r, channel=channel, intent="command")
+            return jsonify({"reply": _r, "error": None, "intent": "command"})
+
     # ── TIER 2: deterministic DATA handlers — GATED. A conversational ramble (long, declarative,
     # no data-request structure) SKIPS these entirely and falls through to the model (TIER 3).
     # Default-to-conversation: when unsure, a generic reply beats a jarring data non-sequitur.
@@ -552,6 +564,9 @@ def api_chat():
         # (handler, entity_scoped?) — entity_scoped lookups are entity-filtered (the Romano rule);
         # superlative/recency lookups (latest lead, biggest deal) surface entities by design → exempt.
         _tier2 = [
+            (tracker_read.handle_tracker_check, False),    # "check the tracker for X" → verbatim row
+            (tracker_read.handle_cash_for, False),         # "cash collected for X" / "why not include"
+            (tracker_read.handle_verify_data, False),      # "verify your data" → sync-state summary
             (range_unit_economics.handle_unit_econ_command, False),
             (payback_reconciliation.handle_payback_command, False),
             (leads_view.handle_lead_count_command, False),
@@ -581,6 +596,12 @@ def api_chat():
     _sal_ctx = salary_view.salary_context(user_msg)
     if _sal_ctx:
         _mem_block = _sal_ctx + "\n\n" + (_mem_block or "")
+
+    # READ-BEFORE-ASSERT: if the turn asks about a client's tracker field state, read the exact
+    # row(s) NOW and hand the model the VERBATIM cells — so it can never infer 'blank' (the incident).
+    _trk_ctx = tracker_read.client_context(user_msg)
+    if _trk_ctx:
+        _mem_block = _trk_ctx + "\n\n" + (_mem_block or "")
 
     result = chat_fn(history, snapshot_json, token, voice=voice, memory_block=_mem_block)
 
@@ -656,13 +677,27 @@ def api_chat_stream():
             if _handled:
                 _cmd_reply = _r
                 break
+    if _cmd_reply is None:
+        # Self-check challenge loop + incident handoff (voice path), before the ramble gate.
+        import tracker_read, incident_log
+        _thread6 = " ".join((m.get("content") or "") for m in (history or [])[-6:])
+        for _sh in (lambda m: tracker_read.handle_self_check(m, _thread6),
+                    incident_log.handle_incident_query):
+            _r, _handled = _sh(user_msg)
+            if _handled:
+                _cmd_reply = _r
+                break
     # ── TIER 2 (voice path): GATED — a conversational ramble skips the data handlers → model.
     # This is the surface the Romano misfire happened on. Default-to-conversation when unsure.
     import intent_router
     if _cmd_reply is None and not intent_router.is_conversational_ramble(user_msg):
         import range_unit_economics, payback_reconciliation, leads_view, closes_view, liabilities_view, salary_view
+        import tracker_read
         _thread = " ".join((m.get("content") or "") for m in (history or [])[-6:])
         _tier2 = [
+            (tracker_read.handle_tracker_check, False),
+            (tracker_read.handle_cash_for, False),
+            (tracker_read.handle_verify_data, False),
             (range_unit_economics.handle_unit_econ_command, False),
             (payback_reconciliation.handle_payback_command, False),
             (leads_view.handle_lead_count_command, False),
@@ -692,11 +727,15 @@ def api_chat_stream():
 
     recall = memory.build_recall_context(user_msg, conversation_id=conv_id)
     # Ground affordability/salary questions on VERIFIED SALARY-tab figures (deterministic).
-    import salary_view
+    import salary_view, tracker_read
     _mem_block = recall["block"]
     _sal_ctx = salary_view.salary_context(user_msg)
     if _sal_ctx:
         _mem_block = _sal_ctx + "\n\n" + (_mem_block or "")
+    # READ-BEFORE-ASSERT (voice path): inject verbatim tracker row(s) for client field-state questions.
+    _trk_ctx = tracker_read.client_context(user_msg)
+    if _trk_ctx:
+        _mem_block = _trk_ctx + "\n\n" + (_mem_block or "")
 
     @stream_with_context
     def generate():
