@@ -670,3 +670,12 @@
     /api/greeting session-gated (25-min idle → same greeting, no re-greet). kv_store.py = durable
     Postgres KV for watermark/override/shapes. One-engine repoint + consistency suite untouched. 311
     tests (+8). Report: dashboard/GREETING_SALIENCE_REPORT.md.
+
+79. **Dashboard outage (2026-07-09): em-dash crash → restore + harden.** build_snapshot threw
+    ValueError on float('—') in _pull_deep_dive (a scorecard placeholder cell) → /cfo/refresh 500 →
+    no snapshot → dashboard had no data. Total outage because the local snapshot file was wiped on the
+    last deploy AND sources weren't isolated. Restore: _parse_float() safe-parse (eb31338). Harden:
+    _safe_result() fail-softs each of the 11 snapshot sources — one crash degrades itself, build
+    survives (ec59bdb); /health upgraded to subsystem triage (server/DB/snapshot-freshness/degraded
+    sources) (323f4e9). Error banner already surfaced null-snapshot. 315 tests (+3). Parallel WIP
+    (stripe_reconcile, refresh-cadence) preserved via checkout-reapply. Report: dashboard/OUTAGE_FIX_REPORT.md.
