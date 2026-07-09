@@ -4197,6 +4197,86 @@
     else if (currentSnap) renderStatus(currentSnap);
   }
 
+  // ── WAVE 2: decision zones ────────────────────────────────────────────────
+  // Reorder the flat section list into 4 decision zones (cash safety / operations /
+  // action / forecast) without moving HTML blocks — safe DOM relocation on load.
+  var ZONES = [
+    { n: 1, title: 'Am I safe', sub: 'Cash, runway, burn',
+      ids: ['section-cash-position', 'section-forecast-cash', 'section-forward'] },
+    { n: 3, title: 'What needs action', sub: 'Alerts, data quality, follow-ups',
+      ids: ['section-action-feed', 'section-actions', 'section-verdicts', 'section-deficiency',
+            'section-dq-loss', 'section-churn', 'section-stripe-health', 'section-reconciliation',
+            'section-quality'] },
+    { n: 2, title: 'Is the machine working', sub: 'MRR, unit economics, funnel, capacity',
+      ids: ['section-kpis', 'section-revenue', 'section-month-perf', 'section-metrics',
+            'section-funnel', 'section-speed-to-lead', 'section-perf-analysis', 'section-setter-deep',
+            'section-commissions', 'section-waterfall', 'section-trend', 'section-health',
+            'section-team', 'section-cohort', 'section-offers', 'section-lead-roi', 'section-reps',
+            'section-pipeline'] },
+    { n: 4, title: 'Where are we going', sub: 'Projections and scenarios',
+      ids: ['section-forecast-mrr'] },
+  ];
+  function applyZones() {
+    var main = document.getElementById('main');
+    if (!main || main.dataset.zoned) return;
+    ZONES.forEach(function (z) {
+      var wrap = document.createElement('section');
+      wrap.className = 'zone'; wrap.id = 'zone-' + z.n;
+      wrap.innerHTML = '<div class="zone-head"><span class="zone-num">' + z.n + '</span>' +
+        '<div><div class="zone-title">' + z.title + '</div>' +
+        '<div class="zone-sub">' + z.sub + '</div></div></div><div class="zone-grid"></div>';
+      var grid = wrap.querySelector('.zone-grid');
+      z.ids.forEach(function (id) { var el = document.getElementById(id); if (el) grid.appendChild(el); });
+      if (grid.children.length) main.appendChild(wrap);
+    });
+    // drop any now-empty .grid-2 wrappers left behind
+    main.querySelectorAll('.grid-2').forEach(function (g) { if (!g.children.length) g.remove(); });
+    main.dataset.zoned = '1';
+  }
+
+  async function renderActionFeed() {
+    try {
+      var r = await fetch('/dashboard/api/action-feed'); if (!r.ok) return;
+      var f = await r.json();
+      var badge = $('#action-feed-badge');
+      if (badge) badge.textContent = (f.counts && (f.counts.S1 + f.counts.S2)) ? ((f.counts.S1 + f.counts.S2) + ' open') : 'clear';
+      var body = $('#action-feed-body'); if (!body) return;
+      if (!f.items || !f.items.length) { body.innerHTML = '<div class="af-empty">All clear — nothing needs action.</div>'; return; }
+      body.innerHTML = '<div class="af-headline">' + esc(f.headline) + '</div>' + f.items.map(function (it) {
+        return '<div class="af-item af-' + it.severity + '"><span class="af-sev">' + it.severity + '</span>' +
+          '<div class="af-text"><div class="af-title">' + esc(it.title) + '</div>' +
+          (it.action ? '<div class="af-action">' + esc(it.action) + '</div>' : '') + '</div></div>';
+      }).join('');
+    } catch (e) { /* silent — feed is additive */ }
+  }
+
+  async function renderForecast() {
+    try {
+      var r = await fetch('/dashboard/api/forecast'); if (!r.ok) return;
+      var f = await r.json();
+      var cf = f.cash_flow_13wk || {}, dr = f.dynamic_runway || {}, mf = f.mrr_forecast || {};
+      var cb = $('#forecast-cash-body');
+      if (cb && cf.available) {
+        var pos = cf.cash_positive;
+        cb.innerHTML =
+          '<div class="fc-big ' + (pos ? 'fc-good' : 'fc-warn') + '">' + (pos ? 'Cash-positive' : 'Cash draining') + '</div>' +
+          '<div class="fc-line">Net <strong>' + fmt$(cf.net_weekly * 52 / 12) + '/mo</strong> · 13-week end ~<strong>' + fmt$(cf.ending_cash) + '</strong> (from ' + fmt$(cf.starting_cash) + ')</div>' +
+          '<div class="fc-line fc-muted">Static runway ' + (dr.static_runway_months != null ? dr.static_runway_months + 'mo' : '—') +
+          ' assumes zero inflow' + (pos ? ' — dynamic view: cash grows.' : (dr.dynamic_runway_months ? ' — dynamic ~' + dr.dynamic_runway_months + 'mo.' : '.')) + '</div>' +
+          '<div class="fc-tag">PROJECTION · adjustable (inflow / collection / renewal)</div>';
+      }
+      var mb = $('#forecast-mrr-body');
+      if (mb && mf.available) {
+        var s = mf.scenarios || {};
+        var row = function (k, o, cls) { return '<div class="fc-scn ' + cls + '"><span class="fc-scn-k">' + k + '</span><span class="fc-scn-v">' + fmt$(o.end_mrr) + '</span><span class="fc-scn-d">' + (o.net_mrr_per_month >= 0 ? '+' : '') + fmt$(o.net_mrr_per_month) + '/mo</span></div>'; };
+        mb.innerHTML =
+          '<div class="fc-line">Now <strong>' + fmt$(mf.current_mrr) + '</strong> → in ' + mf.months + 'mo:</div>' +
+          row('Best', s.best || {}, 'fc-good') + row('Base', s.base || {}, 'fc-base') + row('Worst', s.worst || {}, 'fc-warn') +
+          '<div class="fc-tag">PROJECTION · ' + (mf.renewal_rate_pct != null ? mf.renewal_rate_pct + '% renewal · ' : '') + 'adjustable</div>';
+      }
+    } catch (e) { /* silent */ }
+  }
+
   async function loadAll() {
     var hadSnap = !!currentSnap;
     if (hadSnap) _setUpdating(true);
@@ -4208,6 +4288,9 @@
     } else if (!currentSnap) {
       _showError(true);
     }
+    applyZones();            // relocate sections into decision zones (once)
+    renderActionFeed();      // Zone 3 — the consolidated action feed
+    renderForecast();        // Zone 1 cash + Zone 4 MRR projections
     if (hadSnap) _setUpdating(false);
     if (historyData && historyData.length > 1) {
       $('#reps-sparkline-status').textContent = historyData.length + ' days of history';
