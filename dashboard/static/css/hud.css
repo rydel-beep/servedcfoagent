@@ -46,6 +46,15 @@
           align-items:center;justify-content:center;gap:14px;
           transition:transform .32s cubic-bezier(.4,0,.2,1)}
 #eh-orbwrap{position:relative;width:240px;height:240px}
+
+/* Mobile: the 240px orb has no right margin to live in, so above content it covers
+   the brief. Demote it to the ambient lane BEHIND content, faint and non-interactive
+   — a subtle backdrop, never over the data. The header chat button carries interaction. */
+@media (max-width:768px){
+  #eh-stage{right:50%;transform:translateX(50%);z-index:var(--z-ambient);
+            opacity:.14;pointer-events:none}
+  #eh-tick,#eh-cap{display:none}
+}
 #eh-rings{position:absolute;inset:0}
 #eh-rings circle{transform-origin:120px 120px;fill:none}
 .eh-r1{stroke:#2E6EA6;stroke-width:2;stroke-dasharray:32 14;animation:ehSpin 14s linear infinite}
