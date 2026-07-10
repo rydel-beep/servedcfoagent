@@ -602,6 +602,8 @@ def api_chat():
             (capacity_engine.handle_capacity_command, False),  # hiring/capacity/raise/afford questions
             (forecasting_engine.handle_forecast_command, False),  # cash-flow / MRR / runway forecasts
             (__import__('action_feed').handle_action_feed_command, False),  # 'what needs my attention'
+            (__import__('cash_truth').handle_latest_cash_command, False),   # "last cash collected" → Stripe-actual
+            (__import__('cash_truth').handle_needs_logging_command, False), # "what needs logging?"
             (tracker_read.handle_tracker_check, False),    # "check the tracker for X" → verbatim row
             (tracker_read.handle_cash_for, False),         # "cash collected for X" / "why not include"
             (tracker_read.handle_verify_data, False),      # "verify your data" → sync-state summary
@@ -738,6 +740,8 @@ def api_chat_stream():
             (capacity_engine.handle_capacity_command, False),
             (forecasting_engine.handle_forecast_command, False),
             (__import__('action_feed').handle_action_feed_command, False),
+            (__import__('cash_truth').handle_latest_cash_command, False),   # "last cash collected" → Stripe-actual
+            (__import__('cash_truth').handle_needs_logging_command, False), # "what needs logging?"
             (tracker_read.handle_tracker_check, False),
             (tracker_read.handle_cash_for, False),
             (tracker_read.handle_verify_data, False),

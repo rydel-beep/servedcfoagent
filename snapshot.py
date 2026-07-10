@@ -215,6 +215,12 @@ def _safe_result(future, name: str) -> dict:
                               "reason": f"{name} pull crashed: {type(e).__name__}: {e}"}]}
 
 
+def _pull_cash_truth() -> dict:
+    """Stripe-actual cash view (latest payment, needs-logging, lag) — optional source."""
+    import cash_truth
+    return cash_truth.cash_truth_summary()
+
+
 def build_snapshot() -> dict:
     """Pull all sources in parallel and assemble a single snapshot dict."""
     ts = now_sydney()
@@ -231,6 +237,7 @@ def build_snapshot() -> dict:
         f_roster = pool.submit(pull_team_roster)
         f_meta = pool.submit(pull_meta_spend)
         f_reconcile = pool.submit(reconcile_stripe_tracker)
+        f_cash_truth = pool.submit(_pull_cash_truth)
 
     # FAIL-SOFT: a source that RAISES degrades ITSELF (labelled), never takes the whole snapshot
     # down. This is what turned one bad scorecard cell into a total dashboard outage — a single
@@ -246,6 +253,7 @@ def build_snapshot() -> dict:
     roster_result = _safe_result(f_roster, "team_roster")
     meta_result = _safe_result(f_meta, "meta_spend")
     reconcile_result = _safe_result(f_reconcile, "stripe_reconcile")
+    cash_truth_result = _safe_result(f_cash_truth, "cash_truth")
 
     # Merge degraded lists
     degraded = (
@@ -260,6 +268,7 @@ def build_snapshot() -> dict:
         + roster_result.get("degraded", [])
         + meta_result.get("degraded", [])
         + reconcile_result.get("degraded", [])
+        + cash_truth_result.get("degraded", [])
     )
 
     # Build costs block from actual sheet commission values
@@ -477,6 +486,7 @@ def build_snapshot() -> dict:
         "monthly_burn": burn,
         "meta_spend": meta_result.get("meta_spend"),
         "stripe_reconciliation": reconcile_result.get("stripe_reconciliation"),
+        "cash_truth": cash_truth_result.get("cash_truth"),
         "degraded": degraded if degraded else [],
         "ok": len(degraded) == 0,
     }

@@ -737,3 +737,22 @@
     forecasts (/api/forecast) in Zones 1 & 4, all tagged PROJECTION. Set forecast renewal_rate to 25%
     for the Noodle Asia + Bluebells re-signs (MRR base −$3,782→−$616/mo). Screenshot-verified desktop +
     mobile, 0 page errors. Report: dashboard/WAVE2_UI_REPORT.md.
+
+85. **Cash truth — Stripe-aware cash + the "WA: blank" fix.** The incident ("last cash collected" →
+    "WA: cash-collected cell is genuinely blank") was NOT a column mismapping (col 32 verified correct
+    across all 4 locators, live-sampled): a junk enquiry-paragraph row token-matched "what", then
+    2-char substring matching landed on an unrelated junk row named "WA". Fixed tracker_read matching
+    (names ≤40 chars, conversational stopwords, ≥4-char substring floor). SOURCE HIERARCHY built:
+    tracker = deal truth, Stripe = cash truth — cash_truth.py joins succeeded charges (per-charge
+    money-state via balance_transaction) to tracker rows (email > unambiguous name > unambiguous
+    amount+date; Won-row preference for duplicate rows; ambiguity FLAGGED never guessed; PII asserted).
+    "Last cash collected" now answers from ACTUAL payment events with tracker-logging status, both
+    truths on disagreement. GATE FINDING: the read-only rk_ key was ALREADY on Railway (Round 7/12) —
+    nothing was blocked; stripe_reconcile.py was dormant only on a never-built MCP tool → repointed to
+    direct API reads, paid-but-unlogged LIVE. Needs-logging list: action feed (persistent S2) +
+    salience (watermarked, greeting-worthy) + "what needs logging?" query; EDITH nudges, team logs —
+    cash cells never auto-written. Logging lag quantified (21d: 10 covered / 9 under-logged / 4
+    unmatched) + observed-lag watermarks in kv_store. Basis names: Stripe-actual vs tracker-logged
+    cash, no repoint (headline-basis choice OPEN for Rydel). Fixed a PRE-EXISTING order-dependent
+    full-suite failure with a root conftest.py (test auth env). 359 tests (+21). Report:
+    dashboard/CASH_TRUTH_REPORT.md. Branch feat/cash-truth, not merged (Rydel's gate).

@@ -40,7 +40,7 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
     try:
         import salience
         for e in salience.collect(snap):
-            sev = {"failed": "S1", "past_due": "S1", "hire_trigger": "S2",
+            sev = {"failed": "S1", "past_due": "S1", "hire_trigger": "S2", "unlogged": "S2",
                    "threshold": "S2", "close": "S3", "payout": "S3", "lead": "S3"}.get(e["type"], "S3")
             items.append({"severity": sev, "category": e["type"], "title": e["spoken"],
                           "action": "Review." if sev in ("S1", "S2") else None})
@@ -60,6 +60,17 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
         items.append({"severity": "S2", "category": "reconciliation",
                       "title": f"Stripe payment not on the tracker: {str(p)[:80]}",
                       "action": "Log this payment against its deal in the tracker."})
+
+    # 3b) NEEDS LOGGING (cash_truth) — the deal row exists but its cash cell trails Stripe.
+    # Persists in the feed until the team logs it (unlike the once-only salience event).
+    # EDITH nudges; the TEAM logs — cash cells are never auto-written.
+    ct = snap.get("cash_truth") or {}
+    for n in (ct.get("needs_logging") or [])[:10]:
+        items.append({"severity": "S2", "category": "needs_logging",
+                      "title": (f"Needs logging: {n.get('business')} — Stripe "
+                                f"${(n.get('stripe_total') or 0):,.0f} vs tracker "
+                                f"{n.get('tracker_logged')} (gap ${(n.get('gap') or 0):,.0f})"),
+                      "action": "Verify in Stripe and update the deal's Cash Collected cell."})
 
     # rank S1 > S2 > S3, dedupe by title
     order = {"S1": 0, "S2": 1, "S3": 2}

@@ -12,19 +12,12 @@ Matching runs SERVER-SIDE only, here, because it needs the tracker's email/name
 columns (cols 3/4/5) which are PII and must NEVER reach the snapshot. The output
 is name/amount/date level only — no emails leave this module (asserted before return).
 
-DEPENDENCY (current blocker): this needs per-charge data from the Stripe MCP
-(customer name/email + amount + date). The deployed MCP exposes AGGREGATE tools
-only — it has no list-charges tool. Until the MCP adds one (spec below), this
-module degrades cleanly to a "pending" status with a degraded[] entry; it never
-fabricates matches.
-
-    Required Stripe MCP tool to enable full reconciliation:
-      name: get_stripe_recent_charges
-      args: {"days": <int>}
-      returns: {"charges": [
-          {"id","amount","currency","created","status",
-           "customer_name","customer_email"}, ...]}
-      (succeeded charges only; amount in major units AUD; created ISO or epoch)
+ACTIVATED 2026-07-09: per-charge data now comes from the Stripe API directly
+(read-only restricted key, via cash_truth._recent_charges — same reads the
+payback reconciliation uses). The original MCP-tool dependency is obsolete: the
+aggregate-only MCP never grew a list-charges tool, but the rk_ key on Railway
+reads /v1/charges fine. Without the key this still degrades cleanly to a
+"pending" status with a degraded[] entry; it never fabricates matches.
 """
 from __future__ import annotations
 
@@ -37,15 +30,29 @@ from datetime import date, timedelta
 import requests
 
 from config import SHEET_CONFIG, HTTP_TIMEOUT
-from stripe_pull import _call_tool
 from helpers import today_sydney
 
 logger = logging.getLogger(__name__)
 
-# The MCP tool this consumer expects. Absent on the deployed MCP today.
-_CHARGES_TOOL = "get_stripe_recent_charges"
 _LOOKBACK_DAYS = 30
 _AMOUNT_TOLERANCE = 1.0  # AUD, for amount fallback matching
+
+
+def _list_recent_charges(days: int) -> dict | None:
+    """Succeeded charges via the read-only Stripe key (cash_truth's shared reader),
+    in this module's expected shape. None = no key / API failure."""
+    try:
+        from cash_truth import _recent_charges
+        charges = _recent_charges(days)
+    except Exception as e:
+        logger.error("Reconcile charge fetch failed: %s", e)
+        return None
+    if charges is None:
+        return None
+    return {"charges": [{"id": c["id"], "amount": c["amount"], "currency": c["currency"],
+                         "created": str(c["date"]), "status": "succeeded",
+                         "customer_name": c["customer_name"],
+                         "customer_email": c["_email"]} for c in charges]}
 
 
 def _norm(s: str) -> str:
@@ -110,22 +117,20 @@ def reconcile_stripe_tracker() -> dict:
     degraded: list[dict] = []
     today = today_sydney()
 
-    charges_res = _call_tool(_CHARGES_TOOL, {"days": _LOOKBACK_DAYS})
+    charges_res = _list_recent_charges(_LOOKBACK_DAYS)
     if not charges_res or "charges" not in charges_res:
-        # The MCP doesn't expose per-charge data yet — honest pending state.
+        # No read-only Stripe key / API unreachable — honest pending state.
         degraded.append({
             "metric": "stripe_reconciliation",
             "reason": (
-                "Stripe↔tracker reconciliation pending: the Stripe MCP has no "
-                f"'{_CHARGES_TOOL}' tool (aggregate-only). Add it to enable "
-                "paid-but-unlogged detection. Until then, incomplete Won rows are "
-                "still surfaced via the 'won_but_unlogged' flag."
+                "Stripe↔tracker reconciliation pending: per-charge reads unavailable "
+                "(no read-only STRIPE_SECRET_KEY or API failure). Incomplete Won rows "
+                "are still surfaced via the 'won_but_unlogged' flag."
             ),
         })
         return {
             "stripe_reconciliation": {
-                "status": "pending_mcp_tool",
-                "tool_required": _CHARGES_TOOL,
+                "status": "pending_stripe_key",
                 "paid_missing_from_tracker": None,
                 "checked_charges": 0,
             },

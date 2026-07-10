@@ -133,7 +133,9 @@ def read_client_row(name: str, fresh: bool = True) -> dict:
     for r in rows[hi + 1:]:
         if bcol is not None and bcol < len(r):
             bn = _norm(r[bcol])
-            if bn and (bn == q or q in bn or bn in q):
+            # substring containment needs >=4 chars each side — a 2-char row like "WA" matched
+            # inside "i-WA-nt to grow" on a junk paragraph and hijacked a cash answer
+            if bn and (bn == q or (len(q) >= 4 and q in bn) or (len(bn) >= 4 and bn in q)):
                 match = r
                 break
     if not match:
@@ -190,7 +192,9 @@ def _client_names() -> list[str]:
         for r in rows[hi + 1:]:
             if bcol is not None and bcol < len(r):
                 nm = (r[bcol] or "").strip()
-                if nm and _norm(nm) not in seen and len(nm) > 2:
+                # >40 chars = junk (an enquiry paragraph pasted into Business Name, seen live —
+                # it token-matched "what" against "what's our last cash collected")
+                if nm and _norm(nm) not in seen and 2 < len(nm) <= 40:
                     seen.add(_norm(nm))
                     names.append(nm)
     _names_cache.update(ts=time.time(), names=names)
@@ -201,7 +205,11 @@ def _client_names() -> list[str]:
 _COMMON = {"cafe", "café", "bar", "restaurant", "the", "and", "co", "group", "kitchen", "lounge",
            "grill", "that", "this", "our", "pty", "ltd", "house", "room", "club", "hotel", "eatery",
            "bistro", "pub", "coffee", "food", "brewing", "beach", "street", "road", "venue", "bakery",
-           "deli", "diner", "tavern", "wine", "beer", "thai", "chinese", "italian", "indian"}
+           "deli", "diner", "tavern", "wine", "beer", "thai", "chinese", "italian", "indian",
+           # conversational words — junk row names contain these and they collide with questions
+           "what", "whats", "want", "need", "help", "have", "your", "will", "know", "just",
+           "like", "about", "chat", "soon", "guys", "love", "speak", "grow", "idea", "next",
+           "month", "business", "businesses", "opening", "operating", "week", "today"}
 
 
 def _distinctive_tokens(name: str) -> set[str]:
