@@ -185,11 +185,35 @@ def test_targets_api_get_set_reset(tmp_path):
 
 
 def test_targets_unauth_blocked():
-    """Targets page + API require auth."""
+    """Targets page + API require auth: page redirects, API answers 401 JSON (fetch()
+    can't follow a redirect to login HTML — it parses as JSON and fails opaquely)."""
     client = _get_app()
     assert client.get("/dashboard/targets").status_code == 302
-    assert client.get("/dashboard/api/targets").status_code == 302
-    print("  Targets page/API unauth → redirect")
+    assert client.get("/dashboard/api/targets").status_code == 401
+    print("  Targets page unauth → redirect; API unauth → 401 JSON")
+
+
+def test_api_unauth_401_json_with_login_pointer():
+    """Expired/missing session on any dashboard API → 401 JSON naming the login page —
+    the front-end auth-gates on it. (The old 302-to-login-HTML broke the UI: generic
+    error banner + dead refresh button.)"""
+    client = _get_app()
+    resp = client.get("/dashboard/api/snapshot")
+    assert resp.status_code == 401
+    j = resp.get_json()
+    assert "login" in j and "expired" in (j.get("error") or "")
+    print("  API unauth → 401 JSON with login pointer")
+
+
+def test_sliding_session_renews_cookie():
+    """Active use renews the auth cookie (no more 30-day max-age cliff mid-use)."""
+    client = _get_app()
+    client.set_cookie("dash_token", "test-dash-token")
+    resp = client.get("/dashboard/api/action-feed")
+    assert resp.status_code == 200
+    set_cookie = resp.headers.get("Set-Cookie", "")
+    assert "dash_token=" in set_cookie and "Max-Age=2592000" in set_cookie
+    print("  Authenticated API call re-sets the cookie (sliding session)")
 
 
 if __name__ == "__main__":

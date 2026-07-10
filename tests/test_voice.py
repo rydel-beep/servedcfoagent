@@ -35,21 +35,21 @@ def _client(authed=False):
 def test_tts_rejects_unauthenticated():
     c = _client()
     resp = c.post("/dashboard/api/tts", json={"text": "hello"})
-    assert resp.status_code == 302, "unauthenticated TTS must redirect to login"
+    assert resp.status_code == 401, "unauthenticated TTS must be rejected (401 JSON for APIs)"
     resp = c.get("/dashboard/api/tts?text=hello")
-    assert resp.status_code == 302
+    assert resp.status_code == 401
 
 
 def test_brief_rejects_unauthenticated():
     c = _client()
     resp = c.post("/dashboard/api/brief", json={})
-    assert resp.status_code == 302
+    assert resp.status_code == 401
 
 
 def test_voice_status_rejects_unauthenticated():
     c = _client()
     resp = c.get("/dashboard/api/voice-status")
-    assert resp.status_code == 302
+    assert resp.status_code == 401
 
 
 # ── Fallback chain ───────────────────────────────────────────────────────────
@@ -235,7 +235,7 @@ def test_chat_stream_rate_limit_blocks():
 def test_chat_stream_endpoint_rejects_unauthenticated():
     c = _client(authed=False)
     resp = c.post("/dashboard/api/chat-stream", json={"history": [{"role": "user", "content": "hi"}]})
-    assert resp.status_code == 302          # redirect to login, same guard as /api/chat
+    assert resp.status_code == 401          # 401 JSON for APIs, same guard as /api/chat
 
 
 def test_estimate_tokens_monotonic():
@@ -370,12 +370,12 @@ def test_brief_endpoint_with_auth():
 
 def test_greeting_rejects_unauthenticated():
     c = _client()
-    assert c.get("/dashboard/api/greeting").status_code == 302
+    assert c.get("/dashboard/api/greeting").status_code == 401
 
 
 def test_voice_config_rejects_unauthenticated():
     c = _client()
-    assert c.post("/dashboard/api/voice-config", json={}).status_code == 302
+    assert c.post("/dashboard/api/voice-config", json={}).status_code == 401
 
 
 def _patch_greeting(monkeypatch, *, loc, weather, events, composed):

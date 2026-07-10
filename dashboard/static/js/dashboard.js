@@ -460,9 +460,17 @@
   }
 
   // ── Fetch ────────────────────────────────────────────────
+  function _authGate(resp) {
+    // Session expired: the API now answers 401 (not a login-HTML redirect). Go log in —
+    // anything else leaves a generic error banner and a dead refresh button.
+    if (resp && resp.status === 401) { window.location.href = '/dashboard/login'; return true; }
+    return false;
+  }
+
   async function fetchSnapshot() {
     try {
       const resp = await fetch('/dashboard/api/snapshot');
+      if (_authGate(resp)) return null;
       if (!resp.ok) return null;
       return await resp.json();
     } catch (e) {
@@ -4110,6 +4118,7 @@
     if (txt) txt.textContent = 'refreshing…';
     try {
       const resp = await fetch('/dashboard/api/refresh', { method: 'POST' });
+      if (_authGate(resp)) return;
       if (resp.ok) {
         const snap = await fetchSnapshot();
         if (snap) render(snap);  // renderStatus repaints the pill with fresh health

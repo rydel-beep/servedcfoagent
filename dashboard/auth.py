@@ -36,6 +36,17 @@ COOKIE_NAME = "dash_token"
 COOKIE_MAX_AGE = 30 * 24 * 3600  # 30 days
 
 
+def _set_auth_cookie(resp):
+    resp.set_cookie(
+        COOKIE_NAME, DASHBOARD_TOKEN,
+        max_age=COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="Lax",
+        secure=True,
+    )
+    return resp
+
+
 def require_auth(f):
     """Decorator that checks for valid dashboard token in cookie or query param."""
     @functools.wraps(f)
@@ -43,22 +54,23 @@ def require_auth(f):
         # Check query param first (first visit with token link)
         token_param = request.args.get("t")
         if token_param == DASHBOARD_TOKEN:
-            resp = make_response(redirect(request.path))
-            resp.set_cookie(
-                COOKIE_NAME, DASHBOARD_TOKEN,
-                max_age=COOKIE_MAX_AGE,
-                httponly=True,
-                samesite="Lax",
-                secure=True,
-            )
-            return resp
+            return _set_auth_cookie(make_response(redirect(request.path)))
 
         # Check cookie
         cookie_token = request.cookies.get(COOKIE_NAME)
         if cookie_token == DASHBOARD_TOKEN:
-            return f(*args, **kwargs)
+            # SLIDING SESSION: re-set the cookie on every authenticated request so active
+            # use never hits the 30-day max-age cliff (the cliff made every dashboard API
+            # silently 302 to the login page — the front-end parsed login HTML as JSON and
+            # showed a generic error with a dead refresh button).
+            return _set_auth_cookie(make_response(f(*args, **kwargs)))
 
-        # Not authenticated
+        # Not authenticated. API calls get an explicit 401 (fetch() can't handle a redirect
+        # to login HTML — it parses as JSON and fails opaquely); pages redirect to login.
+        if "/api/" in (request.path or ""):
+            from flask import jsonify
+            return jsonify({"error": "session expired — log in again",
+                            "login": url_for("dashboard.login_page")}), 401
         return redirect(url_for("dashboard.login_page"))
 
     return wrapper
