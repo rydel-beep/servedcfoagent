@@ -135,6 +135,20 @@ def collect(snap: dict | None = None) -> list[dict]:
     except Exception:
         pass
 
+    # 4b) Paid-but-unlogged (cash_truth) — Stripe money ahead of the tracker cash cell.
+    # Greeting-worthy: real cash landed that the team hasn't logged yet. Watermarked per
+    # business+gap so a growing gap re-surfaces but a known one never repeats.
+    try:
+        for n in ((snap or {}).get("cash_truth") or {}).get("needs_logging") or []:
+            eid = f"unlogged:{_norm(n.get('business'))}:{int(n.get('gap') or 0)}"
+            if eid in told:
+                continue
+            events.append({"id": eid, "type": "unlogged", "salience": 85, "ago": 0,
+                           "spoken": (f"{n.get('business')} has ${n.get('gap'):,.0f} landed in "
+                                      f"Stripe that isn't logged in the tracker yet")})
+    except Exception:
+        pass
+
     # 5) Runway threshold crossing (engine) — crossed BELOW a floor since last seen
     rw = ((snap or {}).get("cash_position") or {}).get("runway_months")
     last_rw = _state().get("last_runway")
