@@ -756,3 +756,16 @@
     cash, no repoint (headline-basis choice OPEN for Rydel). Fixed a PRE-EXISTING order-dependent
     full-suite failure with a root conftest.py (test auth env). 359 tests (+21). Report:
     dashboard/CASH_TRUTH_REPORT.md. Branch feat/cash-truth, not merged (Rydel's gate).
+
+85. **Smarter Stripe↔client payment matching.** The old matcher (exact email OR exact normalized
+    name, tracker-only) false-flagged 4 payments ($9,952.50): existing clients paying again
+    (Jeni/Nirosha/Jagjeet) + payer≠business (Fiona Fitzgerald = Glen's venue). Rebuilt _match_payment
+    as MULTI-SIGNAL + roster-inclusive + confidence-scored: email(100) · contact-name tokens(80) ·
+    first-name(50) · business tokens(68) · distinctive surname(60)/common(26) · amount corroboration
+    (+20). Bands: ≥60 unambiguous → auto-match (existing_client_repeat vs matched_known); 26-59 →
+    needs_review (suggested); none → unrecognised. Never forces a match on ties. Re-reconciled: Fiona→
+    62Thirty, Nirosha→her record, Jeni→Gone Burger auto; Jagjeet→unrecognised (common surname, correct
+    to ask). Renamed flag stripe_paid_not_in_tracker→stripe_unrecognised_payment (severity hygiene, no
+    core-red). Alias learning ("Jagjeet is <client>" → kv_store, auto-matches forever). Handlers +
+    action-feed updated; PII guard retained. 4 false positives → 1 verify → 0 after one confirm. 368
+    tests (+7). Report: dashboard/PAYMENT_MATCHING_REPORT.md.

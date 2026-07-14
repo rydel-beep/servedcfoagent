@@ -581,8 +581,10 @@ def api_chat():
     # the ramble gate + needs the thread (where the claim was made). Also the incident handoff.
     import tracker_read, incident_log
     _thread6 = " ".join((m.get("content") or "") for m in (history or [])[-6:])
+    import stripe_reconcile
     for _sh in (lambda m: tracker_read.handle_self_check(m, _thread6),
-                incident_log.handle_incident_query):
+                incident_log.handle_incident_query,
+                stripe_reconcile.handle_alias_confirm):
         _r, _h = _sh(user_msg)
         if _h:
             memory.record_turn(conv_id, "assistant", _r, channel=channel, intent="command")
@@ -602,6 +604,7 @@ def api_chat():
             (capacity_engine.handle_capacity_command, False),  # hiring/capacity/raise/afford questions
             (forecasting_engine.handle_forecast_command, False),  # cash-flow / MRR / runway forecasts
             (__import__('action_feed').handle_action_feed_command, False),  # 'what needs my attention'
+            (__import__('stripe_reconcile').handle_reconciliation_query, False),  # unmatched payments
             (__import__('cash_truth').handle_latest_cash_command, False),   # "last cash collected" → Stripe-actual
             (__import__('cash_truth').handle_needs_logging_command, False), # "what needs logging?"
             (tracker_read.handle_tracker_check, False),    # "check the tracker for X" → verbatim row
@@ -723,8 +726,10 @@ def api_chat_stream():
         # Self-check challenge loop + incident handoff (voice path), before the ramble gate.
         import tracker_read, incident_log
         _thread6 = " ".join((m.get("content") or "") for m in (history or [])[-6:])
+        import stripe_reconcile
         for _sh in (lambda m: tracker_read.handle_self_check(m, _thread6),
-                    incident_log.handle_incident_query):
+                    incident_log.handle_incident_query,
+                    stripe_reconcile.handle_alias_confirm):
             _r, _handled = _sh(user_msg)
             if _handled:
                 _cmd_reply = _r
@@ -740,6 +745,7 @@ def api_chat_stream():
             (capacity_engine.handle_capacity_command, False),
             (forecasting_engine.handle_forecast_command, False),
             (__import__('action_feed').handle_action_feed_command, False),
+            (__import__('stripe_reconcile').handle_reconciliation_query, False),
             (__import__('cash_truth').handle_latest_cash_command, False),   # "last cash collected" → Stripe-actual
             (__import__('cash_truth').handle_needs_logging_command, False), # "what needs logging?"
             (tracker_read.handle_tracker_check, False),

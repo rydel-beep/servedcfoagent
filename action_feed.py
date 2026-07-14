@@ -54,12 +54,20 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
             items.append({"severity": _DQ_SEVERITY.get(metric, "S3"), "category": "data_quality",
                           "title": (d.get("reason") or metric)[:140], "action": _DQ_ACTIONS[metric]})
 
-    # 3) Paid-but-unlogged (Stripe reconciliation) — real money not on the tracker
+    # 3) UNRECOGNISED Stripe payments — only genuine anomalies after multi-signal matching
+    # (existing-client repeats + payer≠business auto-resolve and are NOT surfaced here).
     sr = snap.get("stripe_reconciliation") or {}
     for p in (sr.get("paid_missing_from_tracker") or [])[:10]:
+        who = p.get("customer", "a payer") if isinstance(p, dict) else str(p)[:40]
+        amt = p.get("amount") if isinstance(p, dict) else None
         items.append({"severity": "S2", "category": "reconciliation",
-                      "title": f"Stripe payment not on the tracker: {str(p)[:80]}",
-                      "action": "Log this payment against its deal in the tracker."})
+                      "title": f"Unrecognised Stripe payment: {who}" + (f" (${amt:,.0f})" if amt else ""),
+                      "action": f"Tell me who they are (“{who} is <client>”) and I'll remember it."})
+    for p in (sr.get("needs_review") or [])[:5]:
+        sug = (p.get("suggested") or [{}])[0].get("business", "?")
+        items.append({"severity": "S3", "category": "reconciliation",
+                      "title": f"Confirm payer: {p.get('customer', '?')} → likely {sug}?",
+                      "action": "Say “yes” or correct me and I'll link it."})
 
     # 3b) NEEDS LOGGING (cash_truth) — the deal row exists but its cash cell trails Stripe.
     # Persists in the feed until the team logs it (unlike the once-only salience event).
