@@ -45,15 +45,38 @@ def _dig(pack: dict, path: list[str]):
     return o
 
 
+# Sales / unit-economics fields become meaningless when the prior quarter predates the tracker
+# (no leads AND no closes recorded) — a "0 -> 16" delta would imply the tracker existed and read
+# zero, which is a fabricated trend. These fields are suppressed for such a prior period.
+_TRACKER_DEPENDENT = {
+    "Contracted revenue", "New-deal cash collected", "Avg contract value", "Closes",
+    "Loaded CAC", "LTGP:CAC", "ROAS", "Ad spend", "Leads (cohort)", "Lead->close %",
+}
+
+
+def _pre_tracker(pack: dict) -> bool:
+    """True when a quarter has effectively no tracker history (0 leads and 0 closes) — the tracker
+    didn't cover it, so its sales/unit-econ zeros are absence, not genuine zero."""
+    leads = _dig(pack, ["sales", "funnel", "leads_in"])
+    closes = _dig(pack, ["unit_economics", "components", "closes"])
+    return (not leads) and (not closes)
+
+
 def compare(current: dict, prior: dict | None, kind: str) -> dict:
     """kind: 'QoQ' or 'YoY'. Returns per-field deltas with availability + a basis note."""
     rows = []
     if not prior:
         return {"kind": kind, "available": False,
                 "note": f"{kind} comparison unavailable — no prior-period pack.", "rows": []}
+    prior_pre_tracker = _pre_tracker(prior)
     for label, path in _FIELDS:
         cur = _dig(current, path)
         prev = _dig(prior, path)
+        if prior_pre_tracker and label in _TRACKER_DEPENDENT:
+            rows.append({"metric": label, "current": cur, "prior": None, "delta": None,
+                         "pct": None, "available": False,
+                         "reason": "prior period predates the tracker — not computable (stated, not faked)"})
+            continue
         row = {"metric": label, **_delta(cur, prev)}
         rows.append(row)
     # count how much was genuinely comparable
@@ -66,6 +89,11 @@ def compare(current: dict, prior: dict | None, kind: str) -> dict:
         "comparable_fields": comparable,
         "total_fields": len(rows),
         "rows": rows,
-        "note": (f"{comparable}/{len(rows)} fields were like-basis comparable. Fields showing "
-                 "unavailable had no prior-period data (stated, never fabricated)."),
+        "prior_pre_tracker": prior_pre_tracker,
+        "note": (
+            (f"{comparable}/{len(rows)} fields were like-basis comparable. "
+             + ("The prior period predates the tracker, so sales/unit-economics YoY is NOT "
+                "computable — only the Xero-backed revenue figures are compared. "
+                if prior_pre_tracker else "")
+             + "Fields showing unavailable had no prior-period data (stated, never fabricated).")),
     }

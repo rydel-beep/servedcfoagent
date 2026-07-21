@@ -1087,3 +1087,51 @@ def api_quarterly_pack():
     resp = jsonify(review)
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+@bp.route("/api/quarterly-review", methods=["GET"])
+@require_auth
+def api_quarterly_review():
+    """Generate the branded Quarterly Review PDF (both roles may generate — Rydel's full-visibility
+    call). Every $-figure is verbatim from the pack (validated; generation fails loudly otherwise).
+    The PDF is dated into the forever archive, and the generation is flagged to Rydel (if Piolo runs
+    it, it surfaces in the owner digest via collab.record_action). ?year=&q= or default last Q."""
+    import quarterly_review
+    from dashboard.quarterly_pdf import generate_quarterly_pdf
+    from dashboard.auth import current_actor
+    year, q, assumptions = _resolve_quarter_args()
+    try:
+        review = quarterly_review.build_review(year, q, assumptions)
+        pdf_bytes = generate_quarterly_pdf(review)
+    except ValueError as e:
+        # verbatim-number guard tripped — refuse to emit a document with an untraceable figure
+        logger.error("Quarterly PDF verbatim check failed: %s", e)
+        return jsonify({"error": "verbatim-number check failed — refusing to emit", "detail": str(e)}), 500
+    except Exception as e:
+        logger.exception("Quarterly PDF generation failed")
+        return jsonify({"error": str(e)}), 500
+
+    label = review.get("quarter", {}).get("label", f"Q{q} {year}")
+    actor = current_actor()
+    # Forever archive: dated record + the PDF file on disk (survives DB loss; joins the export).
+    filename = f"served-cfo-quarterly-{label.replace(' ', '-')}-{today_sydney()}.pdf"
+    try:
+        import collab, os as _os
+        arch_dir = _os.path.join(_os.path.dirname(__file__), "archive_exports")
+        _os.makedirs(arch_dir, exist_ok=True)
+        with open(_os.path.join(arch_dir, filename), "wb") as fh:
+            fh.write(pdf_bytes)
+        collab.add_entry(actor.get("user", "rydel"), "done",
+                         f"Quarterly Review generated: {label} ({filename})",
+                         link_type="quarterly_pdf", link_ref=label)
+        collab.record_action(actor, f"generated the Quarterly Review PDF for {label}",
+                             link_type="quarterly_pdf", link_ref=label)
+    except Exception as e:
+        logger.info("Quarterly PDF archive step non-fatal error: %s", e)
+
+    resp = make_response(bytes(pdf_bytes))
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    resp.headers["Content-Length"] = str(len(pdf_bytes))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp

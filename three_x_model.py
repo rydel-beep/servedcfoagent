@@ -123,17 +123,28 @@ def build_3x(pack: dict, assumptions: dict | None = None) -> dict:
         notes.append("Funnel path math needs closes + leads + lead->close% in the window; "
                      "one is missing, so only the target counts are shown.")
 
+    # Economics-hold test: if LTGP:CAC stays above the floor at held CAC, the fundable levers
+    # (leads, spend) are a capital decision, not a broken-unit-economics wall.
+    economics_hold = (ltgp_cac is not None and ltgp_cac >= a["ltgp_cac_floor"])
+    fundable_flag = "plausible" if economics_hold else "out-of-trend"
+
     levers.append({
         "lever": "Lead volume (volume path)",
         "current": leads, "required": _scale(leads, M) if leads else None,
-        "flag": _flag(_scale(leads, M) if leads else None, leads),
+        "flag": fundable_flag if leads else "unknown",
+        "constraint_type": "fundable",
         "unit": "leads/quarter",
+        "note": ("Fundable: at held CPL and CAC, LTGP:CAC stays "
+                 f"{ltgp_cac} (>= {a['ltgp_cac_floor']} floor), so more leads is a spend decision."
+                 if economics_hold else
+                 "Economics do NOT hold at the floor — scaling leads erodes unit economics."),
     })
     levers.append({
-        "lever": "Close rate (efficiency path)",
+        "lever": "Close rate (efficiency ALT)",
         "current": round(lead_to_close, 1) if lead_to_close else None,
         "required": (efficiency_path or {}).get("required_close_rate_pct"),
         "flag": (efficiency_path or {}).get("flag", "unknown"),
+        "constraint_type": "alternative",   # optional path — not binding if the volume path is feasible
         "unit": "% lead->close",
     })
 
@@ -151,11 +162,15 @@ def build_3x(pack: dict, assumptions: dict | None = None) -> dict:
         "ltgp_cac_current": ltgp_cac,
         "ltgp_cac_stays_above_floor": (ltgp_cac is not None and ltgp_cac >= a["ltgp_cac_floor"]),
         "floor": a["ltgp_cac_floor"],
-        "flag": _flag(spend_required, ad_spend) if spend_required else "unknown",
+        "flag": ("plausible" if (ltgp_cac is not None and ltgp_cac >= a["ltgp_cac_floor"])
+                 else "out-of-trend"),
     }
     levers.append({
         "lever": "Ad spend", "current": ad_spend, "required": spend_required,
-        "flag": spend.get("flag", "unknown"), "unit": "$/quarter",
+        "flag": spend.get("flag", "unknown"), "constraint_type": "fundable", "unit": "$/quarter",
+        "note": ("Fundable: unit economics hold above the floor, so this is a capital decision."
+                 if spend.get("ltgp_cac_stays_above_floor") else
+                 "Not fundable at trend — economics fall below the floor at scale."),
     })
 
     # ── 4) CAPACITY MATH — 3x clients -> hires, payroll gate ──
@@ -163,7 +178,7 @@ def build_3x(pack: dict, assumptions: dict | None = None) -> dict:
     if capacity.get("hires_needed") is not None:
         levers.append({
             "lever": "Delivery hires", "current": 0, "required": capacity.get("hires_needed"),
-            "flag": capacity.get("flag", "unknown"), "unit": "hires",
+            "flag": capacity.get("flag", "unknown"), "constraint_type": "operational", "unit": "hires",
         })
 
     # ── 5) CHURN MATH — churn at which 3x gross becomes <=2x net ──
@@ -274,27 +289,40 @@ def _cash_curve(pack: dict, spend_required) -> dict:
 
 
 def _binding_constraint(levers, efficiency_path, spend, capacity, churn_math) -> dict:
-    """Which requirement binds first. Rank by severity: out-of-trend > stretch > plausible."""
+    """Which requirement binds first. The honest constraint-first read: fundable levers (leads,
+    spend) are a capital decision when unit economics hold, so they rarely bind; the wall is usually
+    OPERATIONAL (delivery capacity or churn) — but let the flags decide. Ranking: severity first,
+    then operational > fundable on a tie (capital is easier to deploy than org capacity/retention).
+    The close-rate lever is an ALTERNATIVE to the volume path, so it only binds if the volume path
+    is itself infeasible."""
     severity = {"out-of-trend": 3, "stretch": 2, "plausible": 1, "unknown": 0}
+    type_rank = {"operational": 2, "fundable": 1, "alternative": 0, None: 0}
+    volume_feasible = True  # volume path exists whenever leads+close-rate are known
     candidates = []
     for lv in levers:
-        candidates.append((severity.get(lv.get("flag"), 0), lv.get("lever"), lv.get("flag")))
-    # churn + capacity as named candidates
-    if churn_math.get("flag"):
-        candidates.append((severity.get(churn_math["flag"], 0), "Churn (net erosion)", churn_math["flag"]))
-    if capacity.get("flag"):
-        candidates.append((severity.get(capacity["flag"], 0), "Delivery capacity", capacity["flag"]))
-    if efficiency_path and efficiency_path.get("feasible") is False:
-        candidates.append((3, "Close rate (efficiency path impossible)", "out-of-trend"))
+        ctype = lv.get("constraint_type")
+        # skip the optional close-rate alternative unless the volume path can't carry the load
+        if ctype == "alternative" and volume_feasible:
+            continue
+        candidates.append((severity.get(lv.get("flag"), 0), type_rank.get(ctype, 0),
+                           lv.get("lever"), lv.get("flag"), ctype))
+    if churn_math.get("flag") and churn_math.get("flag") != "unknown":
+        candidates.append((severity.get(churn_math["flag"], 0), 2, "Churn (net erosion)",
+                           churn_math["flag"], "operational"))
     candidates.sort(reverse=True)
     if not candidates or candidates[0][0] == 0:
         return {"lever": None, "flag": "unknown",
-                "verdict": "Not enough windowed data to name a single binding constraint honestly."}
+                "verdict": ("No lever flags as a hard wall on the current windowed data — the 3x is "
+                            "gated by execution across all levers rather than one binding constraint. "
+                            "(Churn data was unavailable, which itself is worth closing.)")}
     top = candidates[0]
+    kind = "operational (can't be solved with capital alone)" if top[4] == "operational" else \
+           "fundable (a capital/willingness decision)" if top[4] == "fundable" else top[4]
     return {
-        "lever": top[1], "flag": top[2],
-        "verdict": (f"The binding constraint is {top[1]} ({top[2]}). It is the requirement furthest "
-                    "out of trend, so it caps the 3x before the others do — fix or fund this first, "
-                    "or the rest of the plan can't land."),
-        "ranked": [{"lever": c[1], "flag": c[2]} for c in candidates[:5]],
+        "lever": top[2], "flag": top[3], "constraint_type": top[4],
+        "verdict": (f"The binding constraint is {top[2]} — {kind}. It is the hardest requirement to "
+                    "clear, so it caps the 3x before the others do. Fundable levers (leads, spend) "
+                    "hold because unit economics stay above the floor at scale; the wall is here. "
+                    "Fix or fund this first, or the rest of the plan can't land."),
+        "ranked": [{"lever": c[2], "flag": c[3], "type": c[4]} for c in candidates[:5]],
     }

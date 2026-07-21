@@ -4180,6 +4180,41 @@
     }
   });
 
+  // ── Quarterly Review PDF ─────────────────────────────────
+  const qrBtn = $('#btn-quarterly-review');
+  if (qrBtn) qrBtn.addEventListener('click', async function() {
+    const btn = this;
+    btn.disabled = true;
+    btn.classList.add('loading');
+    try {
+      // default = last completed calendar quarter (server decides); could pass ?year=&q=
+      const resp = await fetch('/dashboard/api/quarterly-review');
+      if (!resp.ok) {
+        let detail = 'HTTP ' + resp.status;
+        try { const err = await resp.json(); detail = (err.error || detail) + (err.detail ? ' — ' + err.detail : ''); } catch (_) {}
+        throw new Error(detail);
+      }
+      const ct = resp.headers.get('Content-Type') || '';
+      if (!ct.includes('application/pdf')) throw new Error('Server returned non-PDF (' + ct + ')');
+      const blob = await resp.blob();
+      if (blob.size < 500) throw new Error('PDF too small (' + blob.size + ' bytes)');
+      let fname = 'served-cfo-quarterly-review.pdf';
+      const cd = resp.headers.get('Content-Disposition') || '';
+      const mm = cd.match(/filename=([^;]+)/);
+      if (mm) fname = mm[1].trim();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = fname; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Quarterly Review PDF failed:', e);
+      alert('Quarterly Review PDF failed: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove('loading');
+    }
+  });
+
   // ── Collapsible ──────────────────────────────────────────
   $('#toggle-quality').addEventListener('click', function() {
     const body = $('#quality-body');
