@@ -1101,6 +1101,7 @@ def api_quarterly_review():
     import quarterly_review
     from dashboard.quarterly_pdf import generate_quarterly_pdf
     from dashboard.auth import current_actor
+    from helpers import today_sydney
     year, q, assumptions = _resolve_quarter_args()
     try:
         review = quarterly_review.build_review(year, q, assumptions)
