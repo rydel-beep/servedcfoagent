@@ -783,3 +783,10 @@
     off-DB). Attribution hook in client_overrides. Injection-safe (entries are data). Endpoints
     /api/collab/*, /whoami, /logout; chat handlers actor-aware. 375 tests (+7). LIVE per-role verify
     pending railway login. Report: dashboard/COLLABORATION_LAYER_REPORT.md.
+
+87. **Piolo's front-end panels.** Zone-3 dashboard panels for the collaboration layer: Bookkeeping
+    queue (live flags → resolve-with-note inline → EDITH verification annotation, status pills) and
+    Work log (composer + colour-coded entries + "signed in as" from /api/whoami). Consumes
+    /api/collab/*; wired into loadAll + the zone map; HUD-theme CSS; responsive. Local Playwright:
+    panels render, composer works, 0 page errors. Live-data + per-role deployed verification pending
+    railway login. Commit 141533c.

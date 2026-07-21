@@ -63,3 +63,16 @@ Endpoints: `/api/collab/log` (GET/POST), `/queue`, `/resolve`, `/digest`, `/jour
   migration means the deploy is inert until Rydel sets `RYDEL_PASSWORD` + `PIOLO_PASSWORD`.
 - Front-end panels (work-log UI, queue UI, journal view) are the remaining UI layer — the backends
   + endpoints are live; the panels consume them.
+
+## Front-end panels (built 2026-07-21)
+Piolo's dashboard panels live in **Zone 3 "What needs action"** (consuming `/api/collab/*`):
+- **Bookkeeping queue** — the live DQ/hygiene flags as actionable items with status pills
+  (open / resolved-verifying / ✓ verified / ⚠ still-open). Resolve inline with a note →
+  `/api/collab/resolve` → EDITH re-derives from fresh data and annotates the verification.
+- **Work log** — composer (done/concern/question/suggestion + text) → `/api/collab/log`; entries
+  colour-coded by type with author + timestamp; "signed in as …" from `/api/whoami`.
+- Wired into `loadAll` + the Zone-3 map; CSS from the harbour-navy HUD theme; mobile-responsive.
+
+**Verification:** panels render, composer present, **0 page errors** (local Playwright). Live-data
+behaviour (queue populated from real flags on the deployed Postgres, the resolve→verify loop, and
+per-role rendering) is pending the deployed check + `railway login` (CLI logged out this session).
