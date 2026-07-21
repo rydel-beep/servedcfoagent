@@ -825,3 +825,18 @@
     → QoQ (vs Jan–Mar 2026) fully honest; YoY computable for Xero REVENUE only, unit-econ/sales YoY
     NOT (stated plainly in PDF). PDF engine = reuse fpdf2 (already deployed, branded BriefingPDF),
     no weasyprint/Railway change.
+
+90. **Quarterly Review PDF — built & verified (Phases 1-4).** One button (both roles) generates a
+    branded fpdf2 PDF from the canonical engines: the quarter + QoQ/honest-YoY + a constraint-first
+    3x model, dated into the forever archive, each generation flagged to Rydel (record_action).
+    Modules: quarterly_pack (window-consistent, one-engine), quarterly_compare (nascent-tracker YoY
+    guard: suppress tracker-dependent fields when prior quarter <3 closes → Q2-2025 sales/unit-econ
+    reads "not computable", only Xero + Meta compare), three_x_model (fundability-aware — leads/spend
+    plausible because LTGP:CAC stays above floor, binding constraint = Delivery hires operational
+    wall), quarterly_review (orchestrator + chat handler), dashboard/quarterly_pdf (render +
+    validate_verbatim: every $-figure must trace to the pack, generation fails loudly otherwise).
+    Added xero_pull.pull_pl_range (per-quarter P&L; Xero history verified live to 2025). VERIFIED
+    LIVE: same-moment pack==dashboard exact (LTGP:CAC 4.74/CAC 2718.13/closes 16/contracted 253200/
+    cash 98255/adspend 24382.88); adversarial $9,999,999 caught; Rydel+Piolo both generate 200+valid
+    PDF, both archived+flagged; chat "compare to last year"/"3x next quarter"/"generate" all work;
+    375 Stage-A tests green. Report: dashboard/QUARTERLY_REVIEW_REPORT.md.
