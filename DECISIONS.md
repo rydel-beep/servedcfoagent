@@ -811,3 +811,17 @@
     overflow fix (KPI strip flex→grid). VERIFIED deployed (1a712af): 1920 → .main 1320px centered
     (300px margins each side), 1440 → 1320 centered, ≤1024 fills width, all overflow=0; screenshots
     confirm centered/tidy at 1920/1440/700/390. dashboard/verification/responsive-layout/v2/.
+
+89. **Quarterly Review PDF — Phase 0 gate (Rydel's calls, 2026-07-21).** (a) QUARTER CONVENTION =
+    CALENDAR quarters (Q2 2026 = Apr–Jun is the default last-completed review; Q3 = current). For
+    this period AU-FY and calendar resolve to identical windows anyway. (b) 3X METRIC = EVERYTHING:
+    3x cash collected + contracted revenue + new MRR together — model 3x of overall QoQ company
+    growth, not a single lever. (c) ACCESS = Rydel + Piolo both (full-visibility mandate) → gate is
+    require_auth, NOT require_owner; Piolo's generation is flagged to Rydel via collab. VERIFIED
+    live numbers (Q2 2026 Apr–Jun): 16 closes, $253,200 contracted, $98,255 new-deal cash, CAC
+    $2,688, LTGP:CAC 4.8, ROAS 10.38; current MRR $85,996; 42 active clients. DATA AVAILABILITY
+    (probed live): Meta ad-spend history is DEEP (meta_live_range back to Q1 2025 — corrects the
+    stale "Meta only since 6/24" premise); tracker closes cap YoY (Q3 2025 = 2 closes, Q2 2025 = 0)
+    → QoQ (vs Jan–Mar 2026) fully honest; YoY computable for Xero REVENUE only, unit-econ/sales YoY
+    NOT (stated plainly in PDF). PDF engine = reuse fpdf2 (already deployed, branded BriefingPDF),
+    no weasyprint/Railway change.
