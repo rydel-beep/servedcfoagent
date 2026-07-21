@@ -61,25 +61,46 @@ def index():
 
 @bp.route("/login", methods=["GET"])
 def login_page():
-    """Token entry form."""
-    return render_template("login.html")
+    """Login form — username/password once per-user auth is enabled, else the legacy token field."""
+    import dashboard.auth as auth
+    return render_template("login.html", per_user=auth.per_user_enabled())
 
 
 @bp.route("/login", methods=["POST"])
 def login_submit():
-    """Validate token and set cookie."""
+    """Per-user login (username + password) → server-side session with role. Legacy token still
+    accepted ONLY while no per-user accounts are configured (safe migration)."""
+    from flask import session
+    import dashboard.auth as auth
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "")
+    actor = auth.verify_login(username, password)
+    if actor:
+        session.permanent = True
+        session["actor"] = actor
+        auth.audit_login(actor, ok=True)
+        return redirect(url_for("dashboard.index"))
+    if username:
+        auth.audit_login({"user": username}, ok=False)
+
+    # Legacy token path — only while per-user auth is not yet enabled.
     token = request.form.get("token", "").strip()
-    if token == DASHBOARD_TOKEN:
+    if not auth.per_user_enabled() and token and token == DASHBOARD_TOKEN:
         resp = make_response(redirect(url_for("dashboard.index")))
-        resp.set_cookie(
-            COOKIE_NAME, DASHBOARD_TOKEN,
-            max_age=COOKIE_MAX_AGE,
-            httponly=True,
-            samesite="Lax",
-            secure=True,
-        )
+        resp.set_cookie(COOKIE_NAME, DASHBOARD_TOKEN, max_age=COOKIE_MAX_AGE,
+                        httponly=True, samesite="Lax", secure=True)
         return resp
-    return render_template("login.html", error="Invalid token"), 401
+    return render_template("login.html", error="Invalid credentials",
+                           per_user=auth.per_user_enabled()), 401
+
+
+@bp.route("/logout", methods=["GET", "POST"])
+def logout():
+    from flask import session
+    session.pop("actor", None)
+    resp = make_response(redirect(url_for("dashboard.login_page")))
+    resp.delete_cookie(COOKIE_NAME)
+    return resp
 
 
 @bp.route("/api/snapshot", methods=["GET"])
@@ -276,6 +297,73 @@ def api_greeting():
     payload = build_greeting(snap, mark=True)   # composes, watermarks, remembers shape
     kv_store.put("greeting:last_delivered", {"ts": _t.time(), "payload": payload})
     return jsonify({**payload, "regreet": True})
+
+
+# ── Collaboration layer (work log, queue, verification, digest, journal) ─────
+@bp.route("/api/collab/log", methods=["GET", "POST"])
+@require_auth
+def api_collab_log():
+    import collab
+    from dashboard.auth import current_actor
+    if request.method == "POST":
+        d = request.get_json(silent=True) or {}
+        e = collab.add_entry(current_actor().get("user"), d.get("kind", "suggestion"),
+                             d.get("body", ""), d.get("link_type"), d.get("link_ref"), d.get("parent_id"))
+        return jsonify({"ok": bool(e), "entry": e})
+    return jsonify({"entries": collab.list_entries(
+        start=request.args.get("start"), end=request.args.get("end"),
+        author=request.args.get("author"), kind=request.args.get("kind"),
+        include_archived=request.args.get("archived") == "1")})
+
+
+@bp.route("/api/collab/queue", methods=["GET"])
+@require_auth
+def api_collab_queue():
+    import collab
+    from snapshot import load_persisted
+    return jsonify({"queue": collab.queue(load_persisted() or {})})
+
+
+@bp.route("/api/collab/resolve", methods=["POST"])
+@require_auth
+def api_collab_resolve():
+    import collab
+    from dashboard.auth import current_actor
+    d = request.get_json(silent=True) or {}
+    if not d.get("flag_id"):
+        return jsonify({"ok": False, "error": "flag_id required"}), 400
+    return jsonify(collab.resolve_item(d["flag_id"], d.get("note", ""), current_actor()))
+
+
+@bp.route("/api/collab/digest", methods=["GET"])
+@require_auth
+def api_collab_digest():
+    import collab
+    return jsonify(collab.digest("rydel", advance=request.args.get("peek") != "1"))
+
+
+@bp.route("/api/collab/journal", methods=["GET"])
+@require_auth
+def api_collab_journal():
+    import collab
+    from dashboard.auth import current_actor
+    return jsonify({"journal": collab.journal(start=request.args.get("start"),
+                                              end=request.args.get("end"),
+                                              role=current_actor().get("role"))})
+
+
+@bp.route("/api/collab/export", methods=["POST"])
+@require_auth
+def api_collab_export():
+    import collab
+    return jsonify(collab.export_archive())
+
+
+@bp.route("/api/whoami", methods=["GET"])
+@require_auth
+def api_whoami():
+    from dashboard.auth import current_actor
+    return jsonify(current_actor())
 
 
 @bp.route("/api/geolocation", methods=["POST"])
@@ -604,6 +692,7 @@ def api_chat():
             (capacity_engine.handle_capacity_command, False),  # hiring/capacity/raise/afford questions
             (forecasting_engine.handle_forecast_command, False),  # cash-flow / MRR / runway forecasts
             (__import__('action_feed').handle_action_feed_command, False),  # 'what needs my attention'
+            (lambda m: __import__('collab').handle_collab_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # work log / queue / digest
             (__import__('stripe_reconcile').handle_reconciliation_query, False),  # unmatched payments
             (__import__('cash_truth').handle_latest_cash_command, False),   # "last cash collected" → Stripe-actual
             (__import__('cash_truth').handle_needs_logging_command, False), # "what needs logging?"
@@ -745,6 +834,7 @@ def api_chat_stream():
             (capacity_engine.handle_capacity_command, False),
             (forecasting_engine.handle_forecast_command, False),
             (__import__('action_feed').handle_action_feed_command, False),
+            (lambda m: __import__('collab').handle_collab_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),
             (__import__('stripe_reconcile').handle_reconciliation_query, False),
             (__import__('cash_truth').handle_latest_cash_command, False),   # "last cash collected" → Stripe-actual
             (__import__('cash_truth').handle_needs_logging_command, False), # "what needs logging?"

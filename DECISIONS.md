@@ -769,3 +769,17 @@
     core-red). Alias learning ("Jagjeet is <client>" → kv_store, auto-matches forever). Handlers +
     action-feed updated; PII guard retained. 4 false positives → 1 verify → 0 after one confirm. 368
     tests (+7). Report: dashboard/PAYMENT_MATCHING_REPORT.md.
+
+86. **Three-way collaboration layer + per-user auth.** Rydel's call: Piolo (bookkeeper/acting COO)
+    gets FULL visibility + authority = same as Rydel, but every Piolo action is FLAGGED to Rydel;
+    roles differ by identity, not access. dashboard/auth.py rewritten: two env accounts (rydel=owner,
+    piolo=coo), Flask session {user,role}, current_actor(), audit_login, /logout, require_owner
+    reserved. SAFE MIGRATION: setting RYDEL_PASSWORD+PIOLO_PASSWORD enables per-user AND retires the
+    shared token atomically; inert until then (no lockout). collab.py: work log (done/concern/question/
+    suggestion, threads, 15-min edit then append-only corrections, archive-hide, NO deletes), queue
+    (live flags → resolve-with-note → EDITH re-derives from fresh data → ✓verified/⚠partial; clears
+    only on data change, stated factually), digest (watermarked), salience surfacing, archive (date
+    browse, month summary, substring search, unified journal over audit trails, dated JSON/CSV export
+    off-DB). Attribution hook in client_overrides. Injection-safe (entries are data). Endpoints
+    /api/collab/*, /whoami, /logout; chat handlers actor-aware. 375 tests (+7). LIVE per-role verify
+    pending railway login. Report: dashboard/COLLABORATION_LAYER_REPORT.md.

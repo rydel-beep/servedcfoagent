@@ -337,6 +337,16 @@ def handle_client_writeback_command(text: str, token: str) -> tuple[str | None, 
                 return "Something went wrong saving that — the change didn't record. Try again?", True
             _do_resync()
             nm = pend["client_name"]
+            # Attribute the action + flag it to Rydel (his call: he's told when Piolo does things).
+            try:
+                import collab
+                from dashboard.auth import current_actor
+                collab.record_action(current_actor(),
+                    f"marked {nm} {pend['change_type']}" +
+                    (f" (MRR → ${pend['new_mrr']:,.0f})" if pend.get("new_mrr") else ""),
+                    link_type="client", link_ref=nm)
+            except Exception:
+                pass
             if pend["change_type"] == "churn":
                 return (f"Done — {nm} marked churned (dashboard only; the Health sheet is unchanged). "
                         f"It's on Piolo's manual-update list. Say “undo that” to reverse."), True

@@ -81,10 +81,15 @@
 <body>
 <div class="login-card">
   <div class="logo">Served <span>CFO</span></div>
-  <div class="subtitle">Private dashboard — token required</div>
+  <div class="subtitle">Private dashboard — sign in</div>
   <form method="POST" action="/dashboard/login">
+    {% if per_user %}
+    <input type="text" name="username" placeholder="Username" autocomplete="username" autofocus>
+    <input type="password" name="password" placeholder="Password" autocomplete="current-password">
+    {% else %}
     <input type="password" name="token" placeholder="Enter dashboard token" autofocus>
-    <button type="submit">Access Dashboard</button>
+    {% endif %}
+    <button type="submit">Sign in</button>
   </form>
   {% if error %}
   <div class="error">{{ error }}</div>
