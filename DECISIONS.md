@@ -790,3 +790,15 @@
     /api/collab/*; wired into loadAll + the zone map; HUD-theme CSS; responsive. Local Playwright:
     panels render, composer works, 0 page errors. Live-data + per-role deployed verification pending
     railway login. Commit 141533c.
+
+88. **Responsive layout overhaul (fluid grid).** The layout was rigid — horizontal overflow at 9/10
+    widths (scrollWidth 2275px at a 1920 viewport; the page bled sideways = Rydel's complaint). Root:
+    .kpi-strip was display:flex with no min-width:0 → ballooned to ~2275px; .grid-2/.zone-grid were
+    fixed/single-breakpoint 2-col; body overflow-x:hidden clipped content. Fix (CSS-only, palette
+    unchanged): KPI strip → grid repeat(auto-fit, minmax(min(148px,100%),1fr)); .grid-2/.zone-grid →
+    auto-fit minmax(min(Npx,100%),1fr) so cards collapse smoothly at every width; min-width:0/max-
+    width:100% on all containers; tables scroll within cards; clamp() on values. Charts already
+    responsive (Chart.js + SVG viewBox). VERIFIED: after-sweep zero overflow at all 10 widths
+    (scrollWidth===viewport); live-resize 1920→390 no overflow + visible 3→2→1 col reflow; chat-open
+    layering clean desktop+mobile; Piolo view responsive+scoped. Zones (Wave 2) now fluid. No Python
+    changed (375 tests unaffected). Report: dashboard/RESPONSIVE_LAYOUT_REPORT.md.
