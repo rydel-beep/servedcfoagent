@@ -76,3 +76,22 @@ Piolo's dashboard panels live in **Zone 3 "What needs action"** (consuming `/api
 **Verification:** panels render, composer present, **0 page errors** (local Playwright). Live-data
 behaviour (queue populated from real flags on the deployed Postgres, the resolve→verify loop, and
 per-role rendering) is pending the deployed check + `railway login` (CLI logged out this session).
+
+## LIVE VERIFICATION — complete (2026-07-21, per-user auth activated)
+Passwords set on Railway; per-user auth live. All verified against the deployed app:
+- **Both logins**: rydel → 302, piolo → 302; wrong password → 401.
+- **Roles**: `/api/whoami` returns rydel=owner, piolo=coo.
+- **Shared token RETIRED**: old `?t=<token>` → 401 and `dash_token` cookie → 401 (both dead once per-user is on).
+- **Piolo access**: capacity / forecast / snapshot / collab-queue all 200 — full access, per Rydel's
+  "sees everything" call. (⚠ NOTE: there are therefore NO owner-only endpoints returning 403 to Piolo
+  — that's by design. The `require_owner` gate is BUILT and ready if specific surfaces are ever locked.)
+- **Queue with real flags**: 6 live items (MRR/subs mismatch, won-deal-not-on-Health, $0-MRR clients,
+  unrecognised Jagjeet payment, blank setter comms, payer-confirm) — screenshotted in Piolo's view.
+- **Resolve → verify loop**: resolving a REAL flag with data unchanged → **⚠ still-open** ("the data
+  hasn't changed yet"); resolving a gone-condition flag → **✓ verified** ("the tracker no longer shows
+  this"). The flag clears only on verified data change.
+- **Attribution + digest**: Piolo's concern/question/2 actions appear in Rydel's digest; EDITH answers
+  "any concerns from Piolo?" → the concern verbatim.
+- **Salience**: "Piolo raised a question: …" surfaced in Rydel's greeting (ranked below money-at-risk
+  events, surfaced once those watermarked — working as designed).
+- **Piolo's scoped view**: "signed in as Piolo", 6 queue items, 0 page errors.
