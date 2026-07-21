@@ -45,21 +45,26 @@ def _dig(pack: dict, path: list[str]):
     return o
 
 
-# Sales / unit-economics fields become meaningless when the prior quarter predates the tracker
-# (no leads AND no closes recorded) — a "0 -> 16" delta would imply the tracker existed and read
-# zero, which is a fabricated trend. These fields are suppressed for such a prior period.
+# Sales / unit-economics fields become meaningless when the prior quarter's tracker was NASCENT
+# (too few closes to be a real basis) — a "0 -> 16 closes" or "$0 -> $253,200" delta would imply the
+# tracker was fully capturing deals and genuinely read zero, which is a fabricated trend. These
+# fields are suppressed for such a prior period. Ad spend is NOT here — it comes from Meta, not the
+# tracker, so it stays comparable. Xero revenue/net-profit are deep P&L history and stay comparable.
 _TRACKER_DEPENDENT = {
     "Contracted revenue", "New-deal cash collected", "Avg contract value", "Closes",
-    "Loaded CAC", "LTGP:CAC", "ROAS", "Ad spend", "Leads (cohort)", "Lead->close %",
+    "Loaded CAC", "LTGP:CAC", "ROAS", "Leads (cohort)", "Lead->close %",
 }
+
+# The engine flags <3 closes as "small sample — ratios volatile"; below that a quarter is not a
+# comparable sales/unit-econ basis.
+_MIN_MEANINGFUL_CLOSES = 3
 
 
 def _pre_tracker(pack: dict) -> bool:
-    """True when a quarter has effectively no tracker history (0 leads and 0 closes) — the tracker
-    didn't cover it, so its sales/unit-econ zeros are absence, not genuine zero."""
-    leads = _dig(pack, ["sales", "funnel", "leads_in"])
-    closes = _dig(pack, ["unit_economics", "components", "closes"])
-    return (not leads) and (not closes)
+    """True when a quarter's tracker coverage is too thin to compare (fewer than a meaningful number
+    of closes) — its sales/unit-econ figures are nascent-tracker absence, not genuine performance."""
+    closes = _dig(pack, ["unit_economics", "components", "closes"]) or 0
+    return closes < _MIN_MEANINGFUL_CLOSES
 
 
 def compare(current: dict, prior: dict | None, kind: str) -> dict:
@@ -75,7 +80,7 @@ def compare(current: dict, prior: dict | None, kind: str) -> dict:
         if prior_pre_tracker and label in _TRACKER_DEPENDENT:
             rows.append({"metric": label, "current": cur, "prior": None, "delta": None,
                          "pct": None, "available": False,
-                         "reason": "prior period predates the tracker — not computable (stated, not faked)"})
+                         "reason": "prior tracker nascent — not computable (stated, not faked)"})
             continue
         row = {"metric": label, **_delta(cur, prev)}
         rows.append(row)
@@ -92,8 +97,9 @@ def compare(current: dict, prior: dict | None, kind: str) -> dict:
         "prior_pre_tracker": prior_pre_tracker,
         "note": (
             (f"{comparable}/{len(rows)} fields were like-basis comparable. "
-             + ("The prior period predates the tracker, so sales/unit-economics YoY is NOT "
-                "computable — only the Xero-backed revenue figures are compared. "
+             + ("The prior period's tracker was nascent (too few closes to be a real basis), so "
+                "sales/unit-economics YoY is NOT computable — only the deep-history sources "
+                "(Xero revenue/profit, Meta ad spend) are compared. "
                 if prior_pre_tracker else "")
-             + "Fields showing unavailable had no prior-period data (stated, never fabricated).")),
+             + "Fields showing unavailable had no comparable prior-period data (stated, never fabricated).")),
     }

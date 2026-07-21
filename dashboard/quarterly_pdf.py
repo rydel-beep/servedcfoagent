@@ -228,7 +228,8 @@ def generate_quarterly_pdf(review: dict) -> bytes:
         ["Metric", "Value", "Detail"],
         [
             {"cells": ["Closes", str(comp.get("closes", "--")), "by Close Date"]},
-            {"cells": ["Loaded CAC", _fmt(comp.get("cac_loaded")), _safe(comp.get("cac_breakdown", "") or "")[:52]]},
+            {"cells": ["Loaded CAC", _fmt(comp.get("cac_loaded")),
+                       f"ad {_fmt(comp.get('ad_spend'))} + closer {_fmt(comp.get('closer_comm'))} + setter {_fmt(comp.get('setter_comm'))}"]},
             {"cells": ["LTGP:CAC", f"{ue.get('ltgp_cac','--')}x", f"floor {tx.get('assumptions',{}).get('ltgp_cac_floor','3.0')}x"]},
             {"cells": ["ROAS", f"{ue.get('roas','--')}x", "contracted / ad spend"]},
             {"cells": ["Ad spend", _fmt(comp.get("ad_spend")), _safe(comp.get("ad_spend_source", "") or "")]},
