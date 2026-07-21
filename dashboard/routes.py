@@ -1053,3 +1053,37 @@ def api_leads():
     resp = jsonify(leads_view.recent_leads(limit=limit))
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+def _resolve_quarter_args():
+    """?year=&q= (calendar) or default to the last completed calendar quarter."""
+    import quarterly_pack as qp
+    year = request.args.get("year", type=int)
+    q = request.args.get("q", type=int)
+    if not (year and q in (1, 2, 3, 4)):
+        year, q = qp.last_completed_quarter()
+    assumptions = {}
+    for k, caster in (("multiple", float), ("close_rate_target", float),
+                      ("ltgp_cac_floor", float), ("clients_per_delivery_hire", int)):
+        v = request.args.get(k, type=caster)
+        if v is not None:
+            assumptions[k] = v
+    return year, q, (assumptions or None)
+
+
+@bp.route("/api/quarterly-pack", methods=["GET"])
+@require_auth
+def api_quarterly_pack():
+    """The full quarterly review as JSON (packs + QoQ/YoY comparisons + the 3x model). Both roles
+    may read. ?year=&q= or default last completed quarter; 3x knobs via ?multiple=&close_rate_target=.
+    This is the same object the PDF renders from, so chat answers never drift from the document."""
+    import quarterly_review
+    year, q, assumptions = _resolve_quarter_args()
+    try:
+        review = quarterly_review.build_review(year, q, assumptions)
+    except Exception as e:
+        logger.exception("quarterly pack failed")
+        return jsonify({"error": str(e)}), 500
+    resp = jsonify(review)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp

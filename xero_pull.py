@@ -111,6 +111,56 @@ def _fetch_profit_and_loss(access_token: str, tenant_id: str) -> dict | None:
         return None
 
 
+def _fetch_pnl_range(access_token: str, tenant_id: str, start: str, end: str) -> dict | None:
+    """Fetch the P&L report for an EXPLICIT [start,end] window (ISO strings). Used by the
+    quarterly review — Xero keeps full GL history, so any past quarter is fetchable. Read-only."""
+    try:
+        resp = requests.get(
+            f"{XERO_API_BASE}/api.xro/2.0/Reports/ProfitAndLoss",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Xero-Tenant-Id": tenant_id,
+                "Accept": "application/json",
+            },
+            params={"fromDate": str(start), "toDate": str(end)},
+            timeout=(5, HTTP_TIMEOUT),
+        )
+        if resp.status_code != 200:
+            logger.error("Xero P&L range API %d: %s", resp.status_code, resp.text[:300])
+            return None
+        return resp.json()
+    except requests.RequestException as e:
+        logger.error("Xero P&L range request failed: %s", e)
+        return None
+
+
+def pull_pl_range(start: str, end: str) -> dict:
+    """Public: parsed Xero P&L for [start,end] (ISO, inclusive). Returns the same shape as the
+    P&L block of pull_xero plus {ok, window}. On any failure → ok:false + reason (never fabricates).
+    Xero revenue is P&L-recognized (NOT cash) — the quarterly pack labels the basis accordingly."""
+    if not XERO_CLIENT_ID or not XERO_CLIENT_SECRET:
+        return {"ok": False, "reason": "XERO_CLIENT_ID/SECRET not set", "window": {"start": start, "end": end}}
+    stored = _load_tokens()
+    if not stored or not stored.get("refresh_token") or not stored.get("tenant_id"):
+        return {"ok": False, "reason": "No Xero tokens — re-authorize via /xero/connect",
+                "window": {"start": start, "end": end}}
+    tokens = _refresh_access_token(stored)
+    if not tokens or not tokens.get("access_token"):
+        return {"ok": False, "reason": "Xero token refresh failed", "window": {"start": start, "end": end}}
+    data = _fetch_pnl_range(tokens["access_token"], tokens["tenant_id"], start, end)
+    if not data:
+        return {"ok": False, "reason": "Xero P&L range fetch returned nothing",
+                "window": {"start": start, "end": end}}
+    parsed = _parse_pnl(data)
+    if not parsed or parsed.get("revenue") is None:
+        return {"ok": False, "reason": "Xero P&L range parsed empty (no Income section for window)",
+                "window": {"start": start, "end": end}}
+    parsed["ok"] = True
+    parsed["window"] = {"start": start, "end": end}
+    parsed["basis"] = "P&L recognized (Xero), not cash"
+    return parsed
+
+
 def _fetch_bank_summary(access_token: str, tenant_id: str) -> dict | None:
     """Fetch the Bank Summary report — gives each bank account's CLOSING BALANCE
     (point-in-time as of toDate). Read-only; uses accounting.reports.banksummary.read."""
