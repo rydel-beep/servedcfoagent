@@ -802,3 +802,12 @@
     (scrollWidth===viewport); live-resize 1920→390 no overflow + visible 3→2→1 col reflow; chat-open
     layering clean desktop+mobile; Piolo view responsive+scoped. Zones (Wave 2) now fluid. No Python
     changed (375 tests unaffected). Report: dashboard/RESPONSIVE_LAYOUT_REPORT.md.
+
+88b. **Responsive v2 — corrected the over-correction.** Rydel: "way too stretched, nothing in the
+    middle, messy." v1 (88) forced .main to max-width:100% (killed the centered 1320px column →
+    edge-to-edge sprawl) and used auto-fit grids (cards stretched to arbitrary widths). Fix: .main
+    restored to max-width:1320 + margin auto (centered); .grid-2/.zone-grid → repeat(2, minmax(0,1fr))
+    — clean equal two-column that still shrinks safely, stacking to 1-col at 900px. Kept the real
+    overflow fix (KPI strip flex→grid). VERIFIED deployed (1a712af): 1920 → .main 1320px centered
+    (300px margins each side), 1440 → 1320 centered, ≤1024 fills width, all overflow=0; screenshots
+    confirm centered/tidy at 1920/1440/700/390. dashboard/verification/responsive-layout/v2/.
