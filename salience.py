@@ -174,6 +174,17 @@ def collect(snap: dict | None = None) -> list[dict]:
     except Exception:
         pass
 
+    # 7) A new concern/question from Piolo — collaboration surfacing (watermarked).
+    try:
+        import collab
+        line = collab.digest_line()
+        if line:
+            eid = f"collab:{_norm(line)[:40]}"
+            if eid not in told:
+                events.append({"id": eid, "type": "collab", "salience": 70, "ago": 0, "spoken": line})
+    except Exception:
+        pass
+
     events.sort(key=lambda e: (e["salience"], -e["ago"]), reverse=True)
     return events
 
