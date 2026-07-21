@@ -2658,44 +2658,44 @@ body.focus-mode .stark-bigring, body.focus-mode .stark-header-stream { display: 
    last so these win the cascade for the equal-specificity selectors they override.
    ══════════════════════════════════════════════════════════════════════════ */
 
-/* Hard stop on sideways bleed: the page never scrolls horizontally; content wraps,
-   stacks, or scrolls WITHIN its own card. min-width:0 lets grid/flex children shrink
-   below their content instead of forcing the parent wider than the viewport. */
+/* Overflow safety WITHOUT stretching. The page never scrolls sideways; grid/flex CHILDREN may
+   shrink (min-width:0) so inner content can't force the page wider than the viewport — but the
+   centered container KEEPS its max-width. The v1 override forced .main to max-width:100%, which
+   killed the 1320px centered column and stretched everything edge-to-edge (the "too stretched,
+   nothing in the middle" bug). .main is deliberately NOT in this list now. */
 html, body { max-width: 100%; overflow-x: hidden; }
-.main, .zone, .zone-grid, .grid-2, .panel, .kpi-strip { min-width: 0; max-width: 100%; }
-.panel { overflow-wrap: anywhere; }
+.zone, .zone-grid, .grid-2, .panel, .kpi-strip, .kpi { min-width: 0; }
+.panel { overflow-wrap: anywhere; max-width: 100%; }
 
-/* KPI strip: was display:flex with no min-width:0 → balloons to ~2275px and overflows
-   every viewport. Now a fluid grid that reflows into rows; 1px gap = separators. */
-.kpi-strip { display: grid !important; grid-template-columns: repeat(auto-fit, minmax(min(148px, 100%), 1fr));
+/* Keep the content centered even on ultra-wide screens (readability, not edge-to-edge sprawl). */
+.main { max-width: 1320px; margin-left: auto; margin-right: auto; }
+
+/* KPI strip: was display:flex with no min-width:0 → ballooned to ~2275px and overflowed every
+   viewport. THIS was the real culprit — now a fluid grid that reflows into rows (1px gap = rules). */
+.kpi-strip { display: grid !important; grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
   gap: 1px; background: var(--border); align-items: stretch; }
 .kpi { flex: none; min-width: 0; background: var(--bg-card); }
 .kpi-divider { display: none; }
 .kpi-value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  font-size: clamp(19px, 1.4vw + 8px, 26px); }
+  font-size: clamp(19px, 1.1vw + 10px, 26px); }
 .kpi-label { overflow: hidden; text-overflow: ellipsis; }
 
-/* Card rows: fluid auto-fit so 2-col collapses to 1-col smoothly at EVERY width,
-   not just one hard breakpoint. min(Npx,100%) keeps the min-track ≤ container. */
-.grid-2 { grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)) !important; }
-.zone-grid { grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)) !important; }
+/* Card rows: keep the clean CENTERED two-column look. minmax(0,1fr) (NOT auto-fit, NOT 1fr) gives
+   two equal columns that can shrink below their content so nothing overflows — without the
+   auto-fit sprawl that made cards stretch to random widths. Stack to one column on narrow. */
+.grid-2, .zone-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+@media (max-width: 900px) { .grid-2, .zone-grid { grid-template-columns: 1fr !important; } }
 /* Panels that must stay full-width in a zone keep spanning all columns. */
 .zone-grid > .kpi-strip, .zone-grid > #section-action-feed, .zone-grid > #section-collab-queue,
 .zone-grid > #section-collab-log, .zone-grid > #section-brief, .zone-grid > #section-exec { grid-column: 1 / -1; }
 
-/* Tables / wide data: scroll WITHIN the card (never the page), with a visible edge. */
+/* Tables / wide data scroll WITHIN their card (never the page). */
 .panel table, .dq-table, .recon-table, .journal-table, .table-scroll { display: block;
   max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-
-/* Big numbers stay readable but never escape their card. */
 .cash-card-value, .stripe-card-value, .metric-value, .brief-stat-value, .fc-big {
   overflow-wrap: anywhere; max-width: 100%; }
-
-/* Charts: their containers are fluid; the canvas is re-sized by the resize observer (JS). */
 .chart-wrap, .trend-chart, .curve-wrap, canvas.chart, svg.chart { max-width: 100%; }
 
-/* Narrow-width structural shifts: zones already stack (single column via auto-fit).
-   Reduce chrome padding so data leads on small screens. */
 @media (max-width: 640px) {
   .main { padding: 12px 12px 40px; }
   .kpi-strip { grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr)); }
