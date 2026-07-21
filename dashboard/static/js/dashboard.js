@@ -4213,9 +4213,9 @@
     { n: 1, title: 'Am I safe', sub: 'Cash, runway, burn',
       ids: ['section-cash-position', 'section-forecast-cash', 'section-forward'] },
     { n: 3, title: 'What needs action', sub: 'Alerts, data quality, follow-ups',
-      ids: ['section-action-feed', 'section-actions', 'section-verdicts', 'section-deficiency',
-            'section-dq-loss', 'section-churn', 'section-stripe-health', 'section-reconciliation',
-            'section-quality'] },
+      ids: ['section-action-feed', 'section-collab-queue', 'section-collab-log', 'section-actions',
+            'section-verdicts', 'section-deficiency', 'section-dq-loss', 'section-churn',
+            'section-stripe-health', 'section-reconciliation', 'section-quality'] },
     { n: 2, title: 'Is the machine working', sub: 'MRR, unit economics, funnel, capacity',
       ids: ['section-kpis', 'section-revenue', 'section-month-perf', 'section-metrics',
             'section-funnel', 'section-speed-to-lead', 'section-perf-analysis', 'section-setter-deep',
@@ -4286,6 +4286,80 @@
     } catch (e) { /* silent */ }
   }
 
+  // ── COLLABORATION: Piolo's queue (flag → resolve → EDITH verifies) + work log ──
+  var _actor = { user: 'rydel', role: 'owner', display: 'Rydel' };
+  async function loadActor() {
+    try { var r = await fetch('/dashboard/api/whoami'); if (r.ok) _actor = await r.json(); } catch (e) {}
+    var who = $('#collab-log-who'); if (who) who.textContent = 'signed in as ' + (_actor.display || _actor.user);
+  }
+
+  var _STATUS = { open: ['Open', 'cq-open'], resolved: ['Resolved — verifying', 'cq-resolved'],
+                  verified: ['✓ Verified', 'cq-verified'], partial: ['⚠ Still open', 'cq-partial'] };
+  async function renderCollabQueue() {
+    try {
+      var r = await fetch('/dashboard/api/collab/queue'); if (!r.ok) return;
+      var q = (await r.json()).queue || [];
+      var openN = q.filter(function (x) { return x.status === 'open' || x.status === 'partial'; }).length;
+      var badge = $('#collab-queue-badge'); if (badge) badge.textContent = openN ? (openN + ' open') : 'clear';
+      var body = $('#collab-queue-body'); if (!body) return;
+      if (!q.length) { body.innerHTML = '<div class="cq-empty">Queue is clear — nothing to reconcile.</div>'; return; }
+      body.innerHTML = q.map(function (it) {
+        var st = _STATUS[it.status] || _STATUS.open;
+        var verif = it.verification ? '<div class="cq-verif ' + (it.status === 'verified' ? 'cq-ok' : 'cq-warn') + '">' + esc(it.verification) + '</div>' : '';
+        var note = (it.status === 'open' || it.status === 'partial')
+          ? '<div class="cq-resolve"><input class="cq-note" data-flag="' + esc(it.flag_id) + '" placeholder="Note what you did…"><button class="cq-btn" data-flag="' + esc(it.flag_id) + '">Mark done</button></div>'
+          : (it.resolution ? '<div class="cq-note-done">“' + esc(it.resolution) + '”' + (it.resolved_by ? ' — ' + esc(it.resolved_by) : '') + '</div>' : '');
+        return '<div class="cq-item"><div class="cq-top"><span class="cq-status ' + st[1] + '">' + st[0] + '</span>' +
+          '<span class="cq-title">' + esc(it.title) + '</span></div>' +
+          (it.detail ? '<div class="cq-detail">' + esc(it.detail) + '</div>' : '') + verif + note + '</div>';
+      }).join('');
+    } catch (e) {}
+  }
+
+  async function _resolveFlag(flagId, note) {
+    try {
+      await fetch('/dashboard/api/collab/resolve', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flag_id: flagId, note: note }) });
+      renderCollabQueue();
+    } catch (e) {}
+  }
+
+  async function renderWorkLog() {
+    try {
+      var r = await fetch('/dashboard/api/collab/log?limit=30'); if (!r.ok) return;
+      var ents = (await r.json()).entries || [];
+      var body = $('#collab-log-body'); if (!body) return;
+      if (!ents.length) { body.innerHTML = '<div class="cq-empty">No log entries yet.</div>'; return; }
+      body.innerHTML = ents.map(function (e) {
+        return '<div class="cl-entry cl-' + esc(e.kind) + '"><div class="cl-meta"><span class="cl-kind">' + esc(e.kind) +
+          '</span><span class="cl-who">' + esc(e.author) + '</span><span class="cl-time">' + esc((e.created_at || '').slice(0, 16).replace('T', ' ')) + '</span></div>' +
+          '<div class="cl-body">' + esc(e.body) + '</div></div>';
+      }).join('');
+    } catch (e) {}
+  }
+
+  async function _postLog() {
+    var kind = ($('#collab-kind') || {}).value || 'done';
+    var el = $('#collab-body'); var body = (el && el.value || '').trim();
+    if (!body) return;
+    try {
+      await fetch('/dashboard/api/collab/log', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: kind, body: body }) });
+      if (el) el.value = '';
+      renderWorkLog();
+    } catch (e) {}
+  }
+
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('.cq-btn');
+    if (b) { var f = b.getAttribute('data-flag'); var inp = document.querySelector('.cq-note[data-flag="' + f + '"]'); _resolveFlag(f, inp ? inp.value : ''); return; }
+    if (ev.target.id === 'collab-post') _postLog();
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter' && ev.target.id === 'collab-body') { ev.preventDefault(); _postLog(); }
+  });
+
   async function loadAll() {
     var hadSnap = !!currentSnap;
     if (hadSnap) _setUpdating(true);
@@ -4300,6 +4374,9 @@
     applyZones();            // relocate sections into decision zones (once)
     renderActionFeed();      // Zone 3 — the consolidated action feed
     renderForecast();        // Zone 1 cash + Zone 4 MRR projections
+    loadActor();             // who's signed in (Rydel / Piolo)
+    renderCollabQueue();     // Zone 3 — bookkeeping queue with the verification loop
+    renderWorkLog();         // Zone 3 — the shared work log
     if (hadSnap) _setUpdating(false);
     if (historyData && historyData.length > 1) {
       $('#reps-sparkline-status').textContent = historyData.length + ' days of history';
