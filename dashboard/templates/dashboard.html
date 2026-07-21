@@ -538,6 +538,27 @@
     <div id="forecast-mrr-body"><div class="skeleton skeleton-text"></div></div>
   </section>
 
+  <!-- COLLABORATION — Piolo's queue (flag → resolve → EDITH verifies) + the work log -->
+  <section class="panel" id="section-collab-queue">
+    <div class="panel-header"><h2 class="panel-title">Bookkeeping queue</h2>
+      <div class="panel-badge" id="collab-queue-badge"></div></div>
+    <div id="collab-queue-body"><div class="skeleton skeleton-text"></div></div>
+  </section>
+
+  <section class="panel" id="section-collab-log">
+    <div class="panel-header"><h2 class="panel-title">Work log</h2>
+      <span class="panel-sub" id="collab-log-who"></span></div>
+    <div class="collab-compose">
+      <select id="collab-kind" aria-label="Entry type">
+        <option value="done">Done</option><option value="concern">Concern</option>
+        <option value="question">Question</option><option value="suggestion">Suggestion</option>
+      </select>
+      <input id="collab-body" type="text" placeholder="What did you do, notice, or want to raise?" autocomplete="off">
+      <button id="collab-post" type="button">Post</button>
+    </div>
+    <div id="collab-log-body"><div class="skeleton skeleton-text"></div></div>
+  </section>
+
 </main>
 
 <!-- Global error state -->
