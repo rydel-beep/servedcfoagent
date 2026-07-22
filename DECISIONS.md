@@ -840,3 +840,20 @@
     cash 98255/adspend 24382.88); adversarial $9,999,999 caught; Rydel+Piolo both generate 200+valid
     PDF, both archived+flagged; chat "compare to last year"/"3x next quarter"/"generate" all work;
     375 Stage-A tests green. Report: dashboard/QUARTERLY_REVIEW_REPORT.md.
+
+91. **Piolo work-log silent-failure — fixed (2026-07-22).** Reported: Piolo submits entries/queue
+    answers, nothing records, no error. TRACED VERDICT (Phase 0, evidence): NOT the suspected 403
+    over-gate — collab endpoints use require_auth (require_owner is applied to NOTHING; no owner-only
+    403 gates exist by Rydel's full-authority decision). Backend writes succeed for Piolo (4 types →
+    200, rows land ids 17-20; resolve → 200 + verification loop) and the browser round-trip works
+    (POST fires, renders back, no console errors). REAL DEFECT: front-end _postLog/_resolveFlag/
+    renderWorkLog/renderCollabQueue ignored r.ok, swallowed errors (catch{}), and cleared the field +
+    re-rendered regardless — so a 401 (expired session) or transient 500 looked identical to success
+    and wiped the text. add_entry returning None also surfaced as a silent 200 {ok:false}. FIX: check
+    status + visible outcome (Saving→Posted✓/clear error), keep text on failure, map 401/403/server/
+    network; renders surface 401; server returns 400 (empty)/500 (write fail) with loud logger.error
+    (user+role+endpoint). VERIFIED live both roles: Piolo browser success shows Posted✓ + renders;
+    forced expired-session shows the session error with TEXT PRESERVED; role sweep 200/200/401 (no
+    gate loosened — zero authz change); Rydel digest sees Piolo. Collab tests 7/7; Stage-A 374/375
+    (the 1 failure = pre-existing capacity_engine MRR-drift test, untouched by this work). Report:
+    dashboard/PIOLO_INPUT_FIX_REPORT.md.
