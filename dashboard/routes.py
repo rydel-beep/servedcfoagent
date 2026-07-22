@@ -307,9 +307,18 @@ def api_collab_log():
     from dashboard.auth import current_actor
     if request.method == "POST":
         d = request.get_json(silent=True) or {}
-        e = collab.add_entry(current_actor().get("user"), d.get("kind", "suggestion"),
-                             d.get("body", ""), d.get("link_type"), d.get("link_ref"), d.get("parent_id"))
-        return jsonify({"ok": bool(e), "entry": e})
+        actor = current_actor()
+        body = (d.get("body") or "").strip()
+        if not body:
+            return jsonify({"ok": False, "error": "empty — type something to post"}), 400
+        e = collab.add_entry(actor.get("user"), d.get("kind", "suggestion"),
+                             body, d.get("link_type"), d.get("link_ref"), d.get("parent_id"))
+        if not e:
+            # loud server-side surfacing — role + endpoint so the next such bug is diagnosable fast
+            logger.error("collab LOG WRITE FAILED — user=%s role=%s endpoint=/api/collab/log kind=%s",
+                         actor.get("user"), actor.get("role"), d.get("kind"))
+            return jsonify({"ok": False, "error": "couldn’t save to the log — please retry"}), 500
+        return jsonify({"ok": True, "entry": e})
     return jsonify({"entries": collab.list_entries(
         start=request.args.get("start"), end=request.args.get("end"),
         author=request.args.get("author"), kind=request.args.get("kind"),
@@ -330,9 +339,15 @@ def api_collab_resolve():
     import collab
     from dashboard.auth import current_actor
     d = request.get_json(silent=True) or {}
+    actor = current_actor()
     if not d.get("flag_id"):
         return jsonify({"ok": False, "error": "flag_id required"}), 400
-    return jsonify(collab.resolve_item(d["flag_id"], d.get("note", ""), current_actor()))
+    res = collab.resolve_item(d["flag_id"], d.get("note", ""), actor)
+    if isinstance(res, dict) and res.get("ok") is False:
+        logger.error("collab RESOLVE FAILED — user=%s role=%s endpoint=/api/collab/resolve flag=%s",
+                     actor.get("user"), actor.get("role"), d.get("flag_id"))
+        return jsonify(res), 500
+    return jsonify(res)
 
 
 @bp.route("/api/collab/digest", methods=["GET"])

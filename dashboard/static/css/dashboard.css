@@ -2634,7 +2634,12 @@ body.focus-mode .stark-bigring, body.focus-mode .stark-header-stream { display: 
 .cq-note-done { font-size: 12px; color: var(--text-secondary); margin-top: 7px; font-style: italic; }
 
 /* Work log */
-.collab-compose { display: flex; gap: 8px; margin: 4px 0 14px; }
+.collab-compose { display: flex; gap: 8px; margin: 4px 0 6px; }
+/* Submission outcome — never silent again: pending/success/error states on every collab write. */
+.collab-status { font-size: 12px; min-height: 16px; margin: 0 0 12px; line-height: 1.35; }
+.collab-status-pending { color: var(--text-muted); }
+.collab-status-ok { color: var(--green, #34C98E); }
+.collab-status-err { color: var(--red, #E8616B); }
 #collab-kind { background: var(--bg-inset); border: 1px solid var(--border); border-radius: 6px;
   color: var(--text-secondary); font-size: 13px; padding: 7px 8px; flex: none; }
 #collab-body { flex: 1; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 6px;

@@ -4332,7 +4332,8 @@
                   verified: ['✓ Verified', 'cq-verified'], partial: ['⚠ Still open', 'cq-partial'] };
   async function renderCollabQueue() {
     try {
-      var r = await fetch('/dashboard/api/collab/queue'); if (!r.ok) return;
+      var r = await fetch('/dashboard/api/collab/queue');
+      if (!r.ok) { if (r.status === 401) _setStatus('Session expired — refresh to sign back in.', 'err'); return; }
       var q = (await r.json()).queue || [];
       var openN = q.filter(function (x) { return x.status === 'open' || x.status === 'partial'; }).length;
       var badge = $('#collab-queue-badge'); if (badge) badge.textContent = openN ? (openN + ' open') : 'clear';
@@ -4351,18 +4352,27 @@
     } catch (e) {}
   }
 
-  async function _resolveFlag(flagId, note) {
+  async function _resolveFlag(flagId, note, btn) {
+    if (btn) btn.disabled = true;
+    _setStatus('Saving resolution…', 'pending');
     try {
-      await fetch('/dashboard/api/collab/resolve', { method: 'POST',
+      var resp = await fetch('/dashboard/api/collab/resolve', { method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ flag_id: flagId, note: note }) });
+      var ok = false; try { ok = resp.ok && (await resp.clone().json()).ok !== false; } catch (e) { ok = resp.ok; }
+      if (!ok) { _setStatus(await _failMsg(resp, 'Couldn’t save the resolution'), 'err'); if (btn) btn.disabled = false; return; }
+      _setStatus('Marked done ✓ — EDITH will verify.', 'ok');
       renderCollabQueue();
-    } catch (e) {}
+    } catch (e) {
+      _setStatus('Couldn’t save the resolution — network error. Try again.', 'err');
+      if (btn) btn.disabled = false;
+    }
   }
 
   async function renderWorkLog() {
     try {
-      var r = await fetch('/dashboard/api/collab/log?limit=30'); if (!r.ok) return;
+      var r = await fetch('/dashboard/api/collab/log?limit=30');
+      if (!r.ok) { if (r.status === 401) _setStatus('Session expired — refresh to sign back in.', 'err'); return; }
       var ents = (await r.json()).entries || [];
       var body = $('#collab-log-body'); if (!body) return;
       if (!ents.length) { body.innerHTML = '<div class="cq-empty">No log entries yet.</div>'; return; }
@@ -4374,21 +4384,48 @@
     } catch (e) {}
   }
 
+  // Visible outcome for any collaboration submission — never fail silently again.
+  function _setStatus(msg, cls) {
+    var s = $('#collab-status'); if (!s) { if (cls === 'err') alert(msg); return; }
+    s.textContent = msg || '';
+    s.className = 'collab-status' + (cls ? ' collab-status-' + cls : '');
+    if (cls === 'ok') { clearTimeout(_setStatus._t); _setStatus._t = setTimeout(function () {
+      if (s.className.indexOf('collab-status-ok') !== -1) { s.textContent = ''; s.className = 'collab-status'; } }, 3000); }
+  }
+  // Map a failed fetch Response to a clear, human message (401 session / 403 permission / else).
+  async function _failMsg(resp, fallback) {
+    if (!resp) return 'Couldn’t reach the server — check your connection and try again.';
+    if (resp.status === 401) return 'Your session expired — refresh the page and sign in, then re-post.';
+    if (resp.status === 403) return 'You don’t have permission for this action.';
+    var detail = '';
+    try { var j = await resp.json(); detail = j.error || j.detail || ''; } catch (e) {}
+    return (fallback || 'Couldn’t save') + (detail ? ' — ' + detail : ' (server error ' + resp.status + '). Try again.');
+  }
+
   async function _postLog() {
     var kind = ($('#collab-kind') || {}).value || 'done';
     var el = $('#collab-body'); var body = (el && el.value || '').trim();
-    if (!body) return;
+    if (!body) { _setStatus('Type something first.', 'err'); return; }
+    var btn = $('#collab-post'); if (btn) btn.disabled = true;
+    _setStatus('Saving…', 'pending');
     try {
-      await fetch('/dashboard/api/collab/log', { method: 'POST',
+      var resp = await fetch('/dashboard/api/collab/log', { method: 'POST',
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: kind, body: body }) });
+      var ok = false; try { ok = resp.ok && (await resp.clone().json()).ok !== false; } catch (e) { ok = resp.ok; }
+      if (!ok) { _setStatus(await _failMsg(resp, 'Couldn’t save your entry'), 'err'); return; }  // keep the text
       if (el) el.value = '';
+      _setStatus('Posted ✓', 'ok');
       renderWorkLog();
-    } catch (e) {}
+    } catch (e) {
+      _setStatus('Couldn’t save — network error. Your text is still here; try again.', 'err');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
 
   document.addEventListener('click', function (ev) {
     var b = ev.target.closest && ev.target.closest('.cq-btn');
-    if (b) { var f = b.getAttribute('data-flag'); var inp = document.querySelector('.cq-note[data-flag="' + f + '"]'); _resolveFlag(f, inp ? inp.value : ''); return; }
+    if (b) { var f = b.getAttribute('data-flag'); var inp = document.querySelector('.cq-note[data-flag="' + f + '"]'); _resolveFlag(f, inp ? inp.value : '', b); return; }
     if (ev.target.id === 'collab-post') _postLog();
   });
   document.addEventListener('keydown', function (ev) {
