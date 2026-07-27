@@ -360,43 +360,31 @@ def _opex_bridge(pdf, review):
     """G2: decompose operating expenses and show the QoQ movement per line — 'where did the profit
     go'. Uses Xero per-line opex for this quarter vs the prior quarter; falls back to the current
     burn decomposition (labelled run-rate) when per-line history is unavailable."""
-    cur = review["current"]; rc = cur["revenue_cash"]
-    xr = rc.get("xero_revenue", {}) or {}
+    cur = review["current"]
     prior = review.get("prior_quarter") or {}
-    pxr = ((prior.get("revenue_cash") or {}).get("xero_revenue") or {}) if prior else {}
+    ob = review.get("opex_bridge") or {}
     pdf.ln(2)
     pdf.emit("Where the profit went — operating-expense bridge (QoQ)", bold=True)
-    if not xr.get("available"):
-        pdf.emit("Xero P&L unavailable for this window — opex bridge not computable.")
-        return
 
-    cur_lines = {li["label"]: abs(li.get("amount") or 0) for li in (xr.get("opex_line_items") or []) if li.get("label")}
-    prior_lines = {li["label"]: abs(li.get("amount") or 0) for li in (pxr.get("opex_line_items") or []) if li.get("label")} if pxr.get("available") else {}
-    # headline swing
-    net = xr.get("net_profit"); pnet = pxr.get("net_profit") if pxr.get("available") else None
-    if net is not None and pnet is not None:
-        pdf.emit(_safe(f"Net profit moved {fmt_metric('Xero net profit', pnet)} -> {fmt_metric('Xero net profit', net)} "
-                       f"({fmt_delta('Xero net profit', net - pnet)}). The opex + margin movement below accounts for it."))
-    if cur_lines:
-        names = sorted(set(cur_lines) | set(prior_lines), key=lambda n: -cur_lines.get(n, 0))[:12]
+    if ob.get("available"):
+        net = ob.get("net_profit"); pnet = ob.get("prior_net_profit")
+        if net is not None and pnet is not None:
+            pdf.emit(_safe(f"Net profit moved {fmt_metric('Xero net profit', pnet)} -> {fmt_metric('Xero net profit', net)} "
+                           f"({fmt_delta('Xero net profit', ob.get('net_delta'))}). The opex movement below accounts for it."))
         rows = []
-        for n in names:
-            c = cur_lines.get(n); p = prior_lines.get(n)
-            delta = (c - p) if (c is not None and p is not None) else None
-            rows.append({"cells": [n[:34], _fmt(c) if c is not None else "n/a",
+        for ln in ob.get("lines", []):
+            c, p, d = ln.get("current"), ln.get("prior"), ln.get("delta")
+            rows.append({"cells": [ln["label"][:34], _fmt(c) if c is not None else "n/a",
                                    _fmt(p) if p is not None else "n/a",
-                                   fmt_delta("Xero operating expenses", delta) if delta is not None else "new/na"]})
+                                   fmt_delta("Xero operating expenses", d) if d is not None else "new/na"]})
         pdf.table(["Operating expense line", review["quarter"]["label"],
                    prior.get("label", "prior"), "QoQ delta"], rows, col_widths=[74, 34, 34, 28])
-        if not prior_lines:
-            pdf.emit("Prior-quarter per-line opex wasn't captured, so QoQ deltas show where available; "
-                     "the totals reconcile the swing.")
     else:
         # fallback: current burn run-rate decomposition
+        pdf.emit(f"Per-line Xero opex unavailable ({ob.get('reason','')}); current monthly burn "
+                 "decomposition (run-rate, not a quarter total):")
         burn = (cur.get("costs") or {}).get("monthly_burn_context") or {}
         if burn.get("available"):
-            pdf.emit("Per-line Xero opex wasn't itemised for this window; current monthly burn "
-                     "decomposition (run-rate, not a quarter total):")
             pdf.table(["Burn line (monthly run-rate)", "Amount"],
                       [{"cells": ["Team payroll", _fmt(burn.get("team"))]},
                        {"cells": ["Owner pay", _fmt(burn.get("owner_pay"))]},

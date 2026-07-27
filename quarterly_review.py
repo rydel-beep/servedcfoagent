@@ -62,6 +62,10 @@ def build_review(year: int, q: int, assumptions: dict | None = None) -> dict:
     except Exception as e:
         logger.info("model grading/persist failed: %s", e)
 
+    # OPEX bridge (G2) computed HERE so the QoQ deltas are real numbers in the review dict (and thus
+    # pass the verbatim guard — a delta between two pack numbers is legitimate arithmetic).
+    opex_bridge = _build_opex_bridge(current, prior_q)
+
     return {
         "quarter": {"year": year, "q": q, "label": qp.quarter_label(year, q)},
         "current": current,
@@ -70,10 +74,37 @@ def build_review(year: int, q: int, assumptions: dict | None = None) -> dict:
         "comparisons": {"qoq": qoq, "yoy": yoy},
         "three_x": threex,
         "roadmap": roadmap,
+        "opex_bridge": opex_bridge,
         "model_grading": grading,
         "generated_at": current.get("generated_at"),
         "convention": "calendar",
     }
+
+
+def _build_opex_bridge(current: dict, prior: dict | None) -> dict:
+    """Decompose operating expenses per Xero line with QoQ movement. Deltas are computed here so they
+    are real numbers in the review (verbatim-safe). Falls back to available=False when Xero per-line
+    opex is missing (the PDF then uses the current burn decomposition)."""
+    xr = (current.get("revenue_cash") or {}).get("xero_revenue") or {}
+    pxr = ((prior.get("revenue_cash") or {}).get("xero_revenue") or {}) if prior else {}
+    if not xr.get("available"):
+        return {"available": False, "reason": "Xero P&L unavailable for this window"}
+    cur_lines = {li["label"]: abs(li.get("amount") or 0) for li in (xr.get("opex_line_items") or []) if li.get("label")}
+    prior_lines = {li["label"]: abs(li.get("amount") or 0) for li in (pxr.get("opex_line_items") or []) if li.get("label")} if pxr.get("available") else {}
+    if not cur_lines:
+        return {"available": False, "reason": "Xero per-line opex not itemised for this window"}
+    names = sorted(cur_lines, key=lambda n: -cur_lines[n])[:12]
+    lines = []
+    for n in names:
+        c = cur_lines.get(n); p = prior_lines.get(n)
+        lines.append({"label": n, "current": c, "prior": p,
+                      "delta": round(c - p, 2) if (c is not None and p is not None) else None})
+    return {"available": True, "lines": lines,
+            "net_profit": xr.get("net_profit"),
+            "prior_net_profit": pxr.get("net_profit") if pxr.get("available") else None,
+            "net_delta": (round(xr.get("net_profit") - pxr.get("net_profit"), 2)
+                          if (xr.get("net_profit") is not None and pxr.get("available")
+                              and pxr.get("net_profit") is not None) else None)}
 
 
 def default_review(assumptions: dict | None = None) -> dict:
