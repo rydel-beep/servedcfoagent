@@ -223,7 +223,7 @@ def find_lead_by_name(name: str) -> list[dict]:
     hits = []
     for o in ghl_mirror.read_opportunities(open_only=True):
         c = ghl_mirror.read_contact(o.get("contact_id")) if o.get("contact_id") else None
-        full = _norm((c or {}).get("first_name", "") + (c or {}).get("last_name", "")) if c else ""
+        full = _norm(((c or {}).get("first_name") or "") + ((c or {}).get("last_name") or "")) if c else ""
         oppn = _norm(o.get("name"))
         if q in full or q in oppn or (full and full in q):
             hits.append({"opp": o, "contact": c,
