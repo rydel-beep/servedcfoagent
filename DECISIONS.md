@@ -872,3 +872,21 @@
     sales dashboard role for now. STALE = open, created 90d+, in a reactivatable cold stage (excl.
     Disqualified/Ban/Won). WARMTH = stage-reached (weighted) × value × last-touch recency. JOIN to
     tracker: email best → name-token fallback (smart matcher); unmatched flagged not forced.
+
+93. **GHL Lead Intelligence — built & verified (Phases 1-5, 2026-07-27).** Row-level GHL mirror
+    (ghl_mirror: opportunities/contacts/notes → Postgres, sheet-mirror pattern, resumable throttled
+    backfill, freshness, resync, opps loop) reusing the existing full-scope pit- token. Backfill:
+    1342 opps/1290 open/1290 contacts/2943 notes. MIRROR FAITHFUL — full-population reconciliation
+    matches GHL oracle exactly (Unresponsive 986/$2,224,500, etc.) + 6/6 row-level spot-diff on
+    value+note-count. reactivation.py: deterministic stale/pitched-stalled classification (bulk
+    reads), warmth rank, tracker join (email→name), reconciliation, hygiene. Result: 914
+    reactivation leads/$2.35M (878 stale + 36 pitched-stalled); 159 excluded (Disqualified/Ban/Won).
+    NOTES HYGIENE: 12% of reactivation leads have zero notes. ghl_notes_summary.py: grounded
+    where-it-left-off (notes-only, no-notes→no backstory, cached per body-hash, 529 retry). GROUNDING
+    AUDIT passed: summaries trace to real notes+dates (Stephen Snow/Giampiero), no-notes→no backstory
+    (Daniel Cini), nonexistent not invented, honest degradation on timeout. Product (export-first):
+    CSV + branded reactivation brief PDF (audit-logged PII exports) + EDITH handlers (which-leads/
+    where-left-off/how-many-over-$X/hygiene, entity-gated). PII: no memory_facts, no plaintext logs.
+    Bug fixed mid-build: short single-letter contact names spuriously matched via substring → scored
+    matcher + contact dedup + bulk readers (also fixed N+1 queries). Stage-A 374/375 (1 pre-existing
+    capacity drift, unrelated). Report: dashboard/GHL_LEAD_INTELLIGENCE_REPORT.md.
