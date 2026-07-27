@@ -31,7 +31,7 @@ DEFAULT_ASSUMPTIONS = {
     "ltgp_cac_floor": 3.0,           # the Hormozi line CAC economics must stay above
     "payroll_mrr_gate": 0.40,        # payroll:MRR must stay <= 40%
     "clients_per_delivery_hire": 12, # capacity benchmark (clients one delivery hire supports)
-    "hire_lead_time_weeks": 6,       # time-to-productive for a new hire
+    "hire_lead_time_weeks": 4,       # time-to-productive (set by Rydel 2026-07-27)
 }
 
 
@@ -85,11 +85,22 @@ def build_3x(pack: dict, assumptions: dict | None = None) -> dict:
     levers: list[dict] = []
     notes: list[str] = []
 
-    # ── 1) TARGETS: 3x each headline metric ──
+    # ONE FLAG ENGINE (D3): economics-hold decides the fundable levers (leads, spend). Computed
+    # ONCE here and reused everywhere (funnel prose + requirements table) so a lever's flag can
+    # never disagree between two renderings.
+    economics_hold = (ltgp_cac is not None and ltgp_cac >= a["ltgp_cac_floor"])
+    fundable_flag = "plausible" if economics_hold else "out-of-trend"
+
+    # ── 1) TARGETS: 3x each headline metric (+ current values bound for the table — D2) ──
     targets = {
         "contracted_revenue": _scale(contracted, M),
         "new_deal_cash_collected": _scale(cash, M),
         "closes": _scale(closes, M),
+    }
+    targets_current = {
+        "contracted_revenue": contracted,
+        "new_deal_cash_collected": cash,
+        "closes": closes,
     }
 
     # ── 2) FUNNEL MATH — two paths to 3x closes ──
@@ -103,7 +114,7 @@ def build_3x(pack: dict, assumptions: dict | None = None) -> dict:
             "sets_required": _scale(sets_, M) if sets_ else None,
             "shows_required": _scale(shows, M) if shows else None,
             "close_rate_held_pct": round(lead_to_close, 1),
-            "flag": _flag(_scale(leads, M), leads),
+            "flag": fundable_flag,   # SAME engine as the Lead-volume lever (D3 — no contradiction)
             "desc": f"Same {round(lead_to_close,1)}% lead->close, {M:.0f}x the lead flow.",
         }
         # EFFICIENCY: same leads, the close rate that yields 3x closes
@@ -122,11 +133,6 @@ def build_3x(pack: dict, assumptions: dict | None = None) -> dict:
     else:
         notes.append("Funnel path math needs closes + leads + lead->close% in the window; "
                      "one is missing, so only the target counts are shown.")
-
-    # Economics-hold test: if LTGP:CAC stays above the floor at held CAC, the fundable levers
-    # (leads, spend) are a capital decision, not a broken-unit-economics wall.
-    economics_hold = (ltgp_cac is not None and ltgp_cac >= a["ltgp_cac_floor"])
-    fundable_flag = "plausible" if economics_hold else "out-of-trend"
 
     levers.append({
         "lever": "Lead volume (volume path)",
@@ -157,8 +163,9 @@ def build_3x(pack: dict, assumptions: dict | None = None) -> dict:
         "cost_per_lead_current": round(cpl, 2) if cpl else None,
         "ad_spend_current": ad_spend,
         "ad_spend_required": spend_required,
-        "cac_assumption": ("held constant at ${:,.0f} — CAC drift at scale is unknowable, so it is "
-                           "an explicit assumption, not a claim".format(cac) if cac else "CAC unknown"),
+        "cac_assumption": ("CAC is held constant at ${:,.0f} — CAC drift at scale is unknowable, so "
+                           "it is an explicit assumption, not a claim".format(cac) if cac
+                           else "CAC is unknown for this window"),
         "ltgp_cac_current": ltgp_cac,
         "ltgp_cac_stays_above_floor": (ltgp_cac is not None and ltgp_cac >= a["ltgp_cac_floor"]),
         "floor": a["ltgp_cac_floor"],
@@ -194,6 +201,7 @@ def build_3x(pack: dict, assumptions: dict | None = None) -> dict:
         "multiple": M,
         "assumptions": a,
         "targets": targets,
+        "targets_current": targets_current,
         "funnel": {"volume_path": volume_path, "efficiency_path": efficiency_path,
                    "required_closes": req_closes},
         "spend": spend,
@@ -248,31 +256,36 @@ def _capacity(pack: dict, M: float, a: dict, active_clients) -> dict:
 
 
 def _churn_math(pack: dict, M: float) -> dict:
-    """The churn rate at which 3x GROSS growth becomes only 2x NET. If gross new MRR triples, net
-    growth = gross - churn. Solve for the churn that erodes 3x down to 2x of the base."""
+    """Churn math is only computable when churn MRR is actually MEASURED for the window. Without it,
+    we render 'not computable (needs churn data)' — the old fallback printed a degenerate figure
+    (tolerable churn == total MRR) and is retired (D4). With real churn, we report the current churn
+    rate and whether net growth still clears the base at 3x gross adds — bounded, never degenerate."""
     rc = pack.get("revenue_cash") or {}
     bridge = rc.get("mrr_bridge") or {}
     base_mrr = bridge.get("closing_mrr")
     churn_mrr = bridge.get("churn_mrr")
-    out = {"available": bool(base_mrr),
-           "current_closing_mrr": base_mrr, "current_churn_mrr": churn_mrr}
-    if base_mrr:
-        # 3x gross add, tolerate churn up to (3x-2x)=1x base before net falls below 2x
-        tolerable_churn_mrr = round(base_mrr * (M - 2.0), 2)
-        out["tolerable_churn_mrr_to_hold_2x_net"] = tolerable_churn_mrr
-        out["current_churn_rate_pct"] = (round(churn_mrr / base_mrr * 100, 1)
-                                         if churn_mrr else None)
-        out["note"] = (f"If gross new MRR hits {M:.0f}x, net still clears 2x as long as churn stays "
-                       f"under ~${tolerable_churn_mrr:,.0f}/mo of the base. Compare to current "
-                       f"churn of ${churn_mrr:,.0f}/mo." if churn_mrr is not None else
-                       f"Tolerable churn to hold 2x net is ~${tolerable_churn_mrr:,.0f}/mo; current "
-                       "churn MRR not available for comparison.")
-        out["flag"] = ("plausible" if (churn_mrr is not None and churn_mrr <= tolerable_churn_mrr)
-                       else "stretch" if churn_mrr is not None else "unknown")
-    else:
-        out["note"] = "Base MRR not available for this window — churn math shown as unavailable."
-        out["flag"] = "unknown"
-    return out
+
+    # Not computable unless churn is measured (G3 instruments this going forward).
+    if churn_mrr is None or not base_mrr:
+        return {"available": False, "flag": "unknown",
+                "current_closing_mrr": base_mrr, "current_churn_mrr": None,
+                "note": ("Not computable — churn MRR isn't measured for this window yet. "
+                         "MRR snapshotting + churn derivation (from the write-back audit) begin now, "
+                         "so this becomes computable from the next full quarter.")}
+
+    churn_rate = round(churn_mrr / base_mrr * 100, 1) if base_mrr else None
+    # Net-growth check: at Mx gross new-adds, does net still grow vs the base given current churn?
+    new_mrr = bridge.get("new_mrr_added") or 0
+    gross_at_M = new_mrr * M
+    net_at_M = gross_at_M - churn_mrr
+    holds = net_at_M > new_mrr           # net at scale still beats today's single-quarter add
+    return {"available": True, "current_closing_mrr": base_mrr, "current_churn_mrr": churn_mrr,
+            "current_churn_rate_pct": churn_rate,
+            "net_new_mrr_at_scale": round(net_at_M, 2),
+            "note": (f"Current churn is ${churn_mrr:,.0f}/mo ({churn_rate}% of base). At {M:.0f}x gross "
+                     f"new MRR (${gross_at_M:,.0f}/mo), net adds ${net_at_M:,.0f}/mo after churn — "
+                     f"{'net still compounds' if holds else 'churn erodes most of the gain; retention is the lever'}."),
+            "flag": "plausible" if holds else "stretch"}
 
 
 def _cash_curve(pack: dict, spend_required) -> dict:

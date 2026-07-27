@@ -153,6 +153,7 @@ def _xero_revenue(start: str, end: str) -> dict:
         return {"available": True, "revenue": r.get("revenue"), "cogs": r.get("cogs"),
                 "gross_profit": r.get("gross_profit"), "gross_margin_pct": r.get("gross_margin_pct"),
                 "operating_expenses": r.get("operating_expenses"), "net_profit": r.get("net_profit"),
+                "opex_line_items": r.get("opex_line_items") or [],   # per-line, for the opex bridge (G2)
                 "basis": "P&L recognized (Xero), not cash"}
     except Exception as e:
         logger.exception("quarter_pack xero revenue failed")
@@ -261,7 +262,30 @@ def _sales(start: dt.date, end: dt.date, year: int, q: int) -> dict:
     except Exception as e:
         out["by_month_error"] = str(e)
     out["by_month"] = months
+    # LEAD-LAG signal (G4): closes trail leads by ~1-2 months, so month-end lead velocity is a
+    # LEADING indicator. If the last in-quarter month's leads fell materially MoM, flag next-quarter
+    # close-risk automatically.
+    out["lead_lag"] = _lead_lag_signal(months)
     return out
+
+
+def _lead_lag_signal(months: list[dict]) -> dict:
+    """Leading-indicator warning: a MoM drop in the final month's lead volume foreshadows a
+    close-rate dip 1-2 months out (into the next quarter)."""
+    vol = [(m.get("month"), m.get("leads")) for m in (months or []) if isinstance(m.get("leads"), int)]
+    if len(vol) < 2:
+        return {"warning": False, "reason": "need >=2 months of lead velocity"}
+    (pm, pv), (lm, lv) = vol[-2], vol[-1]
+    if not pv:
+        return {"warning": False}
+    mom = round((lv - pv) / pv * 100, 1)
+    warn = mom <= -10
+    return {"warning": warn, "last_month": lm, "last_leads": lv, "prev_month": pm, "prev_leads": pv,
+            "mom_pct": mom, "basis": "closes trail leads ~1-2 months",
+            "message": (f"Leading-indicator warning: {lm} leads {lv} ({mom:+.0f}% MoM vs {pm}'s {pv}) — "
+                        "closes trail leads by 1-2 months, so this foreshadows next-quarter close risk. "
+                        "Refill the top of funnel now." if warn else
+                        f"{lm} lead velocity {lv} ({mom:+.0f}% MoM) — no leading-indicator warning.")}
 
 
 def _burn_context() -> dict:

@@ -905,3 +905,17 @@
     still all financial endpoints; unauth 401. ACTIVATION PENDING: Rydel must set SALES_PASSWORD on
     Railway (like RYDEL_/PIOLO_PASSWORD) — until then no sales account exists (safe, no lockout);
     then run the live sales round-trip (login → leads only → 403 on snapshot/quarterly/chat).
+
+95. **Quarterly Review v2 — Phase 0 (2026-07-27).** Audit found 5 defects + 6 gaps in the Q2 PDF.
+    ROOT CAUSES: D1 LTGP:CAC shown as "$5" — _comparison_table detects money by substring ("CAC" in
+    "LTGP:CAC"); fix = type-aware format registry. D2 targets "This quarter" column hardcoded "" —
+    never bound. D3 volume-path flag computed twice (_flag ratio→out-of-trend in prose vs fundable
+    flag→plausible in table); fix = one flag engine per lever. D4 tolerable-churn = base_mrr×(M−2) =
+    total MRR when M=3, degenerate + prints without churn data; fix = bounds/availability guard →
+    "not computable". D5 "held constant at $2,718 --" fragment (cac_assumption string has no subject).
+    DATA FINDINGS: GHL lead-source fills 98/100, ~87% Facebook/Paid-Social → channel decomposition
+    real; Meta campaign-level CPL not yet wired (aggregate only) → add campaign breakdown. 3 unmatched
+    closes = name-normalization misses, surfaced in G3 smart-matcher wiring. BENCHMARK PROVENANCE:
+    clients_per_delivery_hire=12 + hire_lead_time were hardcoded assumptions. RYDEL CONFIRMED:
+    clients/hire = 12 (now set-by-Rydel), hire lead time = 4 WEEKS (was assumed 6). Both become
+    provenance "set by Rydel 2026-07-27".
