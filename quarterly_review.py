@@ -40,6 +40,28 @@ def build_review(year: int, q: int, assumptions: dict | None = None) -> dict:
 
     threex = three_x_model.build_3x(current, assumptions)
 
+    # Marketing roadmap (G5) — the scaling plan built on the 3x model.
+    review_partial = {"current": current, "three_x": threex}
+    try:
+        import quarterly_roadmap
+        roadmap = quarterly_roadmap.build_roadmap(review_partial, assumptions)
+    except Exception as e:
+        logger.info("roadmap build failed: %s", e)
+        roadmap = {"available": False, "reason": str(e)}
+
+    # Self-improvement loop: grade the PRIOR quarter's saved model against this quarter's actuals,
+    # and persist THIS quarter's model for next quarter to grade.
+    grading = None
+    try:
+        import quarterly_model_store
+        grading = quarterly_model_store.grade_prior_quarter(qp.quarter_label(py, pq), current)
+        quarterly_model_store.save_model(qp.quarter_label(year, q), threex,
+                                         actuals={"leads": (current.get("sales") or {}).get("funnel", {}).get("leads_in"),
+                                                  "closes": (current.get("unit_economics") or {}).get("components", {}).get("closes"),
+                                                  "ad_spend": (current.get("unit_economics") or {}).get("components", {}).get("ad_spend")})
+    except Exception as e:
+        logger.info("model grading/persist failed: %s", e)
+
     return {
         "quarter": {"year": year, "q": q, "label": qp.quarter_label(year, q)},
         "current": current,
@@ -47,6 +69,8 @@ def build_review(year: int, q: int, assumptions: dict | None = None) -> dict:
         "prior_year": prior_y,
         "comparisons": {"qoq": qoq, "yoy": yoy},
         "three_x": threex,
+        "roadmap": roadmap,
+        "model_grading": grading,
         "generated_at": current.get("generated_at"),
         "convention": "calendar",
     }

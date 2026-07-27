@@ -257,6 +257,14 @@ def generate_quarterly_pdf(review: dict) -> bytes:
     pdf._section_title(4, f"What would need to be true to 3x — {label} - next quarter")
     _three_x_section(pdf, tx)
 
+    # ── 5. THE MARKETING ROADMAP (G5) ──
+    pdf.add_page()
+    pdf._section_title(5, "Marketing roadmap — the scaling plan")
+    _roadmap_section(pdf, review.get("roadmap") or {})
+
+    # ── 6. MODEL GRADING (self-improvement — renders once there's a prior model) ──
+    _grading_section(pdf, review.get("model_grading"))
+
     # ── verbatim guard (numbers are REAL) ──
     audit_text = "\n".join(pdf._audit)
     violations = validate_verbatim(audit_text, review)
@@ -448,6 +456,87 @@ def _comparison_table(pdf, cmp):
     pdf.emit(_safe(cmp.get("note", "") or ""))
 
 
+def _roadmap_section(pdf, rm):
+    """G5: channel mix, monthly ramp + spend schedule, CPL-drift band, creative cadence, weekly
+    checkpoints, and the sequenced dated action list."""
+    if not rm.get("available"):
+        pdf.emit(f"Roadmap not computable — {rm.get('reason','missing lead/CPL data')}.")
+        return
+    pdf.emit_box(rm.get("framing", ""))
+
+    # Channel decomposition
+    cm = rm.get("channel_mix") or {}
+    pdf.emit("Channel decomposition (current lead mix)", bold=True)
+    if cm.get("available"):
+        rows = [{"cells": [c["source"], fmt_metric("Leads", c["leads"]), f"{c['share_pct']}%"]}
+                for c in cm.get("mix", [])]
+        pdf.table(["Source", "Open leads", "Share"], rows, col_widths=[90, 45, 35])
+        pdf.emit(_safe(cm.get("fill_note", "")))
+    else:
+        pdf.emit("Channel mix unavailable.")
+
+    # The ramp + spend schedule
+    pdf.ln(1)
+    pdf.emit(f"The lead ramp — {rm.get('current_leads')} this quarter -> {rm.get('target_leads')} next "
+             f"({rm.get('multiple'):.0f}x), graduated monthly (not flat)", bold=True)
+    rows = [{"cells": [r["month"], fmt_metric("Leads", r["leads"]),
+                       _fmt(r.get("spend")) if r.get("spend") is not None else "n/a"]} for r in rm.get("ramp", [])]
+    pdf.table(["Month", "Leads target", "Ad spend at current CPL"], rows, col_widths=[60, 55, 55])
+
+    # CPL-drift band
+    band = rm.get("cpl_drift_band") or []
+    if band:
+        pdf.ln(1)
+        pdf.emit("CPL-drift band — CPL is NOT held flat silently; the consequence of drift at 3x spend", bold=True)
+        rows = []
+        for b in band:
+            rows.append({"cells": [f"+{b['cpl_drift_pct']}%", _fmt(b["cpl"]), _fmt(b["quarter_ad_spend"]),
+                                   _fmt(b["cac_at_scale"]), fmt_metric("LTGP:CAC", b["ltgp_cac_at_scale"]),
+                                   "yes" if b["stays_above_floor"] else "NO"],
+                         "color": (GREEN if b["stays_above_floor"] else RED)})
+        pdf.table(["CPL drift", "CPL", "Qtr ad spend", "CAC@scale", "LTGP:CAC", "Above floor?"],
+                  rows, col_widths=[24, 26, 34, 30, 28, 28])
+
+    # Creative cadence
+    cr = rm.get("creative") or {}
+    if cr.get("implication"):
+        pdf.ln(1)
+        pdf.emit("Creative cadence implication", bold=True)
+        pdf.emit(_safe(cr["implication"]))
+
+    # Weekly checkpoints
+    cps = rm.get("checkpoints") or []
+    if cps:
+        pdf.ln(1)
+        pdf.emit("Weekly checkpoints during the ramp", bold=True)
+        rows = [{"cells": [c["metric"], c["on_track"], c["why"]]} for c in cps]
+        pdf.table(["Watch weekly", "On-track threshold", "Why"], rows, col_widths=[52, 52, 66])
+
+    # Sequenced actions
+    acts = rm.get("actions") or []
+    if acts:
+        pdf.ln(1)
+        pdf.emit("Sequenced Q3 actions (owners for you to assign)", bold=True)
+        rows = [{"cells": [a["when"], a["action"]]} for a in acts]
+        pdf.table(["When", "Action"], rows, col_widths=[34, 136])
+
+
+def _grading_section(pdf, grading):
+    """Self-improvement: last quarter's 3x model vs what actually happened. Renders only when a prior
+    model was saved (so it appears from the second generation onward)."""
+    if not grading or not grading.get("rows"):
+        return
+    pdf.ln(2)
+    pdf.emit(f"Model track record — {grading.get('prior_label')}'s plan vs what happened", bold=True)
+    rows = []
+    for r in grading["rows"]:
+        rows.append({"cells": [r["lever"], _fmt(r["required"]) if r["required"] else str(r["required"]),
+                               _fmt(r["delivered"]) if r["delivered"] else str(r["delivered"]),
+                               f"{r['achieved_pct']:.0f}%" if r.get("achieved_pct") is not None else "n/a"]})
+    pdf.table(["Lever", "Modelled", "Delivered", "Achieved"], rows, col_widths=[60, 40, 40, 30])
+    pdf.emit(_safe(grading.get("note", "")))
+
+
 def _three_x_section(pdf, tx):
     if not tx:
         pdf.emit("3x model unavailable.")
@@ -501,6 +590,9 @@ def _three_x_section(pdf, tx):
                        f"clients per delivery hire, that's about {cap.get('hires_needed')} hires "
                        f"(~{cap.get('hire_lead_time_weeks')}wk lead time each) "
                        f"[{_flag_badge(pdf, cap.get('flag'))}]. {cap.get('gate_note','')}"))
+        pdf.emit(_safe("Benchmark provenance: clients-per-hire (12) and hire lead time (4wk) set by "
+                       "Rydel 2026-07-27; payroll:MRR gate 40% and LTGP:CAC floor 3.0x are Served "
+                       "standing thresholds."))
 
     # Churn — always shown; when not computable, the reason prints (never a degenerate figure — D4)
     cm = tx.get("churn", {})

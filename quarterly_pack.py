@@ -196,11 +196,32 @@ def _mrr_bridge(start: dt.date, end: dt.date, is_partial: bool) -> dict:
             if m:
                 new_mrr += float(m); matched += 1
 
-        # churn MRR from the forward-MRR engine (clients recognized as churning)
+        # churn MRR: prefer the write-back-audit derivation (G3); fall back to the forward engine.
         churn_mrr = None
+        churn_basis = None
         try:
-            fm = snap.get("forward_mrr") or {}
-            churn_mrr = fm.get("churn_mrr")
+            import mrr_snapshot
+            cw = mrr_snapshot.churn_mrr_in_window(start, end)
+            if cw.get("available"):
+                churn_mrr = cw.get("churn_mrr"); churn_basis = "write-back audit (churn events)"
+        except Exception:
+            pass
+        if churn_mrr is None:
+            try:
+                fm = snap.get("forward_mrr") or {}
+                if fm.get("churn_mrr") is not None:
+                    churn_mrr = fm.get("churn_mrr"); churn_basis = "forward-MRR engine"
+            except Exception:
+                pass
+
+        # Opening MRR from a persisted snapshot at the window start (full bridges from that date on).
+        opening_mrr = None; bridges_full_from = None
+        try:
+            import mrr_snapshot
+            op = mrr_snapshot.snapshot_on_date(start)
+            if op:
+                opening_mrr = op.get("current_mrr")
+            bridges_full_from = mrr_snapshot.first_snapshot_date()
         except Exception:
             pass
 
@@ -208,12 +229,15 @@ def _mrr_bridge(start: dt.date, end: dt.date, is_partial: bool) -> dict:
         recent = (today_sydney() - end).days <= 100
         return {
             "available": True,
+            "opening_mrr": opening_mrr,
             "closing_mrr": closing_mrr if recent else None,
             "closing_basis": "live roster current MRR" if recent else None,
             "new_mrr_added": round(new_mrr, 2) if matched else None,
             "new_mrr_matched_deals": matched,
             "new_mrr_total_closes": closes,
             "churn_mrr": churn_mrr,
+            "churn_basis": churn_basis,
+            "bridges_full_from": bridges_full_from,
             "partial": (not recent) or (matched < closes),
             "note": ("New MRR is the sum of roster MRR for in-window closes matched by name "
                      f"({matched}/{closes} closes matched). Opening MRR is not snapshotted "

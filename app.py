@@ -527,6 +527,13 @@ def _deferred_startup():
             ghl_mirror.start_sync_loop()
         except Exception as _e:
             logger.error("GHL-mirror boot skipped: %s", _e)
+        # MRR snapshot: start the durable monthly/quarter-boundary MRR history (G3) — take one now.
+        try:
+            import mrr_snapshot
+            mrr_snapshot.migrate()
+            mrr_snapshot.take_snapshot()
+        except Exception as _e:
+            logger.error("MRR-snapshot boot skipped: %s", _e)
         _startup_refresh()
         _start_scheduled_refresh()
 
