@@ -890,3 +890,18 @@
     Bug fixed mid-build: short single-letter contact names spuriously matched via substring → scored
     matcher + contact dedup + bulk readers (also fixed N+1 queries). Stage-A 374/375 (1 pre-existing
     capacity drift, unrelated). Report: dashboard/GHL_LEAD_INTELLIGENCE_REPORT.md.
+
+94. **Scoped sales dashboard role (2026-07-27).** Built the "(b) later" option: a sales-team login
+    (Kalin/setters) confined to lead reactivation, no financials. SECURITY = FAIL-CLOSED: auth.py
+    adds a 'sales' account (SALES_PASSWORD env, role=sales) + sales_permitted() allowlist enforced
+    centrally in require_auth — a sales session reaches ONLY /leads, /api/reactivation*,
+    /api/lead-lookup, /api/whoami, /logout; EVERY other authed route 403s (API) or redirects (pages),
+    and UNKNOWN/future paths are denied by default (no financial surface leaks by omission). Chat is
+    intentionally denied to sales (it carries the financial snapshot as context). New self-contained
+    sales.html (reactivation list/filters/search/export, brand palette, no financial chrome) — 914
+    cards, zero overflow. /api/lead-lookup (scoped where-left-off) + reactivation.lookup_lead +
+    display_name on list items. Owner dashboard gets a Leads link. VERIFIED: scoping unit test 4/4
+    (allowlist denies all financial+unknown paths); owner reaches /leads + lead-lookup (grounded) +
+    still all financial endpoints; unauth 401. ACTIVATION PENDING: Rydel must set SALES_PASSWORD on
+    Railway (like RYDEL_/PIOLO_PASSWORD) — until then no sales account exists (safe, no lockout);
+    then run the live sales round-trip (login → leads only → 403 on snapshot/quarterly/chat).
