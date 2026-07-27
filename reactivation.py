@@ -214,6 +214,112 @@ def reconciliation(leads: list[dict] | None = None) -> dict:
             "note": "mirror OPEN opp counts by stage — compare to GHL UI stage filters (the oracle)."}
 
 
+def find_lead_by_name(name: str) -> list[dict]:
+    """Look up open leads by lead/contact name (for 'where did we leave off with X'). Returns
+    matches (exact-ish first). Never invents — empty list if none, caller offers closest matches."""
+    q = _norm(name)
+    if not q or len(q) < 3:
+        return []
+    hits = []
+    for o in ghl_mirror.read_opportunities(open_only=True):
+        c = ghl_mirror.read_contact(o.get("contact_id")) if o.get("contact_id") else None
+        full = _norm((c or {}).get("first_name", "") + (c or {}).get("last_name", "")) if c else ""
+        oppn = _norm(o.get("name"))
+        if q in full or q in oppn or (full and full in q):
+            hits.append({"opp": o, "contact": c,
+                         "display": " ".join(x for x in [(c or {}).get("first_name"), (c or {}).get("last_name")] if x)
+                                    or o.get("name")})
+    return hits
+
+
+import re as _re
+_REACT_LIST_RE = _re.compile(r"\b(which|what|who).{0,20}(leads?|clients?).{0,20}(reactivat|re-?engage|reach out|follow up|revive|win back)"
+                             r"|\breactivation (list|leads?|candidates?)\b|\bwho should we (reach out to|follow up|call)\b", _re.I)
+_LEFTOFF_RE = _re.compile(r"\bwhere (did|do) we (leave|left) off (with|on)\s+(.+?)[\?\.]?$|\bwhere.{0,12}left off.{0,6}with\s+(.+)$", _re.I)
+_STALE_COUNT_RE = _re.compile(r"\bhow many\b.{0,30}\b(stale|reactivation|cold|unresponsive|pitched)\b.{0,20}\bleads?\b"
+                              r"|\bhow many\b.{0,20}\bleads?\b.{0,30}\b(over|above|worth)\b.{0,6}\$?[\d,]+k?", _re.I)
+_HYGIENE_RE = _re.compile(r"\b(notes?|note) hygiene\b|\bhow many leads? (have|with) no notes\b|\bleads? without notes\b", _re.I)
+
+
+def _fmt_money(v) -> str:
+    return f"${v:,.0f}" if isinstance(v, (int, float)) else "n/a"
+
+
+def handle_reactivation_command(text: str, actor: dict | None = None) -> tuple[str | None, bool]:
+    """EDITH's lead-reactivation answers (deterministic retrieval; grounded summary for left-off)."""
+    if not text:
+        return None, False
+
+    # "where did we leave off with [lead]?"
+    m = _LEFTOFF_RE.search(text)
+    if m:
+        name = (m.group(4) or m.group(5) or "").strip().rstrip("?.")
+        hits = find_lead_by_name(name)
+        if not hits:
+            # offer closest matches; NEVER invent a lead
+            allnames = []
+            for o in ghl_mirror.read_opportunities(open_only=True)[:800]:
+                c = ghl_mirror.read_contact(o.get("contact_id")) if o.get("contact_id") else None
+                dn = " ".join(x for x in [(c or {}).get("first_name"), (c or {}).get("last_name")] if x) or (o.get("name") or "")
+                if dn:
+                    allnames.append(dn)
+            import difflib
+            close = difflib.get_close_matches(name, allnames, n=3, cutoff=0.6)
+            return (f"I don't have an open lead matching \"{name}\"."
+                    + (f" Closest: {', '.join(close)}." if close else " Try their full name as in GHL.")), True
+        if len(hits) > 1:
+            names = ", ".join(h["display"] for h in hits[:5])
+            return (f"I have {len(hits)} open leads matching \"{name}\": {names}. Which one?"), True
+        h = hits[0]; o = h["opp"]
+        lead = {"contact_id": o.get("contact_id"), "stage": o.get("stage_name"),
+                "value": o.get("monetary_value"), "created": str(o.get("created_at"))[:10] if o.get("created_at") else None,
+                "last_touch": str(o.get("last_stage_change_at"))[:10] if o.get("last_stage_change_at") else None}
+        try:
+            import ghl_notes_summary
+            s = ghl_notes_summary.summarize_lead(lead)
+        except Exception as e:
+            return f"Couldn't read {h['display']}'s notes right now: {e}.", True
+        parts = [f"{h['display']} — {o.get('stage_name')}, {_fmt_money(o.get('monetary_value'))}."]
+        parts.append(s.get("where_it_left_off") or "No notes logged.")
+        if s.get("reactivation_angle"):
+            parts.append(f"Angle: {s['reactivation_angle']}")
+        return " ".join(parts), True
+
+    # "which leads should we reactivate?"
+    if _REACT_LIST_RE.search(text):
+        leads = classify()
+        lst = reactivation_list(leads=leads, limit=8)
+        tot = summary_totals(leads)
+        if not lst:
+            return "No reactivation candidates right now — the pool is clear.", True
+        head = (f"{tot['reactivation_pool']} reactivation leads worth {_fmt_money(tot['reactivation_value'])}. "
+                f"Top {len(lst)} by warmth: ")
+        items = []
+        for l in lst:
+            c = ghl_mirror.read_contact(l.get("contact_id")) if l.get("contact_id") else None
+            dn = " ".join(x for x in [(c or {}).get("first_name"), (c or {}).get("last_name")] if x) or l.get("name") or "?"
+            items.append(f"{dn} ({l['stage']}, {_fmt_money(l['value'])}, {l['days_since_touch']}d quiet)")
+        return head + "; ".join(items) + ". Say 'export the reactivation brief' for the full ranked list.", True
+
+    # "how many stale leads over $10k?"
+    if _STALE_COUNT_RE.search(text):
+        leads = classify(join_tracker=False)
+        mv = 0.0
+        mm = _re.search(r"\$?\s*([\d,]+)\s*(k)?", text)
+        if mm:
+            mv = float(mm.group(1).replace(",", "")) * (1000 if mm.group(2) else 1)
+        pool = reactivation_list(leads=leads, min_value=mv)
+        val = sum(l["value"] for l in pool)
+        overtxt = f" over {_fmt_money(mv)}" if mv else ""
+        return (f"{len(pool)} reactivation leads{overtxt} — {_fmt_money(val)} in pipeline."), True
+
+    # notes hygiene
+    if _HYGIENE_RE.search(text):
+        return notes_hygiene()["finding"], True
+
+    return None, False
+
+
 def notes_hygiene(leads: list[dict] | None = None) -> dict:
     """Team-process finding: what share of stale/reactivation leads have zero notes logged."""
     leads = leads if leads is not None else classify(join_tracker=False)

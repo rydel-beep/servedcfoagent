@@ -715,6 +715,7 @@ def api_chat():
             (tracker_read.handle_cash_for, False),         # "cash collected for X" / "why not include"
             (tracker_read.handle_verify_data, False),      # "verify your data" → sync-state summary
             (lambda m: __import__('quarterly_review').handle_quarterly_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # quarterly review / QoQ+YoY / 3x
+            (lambda m: __import__('reactivation').handle_reactivation_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # GHL lead reactivation / where-left-off
             (range_unit_economics.handle_unit_econ_command, False),
             (payback_reconciliation.handle_payback_command, False),
             (leads_view.handle_lead_count_command, False),
@@ -858,6 +859,7 @@ def api_chat_stream():
             (tracker_read.handle_cash_for, False),
             (tracker_read.handle_verify_data, False),
             (lambda m: __import__('quarterly_review').handle_quarterly_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # quarterly review / QoQ+YoY / 3x
+            (lambda m: __import__('reactivation').handle_reactivation_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # GHL lead reactivation / where-left-off
             (range_unit_economics.handle_unit_econ_command, False),
             (payback_reconciliation.handle_payback_command, False),
             (leads_view.handle_lead_count_command, False),
@@ -1032,6 +1034,58 @@ def api_reactivation():
         "notes_hygiene": reactivation.notes_hygiene(leads),
         "reconciliation": reactivation.reconciliation(leads),
     })
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+def _audit_pii_export(kind: str, n: int):
+    """Log a deliberate PII-bearing export (contact names/emails/phones) to the forever archive."""
+    try:
+        import collab
+        from dashboard.auth import current_actor
+        a = current_actor()
+        collab.record_action(a, f"exported the reactivation {kind} ({n} leads, contains contact PII)",
+                             link_type="reactivation_export", link_ref=kind)
+    except Exception as e:
+        logger.info("reactivation export audit failed: %s", e)
+
+
+@bp.route("/api/reactivation/export.csv", methods=["GET"])
+@require_auth
+def api_reactivation_csv():
+    """CSV of the ranked reactivation list (full fields for GHL smart-lists). Contains contact PII —
+    deliberate, auth-gated, audit-logged."""
+    import reactivation, reactivation_export
+    leads = reactivation.reactivation_list(min_value=request.args.get("min_value", 0.0, type=float),
+                                           limit=request.args.get("limit", type=int))
+    cap = request.args.get("cap", 200, type=int)
+    csv_text = reactivation_export.build_csv(leads, cap=cap)
+    _audit_pii_export("CSV", min(len(leads), cap))
+    resp = make_response(csv_text)
+    resp.headers["Content-Type"] = "text/csv"
+    resp.headers["Content-Disposition"] = f"attachment; filename=reactivation-{today_sydney()}.csv"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@bp.route("/api/reactivation/brief.pdf", methods=["GET"])
+@require_auth
+def api_reactivation_brief():
+    """Formatted reactivation brief PDF (top-N ranked with grounded summaries + angles). Contact PII —
+    deliberate, auth-gated, audit-logged."""
+    import reactivation, reactivation_export
+    from helpers import today_sydney
+    top_n = request.args.get("top_n", 40, type=int)
+    leads = reactivation.reactivation_list()
+    try:
+        pdf = reactivation_export.build_brief_pdf(leads, top_n=top_n)
+    except Exception as e:
+        logger.exception("reactivation brief failed")
+        return jsonify({"error": str(e)}), 500
+    _audit_pii_export("brief PDF", min(len(leads), top_n))
+    resp = make_response(bytes(pdf))
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = f"attachment; filename=reactivation-brief-{today_sydney()}.pdf"
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
