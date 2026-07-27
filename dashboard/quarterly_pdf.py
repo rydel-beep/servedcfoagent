@@ -385,7 +385,7 @@ def _opex_bridge(pdf, review):
             delta = (c - p) if (c is not None and p is not None) else None
             rows.append({"cells": [n[:34], _fmt(c) if c is not None else "n/a",
                                    _fmt(p) if p is not None else "n/a",
-                                   fmt_delta("opex", delta) if delta is not None else "new/na"]})
+                                   fmt_delta("Xero operating expenses", delta) if delta is not None else "new/na"]})
         pdf.table(["Operating expense line", review["quarter"]["label"],
                    prior.get("label", "prior"), "QoQ delta"], rows, col_widths=[74, 34, 34, 28])
         if not prior_lines:
