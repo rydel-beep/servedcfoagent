@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Served — Lead Reactivation</title>
+<style>
+  :root {
+    --bg:#0A1220; --bg-card:#0F1B2D; --bg-inset:#0C1626; --border:#1E2E45;
+    --accent:#2E6EA6; --accent-2:#3a82c4; --green:#34C98E; --amber:#F5A623; --red:#E8616B;
+    --text:#E8EFF6; --text-2:#A8BBD0; --muted:#6E86A3;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { max-width:100%; overflow-x:hidden; }
+  body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+         font-size:14px; line-height:1.5; }
+  .wrap { max-width:1120px; margin:0 auto; padding:18px 18px 60px; }
+  header { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+  .logo { font-size:20px; font-weight:700; } .logo span { color:var(--accent); }
+  .who { font-size:12px; color:var(--muted); margin-left:auto; }
+  .who a { color:var(--text-2); text-decoration:none; margin-left:10px; border:1px solid var(--border);
+           padding:4px 10px; border-radius:6px; }
+  .bar { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr)); gap:1px;
+         background:var(--border); border:1px solid var(--border); border-radius:10px; overflow:hidden; margin-bottom:16px; }
+  .stat { background:var(--bg-card); padding:12px 14px; }
+  .stat .k { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .stat .v { font-size:22px; font-weight:700; margin-top:2px; }
+  .stat .s { font-size:11px; color:var(--text-2); margin-top:2px; }
+  .controls { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+  select,input[type=number],input[type=text] { background:var(--bg-inset); border:1px solid var(--border);
+    color:var(--text); border-radius:8px; padding:8px 10px; font-size:13px; }
+  input[type=text]{ min-width:220px; }
+  button { background:var(--accent); border:none; color:#fff; border-radius:8px; padding:8px 14px;
+    font-size:13px; font-weight:600; cursor:pointer; } button:hover{ background:var(--accent-2); }
+  button.ghost { background:var(--bg-inset); border:1px solid var(--border); color:var(--text-2); }
+  button:disabled { opacity:.5; cursor:default; }
+  .search { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+  .search input { flex:1; }
+  #lookup-result { background:var(--bg-card); border:1px solid var(--border); border-radius:10px;
+    padding:12px 14px; margin-bottom:14px; display:none; }
+  .status { font-size:12px; min-height:16px; color:var(--muted); margin-bottom:8px; }
+  .status.err { color:var(--red); } .status.ok { color:var(--green); }
+  .card { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:12px 14px; margin-bottom:10px; }
+  .card .top { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+  .card .rank { color:var(--muted); font-weight:700; }
+  .card .nm { font-weight:700; font-size:15px; }
+  .card .biz { color:var(--text-2); font-size:13px; }
+  .pill { font-size:10px; text-transform:uppercase; letter-spacing:.03em; padding:2px 7px; border-radius:20px;
+    border:1px solid var(--border); color:var(--text-2); }
+  .pill.stale{ color:var(--amber); border-color:var(--amber); }
+  .pill.pitched_stalled{ color:var(--green); border-color:var(--green); }
+  .meta { color:var(--muted); font-size:12px; margin:4px 0; }
+  .val { color:var(--text); font-weight:600; }
+  .leftoff { font-size:13px; color:var(--text); margin-top:6px; }
+  .angle { font-size:13px; color:var(--accent); font-weight:600; margin-top:3px; }
+  .contact { font-size:12px; color:var(--text-2); margin-top:4px; }
+  .muted { color:var(--muted); }
+  .empty { color:var(--muted); padding:24px; text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">Served <span>Reactivation</span></div>
+    <div class="who"><span id="who"></span><a href="/dashboard/logout">Log out</a></div>
+  </header>
+
+  <div class="bar" id="bar"></div>
+
+  <div class="search">
+    <input type="text" id="lookup" placeholder="Where did we leave off with… (lead name)" autocomplete="off">
+    <button id="lookup-btn">Look up</button>
+  </div>
+  <div id="lookup-result"></div>
+
+  <div class="controls">
+    <select id="bucket">
+      <option value="">All reactivation</option>
+      <option value="stale">Stale only</option>
+      <option value="pitched_stalled">Pitched-stalled only</option>
+    </select>
+    <input type="number" id="minval" placeholder="Min $ value" min="0" step="500" style="width:130px">
+    <button id="refresh" class="ghost">Refresh</button>
+    <button id="exp-csv" class="ghost">Export CSV</button>
+    <button id="exp-brief">Download Brief (PDF)</button>
+    <span class="muted" id="count" style="margin-left:auto;font-size:12px"></span>
+  </div>
+  <div class="status" id="status"></div>
+
+  <div id="list"><div class="empty">Loading leads…</div></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const money = v => (v==null?'n/a':'$'+Number(v).toLocaleString(undefined,{maximumFractionDigits:0}));
+function setStatus(m,c){ const s=$('#status'); s.textContent=m||''; s.className='status'+(c?' '+c:''); }
+async function failMsg(r){ if(r.status===401) return 'Session expired — refresh and sign in.';
+  if(r.status===403) return 'Not available for the sales view.';
+  try{const j=await r.json(); return j.error||('Error '+r.status);}catch(e){return 'Error '+r.status;} }
+
+async function loadWho(){ try{const r=await fetch('/dashboard/api/whoami'); if(r.ok){const a=await r.json();
+  $('#who').textContent='Signed in as '+(a.display||a.user);}}catch(e){} }
+
+let _leads=[];
+async function load(){
+  setStatus('Loading…');
+  const bucket=$('#bucket').value, mv=$('#minval').value||0;
+  let url='/dashboard/api/reactivation?min_value='+encodeURIComponent(mv);
+  if(bucket) url+='&bucket='+bucket;
+  try{
+    const r=await fetch(url);
+    if(!r.ok){ setStatus(await failMsg(r),'err'); return; }
+    const d=await r.json();
+    _leads=d.list||[];
+    renderBar(d.totals, d.notes_hygiene);
+    renderList(_leads);
+    $('#count').textContent=_leads.length+' leads shown';
+    setStatus('');
+  }catch(e){ setStatus('Network error — try again.','err'); }
+}
+function renderBar(t, hy){
+  const b=t.buckets||{};
+  const stale=(b.stale||{}), pit=(b.pitched_stalled||{});
+  $('#bar').innerHTML =
+    stat('Reactivation pool', t.reactivation_pool, money(t.reactivation_value)+' pipeline') +
+    stat('Stale', stale.count||0, money(stale.value||0)) +
+    stat('Pitched-stalled', pit.count||0, money(pit.value||0)) +
+    stat('Notes hygiene', (hy&&hy.pct_without_notes!=null?hy.pct_without_notes+'%':'—'), 'have no notes');
+}
+const stat=(k,v,s)=>`<div class="stat"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div><div class="s">${esc(s)}</div></div>`;
+
+function renderList(leads){
+  if(!leads.length){ $('#list').innerHTML='<div class="empty">No leads match — adjust the filters.</div>'; return; }
+  $('#list').innerHTML = leads.map((l,i)=>{
+    const biz=(l.tracker&&l.tracker.business)?` · ${esc(l.tracker.business)}`:'';
+    const tr=(l.tracker)?`<span class="muted"> · tracker: ${esc(l.tracker.outcome||l.tracker.match)}</span>`:'';
+    return `<div class="card" data-cid="${esc(l.contact_id)}">
+      <div class="top"><span class="rank">${i+1}.</span>
+        <span class="nm">${esc(l.display_name||l.name||'—')}</span><span class="biz">${biz}</span>
+        <span class="pill ${esc(l.bucket)}">${esc((l.bucket||'').replace('_',' '))}</span></div>
+      <div class="meta"><span class="val">${money(l.value)}</span> · ${esc(l.stage)} ·
+        ${l.age_days}d old, ${l.days_since_touch}d since touch · warmth ${l.warmth} · ${l.notes_count} note(s)${tr}</div>
+      <button class="ghost leftoff-btn" data-cid="${esc(l.contact_id)}" data-nm="${esc(l.display_name||l.name)}"
+        style="padding:5px 10px;font-size:12px">Where did we leave off?</button>
+      <div class="leftoff-slot"></div>
+    </div>`;
+  }).join('');
+}
+
+async function lookup(name, contactId, slot){
+  const q = contactId ? 'contact_id='+encodeURIComponent(contactId) : 'name='+encodeURIComponent(name);
+  const target = slot || $('#lookup-result');
+  if(!slot){ target.style.display='block'; target.innerHTML='<span class="muted">Looking up…</span>'; }
+  else { slot.innerHTML='<span class="muted">Looking up…</span>'; }
+  try{
+    const r=await fetch('/dashboard/api/lead-lookup?'+q);
+    if(!r.ok){ target.innerHTML='<span style="color:var(--red)">'+esc(await failMsg(r))+'</span>'; return; }
+    const d=await r.json();
+    target.innerHTML = renderLookup(d, name);
+  }catch(e){ target.innerHTML='<span style="color:var(--red)">Network error.</span>'; }
+}
+function renderLookup(d, q){
+  if(d.found===false){
+    if(d.ambiguous) return `Several leads match “${esc(d.query)}”: `+
+      d.matches.map(m=>`<a href="#" class="disambig" data-cid="${esc(m.contact_id)}">${esc(m.display)}</a>`).join(', ');
+    if(d.closest&&d.closest.length) return `No exact match for “${esc(d.query)}”. Closest: ${d.closest.map(esc).join(', ')}.`;
+    return `No open lead matching “${esc(d.query||q)}”.`;
+  }
+  const s=d.summary||{};
+  const c=d.contact||{};
+  const contact=[c.email,c.phone].filter(Boolean).map(esc).join(' · ');
+  return `<div class="nm">${esc(d.display)}</div>
+    <div class="meta">${esc(d.stage)} · ${money(d.value)} · ${d.notes_count} note(s)</div>
+    <div class="leftoff">${esc(s.where_it_left_off||'No summary.')}</div>
+    ${s.reactivation_angle?`<div class="angle">Angle: ${esc(s.reactivation_angle)}</div>`:''}
+    ${contact?`<div class="contact">${contact}</div>`:''}`;
+}
+
+function dl(url){ const a=document.createElement('a'); a.href=url; a.click(); }
+
+// events
+$('#refresh').addEventListener('click', load);
+$('#bucket').addEventListener('change', load);
+$('#minval').addEventListener('change', load);
+$('#exp-csv').addEventListener('click', ()=>{ setStatus('Preparing CSV…'); dl('/dashboard/api/reactivation/export.csv'); setStatus('CSV downloading — includes contact details.','ok'); });
+$('#exp-brief').addEventListener('click', ()=>{ setStatus('Building brief (summaries take a moment)…'); dl('/dashboard/api/reactivation/brief.pdf'); });
+$('#lookup-btn').addEventListener('click', ()=>{ const v=$('#lookup').value.trim(); if(v) lookup(v,null,null); });
+$('#lookup').addEventListener('keydown', e=>{ if(e.key==='Enter'){ const v=$('#lookup').value.trim(); if(v) lookup(v,null,null);} });
+document.addEventListener('click', e=>{
+  const b=e.target.closest('.leftoff-btn');
+  if(b){ const slot=b.nextElementSibling; lookup(b.getAttribute('data-nm'), b.getAttribute('data-cid'), slot); return; }
+  const dis=e.target.closest('.disambig');
+  if(dis){ e.preventDefault(); lookup(null, dis.getAttribute('data-cid'), null); }
+});
+
+loadWho(); load();
+</script>
+</body>
+</html>

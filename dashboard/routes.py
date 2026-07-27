@@ -1050,6 +1050,27 @@ def _audit_pii_export(kind: str, n: int):
         logger.info("reactivation export audit failed: %s", e)
 
 
+@bp.route("/leads", methods=["GET"])
+@require_auth
+def sales_page():
+    """The scoped Lead Reactivation view — the sales team's home. Owner/COO can view it too, but a
+    sales session is confined to it (fail-closed scoping in require_auth). No financial data here."""
+    return render_template("sales.html", asset_v=_ASSET_VERSION)
+
+
+@bp.route("/api/lead-lookup", methods=["GET"])
+@require_auth
+def api_lead_lookup():
+    """'Where did we leave off with X' for the sales view: grounded summary + contact for one lead.
+    ?name= or ?contact_id=. Sales-scope-allowed. PII-bearing (auth-gated)."""
+    import reactivation
+    res = reactivation.lookup_lead(name=request.args.get("name"),
+                                   contact_id=request.args.get("contact_id"))
+    resp = jsonify(res)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @bp.route("/api/reactivation/export.csv", methods=["GET"])
 @require_auth
 def api_reactivation_csv():

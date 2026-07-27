@@ -169,9 +169,11 @@ def classify(join_tracker: bool = True) -> list[dict]:
 
         contact = contacts.get(cid) if cid else None
         tracker = _join_tracker(contact, idx) if join_tracker else None
+        display = (" ".join(x for x in [(contact or {}).get("first_name"), (contact or {}).get("last_name")] if x)
+                   or o.get("name"))
         out.append({
             "opp_id": o.get("id"), "contact_id": o.get("contact_id"),
-            "name": o.get("name"), "stage": stage, "status": o.get("status"),
+            "name": o.get("name"), "display_name": display, "stage": stage, "status": o.get("status"),
             "value": value, "created": str(created) if created else None,
             "age_days": age_days, "last_touch": str(lt) if lt else None,
             "days_since_touch": days_since_touch, "notes_count": len(notes),
@@ -259,6 +261,57 @@ def find_lead_by_name(name: str) -> list[dict]:
     if top == 3:                                        # a clean exact match — don't muddy with partials
         return [h for s, h in best.values() if s == 3]
     return [h for _, h in sorted(best.values(), key=lambda x: -x[0])]
+
+
+def lookup_lead(name: str | None = None, contact_id: str | None = None) -> dict:
+    """Structured 'where did we leave off' for the sales view + EDITH. Returns the grounded summary
+    + contact details for a single lead; disambiguation or closest-matches when not unique. Never
+    invents a lead."""
+    hit = None
+    if contact_id:
+        c = ghl_mirror.read_contact(contact_id)
+        opp = next((o for o in ghl_mirror.read_opportunities(open_only=True)
+                    if o.get("contact_id") == contact_id), None)
+        if opp:
+            disp = (" ".join(x for x in [(c or {}).get("first_name"), (c or {}).get("last_name")] if x)
+                    or opp.get("name"))
+            hit = {"opp": opp, "contact": c, "display": disp}
+    elif name:
+        hits = find_lead_by_name(name)
+        if not hits:
+            allnames = []
+            contacts = ghl_mirror.read_all_contacts()
+            for o in ghl_mirror.read_opportunities(open_only=True):
+                c = contacts.get(o.get("contact_id"))
+                dn = " ".join(x for x in [(c or {}).get("first_name"), (c or {}).get("last_name")] if x) or (o.get("name") or "")
+                if dn:
+                    allnames.append(dn)
+            import difflib
+            return {"found": False, "query": name,
+                    "closest": difflib.get_close_matches(name, allnames, n=5, cutoff=0.6)}
+        if len(hits) > 1:
+            return {"found": False, "ambiguous": True, "query": name,
+                    "matches": [{"display": h["display"], "contact_id": h["opp"].get("contact_id"),
+                                 "stage": h["opp"].get("stage_name"), "value": h["opp"].get("monetary_value")}
+                                for h in hits[:8]]}
+        hit = hits[0]
+    if not hit:
+        return {"found": False, "query": name or contact_id}
+    o = hit["opp"]; c = hit["contact"] or {}
+    lead = {"contact_id": o.get("contact_id"), "stage": o.get("stage_name"),
+            "value": o.get("monetary_value"),
+            "created": str(o.get("created_at"))[:10] if o.get("created_at") else None,
+            "last_touch": str(o.get("last_stage_change_at"))[:10] if o.get("last_stage_change_at") else None}
+    summary = {}
+    try:
+        import ghl_notes_summary
+        summary = ghl_notes_summary.summarize_lead(lead)
+    except Exception as e:
+        logger.info("lookup_lead summary failed: %s", e)
+    return {"found": True, "display": hit["display"], "stage": o.get("stage_name"),
+            "value": o.get("monetary_value"), "contact": {"email": c.get("email"), "phone": c.get("phone")},
+            "notes_count": len(ghl_mirror.read_notes_for_contact(o.get("contact_id")) if o.get("contact_id") else []),
+            "summary": summary}
 
 
 import re as _re

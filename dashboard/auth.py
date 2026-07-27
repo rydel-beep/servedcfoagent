@@ -48,11 +48,38 @@ def _accounts() -> dict:
     accts: dict = {}
     rp = os.environ.get("RYDEL_PASSWORD", "")
     pp = os.environ.get("PIOLO_PASSWORD", "")
+    sp = os.environ.get("SALES_PASSWORD", "")
     if rp:
         accts["rydel"] = {"role": "owner", "pw": rp, "display": "Rydel"}
     if pp:
         accts["piolo"] = {"role": "coo", "pw": pp, "display": "Piolo"}
+    # Scoped sales-team login (Kalin + setters): leads/reactivation ONLY, never financials.
+    if sp:
+        accts["sales"] = {"role": "sales", "pw": sp, "display": "Sales Team"}
     return accts
+
+
+# The sales role is SCOPED (fail-closed): a sales session may reach ONLY these path fragments;
+# every other authenticated route returns 403 (API) or redirects to the leads view (pages). New
+# endpoints are therefore denied to sales BY DEFAULT — no financial surface can leak by omission.
+_SALES_ALLOWED_FRAGMENTS = (
+    "/api/reactivation",   # list + export.csv + brief.pdf
+    "/api/lead-lookup",    # "where did we leave off with X" (grounded, scoped)
+    "/api/whoami",
+)
+
+
+def is_sales() -> bool:
+    return current_actor().get("role") == "sales"
+
+
+def sales_permitted(path: str) -> bool:
+    """True if a sales session may access `path`. Fail-closed: unknown paths are NOT permitted."""
+    p = path or ""
+    if any(frag in p for frag in _SALES_ALLOWED_FRAGMENTS):
+        return True
+    tail = p.rstrip("/")
+    return tail.endswith("/leads") or tail.endswith("/logout")
 
 
 def per_user_enabled() -> bool:
@@ -107,6 +134,13 @@ def require_auth(f):
         act = session.get("actor")
         if act:
             g.actor = act
+            # Scoped sales role: fail-closed allowlist. Anything outside it is denied here, once,
+            # centrally — so no financial endpoint can leak to the sales team by being forgotten.
+            if act.get("role") == "sales" and not sales_permitted(request.path):
+                if "/api/" in (request.path or ""):
+                    return jsonify({"error": "This view is limited to lead reactivation.",
+                                    "scope": "sales"}), 403
+                return redirect(url_for("dashboard.sales_page"))
             return f(*args, **kwargs)
 
         # Legacy shared-token path — disabled once per-user auth is enabled.
