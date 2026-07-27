@@ -27,6 +27,12 @@ logger = logging.getLogger(__name__)
 STALE_DAYS = 90
 PITCH_STALL_DAYS = 21
 
+# Every Served deal is a fixed $14,500 contract (Rydel, 2026-07-27) — the GHL monetaryValue field
+# holds inconsistent setter-entered numbers, so we value every opportunity at the real contract
+# value. Override via env if the contract price ever changes.
+import os as _os
+CONTRACT_VALUE = float(_os.getenv("SERVED_CONTRACT_VALUE", "14500"))
+
 # Stage taxonomy (from the live pipeline "1 SERVED Client Acquisition")
 PITCH_STAGES = {"Consult Call Booked", "2nd Consult Call Booked"}
 COLD_REACTIVATABLE = {
@@ -146,7 +152,8 @@ def classify(join_tracker: bool = True) -> list[dict]:
     out = []
     for o in opps:
         stage = o.get("stage_name") or ""
-        value = float(o.get("monetary_value") or 0)
+        ghl_value = float(o.get("monetary_value") or 0)
+        value = CONTRACT_VALUE            # every opp valued at the real Served contract value
         created = _parse(o.get("created_at"))
         age_days = (today - created).days if created else None
         cid = o.get("contact_id")
@@ -174,7 +181,7 @@ def classify(join_tracker: bool = True) -> list[dict]:
         out.append({
             "opp_id": o.get("id"), "contact_id": o.get("contact_id"),
             "name": o.get("name"), "display_name": display, "stage": stage, "status": o.get("status"),
-            "value": value, "created": str(created) if created else None,
+            "value": value, "ghl_value": ghl_value, "created": str(created) if created else None,
             "age_days": age_days, "last_touch": str(lt) if lt else None,
             "days_since_touch": days_since_touch, "notes_count": len(notes),
             "bucket": bucket, "excluded": excluded,
@@ -292,14 +299,14 @@ def lookup_lead(name: str | None = None, contact_id: str | None = None) -> dict:
         if len(hits) > 1:
             return {"found": False, "ambiguous": True, "query": name,
                     "matches": [{"display": h["display"], "contact_id": h["opp"].get("contact_id"),
-                                 "stage": h["opp"].get("stage_name"), "value": h["opp"].get("monetary_value")}
+                                 "stage": h["opp"].get("stage_name"), "value": CONTRACT_VALUE}
                                 for h in hits[:8]]}
         hit = hits[0]
     if not hit:
         return {"found": False, "query": name or contact_id}
     o = hit["opp"]; c = hit["contact"] or {}
     lead = {"contact_id": o.get("contact_id"), "stage": o.get("stage_name"),
-            "value": o.get("monetary_value"),
+            "value": CONTRACT_VALUE,
             "created": str(o.get("created_at"))[:10] if o.get("created_at") else None,
             "last_touch": str(o.get("last_stage_change_at"))[:10] if o.get("last_stage_change_at") else None}
     summary = {}
@@ -309,7 +316,7 @@ def lookup_lead(name: str | None = None, contact_id: str | None = None) -> dict:
     except Exception as e:
         logger.info("lookup_lead summary failed: %s", e)
     return {"found": True, "display": hit["display"], "stage": o.get("stage_name"),
-            "value": o.get("monetary_value"), "contact": {"email": c.get("email"), "phone": c.get("phone")},
+            "value": CONTRACT_VALUE, "contact": {"email": c.get("email"), "phone": c.get("phone")},
             "notes_count": len(ghl_mirror.read_notes_for_contact(o.get("contact_id")) if o.get("contact_id") else []),
             "summary": summary}
 
@@ -354,14 +361,14 @@ def handle_reactivation_command(text: str, actor: dict | None = None) -> tuple[s
             return (f"I have {len(hits)} open leads matching \"{name}\": {names}. Which one?"), True
         h = hits[0]; o = h["opp"]
         lead = {"contact_id": o.get("contact_id"), "stage": o.get("stage_name"),
-                "value": o.get("monetary_value"), "created": str(o.get("created_at"))[:10] if o.get("created_at") else None,
+                "value": CONTRACT_VALUE, "created": str(o.get("created_at"))[:10] if o.get("created_at") else None,
                 "last_touch": str(o.get("last_stage_change_at"))[:10] if o.get("last_stage_change_at") else None}
         try:
             import ghl_notes_summary
             s = ghl_notes_summary.summarize_lead(lead)
         except Exception as e:
             return f"Couldn't read {h['display']}'s notes right now: {e}.", True
-        parts = [f"{h['display']} — {o.get('stage_name')}, {_fmt_money(o.get('monetary_value'))}."]
+        parts = [f"{h['display']} — {o.get('stage_name')}, {_fmt_money(CONTRACT_VALUE)}."]
         parts.append(s.get("where_it_left_off") or "No notes logged.")
         if s.get("reactivation_angle"):
             parts.append(f"Angle: {s['reactivation_angle']}")

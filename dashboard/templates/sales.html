@@ -177,14 +177,36 @@ function renderLookup(d, q){
     ${contact?`<div class="contact">${contact}</div>`:''}`;
 }
 
-function dl(url){ const a=document.createElement('a'); a.href=url; a.click(); }
+// Reliable download: fetch → blob → click a DOM-attached anchor. Gives feedback + surfaces errors
+// (the plain-anchor approach silently did nothing while the slow brief generated).
+async function download(url, fallbackName, btn, workingMsg){
+  if(btn) btn.disabled = true;
+  setStatus(workingMsg || 'Preparing download…');
+  try{
+    const r = await fetch(url);
+    if(!r.ok){ setStatus(await failMsg(r), 'err'); return; }
+    const blob = await r.blob();
+    if(blob.size < 40){ setStatus('Nothing to download (empty file).', 'err'); return; }
+    let name = fallbackName;
+    const cd = r.headers.get('Content-Disposition') || '';
+    const m = cd.match(/filename=([^;]+)/); if(m) name = m[1].trim();
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = href; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(href);
+    setStatus('Downloaded ' + name + '.', 'ok');
+  }catch(e){ setStatus('Download failed — network error, try again.', 'err'); }
+  finally{ if(btn) btn.disabled = false; }
+}
 
 // events
 $('#refresh').addEventListener('click', load);
 $('#bucket').addEventListener('change', load);
 $('#minval').addEventListener('change', load);
-$('#exp-csv').addEventListener('click', ()=>{ setStatus('Preparing CSV…'); dl('/dashboard/api/reactivation/export.csv'); setStatus('CSV downloading — includes contact details.','ok'); });
-$('#exp-brief').addEventListener('click', ()=>{ setStatus('Building brief (summaries take a moment)…'); dl('/dashboard/api/reactivation/brief.pdf'); });
+$('#exp-csv').addEventListener('click', function(){
+  download('/dashboard/api/reactivation/export.csv', 'reactivation.csv', this, 'Preparing CSV (with contact details)…'); });
+$('#exp-brief').addEventListener('click', function(){
+  download('/dashboard/api/reactivation/brief.pdf?top_n=30', 'reactivation-brief.pdf', this,
+           'Building the brief — writing the grounded summaries, this takes up to a minute…'); });
 $('#lookup-btn').addEventListener('click', ()=>{ const v=$('#lookup').value.trim(); if(v) lookup(v,null,null); });
 $('#lookup').addEventListener('keydown', e=>{ if(e.key==='Enter'){ const v=$('#lookup').value.trim(); if(v) lookup(v,null,null);} });
 document.addEventListener('click', e=>{
