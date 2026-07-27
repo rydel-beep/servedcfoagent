@@ -90,8 +90,9 @@ def build_brief_pdf(leads: list[dict], top_n: int = 40) -> bytes:
     pdf.cell(0, 9, "Lead Reactivation Brief", new_x="LMARGIN", new_y="NEXT")
     pdf.set_x(12); pdf.set_font("Helvetica", "", 10); pdf.set_text_color(*TINT)
     pdf.cell(0, 6, _safe(f"Served Marketing  ·  generated {today_sydney()}  ·  top {min(top_n, len(rows))} of "
-                         f"{totals['reactivation_pool']} reactivation leads (${totals['reactivation_value']:,.0f} pipeline)"))
-    pdf.set_y(40)
+                         f"{totals['reactivation_pool']} reactivation leads (${totals['reactivation_value']:,.0f} pipeline)"),
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.set_y(40); pdf.set_x(pdf.l_margin)
     pdf.set_font("Helvetica", "I", 9); pdf.set_text_color(*MUTED)
     pdf.multi_cell(0, 4.5, _safe(
         "Ranked by warmth (stage reached x value x recency). Every 'where it left off' is written "
@@ -116,11 +117,11 @@ def build_brief_pdf(leads: list[dict], top_n: int = 40) -> bytes:
         if contact:
             pdf.set_text_color(*MUTED); pdf.cell(0, 4.5, _safe(contact), new_x="LMARGIN", new_y="NEXT")
         # where it left off + angle
-        pdf.set_text_color(*DARK); pdf.set_font("Helvetica", "", 8.5)
+        pdf.set_text_color(*DARK); pdf.set_font("Helvetica", "", 8.5); pdf.set_x(pdf.l_margin)
         wlo = r["where_it_left_off"] or "(summary unavailable)"
         pdf.multi_cell(0, 4.4, _safe("Where it left off: " + wlo))
         if r["reactivation_angle"]:
-            pdf.set_font("Helvetica", "B", 8.5); pdf.set_text_color(*PRIMARY)
+            pdf.set_font("Helvetica", "B", 8.5); pdf.set_text_color(*PRIMARY); pdf.set_x(pdf.l_margin)
             pdf.multi_cell(0, 4.4, _safe("Angle: " + r["reactivation_angle"]))
         if r["tracker_match"]:
             pdf.set_font("Helvetica", "I", 7.5); pdf.set_text_color(*MUTED)
