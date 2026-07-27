@@ -370,8 +370,8 @@ def _opex_bridge(pdf, review):
         pdf.emit("Xero P&L unavailable for this window — opex bridge not computable.")
         return
 
-    cur_lines = {li.get("label", "?"): abs(li.get("amount") or 0) for li in (xr.get("opex_line_items") or [])}
-    prior_lines = {li.get("label", "?"): abs(li.get("amount") or 0) for li in (pxr.get("opex_line_items") or [])} if pxr.get("available") else {}
+    cur_lines = {li["label"]: abs(li.get("amount") or 0) for li in (xr.get("opex_line_items") or []) if li.get("label")}
+    prior_lines = {li["label"]: abs(li.get("amount") or 0) for li in (pxr.get("opex_line_items") or []) if li.get("label")} if pxr.get("available") else {}
     # headline swing
     net = xr.get("net_profit"); pnet = pxr.get("net_profit") if pxr.get("available") else None
     if net is not None and pnet is not None:
