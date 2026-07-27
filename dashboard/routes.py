@@ -993,8 +993,47 @@ def data_sources_page():
 @require_auth
 def api_data_sources():
     import sheet_mirror
-    return jsonify({"sources": sheet_mirror.get_sources(),
-                    "interval_seconds": __import__("config").SHEET_SYNC_INTERVAL_SECONDS})
+    payload = {"sources": sheet_mirror.get_sources(),
+               "interval_seconds": __import__("config").SHEET_SYNC_INTERVAL_SECONDS}
+    try:
+        import ghl_mirror
+        payload["ghl_sources"] = ghl_mirror.get_sources()
+        payload["ghl_counts"] = ghl_mirror.counts()
+    except Exception as e:
+        logger.info("ghl sources unavailable: %s", e)
+    return jsonify(payload)
+
+
+@bp.route("/api/ghl-backfill", methods=["POST"])
+@require_auth
+def api_ghl_backfill():
+    """One resumable backfill chunk (opps + up to ?cap contacts/notes). Call until remaining==0."""
+    import ghl_mirror
+    if not ghl_mirror.enabled():
+        return jsonify({"ok": False, "error": "GHL mirror not configured"}), 503
+    cap = request.args.get("cap", 150, type=int)
+    res = ghl_mirror.backfill_chunk(cap=cap)
+    return jsonify({"ok": True, **res})
+
+
+@bp.route("/api/reactivation", methods=["GET"])
+@require_auth
+def api_reactivation():
+    """Deterministic reactivation intelligence: ranked leads + totals + notes-hygiene + reconciliation.
+    ?bucket=stale|pitched_stalled  ?min_value=  ?limit=  (PII-bearing → auth-gated only)."""
+    import reactivation
+    leads = reactivation.classify()
+    bucket = request.args.get("bucket")
+    min_value = request.args.get("min_value", 0.0, type=float)
+    limit = request.args.get("limit", type=int)
+    resp = jsonify({
+        "list": reactivation.reactivation_list(bucket=bucket, min_value=min_value, limit=limit, leads=leads),
+        "totals": reactivation.summary_totals(leads),
+        "notes_hygiene": reactivation.notes_hygiene(leads),
+        "reconciliation": reactivation.reconciliation(leads),
+    })
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @bp.route("/api/resync", methods=["POST"])

@@ -857,3 +857,18 @@
     gate loosened — zero authz change); Rydel digest sees Piolo. Collab tests 7/7; Stage-A 374/375
     (the 1 failure = pre-existing capacity_engine MRR-drift test, untouched by this work). Report:
     dashboard/PIOLO_INPUT_FIX_REPORT.md.
+
+92. **GHL Lead Intelligence — Phase 0 gate (2026-07-27).** ACCESS: existing GHL_SALES_API_KEY is a
+    Private Integration Token (pit-) with FULL scope — probed live, pipelines/opportunities/contacts/
+    NOTES all 200. No new credentials, no Railway change. Rate limits 100/10s burst, 200k/day (ample).
+    INVENTORY (pipeline JJQLCr1fl7OHyrpRwSJp "1 SERVED Client Acquisition"): 1342 opps (open 1290/won
+    20/lost 31). Unresponsive/Not Interested = 986 open / $2,226,500 (matches the ~986/$2.2M oracle);
+    reactivatable cold-stage open ≈1030 (matches oracle). Notes: ~48% of leads have >=1 note (~52%
+    none = hygiene finding), notes long (~12.5k chars avg). Contact carries email/phone/name/tags;
+    opp carries contactId/name/monetaryValue/lastStageChangeAt. RYDEL'S CALLS: (a) EXCLUDE both
+    Disqualified (86) + Ban Leads DND (22) from reactivation — still counted in hygiene, never a
+    target (DND = contact risk). (b) PITCHED-STALLED = reached Consult Call Booked/2nd Consult, open,
+    no stage-change 21+ days. (c) DELIVERY = export-first (CSV + formatted reactivation brief), no
+    sales dashboard role for now. STALE = open, created 90d+, in a reactivatable cold stage (excl.
+    Disqualified/Ban/Won). WARMTH = stage-reached (weighted) × value × last-touch recency. JOIN to
+    tracker: email best → name-token fallback (smart matcher); unmatched flagged not forced.

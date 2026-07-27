@@ -314,6 +314,16 @@ def handle_resync_command(text: str, rebuild_snapshot: bool = True) -> tuple[str
     if not text or not _RESYNC_RE.search(text):
         return None, False
     res = sync_all()
+    _ghl_note = ""
+    try:
+        import ghl_mirror
+        if ghl_mirror.enabled():
+            g = ghl_mirror.sync_opportunities()
+            if g.get("ok"):
+                _ghl_note = (f" GHL opps {g.get('count', '?')} synced"
+                             + (" (updated)" if g.get("changed") else "") + ".")
+    except Exception as e:
+        logger.info("resync GHL opps unavailable: %s", e)
     latest = None
     if rebuild_snapshot:
         try:
@@ -333,7 +343,7 @@ def handle_resync_command(text: str, rebuild_snapshot: bool = True) -> tuple[str
         nm = MIRRORED_TABS[k]["tab"]
         tag = " (updated)" if r.get("changed") else (" ⚠" if r.get("status") != "ok" else "")
         parts.append(f"{nm} {r.get('rows', '?')} rows{tag}")
-    reply = "Synced — " + "; ".join(parts) + "."
+    reply = "Synced — " + "; ".join(parts) + "." + _ghl_note
     if latest:
         reply += f" Latest close: {latest}."
     # Latest LEAD entered (distinct from latest close) — the leads-visibility gap.

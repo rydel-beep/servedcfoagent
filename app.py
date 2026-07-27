@@ -520,6 +520,13 @@ def _deferred_startup():
             sheet_mirror.start_sync_loop()
         except Exception as _e:
             logger.error("Sheet-mirror boot skipped: %s", _e)
+        # GHL mirror: create tables + start the opportunities sync loop (contacts/notes via resync/backfill).
+        try:
+            import ghl_mirror
+            ghl_mirror.migrate()
+            ghl_mirror.start_sync_loop()
+        except Exception as _e:
+            logger.error("GHL-mirror boot skipped: %s", _e)
         _startup_refresh()
         _start_scheduled_refresh()
 
