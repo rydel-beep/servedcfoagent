@@ -919,3 +919,22 @@
     clients_per_delivery_hire=12 + hire_lead_time were hardcoded assumptions. RYDEL CONFIRMED:
     clients/hire = 12 (now set-by-Rydel), hire lead time = 4 WEEKS (was assumed 6). Both become
     provenance "set by Rydel 2026-07-27".
+
+96. **Quarterly Review v2 — built & verified (2026-07-27).** Fixed all 5 defects at root + built the
+    linter + 6 gaps + self-improvement infra; regenerated Q2 2026 PDF (8 pages). D1: type-aware
+    quarterly_format registry (ratio renders "4.51x" not "$5"). D2: targets_current bound (shows
+    $253,200/$759,600, 16/48). D3: one flag engine (volume-path == lever flag, both PLAUSIBLE). D4:
+    churn "not computable — needs churn data" (degenerate figure retired). D5: "CAC is held constant
+    at $2,718" (subject restored). LINTER (quarterly_linter): D1-D4 hard-fail, D5 warn; 8 adversarial
+    tests; gates generation after verbatim. Caught real issues mid-build (over-broad D1 rule; opex
+    delta verbatim). G1: exec summary names -$2,112 loss + -106% swing, reconciles 4.51x-yet-loss
+    (ad +53%/CAC +23%/ROAS -26%). G2: opex bridge — real Xero per-line QoQ (Wages +$58,090, Closer
+    Comm +$21,025, Advertising +$7,568 explain the swing); deltas computed in review (verbatim-safe).
+    G4: lead-lag warning auto-fires (Jun leads 89, -18% MoM → Q3 close-risk). G5: marketing roadmap —
+    channel mix (86.8% Meta), graduated ramp (253→307→343), CPL-drift band (0/+15/+30%), creative
+    cadence, weekly checkpoints, sequenced Q3 actions. G6: benchmark provenance (clients/hire 12 +
+    lead-time 4wk set by Rydel). G3: mrr_snapshot durable job started on boot + churn derivation from
+    write-back audit wired into bridge (opening/churn legs); full bridges from first-snapshot date.
+    Self-improvement: quarterly_model_store persists each model + grades prior quarter (renders from
+    next gen) + linter trend. Stage-A 386/1 (pre-existing capacity drift). Report:
+    dashboard/QUARTERLY_V2_REPORT.md.
