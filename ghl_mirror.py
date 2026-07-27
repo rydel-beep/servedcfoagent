@@ -419,6 +419,33 @@ def read_notes_for_contact(cid: str) -> list[dict]:
         return []
 
 
+def read_all_contacts() -> dict:
+    """{contact_id: contact} for all live contacts — one query (avoids per-lead round-trips)."""
+    if not db.db_configured():
+        return {}
+    try:
+        with db.get_conn() as c:
+            return {r["id"]: dict(r) for r in c.execute(
+                "SELECT * FROM ghl_contacts WHERE deleted=FALSE").fetchall()}
+    except Exception as e:
+        logger.info("read_all_contacts failed: %s", e)
+        return {}
+
+
+def notes_by_contact() -> dict:
+    """{contact_id: [{id, date_added}]} for all live notes — one query, for bulk classification."""
+    if not db.db_configured():
+        return {}
+    out: dict = {}
+    try:
+        with db.get_conn() as c:
+            for r in c.execute("SELECT contact_id, id, date_added FROM ghl_notes WHERE deleted=FALSE").fetchall():
+                out.setdefault(r["contact_id"], []).append({"id": r["id"], "date_added": r["date_added"]})
+    except Exception as e:
+        logger.info("notes_by_contact failed: %s", e)
+    return out
+
+
 def read_contact(cid: str) -> dict | None:
     if not db.db_configured() or not cid:
         return None

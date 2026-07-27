@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
 
 import ghl_mirror
 from helpers import today_sydney
@@ -135,9 +136,12 @@ def _join_tracker(contact: dict | None, idx: dict) -> dict | None:
 # ── Classification ───────────────────────────────────────────────────────────
 
 def classify(join_tracker: bool = True) -> list[dict]:
-    """Every OPEN opportunity, classified with bucket + warmth + days-stale + tracker join."""
+    """Every OPEN opportunity, classified with bucket + warmth + days-stale + tracker join.
+    Bulk-loads contacts + notes (a few queries, not per-lead round-trips)."""
     today = today_sydney()
     opps = ghl_mirror.read_opportunities(open_only=True)
+    contacts = ghl_mirror.read_all_contacts()
+    notes_idx = ghl_mirror.notes_by_contact()
     idx = _tracker_index() if join_tracker else {"by_email": {}, "by_name": {}}
     out = []
     for o in opps:
@@ -145,7 +149,8 @@ def classify(join_tracker: bool = True) -> list[dict]:
         value = float(o.get("monetary_value") or 0)
         created = _parse(o.get("created_at"))
         age_days = (today - created).days if created else None
-        notes = ghl_mirror.read_notes_for_contact(o.get("contact_id")) if o.get("contact_id") else []
+        cid = o.get("contact_id")
+        notes = notes_idx.get(cid, []) if cid else []
         note_dates = [d for d in (_parse(n.get("date_added")) for n in notes) if d]
         lt = _last_touch(o, note_dates)
         days_since_touch = (today - lt).days if lt else None
@@ -162,7 +167,7 @@ def classify(join_tracker: bool = True) -> list[dict]:
             elif stage in (COLD_REACTIVATABLE | TOP_FUNNEL):
                 bucket = "watch"
 
-        contact = ghl_mirror.read_contact(o.get("contact_id")) if o.get("contact_id") else None
+        contact = contacts.get(cid) if cid else None
         tracker = _join_tracker(contact, idx) if join_tracker else None
         out.append({
             "opp_id": o.get("id"), "contact_id": o.get("contact_id"),
@@ -215,21 +220,45 @@ def reconciliation(leads: list[dict] | None = None) -> dict:
 
 
 def find_lead_by_name(name: str) -> list[dict]:
-    """Look up open leads by lead/contact name (for 'where did we leave off with X'). Returns
-    matches (exact-ish first). Never invents — empty list if none, caller offers closest matches."""
-    q = _norm(name)
-    if not q or len(q) < 3:
+    """Look up open leads by lead/contact name (for 'where did we leave off with X'). Scored +
+    deduped by contact so short single-letter names can't spuriously match. Exact matches win
+    outright; otherwise partials. Never invents — [] if none, caller offers closest matches."""
+    ql = (name or "").strip().lower()
+    q = _norm(ql)
+    if len(q) < 3:
         return []
-    hits = []
+    qtoks = [t for t in re.split(r"[^a-z0-9]+", ql) if len(t) >= 3]
+    contacts = ghl_mirror.read_all_contacts()
+    best: dict = {}   # dedupe key -> (score, hit)
     for o in ghl_mirror.read_opportunities(open_only=True):
-        c = ghl_mirror.read_contact(o.get("contact_id")) if o.get("contact_id") else None
-        full = _norm(((c or {}).get("first_name") or "") + ((c or {}).get("last_name") or "")) if c else ""
-        oppn = _norm(o.get("name"))
-        if q in full or q in oppn or (full and full in q):
-            hits.append({"opp": o, "contact": c,
-                         "display": " ".join(x for x in [(c or {}).get("first_name"), (c or {}).get("last_name")] if x)
-                                    or o.get("name")})
-    return hits
+        c = contacts.get(o.get("contact_id"))
+        disp = (" ".join(x for x in [(c or {}).get("first_name"), (c or {}).get("last_name")] if x)
+                or o.get("name") or "")
+        dl = disp.lower(); dn = _norm(dl)
+        if len(dn) < 3:
+            continue
+        score = 0
+        if q == dn:
+            score = 3                                   # exact
+        elif len(q) >= 4 and q in dn:
+            score = 2                                   # query is a substring of the name
+        elif len(dn) >= 6 and dn in q:
+            score = 2                                   # name substantially contained in the query
+        elif len(qtoks) >= 2 and sum(1 for t in qtoks if t in dl) >= 2:
+            score = 2                                   # 2+ query tokens present
+        elif len(qtoks) >= 1 and len(q) >= 5 and all(t in dl for t in qtoks):
+            score = 1                                   # all (few) query tokens present
+        if not score:
+            continue
+        key = o.get("contact_id") or o.get("id")
+        if key not in best or score > best[key][0]:
+            best[key] = (score, {"opp": o, "contact": c, "display": disp})
+    if not best:
+        return []
+    top = max(s for s, _ in best.values())
+    if top == 3:                                        # a clean exact match — don't muddy with partials
+        return [h for s, h in best.values() if s == 3]
+    return [h for _, h in sorted(best.values(), key=lambda x: -x[0])]
 
 
 import re as _re
