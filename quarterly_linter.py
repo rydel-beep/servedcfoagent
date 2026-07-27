@@ -43,14 +43,14 @@ def lint(audit_lines: list[str], review: dict) -> dict:
     text = "\n".join(audit_lines or [])
     tx = (review or {}).get("three_x", {}) or {}
 
-    # ── D1: unit consistency ──
+    # ── D1: unit consistency ── a ratio metric's OWN VALUE must not render as dollars. Precise:
+    # the metric name IMMEDIATELY followed by a $-figure (e.g. table cell "LTGP:CAC $5"). Merely
+    # mentioning a ratio on a line that also has a $ for another metric is NOT a defect.
     for line in audit_lines or []:
         for rm in RATIO_METRICS:
-            if line.startswith(rm) or f" {rm} " in f" {line} ":
-                # the ratio metric's value on this line must not be a dollar figure
-                if re.search(r"\$\s?\d", line):
-                    hard.append(f"D1 unit: ratio metric '{rm}' rendered with '$' → {line[:80]!r}")
-    if re.search(r"\$\s?[\d,]+(?:\.\d+)?x", text):
+            if re.search(re.escape(rm) + r"\s*[:=]?\s*-?\$\s?\d", line):
+                hard.append(f"D1 unit: ratio metric '{rm}' rendered with '$' → {line[:80]!r}")
+    if re.search(r"\$\s?[\d,]+(?:\.\d+)?x\b", text):
         hard.append("D1 unit: found a '$Nx' currency/ratio hybrid token")
 
     # ── D2: completeness (3x targets carry both current and target) ──
