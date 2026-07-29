@@ -1095,12 +1095,10 @@ def api_test_lead_confirm():
     # One-time data-cleaning note in the forever archive (future-you will ask why counts changed).
     try:
         import collab
-        s = test_leads.scan()
-        n = s["summary"]["ghl_strong"] + s["summary"]["tracker_strong"]
         collab.add_entry("rydel", "done",
-                         f"Data cleaning {today_sydney()}: {n} test leads voided from all sales "
-                         "metrics (staff/test-shaped matches; excluded not deleted). Rules: "
-                         "rydel/jaspher/test. See the test-lead audit view.",
+                         f"Data cleaning {today_sydney()}: test leads voided from all sales metrics "
+                         "(staff/test-shaped matches; excluded not deleted). Rules: rydel/jaspher/test. "
+                         "See the test-lead audit view (/api/test-lead-scan).",
                          link_type="data_cleaning", link_ref=str(today_sydney()))
     except Exception as e:
         logger.info("data-cleaning journal note skipped: %s", e)
