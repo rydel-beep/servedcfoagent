@@ -968,3 +968,19 @@
     Impact: tracker 1291→1274 (−17); Q2 2026 unaffected (test entries pre-Apr-2026 + one 2026-07-27);
     trailing-30d −1. Stage-A 386/1 (pre-existing capacity drift); +5 classification tests. Report:
     dashboard/TEST_LEAD_EXCLUSION_REPORT.md.
+
+99. **Conversational continuity, scenarios & advisory — built & verified (2026-07-29).** Phase-0
+    trace (honest): T1 "how can we reduce CAC" DID recite (unit-econ handler intercepts strategy Qs);
+    T3 "3 more closes" reached the MODEL (no handler matches) which improvised the math — not the
+    canonical scenario engine; no repetition guard. BUILT: scenario_engine.py (deterministic what-ifs
+    over the SAME unit_economics formulas — CAC/ROAS/LTGP:CAC, ±closes/spend/comms/window, per-close
+    comm-scaling variant; labelled, actuals untouched). conversation.py (active-metric thread state
+    from history [carried across text+voice via resume_thread]; ADVISORY = decomposition + ranked
+    levers + memory-cited principle; ANAPHORA = follow-ups → scenario engine; clarifier only on
+    concrete-delta-without-metric; 'what IS X'/'back to actuals' → actual). routes: conversation.handle
+    runs FIRST in both chains (before forecast/recital so '5 more closes' isn't hijacked) +
+    _repetition_failure guard (verbatim repeat to a different Q → suppress+log → model gives varied
+    answer). VERIFIED LIVE: T1→advisory; T2 unchanged; T3→"$2,031 ÷11, −27%, per-close variant $2,466";
+    stacked scenarios coherent; ROAS metric-switch resolves correctly; forecast not hijacked; guard
+    suppresses canned repeat; musing→conversation. Stage-A 397/1 (pre-existing capacity drift) + 6
+    conversation tests. Report: dashboard/CONVERSATIONAL_ANALYSIS_REPORT.md.
