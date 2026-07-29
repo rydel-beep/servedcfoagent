@@ -64,12 +64,19 @@ def set_override(key: str, is_test: bool, by: str) -> None:
     kv_store.put(_K_OVERRIDES, ov)
 
 
+def load_ctx() -> tuple[dict, dict]:
+    """Load (rules, overrides) ONCE — pass to classify() in loops so bulk classification does not hit
+    the DB per row (the clean views classify 1000s of rows)."""
+    return rules(), _overrides()
+
+
 def classify(email: str = "", name: str = "", business: str = "", tags="",
-             source: str = "", ext_id: str = "") -> dict:
-    """Return {is_test, strength, rule, source_of_truth}. A manual override wins outright."""
-    r = rules()
+             source: str = "", ext_id: str = "", ctx: tuple | None = None) -> dict:
+    """Return {is_test, strength, rule, source_of_truth}. A manual override wins outright. Pass
+    ctx=load_ctx() in bulk loops to avoid a per-row DB read."""
+    r, ov_all = ctx if ctx else load_ctx()
     key = lead_key(source, email, name, ext_id)
-    ov = _overrides().get(key)
+    ov = ov_all.get(key)
     if ov is not None:
         return {"is_test": ov["is_test"], "strength": "override", "rule": f"manual ({ov['by']})",
                 "source_of_truth": "override", "key": key}
@@ -107,13 +114,14 @@ def classify(email: str = "", name: str = "", business: str = "", tags="",
 
 # ── THE CLEAN VIEWS (the only thing consumers may read for metrics) ──────────
 
-def is_test_contact(contact: dict | None, source: str = "ghl") -> bool:
-    """Is this GHL contact a test lead? (email/name/tags via the one engine + overrides)."""
+def is_test_contact(contact: dict | None, source: str = "ghl", ctx: tuple | None = None) -> bool:
+    """Is this GHL contact a test lead? (email/name/tags via the one engine + overrides). Pass ctx in
+    bulk loops."""
     if not contact:
         return False
     name = " ".join(x for x in [contact.get("first_name"), contact.get("last_name")] if x) or ""
     return classify(email=contact.get("email") or "", name=name, tags=contact.get("tags") or [],
-                    source=source, ext_id=contact.get("id") or "").get("is_test", False)
+                    source=source, ext_id=contact.get("id") or "", ctx=ctx).get("is_test", False)
 
 
 def _tracker_cols(rows: list) -> tuple[int, int, int, int]:
@@ -135,13 +143,14 @@ def clean_tracker_rows(rows: list | None) -> list:
     if not rows:
         return rows or []
     try:
+        ctx = load_ctx()   # load rules+overrides ONCE (not per row)
         hi, ce, cn, cb = _tracker_cols(rows)
         out = list(rows[:hi + 1])   # keep everything up to + including the header
         for rr in rows[hi + 1:]:
             def g(i):
                 return rr[i].strip() if (i is not None and i < len(rr)) else ""
             name = g(cn)
-            if name and classify(email=g(ce), name=name, business=g(cb), source="tracker").get("is_test"):
+            if name and classify(email=g(ce), name=name, business=g(cb), source="tracker", ctx=ctx).get("is_test"):
                 continue   # void the test row from the clean view
             out.append(rr)
         return out
@@ -251,6 +260,7 @@ def scan() -> dict:
     preview. Filters nothing; this is the Phase-0 review artifact."""
     ghl_strong, ghl_border = [], []
     tr_strong, tr_border = [], []
+    ctx = load_ctx()   # one DB read for the whole scan
 
     # ── GHL mirror (contacts joined to opps for names/stage) ──
     try:
@@ -267,7 +277,7 @@ def scan() -> dict:
             email = c.get("email") or ""
             name = " ".join(x for x in [c.get("first_name"), c.get("last_name")] if x) or ""
             tags = c.get("tags") or []
-            r = classify(email=email, name=name, business="", tags=tags, source="ghl", ext_id=cid)
+            r = classify(email=email, name=name, business="", tags=tags, source="ghl", ext_id=cid, ctx=ctx)
             if r["strength"] in ("strong", "override") and r["is_test"]:
                 ghl_strong.append({"name": name or "(no name)", "email": _mask(email),
                                    "stage": (by_contact.get(cid) or {}).get("stage_name"),
@@ -301,7 +311,7 @@ def scan() -> dict:
                 if not nm:
                     continue
                 tracker_total += 1
-                r = classify(email=g(ce), name=nm, business=g(cb), source="tracker")
+                r = classify(email=g(ce), name=nm, business=g(cb), source="tracker", ctx=ctx)
                 rec = {"name": nm, "business": g(cb), "email": _mask(g(ce)), "date": g(cdt),
                        "rule": r["rule"], "key": r["key"]}
                 if r["strength"] in ("strong", "override") and r["is_test"]:

@@ -410,7 +410,8 @@ def read_opportunities(open_only: bool = True, exclude_test: bool = False) -> li
         try:
             import test_leads
             contacts = read_all_contacts()
-            opps = [o for o in opps if not test_leads.is_test_contact(contacts.get(o.get("contact_id")))]
+            ctx = test_leads.load_ctx()   # load rules+overrides ONCE, not per opp
+            opps = [o for o in opps if not test_leads.is_test_contact(contacts.get(o.get("contact_id")), ctx=ctx)]
         except Exception as e:
             logger.info("read_opportunities exclude_test failed (returning raw): %s", e)
     return opps
