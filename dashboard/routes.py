@@ -1105,8 +1105,10 @@ def api_capital_settings():
     import capital_allocation
     d = request.get_json(silent=True) or {}
     results = {}
+    # A field PRESENT in the payload is applied — including an explicit null to CLEAR it (so an
+    # assumption can be un-set, never leaving a value I chose). Absent fields are left untouched.
     for field in ("survival_buffer_aud", "assumed_annual_return_pct", "review_cadence"):
-        if field in d and d[field] is not None:
+        if field in d:
             results[field] = capital_allocation.set_setting(field, d[field])
     return jsonify({"ok": True, "results": results, "state": capital_allocation.compute_state()})
 
