@@ -497,6 +497,33 @@ def handle_command(text: str, actor: dict | None = None) -> tuple[str | None, bo
     return None, False
 
 
+def discard_review(review_id: int) -> dict:
+    """Cancel an in-progress DRAFT review (back out without committing). Committed reviews are kept."""
+    try:
+        with db.get_conn() as c:
+            c.execute("DELETE FROM allocation_reviews WHERE id=%s AND status='draft'", (review_id,))
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def reset_all(clear_settings: bool = True) -> dict:
+    """Start over — clear all reviews/lines/deployments (and optionally the buffer/return). Buckets
+    are preserved. For a clean setup slate."""
+    try:
+        with db.get_conn() as c:
+            c.execute("DELETE FROM bucket_deployments")
+            c.execute("DELETE FROM allocation_lines")
+            c.execute("DELETE FROM allocation_reviews")
+            if clear_settings:
+                c.execute("UPDATE capital_settings SET survival_buffer_aud=NULL, "
+                          "assumed_annual_return_pct=NULL, last_review_at=NULL, updated_at=%s WHERE id=1",
+                          (now_sydney(),))
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def review_history(limit: int = 12) -> list[dict]:
     """Past committed reviews with assigned vs actually deployed per bucket (hoarding-creep view)."""
     if not db.db_configured():

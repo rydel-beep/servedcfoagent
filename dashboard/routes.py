@@ -1127,7 +1127,18 @@ def api_capital_review():
                                                    d.get("assigned_aud"), d.get("note")))
     if action == "commit":
         return jsonify(capital_allocation.commit_review(d.get("review_id")))
+    if action == "discard":
+        return jsonify(capital_allocation.discard_review(d.get("review_id")))
     return jsonify({"ok": False, "error": "unknown action"}), 400
+
+
+@bp.route("/api/capital/reset", methods=["POST"])
+@require_owner
+def api_capital_reset():
+    """Start over — clear reviews/deployments (+ optionally the buffer/return). Buckets preserved."""
+    import capital_allocation
+    d = request.get_json(silent=True) or {}
+    return jsonify(capital_allocation.reset_all(clear_settings=d.get("clear_settings", True)))
 
 
 @bp.route("/api/capital/deploy", methods=["POST"])

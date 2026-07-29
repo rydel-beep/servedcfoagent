@@ -4513,7 +4513,8 @@
     }).join('');
     return '<div class="cap-ritual"><div class="cap-unassigned" id="cap-unassigned">Unassigned: ' + _cad(s.unassigned_aud)
       + '</div><div class="cap-brows" data-surplus="' + dr.surplus_aud + '" data-review="' + dr.review_id + '">' + rows + '</div>'
-      + '<button id="cap-commit" class="cap-btn cap-btn-primary" disabled>Commit — every dollar assigned</button></div>';
+      + '<button id="cap-commit" class="cap-btn cap-btn-primary" disabled>Commit — every dollar assigned</button>'
+      + '<button id="cap-discard" class="cap-btn" data-review="' + dr.review_id + '" style="margin-left:8px">Discard</button></div>';
   }
   function _capHistory(h) {
     if (!h.length) return '';
@@ -4560,6 +4561,12 @@
       var wrap=$('.cap-brows'); var rid=wrap && wrap.getAttribute('data-review');
       var res=await (await fetch('/dashboard/api/capital/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'commit', review_id:parseInt(rid)})})).json();
       if (!res.ok) { alert(res.error || 'Could not commit'); return; }
+      renderCapital();
+    });
+    var discard = $('#cap-discard');
+    if (discard) discard.addEventListener('click', async function(){
+      if (!confirm('Discard this review? Your assignments will be cleared.')) return;
+      await fetch('/dashboard/api/capital/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'discard', review_id:parseInt(discard.getAttribute('data-review'))})});
       renderCapital();
     });
     document.querySelectorAll('.cap-deploy-btn').forEach(function(btn){
