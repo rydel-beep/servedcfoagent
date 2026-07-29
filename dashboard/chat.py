@@ -454,6 +454,32 @@ def _build_context_block(snapshot_json: str, lean: bool = False) -> str:
     if fp:
         sections.append("FINANCIAL POSITION (dual-basis):\n" + json.dumps(fp, indent=2))
 
+    # Capital allocation (the deciding layer). Real keys only; opportunity cost is a MODELLED figure
+    # at an ASSUMED return — labelled so the model never presents it as fact, and a missing config is
+    # stated as absent, never invented (heeds the documented null-key bug).
+    try:
+        import capital_allocation
+        cap = capital_allocation.compute_state()
+        cap_block = {
+            "state": cap.get("state"),
+            "cash_in_bank_aud": (cap.get("cash") or {}).get("cash_aud"),
+            "survival_buffer_aud": (cap.get("settings") or {}).get("survival_buffer_aud"),
+            "deployable_surplus_aud": cap.get("deployable_surplus_aud"),
+            "idle_surplus_aud": cap.get("idle_surplus_aud"),
+            "opportunity_cost_monthly_aud": cap.get("opportunity_cost_monthly_aud"),
+            "opportunity_cost_annualised_aud": cap.get("opportunity_cost_annualised_aud"),
+            "assumed_annual_return_pct": cap.get("assumed_return_pct"),
+            "unassigned_aud": cap.get("unassigned_aud"),
+            "config_missing": cap.get("config_missing"),
+            "NOTE": ("opportunity cost is MODELLED at the ASSUMED return (an assumption, not a "
+                     "guarantee). If config_missing is non-empty, that input is NOT set — say so, "
+                     "never invent a value."),
+        }
+        sections.append("CAPITAL ALLOCATION (idle-cash opportunity cost is modelled, not a fact):\n"
+                        + json.dumps(cap_block, indent=2))
+    except Exception:
+        pass
+
     # Canonical metrics — the single source of truth for every headline number.
     # Each entry is tagged FLOW (per-period) or BALANCE (point-in-time);
     # never sum a FLOW with a BALANCE. Quote these values, do not recompute.

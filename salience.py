@@ -185,6 +185,38 @@ def collect(snap: dict | None = None) -> list[dict]:
     except Exception:
         pass
 
+    # 8) Capital allocation — idle cash bleeding + review due (watermarked; only when genuinely new).
+    try:
+        import capital_allocation
+        cap = capital_allocation.compute_state()
+        if cap.get("state") == "ok":
+            idle = cap.get("idle_surplus_aud") or 0
+            opp = cap.get("opportunity_cost_monthly_aud")
+            if idle > 1000 and opp:
+                eid = f"capital_idle:{int(idle // 10000)}"   # re-surface only when idle moves ~$10k
+                if eid not in told:
+                    events.append({"id": eid, "type": "capital", "salience": 66, "ago": 0,
+                                   "spoken": (f"${idle:,.0f} sitting idle above your buffer — leaking "
+                                              f"~${opp:,.0f}/mo at your assumed return")})
+            # review due per cadence
+            st = cap.get("settings") or {}
+            last = st.get("last_review_at"); cadence = st.get("review_cadence") or "quarterly"
+            due = False
+            if st.get("buffer_set"):
+                if not last:
+                    due = True
+                else:
+                    ago = _days_ago(last)
+                    win = 30 if cadence == "monthly" else 90
+                    due = ago is not None and ago >= win
+            if due:
+                eid = f"capital_review_due:{today_sydney().strftime('%Y-%m')}"
+                if eid not in told:
+                    events.append({"id": eid, "type": "capital", "salience": 58, "ago": 0,
+                                   "spoken": "your allocation review is due — surplus to assign"})
+    except Exception:
+        pass
+
     events.sort(key=lambda e: (e["salience"], -e["ago"]), reverse=True)
     return events
 

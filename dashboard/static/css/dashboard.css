@@ -2705,3 +2705,42 @@ html, body { max-width: 100%; overflow-x: hidden; }
   .main { padding: 12px 12px 40px; }
   .kpi-strip { grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr)); }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CAPITAL ALLOCATION — the deciding layer. Idle cash reads as LOSS, not safety.
+   ══════════════════════════════════════════════════════════════════════════ */
+#section-capital .cap-hero { border-radius: 10px; padding: 16px 18px; margin-bottom: 12px; }
+.cap-hero.cap-bleed { background: rgba(232,97,107,0.12); border: 1px solid var(--red, #E8616B); }
+.cap-hero.cap-danger { background: rgba(232,97,107,0.18); border: 1px solid var(--red, #E8616B); }
+.cap-hero-k { font-size: 11px; letter-spacing: .08em; color: var(--red, #E8616B); font-weight: 700; }
+.cap-hero-v { font-size: 30px; font-weight: 800; color: var(--red, #E8616B); margin: 2px 0; line-height: 1.05; }
+.cap-hero-sub { font-size: 12.5px; color: var(--text-secondary, #A8BBD0); line-height: 1.45; }
+.cap-assume { color: var(--text-muted, #6E86A3); font-style: italic; }
+.cap-stale { color: var(--amber, #F5A623); font-size: 11px; }
+.cap-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px,100%),1fr)); gap: 10px; margin-bottom: 12px; }
+.cap-tile { background: var(--bg-inset, #0C1626); border: 1px solid var(--border, #1E2E45); border-radius: 8px; padding: 12px 14px; }
+.cap-tile.cap-wall { opacity: .72; }
+.cap-tile-k { font-size: 10px; letter-spacing: .05em; color: var(--text-muted, #6E86A3); text-transform: uppercase; }
+.cap-tile-v { font-size: 22px; font-weight: 700; color: var(--text, #E8EFF6); margin-top: 2px; }
+.cap-tile-sub { font-size: 11px; color: var(--text-muted, #6E86A3); margin-top: 2px; }
+.cap-ritual { border: 1px solid var(--border, #1E2E45); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; }
+.cap-unassigned { font-size: 16px; font-weight: 800; margin-bottom: 10px; padding: 6px 10px; border-radius: 6px; }
+.cap-unassigned.cap-warn { color: var(--red, #E8616B); background: rgba(232,97,107,0.12); }
+.cap-unassigned.cap-ok { color: var(--green, #34C98E); background: rgba(52,201,142,0.12); }
+.cap-brow { display: grid; grid-template-columns: 1fr 120px auto; gap: 8px; align-items: center; margin-bottom: 6px; }
+.cap-bname { font-size: 13px; color: var(--text, #E8EFF6); }
+.cap-assign { background: var(--bg-inset, #0C1626); border: 1px solid var(--border, #1E2E45); color: var(--text, #E8EFF6); border-radius: 6px; padding: 6px 8px; font-size: 13px; width: 100%; }
+.cap-btn { background: var(--bg-inset, #0C1626); border: 1px solid var(--border, #1E2E45); color: var(--text-secondary, #A8BBD0); border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
+.cap-btn:hover { border-color: var(--accent, #2E6EA6); }
+.cap-btn-primary { background: var(--accent, #2E6EA6); color: #fff; border: none; font-weight: 600; margin-top: 8px; }
+.cap-btn-primary:disabled { opacity: .45; cursor: default; }
+.cap-deploy-btn { padding: 5px 10px; }
+.cap-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-top: 8px; }
+.cap-form label { font-size: 11px; color: var(--text-muted, #6E86A3); display: flex; flex-direction: column; gap: 3px; }
+.cap-form input, .cap-form select { background: var(--bg-inset, #0C1626); border: 1px solid var(--border, #1E2E45); color: var(--text, #E8EFF6); border-radius: 6px; padding: 6px 8px; font-size: 13px; }
+.cap-note { font-size: 12px; color: var(--text-muted, #6E86A3); }
+.cap-config, .cap-histbox { margin-top: 10px; font-size: 12px; color: var(--text-muted, #6E86A3); }
+.cap-config summary, .cap-histbox summary { cursor: pointer; color: var(--text-secondary, #A8BBD0); }
+.cap-hrow { font-size: 12px; color: var(--text-secondary, #A8BBD0); padding: 4px 0; border-bottom: 1px solid var(--border, #1E2E45); }
+.cap-hdate { color: var(--text-muted, #6E86A3); margin-right: 6px; }
+.cap-run { padding: 6px 0; }

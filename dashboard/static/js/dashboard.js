@@ -4432,6 +4432,139 @@
     if (ev.key === 'Enter' && ev.target.id === 'collab-body') { ev.preventDefault(); _postLog(); }
   });
 
+  // ── CAPITAL ALLOCATION — the deciding layer ──────────────────────────────
+  var _capState = null;
+  function _cad(v) { return (v==null) ? 'n/a' : '$' + Math.round(v).toLocaleString(); }
+  async function renderCapital() {
+    var box = $('#capital-content'); if (!box) return;
+    try {
+      var r = await fetch('/dashboard/api/capital'); if (!r.ok) return;
+      _capState = await r.json();
+      box.innerHTML = _capHtml(_capState);
+      _wireCapital();
+    } catch (e) {}
+  }
+  function _capHtml(s) {
+    var badge = $('#capital-badge');
+    // NOT CONFIGURED
+    if (s.state === 'not_configured') {
+      var miss = (s.config_missing||[]).map(function(x){return x==='survival_buffer_aud'?'survival buffer':'assumed return';}).join(' and ');
+      if (badge) badge.textContent = 'set up';
+      return '<div class="cap-setup"><div class="cap-note">Set your survival buffer (the Wall) and an assumed annual return to switch this on. '
+        + 'These aren’t invented — you set them.</div>' + _capSettingsForm(s) + '</div>';
+    }
+    // BELOW BUFFER
+    if (s.below_buffer) {
+      if (badge) badge.textContent = 'below buffer';
+      return '<div class="cap-belowbuffer"><div class="cap-hero cap-danger"><div class="cap-hero-k">BELOW BUFFER</div>'
+        + '<div class="cap-hero-v">Rebuild the wall before deploying</div>'
+        + '<div class="cap-hero-sub">Cash ' + _cad(s.cash.cash_aud) + ' is under your ' + _cad(s.settings.survival_buffer_aud)
+        + ' wall. No surplus, no opportunity cost until it’s covered.</div></div>' + _capSettingsForm(s) + '</div>';
+    }
+    if (badge) badge.textContent = (s.unassigned_aud > 0 ? 'unassigned' : 'deployable');
+    var stale = s.cash && s.cash.stale ? ' <span class="cap-stale">last-known (Xero unavailable)</span>' : '';
+    // OPPORTUNITY COST HERO — the bleed
+    var hero = '<div class="cap-hero cap-bleed"><div class="cap-hero-k">OPPORTUNITY COST — BLEEDING</div>'
+      + '<div class="cap-hero-v">' + _cad(s.opportunity_cost_monthly_aud) + '/mo</div>'
+      + '<div class="cap-hero-sub">' + _cad(s.opportunity_cost_annualised_aud) + '/yr leaking — '
+      + _cad(s.idle_surplus_aud) + ' idle above your buffer, at your assumed ' + (s.assumed_return_pct) + '% '
+      + '<span class="cap-assume">(an assumption, not a guarantee)</span>. This stops when you deploy.</div></div>';
+    // Wall + deployable tiles
+    var tiles = '<div class="cap-tiles">'
+      + '<div class="cap-tile cap-wall"><div class="cap-tile-k">THE WALL · sacred</div><div class="cap-tile-v">' + _cad(s.settings.survival_buffer_aud) + '</div><div class="cap-tile-sub">Funded and ignored' + stale + '</div></div>'
+      + '<div class="cap-tile"><div class="cap-tile-k">DEPLOYABLE SURPLUS</div><div class="cap-tile-v">' + _cad(s.deployable_surplus_aud) + '</div><div class="cap-tile-sub">cash ' + _cad(s.cash.cash_aud) + ' − wall</div></div>'
+      + '</div>';
+    // Bucket allocation panel (only if a draft review is open); else the "run review" CTA
+    var panel;
+    if (s.draft_review) {
+      panel = _capBucketPanel(s);
+    } else {
+      panel = '<div class="cap-run"><button id="cap-run-review" class="cap-btn cap-btn-primary">Run Allocation Review</button>'
+        + '<span class="cap-note"> — assign every deployable dollar a job. Deploying is housekeeping, not gambling.</span></div>';
+    }
+    // history
+    var hist = _capHistory(s.history || []);
+    return hero + tiles + panel + hist + '<details class="cap-config"><summary>Settings</summary>' + _capSettingsForm(s) + '</details>';
+  }
+  function _capSettingsForm(s) {
+    var st = s.settings || {};
+    return '<div class="cap-form">'
+      + '<label>Survival buffer (Wall) $ <input type="number" id="cap-buffer" value="' + (st.survival_buffer_aud||'') + '" step="1000"></label>'
+      + '<label>Assumed return % <input type="number" id="cap-return" value="' + (st.assumed_annual_return_pct||'') + '" step="0.5"></label>'
+      + '<label>Cadence <select id="cap-cadence"><option value="quarterly"' + (st.review_cadence==='quarterly'?' selected':'') + '>quarterly</option><option value="monthly"' + (st.review_cadence==='monthly'?' selected':'') + '>monthly</option></select></label>'
+      + '<button id="cap-save-settings" class="cap-btn">Save</button></div>';
+  }
+  function _capBucketPanel(s) {
+    var dr = s.draft_review;
+    var assigned = {}; (dr.lines||[]).forEach(function(l){ assigned[l.bucket_id] = l.assigned_aud || 0; });
+    var rows = (s.buckets||[]).filter(function(b){return !b.is_locked;}).map(function(b){
+      var v = assigned[b.id] || '';
+      return '<div class="cap-brow" data-bucket="' + b.id + '"><div class="cap-bname" title="' + esc(b.note||'') + '">' + esc(b.name) + '</div>'
+        + '<input type="number" class="cap-assign" data-bucket="' + b.id + '" value="' + v + '" placeholder="0" step="1000">'
+        + '<button class="cap-deploy-btn cap-btn" data-bucket="' + b.id + '">deploy</button></div>';
+    }).join('');
+    return '<div class="cap-ritual"><div class="cap-unassigned" id="cap-unassigned">Unassigned: ' + _cad(s.unassigned_aud)
+      + '</div><div class="cap-brows" data-surplus="' + dr.surplus_aud + '" data-review="' + dr.review_id + '">' + rows + '</div>'
+      + '<button id="cap-commit" class="cap-btn cap-btn-primary" disabled>Commit — every dollar assigned</button></div>';
+  }
+  function _capHistory(h) {
+    if (!h.length) return '';
+    var rows = h.slice(0,6).map(function(rev){
+      var lines = (rev.rows||[]).map(function(x){ return esc(x.bucket)+': assigned '+_cad(x.assigned_aud)+' / deployed '+_cad(x.deployed_aud); }).join(' · ');
+      return '<div class="cap-hrow"><span class="cap-hdate">' + (rev.created_at||'').slice(0,10) + '</span> surplus ' + _cad(rev.surplus_aud) + ' — ' + lines + '</div>';
+    }).join('');
+    return '<details class="cap-histbox"><summary>Review history (assigned vs deployed)</summary>' + rows + '</details>';
+  }
+  function _capUnassignedLive() {
+    var wrap = $('.cap-brows'); if (!wrap) return;
+    var surplus = parseFloat(wrap.getAttribute('data-surplus')) || 0;
+    var sum = 0; document.querySelectorAll('.cap-assign').forEach(function(i){ sum += parseFloat(i.value)||0; });
+    var un = Math.round((surplus - sum) * 100) / 100;
+    var el = $('#cap-unassigned'); if (el) { el.textContent = 'Unassigned: ' + _cad(un); el.className = 'cap-unassigned ' + (Math.abs(un)<0.005 ? 'cap-ok' : 'cap-warn'); }
+    var commit = $('#cap-commit'); if (commit) commit.disabled = Math.abs(un) >= 0.005;
+  }
+  function _wireCapital() {
+    var save = $('#cap-save-settings');
+    if (save) save.addEventListener('click', async function(){
+      var body = {}; var b=$('#cap-buffer'), r=$('#cap-return'), c=$('#cap-cadence');
+      if (b && b.value!=='') body.survival_buffer_aud = parseFloat(b.value);
+      if (r && r.value!=='') body.assumed_annual_return_pct = parseFloat(r.value);
+      if (c) body.review_cadence = c.value;
+      await fetch('/dashboard/api/capital/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      renderCapital();
+    });
+    var run = $('#cap-run-review');
+    if (run) run.addEventListener('click', async function(){
+      await fetch('/dashboard/api/capital/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'run'})});
+      renderCapital();
+    });
+    document.querySelectorAll('.cap-assign').forEach(function(inp){
+      inp.addEventListener('input', _capUnassignedLive);
+      inp.addEventListener('change', async function(){
+        var wrap=$('.cap-brows'); var rid=wrap && wrap.getAttribute('data-review');
+        await fetch('/dashboard/api/capital/review',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({action:'assign', review_id:parseInt(rid), bucket_id:parseInt(inp.getAttribute('data-bucket')), assigned_aud:parseFloat(inp.value)||0})});
+      });
+    });
+    _capUnassignedLive();
+    var commit = $('#cap-commit');
+    if (commit) commit.addEventListener('click', async function(){
+      var wrap=$('.cap-brows'); var rid=wrap && wrap.getAttribute('data-review');
+      var res=await (await fetch('/dashboard/api/capital/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'commit', review_id:parseInt(rid)})})).json();
+      if (!res.ok) { alert(res.error || 'Could not commit'); return; }
+      renderCapital();
+    });
+    document.querySelectorAll('.cap-deploy-btn').forEach(function(btn){
+      btn.addEventListener('click', async function(){
+        var bid = parseInt(btn.getAttribute('data-bucket'));
+        var amt = prompt('How much did you deploy from this bucket? ($)'); if (amt===null) return;
+        amt = parseFloat(amt); if (!(amt>0)) return;
+        await fetch('/dashboard/api/capital/deploy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bucket_id:bid, amount_aud:amt})});
+        renderCapital();
+      });
+    });
+  }
+
   async function loadAll() {
     var hadSnap = !!currentSnap;
     if (hadSnap) _setUpdating(true);
@@ -4449,6 +4582,7 @@
     loadActor();             // who's signed in (Rydel / Piolo)
     renderCollabQueue();     // Zone 3 — bookkeeping queue with the verification loop
     renderWorkLog();         // Zone 3 — the shared work log
+    renderCapital();         // The deciding layer — idle-cash bleed + allocation ritual
     if (hadSnap) _setUpdating(false);
     if (historyData && historyData.length > 1) {
       $('#reps-sparkline-status').textContent = historyData.length + ' days of history';

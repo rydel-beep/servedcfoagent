@@ -534,6 +534,12 @@ def _deferred_startup():
             mrr_snapshot.take_snapshot()
         except Exception as _e:
             logger.error("MRR-snapshot boot skipped: %s", _e)
+        # Capital allocation: create tables + seed the six buckets (the deciding layer).
+        try:
+            import capital_allocation
+            capital_allocation.migrate()
+        except Exception as _e:
+            logger.error("Capital-allocation boot skipped: %s", _e)
         _startup_refresh()
         _start_scheduled_refresh()
 

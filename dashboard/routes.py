@@ -725,6 +725,7 @@ def api_chat():
         import capacity_engine, forecasting_engine
         _tier2 = [
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
+            (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
             (capacity_engine.handle_capacity_command, False),  # hiring/capacity/raise/afford questions
             (forecasting_engine.handle_forecast_command, False),  # cash-flow / MRR / runway forecasts
             (__import__('action_feed').handle_action_feed_command, False),  # 'what needs my attention'
@@ -877,6 +878,7 @@ def api_chat_stream():
         _thread = " ".join((m.get("content") or "") for m in (history or [])[-6:])
         _tier2 = [
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
+            (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
             (capacity_engine.handle_capacity_command, False),
             (forecasting_engine.handle_forecast_command, False),
             (__import__('action_feed').handle_action_feed_command, False),
@@ -1081,6 +1083,61 @@ def _audit_pii_export(kind: str, n: int):
                              link_type="reactivation_export", link_ref=kind)
     except Exception as e:
         logger.info("reactivation export audit failed: %s", e)
+
+
+@bp.route("/api/capital", methods=["GET"])
+@require_auth
+def api_capital():
+    """The full capital-allocation state — cash, wall, surplus, the idle-cash bleed, buckets, the
+    open review + unassigned, and review history. Owner-visible (Piolo has full visibility too)."""
+    import capital_allocation
+    state = capital_allocation.compute_state()
+    state["history"] = capital_allocation.review_history()
+    resp = jsonify(state)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@bp.route("/api/capital/settings", methods=["POST"])
+@require_auth
+def api_capital_settings():
+    """Set the wall / assumed return / cadence. (UI already confirms; voice uses the confirm loop.)"""
+    import capital_allocation
+    d = request.get_json(silent=True) or {}
+    results = {}
+    for field in ("survival_buffer_aud", "assumed_annual_return_pct", "review_cadence"):
+        if field in d and d[field] is not None:
+            results[field] = capital_allocation.set_setting(field, d[field])
+    return jsonify({"ok": True, "results": results, "state": capital_allocation.compute_state()})
+
+
+@bp.route("/api/capital/review", methods=["POST"])
+@require_auth
+def api_capital_review():
+    """Review actions: {action: 'run'|'assign'|'commit', ...}."""
+    import capital_allocation
+    d = request.get_json(silent=True) or {}
+    action = d.get("action")
+    if action == "run":
+        return jsonify(capital_allocation.run_review())
+    if action == "assign":
+        return jsonify(capital_allocation.set_line(d.get("review_id"), d.get("bucket_id"),
+                                                   d.get("assigned_aud"), d.get("note")))
+    if action == "commit":
+        return jsonify(capital_allocation.commit_review(d.get("review_id")))
+    return jsonify({"ok": False, "error": "unknown action"}), 400
+
+
+@bp.route("/api/capital/deploy", methods=["POST"])
+@require_auth
+def api_capital_deploy():
+    """Log a deployment — idle_surplus shrinks, the bleed tile drops (the reward loop)."""
+    import capital_allocation
+    d = request.get_json(silent=True) or {}
+    if not d.get("bucket_id") or d.get("amount_aud") is None:
+        return jsonify({"ok": False, "error": "bucket_id and amount_aud required"}), 400
+    return jsonify(capital_allocation.mark_deployed(d["bucket_id"], d["amount_aud"],
+                                                    d.get("note"), d.get("review_id")))
 
 
 @bp.route("/api/test-lead-scan", methods=["GET"])
