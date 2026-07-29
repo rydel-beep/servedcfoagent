@@ -4437,9 +4437,15 @@
   function _cad(v) { return (v==null) ? 'n/a' : '$' + Math.round(v).toLocaleString(); }
   async function renderCapital() {
     var box = $('#capital-content'); if (!box) return;
+    // Never wipe a field the user is actively editing (defensive — no mid-typing re-render).
+    var ae = document.activeElement;
+    if (ae && box.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT')) return;
     try {
       var r = await fetch('/dashboard/api/capital'); if (!r.ok) return;
       _capState = await r.json();
+      // re-check focus after the await (the user may have started typing during the fetch)
+      var ae2 = document.activeElement;
+      if (ae2 && box.contains(ae2) && (ae2.tagName === 'INPUT' || ae2.tagName === 'SELECT')) return;
       box.innerHTML = _capHtml(_capState);
       _wireCapital();
     } catch (e) {}

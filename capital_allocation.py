@@ -223,12 +223,48 @@ def _deployed_sum(review_id: int) -> Decimal:
 # ── The compute (all figures derive here — one testable place) ───────────────
 
 def compute_state() -> dict:
-    """The full capital-allocation state: cash, wall, surplus, idle, the bleed, the ritual number."""
-    cash = get_cash()
-    st = get_settings()
-    buckets = _buckets() if db.db_configured() else []
-
+    """The full capital-allocation state: cash, wall, surplus, idle, the bleed, the ritual number.
+    ALL DB reads share ONE connection (settings + buckets + reviews + lines + deployed) — no
+    per-query connection churn that could pressure the pool under the dashboard's concurrent load."""
+    cash = get_cash()          # no DB (reads the persisted snapshot)
     cash_d = _dec(cash.get("cash_aud"))
+
+    st = {"configured": False}
+    buckets = []
+    committed = draft = None
+    deployed = Decimal(0)
+    draft_lines = {}
+    if db.db_configured():
+        try:
+            with db.get_conn() as c:
+                sr = c.execute("SELECT * FROM capital_settings WHERE id=1").fetchone()
+                if sr:
+                    sd = dict(sr)
+                    st = {
+                        "survival_buffer_aud": _money(_dec(sd.get("survival_buffer_aud"))),
+                        "assumed_annual_return_pct": (float(sd["assumed_annual_return_pct"])
+                                                      if sd.get("assumed_annual_return_pct") is not None else None),
+                        "review_cadence": sd.get("review_cadence"),
+                        "last_review_at": sd["last_review_at"].isoformat() if sd.get("last_review_at") else None,
+                        "buffer_set": sd.get("survival_buffer_aud") is not None,
+                        "return_set": sd.get("assumed_annual_return_pct") is not None,
+                    }
+                buckets = [dict(b) for b in c.execute(
+                    "SELECT * FROM allocation_buckets ORDER BY sort_order, id").fetchall()]
+                cr = c.execute("SELECT * FROM allocation_reviews WHERE status='committed' ORDER BY id DESC LIMIT 1").fetchone()
+                committed = dict(cr) if cr else None
+                if committed:
+                    dr = c.execute("SELECT COALESCE(SUM(amount_aud),0) s FROM bucket_deployments WHERE review_id=%s",
+                                   (committed["id"],)).fetchone()
+                    deployed = _dec(dr["s"]) or Decimal(0)
+                drr = c.execute("SELECT * FROM allocation_reviews WHERE status='draft' ORDER BY id DESC LIMIT 1").fetchone()
+                draft = dict(drr) if drr else None
+                if draft:
+                    draft_lines = {row["bucket_id"]: dict(row) for row in c.execute(
+                        "SELECT * FROM allocation_lines WHERE review_id=%s", (draft["id"],)).fetchall()}
+        except Exception as e:
+            logger.info("compute_state DB read failed: %s", e)
+
     wall_d = _dec(st.get("survival_buffer_aud"))
     ret = st.get("assumed_annual_return_pct")
 
@@ -256,9 +292,6 @@ def compute_state() -> dict:
 
     below_buffer = cash_d < wall_d
     surplus = max(Decimal(0), cash_d - wall_d)
-
-    committed = _current_review("committed")
-    deployed = _deployed_sum(committed["id"]) if committed else Decimal(0)
     idle = max(Decimal(0), surplus - deployed)
 
     # Opportunity cost is a MODELLED figure — only with a POSITIVE return assumption, and $0 below
@@ -269,19 +302,17 @@ def compute_state() -> dict:
         opp_a = idle * r
         opp_m = opp_a / Decimal(12)
 
-    # Ritual-time number: unassigned against the current DRAFT review's lines.
-    draft = _current_review("draft")
+    # Ritual-time number: unassigned against the current DRAFT review's lines (already loaded above).
     unassigned = None
     draft_block = None
     if draft:
-        lines = _lines(draft["id"])
-        assigned = sum((_dec(l.get("assigned_aud")) or Decimal(0) for l in lines.values()), Decimal(0))
+        assigned = sum((_dec(l.get("assigned_aud")) or Decimal(0) for l in draft_lines.values()), Decimal(0))
         draft_surplus = _dec(draft.get("surplus_aud")) or surplus
         unassigned = draft_surplus - assigned
         draft_block = {"review_id": draft["id"], "created_at": draft["created_at"].isoformat(),
                        "surplus_aud": _money(draft_surplus), "assigned_total_aud": _money(assigned),
                        "lines": [{"bucket_id": bid, "assigned_aud": _money(_dec(l.get("assigned_aud"))),
-                                  "note": l.get("note")} for bid, l in lines.items()]}
+                                  "note": l.get("note")} for bid, l in draft_lines.items()]}
 
     out.update({
         "state": "below_buffer" if below_buffer else "ok",
@@ -475,7 +506,8 @@ def review_history(limit: int = 12) -> list[dict]:
             revs = [dict(r) for r in c.execute(
                 "SELECT * FROM allocation_reviews WHERE status='committed' ORDER BY id DESC LIMIT %s",
                 (limit,)).fetchall()]
-            bnames = {b["id"]: b["name"] for b in _buckets()}
+            bnames = {b["id"]: b["name"] for b in c.execute(
+                "SELECT id, name FROM allocation_buckets").fetchall()}
             out = []
             for rev in revs:
                 lines = c.execute("SELECT bucket_id, assigned_aud FROM allocation_lines WHERE review_id=%s",
