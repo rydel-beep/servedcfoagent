@@ -938,3 +938,16 @@
     Self-improvement: quarterly_model_store persists each model + grades prior quarter (renders from
     next gen) + linter trend. Stage-A 386/1 (pre-existing capacity drift). Report:
     dashboard/QUARTERLY_V2_REPORT.md.
+
+97. **Test-lead exclusion — Phase 0 confirmed (2026-07-29).** Scan of both mirrors found 19 strong
+    test candidates, 0 borderline. Tracker: 17 of 1291 leads (Jaspher/Test-Jas variants, Carl Test
+    Account, Try [test@ email], Curry Delights [rydel in email]). GHL: 2 (rydel@ contact + Curry
+    Delights). RYDEL CONFIRMED: void all 19; Curry Delights = test (void); tokens = rydel, jaspher,
+    test (staff tokens match anywhere; 'test' only in test-shaped positions, else borderline→review).
+    IMPACT: all-time tracker 1291→1274 (−17); Q2 2026 UNAFFECTED (test entries are 2025 + one
+    2026-07-27, none in Apr–Jun); trailing-30d −1 (the 2026-07-27 Jaspher Test driving the salience
+    'new lead' contamination). Confirmed list == rule output, so rules need no special-casing. NOTE:
+    Team-Scorecard funnel (sales_analytics_pull) is a pre-aggregated sheet cell — can't row-filter;
+    row-level cohort_funnel IS cleaned. Design: ONE classification engine (test_leads.classify) + one
+    clean view per source (clean_tracker_rows + ghl read_opportunities(exclude_test)); consumers
+    repoint; excluded≠deleted (audit view); overrides remembered + resync-proof.

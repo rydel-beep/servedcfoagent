@@ -14,7 +14,7 @@ from flask import (
     url_for, Response, stream_with_context,
 )
 
-from dashboard.auth import require_auth, DASHBOARD_TOKEN, COOKIE_NAME, COOKIE_MAX_AGE
+from dashboard.auth import require_auth, require_owner, DASHBOARD_TOKEN, COOKIE_NAME, COOKIE_MAX_AGE
 from dashboard.chat import chat as chat_fn, chat_stream as chat_stream_fn
 from config import CFO_REFRESH_KEY
 
@@ -716,6 +716,7 @@ def api_chat():
             (tracker_read.handle_verify_data, False),      # "verify your data" → sync-state summary
             (lambda m: __import__('quarterly_review').handle_quarterly_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # quarterly review / QoQ+YoY / 3x
             (lambda m: __import__('reactivation').handle_reactivation_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # GHL lead reactivation / where-left-off
+            (lambda m: __import__('test_leads').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # test-lead exclusion / what's excluded / mark test|real
             (range_unit_economics.handle_unit_econ_command, False),
             (payback_reconciliation.handle_payback_command, False),
             (leads_view.handle_lead_count_command, False),
@@ -860,6 +861,7 @@ def api_chat_stream():
             (tracker_read.handle_verify_data, False),
             (lambda m: __import__('quarterly_review').handle_quarterly_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # quarterly review / QoQ+YoY / 3x
             (lambda m: __import__('reactivation').handle_reactivation_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # GHL lead reactivation / where-left-off
+            (lambda m: __import__('test_leads').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # test-lead exclusion / what's excluded / mark test|real
             (range_unit_economics.handle_unit_econ_command, False),
             (payback_reconciliation.handle_payback_command, False),
             (leads_view.handle_lead_count_command, False),
@@ -1053,10 +1055,44 @@ def _audit_pii_export(kind: str, n: int):
 @bp.route("/api/test-lead-scan", methods=["GET"])
 @require_auth
 def api_test_lead_scan():
-    """READ-ONLY Phase-0 scan: classify both mirrors for test-lead candidates (strong + borderline).
-    Filters no metric — this is the review artifact for confirmation."""
+    """The excluded-entries AUDIT VIEW: classify both mirrors → the voided list + borderline (owner +
+    Piolo). Raw lead access lives ONLY here + the classifier; metrics read the clean view."""
     import test_leads
     return jsonify(test_leads.scan())
+
+
+@bp.route("/api/test-leads/override", methods=["POST"])
+@require_auth
+def api_test_lead_override():
+    """Manual mark test/real (owner + Piolo). Persisted, audited, REMEMBERED — outranks rules and
+    survives re-syncs."""
+    import test_leads
+    from dashboard.auth import current_actor
+    d = request.get_json(silent=True) or {}
+    key = d.get("key")
+    if not key:
+        return jsonify({"ok": False, "error": "key required"}), 400
+    actor = current_actor()
+    test_leads.set_override(key, bool(d.get("is_test")), actor.get("user"))
+    try:
+        import collab
+        collab.record_action(actor, f"marked a lead {'TEST' if d.get('is_test') else 'REAL'} ({key})",
+                             link_type="test_lead_override", link_ref=key)
+    except Exception:
+        pass
+    return jsonify({"ok": True, "key": key, "is_test": bool(d.get("is_test"))})
+
+
+@bp.route("/api/test-leads/confirm", methods=["POST"])
+@require_owner
+def api_test_lead_confirm():
+    """Owner confirms the first classification pass (enables the repoints) + persists the token rules."""
+    import test_leads
+    d = request.get_json(silent=True) or {}
+    if d.get("rules"):
+        test_leads.set_rules(d["rules"])
+    test_leads.confirm_first_pass(by="rydel")
+    return jsonify({"ok": True, "confirmed": True, "rules": test_leads.rules()})
 
 
 @bp.route("/leads", methods=["GET"])

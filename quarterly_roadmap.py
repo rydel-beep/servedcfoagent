@@ -26,7 +26,7 @@ def _channel_mix() -> dict:
     """Current lead-source mix from the GHL mirror (opportunity.source). 98% fill (Phase 0)."""
     try:
         import ghl_mirror
-        rows = ghl_mirror.read_opportunities(open_only=True)
+        rows = ghl_mirror.read_opportunities(open_only=True, exclude_test=True)
         from collections import Counter
         c = Counter()
         for o in rows:

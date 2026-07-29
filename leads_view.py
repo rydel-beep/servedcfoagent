@@ -84,7 +84,13 @@ def _rows():
     if rows is None:
         from sales_analytics_pull import _fetch_tab
         rows = _fetch_tab(_TAB)
-    return rows or []
+    rows = rows or []
+    # Repoint to the clean view: test leads voided from all metrics (one classification engine).
+    try:
+        import test_leads
+        return test_leads.clean_tracker_rows(rows)
+    except Exception:
+        return rows
 
 
 def recent_leads(limit: int = 5) -> dict:

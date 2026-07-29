@@ -145,7 +145,7 @@ def classify(join_tracker: bool = True) -> list[dict]:
     """Every OPEN opportunity, classified with bucket + warmth + days-stale + tracker join.
     Bulk-loads contacts + notes (a few queries, not per-lead round-trips)."""
     today = today_sydney()
-    opps = ghl_mirror.read_opportunities(open_only=True)
+    opps = ghl_mirror.read_opportunities(open_only=True, exclude_test=True)
     contacts = ghl_mirror.read_all_contacts()
     notes_idx = ghl_mirror.notes_by_contact()
     idx = _tracker_index() if join_tracker else {"by_email": {}, "by_name": {}}
@@ -239,7 +239,7 @@ def find_lead_by_name(name: str) -> list[dict]:
     qtoks = [t for t in re.split(r"[^a-z0-9]+", ql) if len(t) >= 3]
     contacts = ghl_mirror.read_all_contacts()
     best: dict = {}   # dedupe key -> (score, hit)
-    for o in ghl_mirror.read_opportunities(open_only=True):
+    for o in ghl_mirror.read_opportunities(open_only=True, exclude_test=True):
         c = contacts.get(o.get("contact_id"))
         disp = (" ".join(x for x in [(c or {}).get("first_name"), (c or {}).get("last_name")] if x)
                 or o.get("name") or "")
@@ -277,7 +277,7 @@ def lookup_lead(name: str | None = None, contact_id: str | None = None) -> dict:
     hit = None
     if contact_id:
         c = ghl_mirror.read_contact(contact_id)
-        opp = next((o for o in ghl_mirror.read_opportunities(open_only=True)
+        opp = next((o for o in ghl_mirror.read_opportunities(open_only=True, exclude_test=True)
                     if o.get("contact_id") == contact_id), None)
         if opp:
             disp = (" ".join(x for x in [(c or {}).get("first_name"), (c or {}).get("last_name")] if x)
@@ -288,7 +288,7 @@ def lookup_lead(name: str | None = None, contact_id: str | None = None) -> dict:
         if not hits:
             allnames = []
             contacts = ghl_mirror.read_all_contacts()
-            for o in ghl_mirror.read_opportunities(open_only=True):
+            for o in ghl_mirror.read_opportunities(open_only=True, exclude_test=True):
                 c = contacts.get(o.get("contact_id"))
                 dn = " ".join(x for x in [(c or {}).get("first_name"), (c or {}).get("last_name")] if x) or (o.get("name") or "")
                 if dn:
@@ -347,7 +347,7 @@ def handle_reactivation_command(text: str, actor: dict | None = None) -> tuple[s
         if not hits:
             # offer closest matches; NEVER invent a lead
             allnames = []
-            for o in ghl_mirror.read_opportunities(open_only=True)[:800]:
+            for o in ghl_mirror.read_opportunities(open_only=True, exclude_test=True)[:800]:
                 c = ghl_mirror.read_contact(o.get("contact_id")) if o.get("contact_id") else None
                 dn = " ".join(x for x in [(c or {}).get("first_name"), (c or {}).get("last_name")] if x) or (o.get("name") or "")
                 if dn:

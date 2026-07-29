@@ -105,12 +105,145 @@ def classify(email: str = "", name: str = "", business: str = "", tags="",
     return {"is_test": False, "strength": None, "rule": None, "source_of_truth": "clean", "key": key}
 
 
+# ── THE CLEAN VIEWS (the only thing consumers may read for metrics) ──────────
+
+def is_test_contact(contact: dict | None, source: str = "ghl") -> bool:
+    """Is this GHL contact a test lead? (email/name/tags via the one engine + overrides)."""
+    if not contact:
+        return False
+    name = " ".join(x for x in [contact.get("first_name"), contact.get("last_name")] if x) or ""
+    return classify(email=contact.get("email") or "", name=name, tags=contact.get("tags") or [],
+                    source=source, ext_id=contact.get("id") or "").get("is_test", False)
+
+
+def _tracker_cols(rows: list) -> tuple[int, int, int, int]:
+    hi = next((i for i, rr in enumerate(rows[:8]) if any("lead name" in (c or "").lower() for c in rr)), 0)
+    hdr = [(c or "").lower() for c in rows[hi]]
+    def col(*names):
+        for nm in names:
+            for i, h in enumerate(hdr):
+                if nm in h:
+                    return i
+        return None
+    return hi, col("email"), col("lead name"), col("business name", "business")
+
+
+def clean_tracker_rows(rows: list | None) -> list:
+    """Return the tracker rows with test-lead DATA rows removed (header preserved). THE clean tracker
+    view — leads_view and range_unit_economics repoint here. Non-destructive: the mirror keeps all
+    rows; this only filters what metrics see."""
+    if not rows:
+        return rows or []
+    try:
+        hi, ce, cn, cb = _tracker_cols(rows)
+        out = list(rows[:hi + 1])   # keep everything up to + including the header
+        for rr in rows[hi + 1:]:
+            def g(i):
+                return rr[i].strip() if (i is not None and i < len(rr)) else ""
+            name = g(cn)
+            if name and classify(email=g(ce), name=name, business=g(cb), source="tracker").get("is_test"):
+                continue   # void the test row from the clean view
+            out.append(rr)
+        return out
+    except Exception as e:
+        logger.info("clean_tracker_rows failed (returning raw): %s", e)
+        return rows
+
+
+def confirm_first_pass(by: str = "rydel") -> None:
+    """Record that Rydel confirmed the first classification pass (enables consumer repoints)."""
+    from helpers import today_sydney
+    kv_store.put("testleads:confirmed", {"by": by, "at": str(today_sydney())})
+
+
+def is_confirmed() -> bool:
+    return bool(kv_store.get("testleads:confirmed"))
+
+
 def _mask(e: str) -> str:
     e = str(e or "")
     if "@" in e:
         u, d = e.split("@", 1)
         return (u[:3] + "***@" + d)
     return (e[:3] + "***") if len(e) > 3 else e
+
+
+# ── EDITH commands: "what's excluded as test?" / "mark X as test|real" / "add token" ──
+import re as _re
+
+_WHATS_EXCLUDED = _re.compile(r"\b(what'?s|which leads?|show).{0,20}\b(excluded|voided|test leads?)\b"
+                              r"|\btest[- ]?leads?\b.{0,15}\b(excluded|list|audit)\b", _re.I)
+_MARK = _re.compile(r"\bmark\s+(.+?)\s+as\s+(a\s+)?(test|real|genuine)\b", _re.I)
+_ADD_TOKEN = _re.compile(r"\badd\s+['\"]?([a-z0-9]+)['\"]?\s+(?:to\s+)?(?:the\s+)?test[- ]?(?:lead\s+)?tokens?\b", _re.I)
+
+
+def handle_command(text: str, actor: dict | None = None) -> tuple[str | None, bool]:
+    if not text:
+        return None, False
+    who = (actor or {}).get("user", "rydel")
+
+    if _WHATS_EXCLUDED.search(text):
+        s = scan()
+        n = s["summary"]["ghl_strong"] + s["summary"]["tracker_strong"]
+        names = [x["name"] for x in s["tracker"]["strong"][:8]] + [x["name"] for x in s["ghl"]["strong"][:4]]
+        b = s["summary"]["ghl_borderline"] + s["summary"]["tracker_borderline"]
+        return (f"{n} test leads are excluded from all sales metrics (e.g. {', '.join(n for n in names if n)[:180]}). "
+                + (f"{b} borderline awaiting review. " if b else "")
+                + "They're voided, not deleted — still in the audit view."), True
+
+    m = _MARK.search(text)
+    if m:
+        name = m.group(1).strip(); verdict = m.group(3).lower()
+        is_test = verdict == "test"
+        # find the lead in either mirror to key the override
+        key = _find_key_by_name(name)
+        if not key:
+            return f"I couldn't find a lead matching \"{name}\" to mark. Try their exact name.", True
+        set_override(key, is_test, who)
+        return (f"Marked \"{name}\" as {'a test entry — voided from metrics' if is_test else 'real — counted again'}. "
+                "This override is remembered and survives re-syncs."), True
+
+    mt = _ADD_TOKEN.search(text)
+    if mt:
+        tok = mt.group(1).lower()
+        r = rules(); toks = list(r.get("test_tokens", []))
+        if tok in toks or tok in r.get("staff_tokens", []):
+            return f"'{tok}' is already a test token.", True
+        # staff-looking names go to staff_tokens (match anywhere); else test_tokens
+        return (f"Add '{tok}' as a test token? Say 'confirm add {tok}' — I'll apply it and re-scan. "
+                "(Rule changes are confirmed, never auto-applied.)"), True
+    if _re.search(r"\bconfirm add\s+([a-z0-9]+)\b", text, _re.I):
+        tok = _re.search(r"\bconfirm add\s+([a-z0-9]+)\b", text, _re.I).group(1).lower()
+        r = rules(); r.setdefault("staff_tokens", []).append(tok); set_rules(r)
+        return f"Added '{tok}' to the staff test tokens. New/changed leads matching it will auto-void; re-scan to apply.", True
+
+    return None, False
+
+
+def _find_key_by_name(name: str) -> str | None:
+    q = _re.sub(r"[^a-z0-9]", "", (name or "").lower())
+    if not q:
+        return None
+    try:
+        import ghl_mirror
+        for cid, c in ghl_mirror.read_all_contacts().items():
+            nm = _re.sub(r"[^a-z0-9]", "", ((c.get("first_name") or "") + (c.get("last_name") or "")).lower())
+            if nm and q in nm:
+                return lead_key("ghl", c.get("email") or "", nm, cid)
+    except Exception:
+        pass
+    try:
+        import sheet_mirror
+        rows = sheet_mirror.read_by_name("Lead-to-Cash Tracker") or []
+        hi, ce, cn, cb = _tracker_cols(rows)
+        for rr in rows[hi + 1:]:
+            nm = rr[cn].strip() if (cn is not None and cn < len(rr)) else ""
+            if nm and q in _re.sub(r"[^a-z0-9]", "", nm.lower()):
+                em = rr[ce].strip() if (ce is not None and ce < len(rr)) else ""
+                return lead_key("tracker", em, nm)
+    except Exception:
+        pass
+    return None
 
 
 def scan() -> dict:

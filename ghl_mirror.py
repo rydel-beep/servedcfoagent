@@ -392,7 +392,9 @@ def get_sources() -> list[dict]:
 
 # ── Reads (DB speed) ─────────────────────────────────────────────────────────
 
-def read_opportunities(open_only: bool = True) -> list[dict]:
+def read_opportunities(open_only: bool = True, exclude_test: bool = False) -> list[dict]:
+    """Opportunities from the mirror. exclude_test=True → THE clean GHL view: opps whose contact is
+    a test lead are voided (one classification engine; the mirror keeps them for the audit view)."""
     if not db.db_configured():
         return []
     try:
@@ -400,10 +402,18 @@ def read_opportunities(open_only: bool = True) -> list[dict]:
             q = "SELECT * FROM ghl_opportunities WHERE deleted=FALSE"
             if open_only:
                 q += " AND status='open'"
-            return [dict(r) for r in c.execute(q).fetchall()]
+            opps = [dict(r) for r in c.execute(q).fetchall()]
     except Exception as e:
         logger.info("read_opportunities failed: %s", e)
         return []
+    if exclude_test:
+        try:
+            import test_leads
+            contacts = read_all_contacts()
+            opps = [o for o in opps if not test_leads.is_test_contact(contacts.get(o.get("contact_id")))]
+        except Exception as e:
+            logger.info("read_opportunities exclude_test failed (returning raw): %s", e)
+    return opps
 
 
 def read_notes_for_contact(cid: str) -> list[dict]:
