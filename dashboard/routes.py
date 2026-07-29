@@ -34,6 +34,26 @@ bp = Blueprint(
 )
 
 
+def _repetition_failure(reply: str, history: list, user_msg: str) -> bool:
+    """A drafted deterministic reply that is VERBATIM-identical to a recent assistant reply, in
+    response to a DIFFERENT user message, is a routing failure (the incident's canned-line re-fire).
+    Return True → suppress it and fall to the thread-aware/model path. Re-asking the SAME question is
+    fine (answered consistently), so we compare the user messages too."""
+    if not reply:
+        return False
+    def _n(s):
+        return " ".join((s or "").lower().split())
+    r = _n(reply)
+    users = [m.get("content") for m in (history or []) if m.get("role") == "user"]
+    prev_user = _n(users[-2]) if len(users) >= 2 else ""   # the message before the current one
+    if _n(user_msg) == prev_user:
+        return False   # genuinely the same question re-asked → a consistent repeat is acceptable
+    for m in reversed(history or []):
+        if m.get("role") == "assistant":
+            return _n(m.get("content")) == r   # identical to the immediately prior answer → failure
+    return False
+
+
 @bp.route("/")
 @require_auth
 def index():
@@ -717,6 +737,7 @@ def api_chat():
             (lambda m: __import__('quarterly_review').handle_quarterly_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # quarterly review / QoQ+YoY / 3x
             (lambda m: __import__('reactivation').handle_reactivation_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # GHL lead reactivation / where-left-off
             (lambda m: __import__('test_leads').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # test-lead exclusion / what's excluded / mark test|real
+            (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY (how to reduce X) + ANAPHORA/scenario follow-ups — BEFORE the recital handler
             (range_unit_economics.handle_unit_econ_command, False),
             (payback_reconciliation.handle_payback_command, False),
             (leads_view.handle_lead_count_command, False),
@@ -734,6 +755,12 @@ def api_chat():
                 continue
             if _entity_scoped and not intent_router.entity_relevant(_r, user_msg, _thread):
                 break   # a lookup naming a person he never mentioned → suppress, fall to conversation
+            # REPETITION GUARD: a verbatim repeat to a DIFFERENT question is a routing failure, not an
+            # answer — suppress it and let the thread-aware/model path answer properly (logged).
+            if _repetition_failure(_r, history, user_msg):
+                logger.warning("repetition guard: handler %s re-emitted a prior reply for a new msg %r",
+                               getattr(_h, "__name__", "lambda"), user_msg[:60])
+                break
             # Capacity/raise replies carry salary-derived figures → owner-only, NEVER to memory.
             if _h is not capacity_engine.handle_capacity_command:
                 memory.record_turn(conv_id, "assistant", _r, channel=channel, intent="command")
@@ -862,6 +889,7 @@ def api_chat_stream():
             (lambda m: __import__('quarterly_review').handle_quarterly_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # quarterly review / QoQ+YoY / 3x
             (lambda m: __import__('reactivation').handle_reactivation_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # GHL lead reactivation / where-left-off
             (lambda m: __import__('test_leads').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # test-lead exclusion / what's excluded / mark test|real
+            (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY (how to reduce X) + ANAPHORA/scenario follow-ups — BEFORE the recital handler
             (range_unit_economics.handle_unit_econ_command, False),
             (payback_reconciliation.handle_payback_command, False),
             (leads_view.handle_lead_count_command, False),
@@ -879,6 +907,9 @@ def api_chat_stream():
                 continue
             if _entity_scoped and not intent_router.entity_relevant(_r, user_msg, _thread):
                 break   # suppress a salary lookup about someone he never mentioned → conversation
+            if _repetition_failure(_r, history, user_msg):
+                logger.warning("repetition guard (stream): re-emit suppressed for %r", user_msg[:60])
+                break
             _cmd_reply = _r
             _cmd_sensitive = (_h is capacity_engine.handle_capacity_command)
             break
