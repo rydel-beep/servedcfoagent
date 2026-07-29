@@ -724,6 +724,7 @@ def api_chat():
         # superlative/recency lookups (latest lead, biggest deal) surface entities by design → exempt.
         import capacity_engine, forecasting_engine
         _tier2 = [
+            (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (capacity_engine.handle_capacity_command, False),  # hiring/capacity/raise/afford questions
             (forecasting_engine.handle_forecast_command, False),  # cash-flow / MRR / runway forecasts
             (__import__('action_feed').handle_action_feed_command, False),  # 'what needs my attention'
@@ -737,7 +738,6 @@ def api_chat():
             (lambda m: __import__('quarterly_review').handle_quarterly_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # quarterly review / QoQ+YoY / 3x
             (lambda m: __import__('reactivation').handle_reactivation_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # GHL lead reactivation / where-left-off
             (lambda m: __import__('test_leads').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # test-lead exclusion / what's excluded / mark test|real
-            (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY (how to reduce X) + ANAPHORA/scenario follow-ups — BEFORE the recital handler
             (range_unit_economics.handle_unit_econ_command, False),
             (payback_reconciliation.handle_payback_command, False),
             (leads_view.handle_lead_count_command, False),
@@ -876,6 +876,7 @@ def api_chat_stream():
         import tracker_read, capacity_engine, forecasting_engine
         _thread = " ".join((m.get("content") or "") for m in (history or [])[-6:])
         _tier2 = [
+            (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (capacity_engine.handle_capacity_command, False),
             (forecasting_engine.handle_forecast_command, False),
             (__import__('action_feed').handle_action_feed_command, False),
@@ -889,7 +890,6 @@ def api_chat_stream():
             (lambda m: __import__('quarterly_review').handle_quarterly_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # quarterly review / QoQ+YoY / 3x
             (lambda m: __import__('reactivation').handle_reactivation_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # GHL lead reactivation / where-left-off
             (lambda m: __import__('test_leads').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # test-lead exclusion / what's excluded / mark test|real
-            (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY (how to reduce X) + ANAPHORA/scenario follow-ups — BEFORE the recital handler
             (range_unit_economics.handle_unit_econ_command, False),
             (payback_reconciliation.handle_payback_command, False),
             (leads_view.handle_lead_count_command, False),

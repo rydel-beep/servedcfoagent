@@ -122,9 +122,13 @@ def handle_anaphora(user_msg: str, history: list) -> tuple[str | None, bool]:
     deltas, window_days, exp = _parse_deltas(user_msg)
     if exp:
         metric = exp
-    # No active metric to resolve against → ask ONE clarifier (never guess / re-fire a default).
+    # No active metric to resolve against. Only claim the turn when there's a CONCRETE scenario delta
+    # (e.g. "3 more closes") — then ask one clarifier. A vague "what if..." with no delta belongs to
+    # the forecast/model path, so fall through (never hijack an MRR/runway what-if).
     if not metric:
-        return ("Happy to run that — which metric are we talking about, CAC, ROAS, or LTGP:CAC?"), True
+        if deltas:
+            return ("Happy to run that — which metric, CAC, ROAS, or LTGP:CAC?"), True
+        return None, False
     # "back to actuals" / "what IS X" → the real number, labelled (scenarios never overwrite actuals).
     if _RESET_RE.search(user_msg) or (_WHATIS_RE.search(user_msg) and not deltas):
         return _actual_reply(metric, window_days, "that's the real number, not a scenario.")
