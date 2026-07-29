@@ -4468,7 +4468,9 @@
       + '<div class="cap-hero-v">' + _cad(s.opportunity_cost_monthly_aud) + '/mo</div>'
       + '<div class="cap-hero-sub">' + _cad(s.opportunity_cost_annualised_aud) + '/yr leaking — '
       + _cad(s.idle_surplus_aud) + ' idle above your buffer, at your assumed ' + (s.assumed_return_pct) + '% '
-      + '<span class="cap-assume">(an assumption, not a guarantee)</span>. This stops when you deploy.</div></div>';
+      + '<span class="cap-assume">(an assumption, not a guarantee)</span>. This stops when you deploy.'
+      + (s.cash && s.cash.stale ? ' <span class="cap-stale">Cash is last-known — Xero was unavailable.</span>' : '')
+      + '</div></div>';
     // Wall + deployable tiles
     var tiles = '<div class="cap-tiles">'
       + '<div class="cap-tile cap-wall"><div class="cap-tile-k">THE WALL · sacred</div><div class="cap-tile-v">' + _cad(s.settings.survival_buffer_aud) + '</div><div class="cap-tile-sub">Funded and ignored' + stale + '</div></div>'

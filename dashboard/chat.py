@@ -456,8 +456,11 @@ def _build_context_block(snapshot_json: str, lean: bool = False) -> str:
 
     # Capital allocation (the deciding layer). Real keys only; opportunity cost is a MODELLED figure
     # at an ASSUMED return — labelled so the model never presents it as fact, and a missing config is
-    # stated as absent, never invented (heeds the documented null-key bug).
-    try:
+    # stated as absent, never invented (heeds the documented null-key bug). Text-chat only (lean=False):
+    # the voice path answers capital questions deterministically before the model, so voice skips the
+    # extra DB reads (and stays fast).
+    if not lean:
+      try:
         import capital_allocation
         cap = capital_allocation.compute_state()
         cap_block = {
@@ -477,7 +480,7 @@ def _build_context_block(snapshot_json: str, lean: bool = False) -> str:
         }
         sections.append("CAPITAL ALLOCATION (idle-cash opportunity cost is modelled, not a fact):\n"
                         + json.dumps(cap_block, indent=2))
-    except Exception:
+      except Exception:
         pass
 
     # Canonical metrics — the single source of truth for every headline number.

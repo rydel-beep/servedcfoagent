@@ -261,9 +261,10 @@ def compute_state() -> dict:
     deployed = _deployed_sum(committed["id"]) if committed else Decimal(0)
     idle = max(Decimal(0), surplus - deployed)
 
-    # Opportunity cost is a MODELLED figure — only when the return assumption is set, and $0 below buffer.
+    # Opportunity cost is a MODELLED figure — only with a POSITIVE return assumption, and $0 below
+    # buffer. A non-positive return can't model a bleed (would be $0/negative presented as real).
     opp_m = opp_a = None
-    if ret is not None and not below_buffer:
+    if ret is not None and ret > 0 and not below_buffer:
         r = Decimal(str(ret)) / Decimal(100)
         opp_a = idle * r
         opp_m = opp_a / Decimal(12)
@@ -310,6 +311,8 @@ def run_review() -> dict:
         return {"ok": False, "error": "cash or survival buffer not available/configured"}
     cash_d = _dec(cash["cash_aud"]); wall_d = _dec(st["survival_buffer_aud"])
     surplus = max(Decimal(0), cash_d - wall_d)
+    if surplus <= 0:
+        return {"ok": False, "error": "below buffer — no surplus to allocate; rebuild the wall first"}
     with db.get_conn() as c:
         r = c.execute("INSERT INTO allocation_reviews (created_at, cash_snapshot_aud, wall_aud, surplus_aud, status) "
                       "VALUES (%s,%s,%s,%s,'draft') RETURNING id",
@@ -318,12 +321,15 @@ def run_review() -> dict:
 
 
 def set_line(review_id: int, bucket_id: int, assigned_aud, note: str | None = None) -> dict:
+    amt = _dec(assigned_aud) or Decimal(0)
+    if amt < 0:
+        amt = Decimal(0)   # a bucket can't hold a negative job
     try:
         with db.get_conn() as c:
             c.execute("INSERT INTO allocation_lines (review_id, bucket_id, assigned_aud, note) "
                       "VALUES (%s,%s,%s,%s) ON CONFLICT (review_id, bucket_id) DO UPDATE SET "
                       "assigned_aud=EXCLUDED.assigned_aud, note=EXCLUDED.note",
-                      (review_id, bucket_id, _dec(assigned_aud) or Decimal(0), note))
+                      (review_id, bucket_id, amt, note))
         return {"ok": True}
     except Exception as e:
         return {"ok": False, "error": str(e)}
