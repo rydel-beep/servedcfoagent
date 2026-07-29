@@ -100,8 +100,8 @@ def _tracker_index() -> dict:
     """Build email- and name-token indexes from the Lead-to-Cash mirror for the GHL join."""
     idx = {"by_email": {}, "by_name": {}}
     try:
-        import sheet_mirror
-        rows = sheet_mirror.read_by_name("Lead-to-Cash Tracker") or []
+        import sheet_mirror, test_leads
+        rows = test_leads.clean_tracker_rows(sheet_mirror.read_by_name("Lead-to-Cash Tracker") or [])
         if not rows:
             return idx
         hi = next((i for i, r in enumerate(rows[:8]) if any("close date" in (c or "").lower() for c in r)), 0)

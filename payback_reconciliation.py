@@ -132,6 +132,11 @@ def _won_deals(w0: dt.date, w1: dt.date) -> list[dict]:
     if rows is None:
         from sales_analytics_pull import _fetch_tab
         rows = _fetch_tab("Lead-to-Cash Tracker")
+    try:
+        import test_leads
+        rows = test_leads.clean_tracker_rows(rows)   # clean view — test deals voided from payback
+    except Exception:
+        pass
     out = []
     if not rows:
         return out
