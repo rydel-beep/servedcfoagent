@@ -951,3 +951,20 @@
     row-level cohort_funnel IS cleaned. Design: ONE classification engine (test_leads.classify) + one
     clean view per source (clean_tracker_rows + ghl read_opportunities(exclude_test)); consumers
     repoint; excluded≠deleted (audit view); overrides remembered + resync-proof.
+
+98. **Test-lead exclusion — built & verified (2026-07-29).** ONE classification engine
+    (test_leads.classify: staff tokens rydel/jaspher match anywhere; 'test' strong only in
+    test-shaped positions [whole-word/test-email/GHL tag], substring-in-plausible-name → borderline
+    KEEP) + ONE clean view per source (clean_tracker_rows + read_opportunities(exclude_test)).
+    Repointed ALL lead consumers: leads_view._rows, range_unit_economics cohort_funnel/_ltc_in_window,
+    reactivation (5 reads + tracker join), quarterly_roadmap channel_mix, payback_reconciliation,
+    salience (via recent_leads). Grep-proof: raw lead reads remain ONLY in the classifier + clean
+    wrappers + audit scan. Overrides (mark test/real, owner+Piolo) persisted in kv_store, outrank
+    rules, resync-proof. Audit view (/api/test-lead-scan) + EDITH ('what's excluded'/'mark X
+    test|real'/'add token'→confirm) + data-cleaning journal note. VERIFIED live: confirm persisted;
+    reactivation clean (Curry Delights GONE, no test names, pool 914→913); recent-leads clean (no
+    test/jaspher → salience won't fire 'new lead'); audit shows all 19 excluded (non-destructive).
+    Fixed an N+1 (classify read rules+overrides per row → pool-exhaustion 500) by loading ctx once.
+    Impact: tracker 1291→1274 (−17); Q2 2026 unaffected (test entries pre-Apr-2026 + one 2026-07-27);
+    trailing-30d −1. Stage-A 386/1 (pre-existing capacity drift); +5 classification tests. Report:
+    dashboard/TEST_LEAD_EXCLUSION_REPORT.md.
