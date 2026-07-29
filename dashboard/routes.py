@@ -1050,6 +1050,15 @@ def _audit_pii_export(kind: str, n: int):
         logger.info("reactivation export audit failed: %s", e)
 
 
+@bp.route("/api/test-lead-scan", methods=["GET"])
+@require_auth
+def api_test_lead_scan():
+    """READ-ONLY Phase-0 scan: classify both mirrors for test-lead candidates (strong + borderline).
+    Filters no metric — this is the review artifact for confirmation."""
+    import test_leads
+    return jsonify(test_leads.scan())
+
+
 @bp.route("/leads", methods=["GET"])
 @require_auth
 def sales_page():
