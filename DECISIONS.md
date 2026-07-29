@@ -984,3 +984,19 @@
     stacked scenarios coherent; ROAS metric-switch resolves correctly; forecast not hijacked; guard
     suppresses canned repeat; musing→conversation. Stage-A 397/1 (pre-existing capacity drift) + 6
     conversation tests. Report: dashboard/CONVERSATIONAL_ANALYSIS_REPORT.md.
+
+100. **Capital Allocation layer — built & verified (2026-07-29).** The deciding organ. capital_allocation.py:
+     5 NUMERIC(14,2) tables (settings/buckets/reviews/lines/deployments) + migrate() on boot (idempotent,
+     6 buckets seeded via ON CONFLICT); Decimal money math (exact AUD). compute_state derives cash (real
+     Xero cash_in_bank via snapshot; stale labelled) − wall = deployable surplus; idle = surplus − deployed;
+     opportunity_cost = idle × assumed_return/12 (MODELLED, return labelled an ASSUMPTION everywhere).
+     Ritual: run_review → assign → commit REFUSED until Unassigned==$0 (Decimal-exact, server-authoritative).
+     Edge cases: cash<wall → BELOW BUFFER (no surplus, $0 cost); config unset → not_configured + config_missing
+     (prompts, never invents); return<=0 → no bleed. UI: bleed hero (red, reads as loss), sacred greyed Wall,
+     deployable tile, live red→green Unassigned forcing function, mark-deployed (bleed drops), history
+     (assigned vs deployed). Voice: deploy/opportunity-cost/review/unassigned/set-buffer|return (confirm loop).
+     Context section (text-only, real keys, assumption-labelled). Salience: idle-bleed + review-due (watermarked).
+     3 self-improvement iterations logged (return>0 guard + stale caveat + no-empty-review; lean-gate context +
+     clamp negative assigns; idempotency proof + null-clear settings). VERIFIED LIVE: cash $196,965.94 → bleed
+     $646/mo@8%; below-buffer→no cost; commit refused@partial/committed@$0; deploy $48k→bleed halved $323/mo;
+     reset to pristine. Zero date.today(). Report: dashboard/CAPITAL_ALLOCATION_REPORT.md.
