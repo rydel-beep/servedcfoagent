@@ -1000,3 +1000,16 @@
      clamp negative assigns; idempotency proof + null-clear settings). VERIFIED LIVE: cash $196,965.94 → bleed
      $646/mo@8%; below-buffer→no cost; commit refused@partial/committed@$0; deploy $48k→bleed halved $323/mo;
      reset to pristine. Zero date.today(). Report: dashboard/CAPITAL_ALLOCATION_REPORT.md.
+
+101. **Capital Allocation — unresponsive-page fix (2026-07-29).** Rydel: couldn't type on the capital
+     section + page went unresponsive. Playwright (clean single load) couldn't reproduce (typing +
+     thread fine, no overlay, no console errors) → environmental to real usage. ROOT CAUSE: compute_state
+     opened ~6 separate DB connections per call + review_history more; under the dashboard's ~10
+     concurrent on-load fetches this pressured the Postgres connection pool (the SAME failure mode as
+     the test-lead N+1 incident) → requests hang → page feels unresponsive / inputs lag. FIX: compute_state
+     + review_history now use ONE connection each (inlined queries) — /api/capital dropped to ~0.4s.
+     Plus renderCapital skips re-render while an input is focused (no mid-typing wipe). Added discard-draft
+     + owner-only reset (start-over) endpoints; used reset to clear all Phase-2 test reviews/deployments →
+     pristine not_configured slate (history 0, buckets preserved). VERIFIED live: real-keystroke flow
+     (type buffer/return → Save → bleed hero → run review → type $50k in bucket → Unassigned updates live
+     $46,966) with thread responsive, zero pageerrors.
