@@ -48,7 +48,7 @@ def _next_id(loops: list[dict]) -> int:
     return (max((l.get("id", 0) for l in loops), default=0) + 1)
 
 
-def add_reminder(what: str, follow_up: str | None = None, importance: int = 50) -> dict:
+def add_reminder(what: str, follow_up: str | None = None, importance: int = 78) -> dict:
     loops = _load()
     lid = _next_id(loops)
     loops.append({"id": lid, "kind": "reminder", "what": what.strip(),
