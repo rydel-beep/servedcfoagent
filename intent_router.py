@@ -28,6 +28,14 @@ _EXPLICIT_DATA = re.compile(
     r"who'?s the (latest|newest|biggest|last|top)|pull (the|our|up)|breakdown of|give me (the|our)|"
     r"how'?s our|what are our)\b", re.I)
 
+# Imperative COMMANDS (reminders, settings, review actions, drop) are never rambles — they must
+# reach the deterministic handlers even when long/declarative (e.g. "remind me to review the
+# quarterly report on Friday").
+_COMMAND = re.compile(
+    r"\b(remind me\b|drop (it|that|the reminder)\b|stop reminding\b|"
+    r"set (my|the|your)\b|run (my|the|an?) (allocation|capital|quarterly)\b|"
+    r"mark .* as (test|real|done|deployed)\b|generate the\b|export the\b|add .* to (test|the)\b)", re.I)
+
 # Terse metric/entity asks (a few words) are legitimate data requests even without a question frame.
 _METRIC_WORD = re.compile(
     r"\b(cash|runway|burn|mrr|roas|ltgp|ltv|cac|payback|leads?|closes?|deals?|clients?|sets?|"
@@ -41,6 +49,8 @@ def is_conversational_ramble(u: str) -> bool:
         return False
     t = u.strip()
     if _EXPLICIT_DATA.search(t):        # an explicit data ask, any length → NOT a ramble
+        return False
+    if _COMMAND.search(t):              # an imperative command → NOT a ramble (must hit handlers)
         return False
     if t.endswith("?"):                 # a question → give the data handlers a chance
         return False
