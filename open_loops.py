@@ -125,26 +125,14 @@ def system_loops(snap: dict | None = None) -> list[dict]:
                           "follow_up": "your capital survival buffer + assumed return aren't set — the deploy layer's waiting on them"})
     except Exception:
         pass
-    # unreviewed borderline test-leads (a hygiene gate)
-    try:
-        import test_leads
-        s = test_leads.scan()
-        b = s["summary"]["ghl_borderline"] + s["summary"]["tracker_borderline"]
-        if b:
-            loops.append({"kind": "system", "id": f"sys:testlead_borderline:{b}", "importance": 40,
-                          "follow_up": f"{b} borderline test-lead(s) awaiting your test/real call"})
-    except Exception:
-        pass
-    # aging Piolo-queue items (unify — surface only the count, never client detail)
-    try:
-        import collab
-        q = [x for x in collab.queue(snap) if x.get("status") in ("open", "partial")]
-        old = [x for x in q if (_days_since(x.get("created_at")) or 0) >= 5]
-        if old:
-            loops.append({"kind": "system", "id": f"sys:queue_aging:{len(old)}", "importance": 55,
-                          "follow_up": f"{len(old)} bookkeeping-queue item(s) have been open 5+ days"})
-    except Exception:
-        pass
+    # Stripe read-only key gate (a pending technical gate) — read from degraded, cheap.
+    if any("stripe" in str((d or {}).get("metric", "")).lower() and "key" in str((d or {}).get("reason", "")).lower()
+           for d in degraded):
+        loops.append({"kind": "system", "id": "sys:stripe_key", "importance": 70,
+                      "follow_up": "the Stripe read-only key looks unset — some payment reads are limited until it's added"})
+    # NOTE: system_loops runs INSIDE salience.collect (and action_feed → salience.collect), so it must
+    # stay CHEAP and NON-RECURSIVE — no collab.queue (that path calls action_feed → salience, a cycle)
+    # and no test_leads.scan (heavy). Those hygiene items surface via their own dashboard panels.
     return loops
 
 
