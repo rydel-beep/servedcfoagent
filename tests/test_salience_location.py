@@ -14,6 +14,13 @@ def _reset():
     kv_store._MEM.clear()
 
 
+def _no_loops(monkeypatch):
+    # isolate close/leads salience from Pillar-1 loop/anomaly events (tested in test_open_loops)
+    import open_loops, anomaly_watch
+    monkeypatch.setattr(open_loops, "due_followups", lambda snap=None: [])
+    monkeypatch.setattr(anomaly_watch, "check", lambda snap=None: [])
+
+
 def test_ranking_money_at_risk_first(monkeypatch):
     _reset()
     monkeypatch.setattr(salience, "_days_ago", lambda d: 0)
@@ -31,6 +38,7 @@ def test_ranking_money_at_risk_first(monkeypatch):
 
 def test_watermark_dedup(monkeypatch):
     _reset()
+    _no_loops(monkeypatch)
     monkeypatch.setattr(salience, "_days_ago", lambda d: 0)
     import closes_view, leads_view
     monkeypatch.setattr(closes_view, "recent_closes",
@@ -51,6 +59,7 @@ def test_nothing_new_is_empty():
 
 def test_leads_batched(monkeypatch):
     _reset()
+    _no_loops(monkeypatch)
     monkeypatch.setattr(salience, "_days_ago", lambda d: 0)
     import closes_view, leads_view
     monkeypatch.setattr(closes_view, "recent_closes", lambda limit=15: {"closes": []})

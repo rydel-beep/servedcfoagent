@@ -1024,3 +1024,22 @@
      has substantial barge-in machinery already; no repair/register-mirror/multi-intent-completeness. P5
      /health + incident_log + freshness exist, no conversational self-state handlers. Build extends
      existing organs; land 1→5 with regression between each.
+
+103. **Jarvis Upgrade — Pillar 1 Initiative engine LANDED (2026-07-31).** Two new modules wired into
+     the existing salience→greeting path. (A) `open_loops.py` — INTERNAL/SYSTEM-ONLY open-loop store
+     (kv_store-backed): "remind me to X [when]" creates a watermarked reminder that resurfaces in the
+     greeting with manners at most every FOLLOWUP_DAYS(3); "drop it" kills it permanently; a reminder
+     that reads like EDITH-chasing-a-client (`_OUTBOUND_CLIENT` regex) is REFUSED citing the internal-only
+     boundary. Plus derived SYSTEM loops (Xero re-auth / capital buffer unset / Stripe key unset) — cheap,
+     non-recursive, verbatim from real state. NO client-deal loops ever (unit-tested). (B) `anomaly_watch.py`
+     — deterministic deviation vs trailing trend (lead velocity, cash movement, failed charges, loaded CPL
+     7d-vs-28d via the one canonical unit_economics engine); a breach becomes a watermarked salience event
+     with the deviation quantified. Reminder default importance 78 so it clears the greeting top-3.
+     Router: `intent_router._COMMAND` regex so imperatives ("remind me", "drop it", "set…") are never
+     misclassified as conversational rambles. BUG I introduced + fixed: salience.collect → open_loops.system_loops
+     → collab.queue → action_feed.build_action_feed → salience.collect INFINITE RECURSION (hung greeting +
+     action feed); fixed by making system_loops cheap/non-recursive (dropped collab.queue + test_leads.scan).
+     VERIFIED live: reminder create→greeting-resurface(5.3s)→drop; "email the client" refused; action feed 13
+     items; anomaly runs deterministically. Regression: tests/test_salience_location.py updated to isolate
+     close/leads salience from the new loop/anomaly events (they fire legitimately on an unconfigured capital
+     buffer). Push: dashboard-only (per #102). Report: dashboard/JARVIS_UPGRADE_REPORT.md. Pillars 2–5 next.
