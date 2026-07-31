@@ -726,6 +726,7 @@ def api_chat():
         _tier2 = [
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
+            (lambda m: __import__('open_loops').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # Pillar 1: 'remind me to X' / 'drop it' (internal reminders only)
             (capacity_engine.handle_capacity_command, False),  # hiring/capacity/raise/afford questions
             (forecasting_engine.handle_forecast_command, False),  # cash-flow / MRR / runway forecasts
             (__import__('action_feed').handle_action_feed_command, False),  # 'what needs my attention'
@@ -879,6 +880,7 @@ def api_chat_stream():
         _tier2 = [
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
+            (lambda m: __import__('open_loops').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # Pillar 1: 'remind me to X' / 'drop it' (internal reminders only)
             (capacity_engine.handle_capacity_command, False),
             (forecasting_engine.handle_forecast_command, False),
             (__import__('action_feed').handle_action_feed_command, False),

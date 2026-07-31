@@ -1013,3 +1013,14 @@
      pristine not_configured slate (history 0, buckets preserved). VERIFIED live: real-keystroke flow
      (type buffer/return → Save → bleed hero → run review → type $50k in bucket → Unassigned updates live
      $46,966) with thread responsive, zero pageerrors.
+
+102. **Jarvis Upgrade — Phase 0 map + push decision (2026-07-31).** HARD BOUNDARY: EDITH internal-only —
+     no outbound client-contact path exists (grep-verified: no email/SMS/message send, GHL read-only);
+     no client-deal loops/follow-ups (client-deal matters surface passively only). Push channel: Rydel
+     chose DASHBOARD-ONLY (no Lark; flagged as the initiative limitation). Current state: P1 salience
+     (10 watermarked events) exists, no open-loop store / no anomaly watch. P2 DECISIONS.md prose (109
+     entries) + memory_facts exist, no structured registry / no supersession / no consistency audit. P3
+     doctrine in CLAUDE.md, no SERVED_DOCTRINE.md / no systematic advisory-doctrine binding. P4 edith.js
+     has substantial barge-in machinery already; no repair/register-mirror/multi-intent-completeness. P5
+     /health + incident_log + freshness exist, no conversational self-state handlers. Build extends
+     existing organs; land 1→5 with regression between each.

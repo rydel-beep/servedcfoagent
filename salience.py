@@ -217,6 +217,25 @@ def collect(snap: dict | None = None) -> list[dict]:
     except Exception:
         pass
 
+    # 9) Open-loops (internal/system only) + anomaly watch — Pillar 1 (watermarked). NO client-deal
+    #    loops ever (the internal-only boundary); loops here are technical gates + explicit reminders.
+    try:
+        import open_loops
+        for f in (open_loops.due_followups(snap) or []):
+            eid = f["watermark"]
+            if eid not in told:
+                events.append({"id": eid, "type": "loop", "salience": f.get("importance", 50),
+                               "ago": 0, "spoken": f["spoken"]})
+    except Exception:
+        pass
+    try:
+        import anomaly_watch
+        for a in (anomaly_watch.check(snap) or []):
+            if a["id"] not in told:
+                events.append(a)
+    except Exception:
+        pass
+
     events.sort(key=lambda e: (e["salience"], -e["ago"]), reverse=True)
     return events
 
@@ -233,6 +252,19 @@ def mark_told(events: list[dict]) -> None:
         told.extend(e.get("_ids") or [e["id"]])
     s["told"] = told
     _save(s)
+    # Advance the open-loop cadence for any reminder loops that were surfaced (so they don't
+    # resurface until FOLLOWUP_DAYS pass — the no-nag etiquette).
+    try:
+        import open_loops
+        rem_ids = []
+        for e in events:
+            m = re.match(r"loop:reminder:(\d+):", str(e.get("id", "")))
+            if m:
+                rem_ids.append(int(m.group(1)))
+        if rem_ids:
+            open_loops.mark_followed(rem_ids)
+    except Exception:
+        pass
 
 
 def note_greeted(snap: dict | None = None) -> None:
