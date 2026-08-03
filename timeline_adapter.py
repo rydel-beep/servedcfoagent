@@ -146,7 +146,8 @@ _EVENTS_RE = re.compile(r"\b(client )?events?( coming| upcoming)?\b.*\b(coming u
 _CLIENT_Q_RE = re.compile(
     r"(?:where(?:'s| is)\s+(?P<a>.+?)(?:'s)?\s+(?:onboarding|delivery)\s+(?:at|up to)"
     r"|how(?:'s| is)\s+(?P<b>.+?)\s+(?:doing|going|tracking)(?:\s+overall)?"
-    r"|(?:onboarding|delivery)\s+(?:status|state)\s+(?:for|of)\s+(?P<c>.+?))\s*\??$", re.I)
+    r"|(?:onboarding|delivery)\s+(?:status|state)\s+(?:for|of)\s+(?P<c>.+?)"
+    r"|(?:full picture|complete (?:view|picture)|overview)\s+(?:on|of|for)\s+(?P<d>.+?)(?:\s*[—-].*)?)\s*\??$", re.I)
 
 _WEEK_RE = re.compile(r"\bthis week\b|\bpast week\b|\blast 7\b", re.I)
 
@@ -240,7 +241,8 @@ def handle_timeline_client(msg: str) -> tuple[str | None, bool]:
     m = _CLIENT_Q_RE.search(msg.strip())
     if not m:
         return None, False
-    name = (m.group("a") or m.group("b") or m.group("c") or "").strip().rstrip("?.!")
+    name = (m.group("a") or m.group("b") or m.group("c") or m.group("d") or "").strip().rstrip("?.!")
+    name = re.sub(r"\s*\b(please|thanks|thank you|mate)\b.*$", "", name, flags=re.I).strip()
     if not name or len(name) > 60:
         return None, False
     # pronouns/anaphora are NOT entities — let the conversation brain resolve them

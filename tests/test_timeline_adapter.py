@@ -115,3 +115,16 @@ def test_pronouns_never_entity_match(monkeypatch):
     _wire(monkeypatch, {"/bridge/data/overview": OV})
     for msg in ("how is it doing overall?", "how's that going?", "how is the business tracking?"):
         assert TA.handle_timeline_client(msg)[1] is False, msg
+
+
+def test_full_picture_phrasing_and_finance_join(monkeypatch):
+    import sys, types
+    _wire(monkeypatch, {"/bridge/data/overview": OV, "/bridge/data/client/pizzicotto": DETAIL})
+    snap_mod = types.ModuleType('snapshot')
+    snap_mod.load_persisted = lambda: {"active_clients": {"active": [
+        {"name": "Pizzicotto", "current_mrr": 2500.0, "cash_collected": 5000.0,
+         "package": "Firestarter", "status": "Active", "awaiting_stripe": False}]}}
+    monkeypatch.setitem(sys.modules, 'snapshot', snap_mod)
+    r, h = TA.handle_timeline_client("Full picture on Pizzicotto please — delivery and money.")
+    assert h and "week 3 of 6" in r
+    assert "Finance side (CFO snapshot): MRR $2500.0" in r and "Firestarter" in r
