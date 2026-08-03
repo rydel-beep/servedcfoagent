@@ -264,6 +264,14 @@ def handle_alias_confirm(text: str) -> tuple[str | None, bool]:
                   r"maps? to)\s+(.+)", text)
     if not m or not re.search(r"\b(payment|paid|stripe|charge|venue|client|match|alias|is )\b", text, re.I):
         return None, False
+    # A payer is a NAME, not a question word. Without this, any capitalized question
+    # ("What is overdue?", "Where is Butler's onboarding at?") was captured as
+    # payer="What"/"Where" and swallowed here before the tier-2 data handlers ran
+    # (surfaced live 3 Aug 2026 by the Timeline bridge questions).
+    if m.group(1).split()[0].lower() in {"what", "what's", "where", "who", "whose", "when",
+                                         "why", "how", "which", "that", "this", "there",
+                                         "it", "is", "the"}:
+        return None, False
     payer = m.group(1).strip()
     business_raw = re.sub(r"['’]s\b|\bvenue\b|\brestaurant\b|\bthe\b|[.?!]", " ", m.group(2)).strip(" -–—")
     if not payer or len(business_raw) < 3:

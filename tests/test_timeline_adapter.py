@@ -88,3 +88,24 @@ def test_no_write_paths_in_adapter():
     src = inspect.getsource(TA)
     for verb in ("requests.post", "requests.put", "requests.patch", "requests.delete"):
         assert verb not in src
+
+
+def test_alias_confirm_no_longer_swallows_questions():
+    """3 Aug 2026: 'What is overdue?' was captured as payer='What' by the alias handler
+    (pre-tier-2), starving every data handler. Question openers must fall through."""
+    import stripe_reconcile as SR
+    for q in ("What is overdue or stalled right now?",
+              "Where is Butler's Cucina's onboarding at?",
+              "How is Nonexistent Bistro tracking?",
+              "What is our runway looking like"):
+        r, h = SR.handle_alias_confirm(q)
+        assert not h, q
+
+
+def test_alias_confirm_still_learns_real_aliases(monkeypatch):
+    import stripe_reconcile as SR
+    monkeypatch.setattr(SR, "_known_businesses", lambda: {SR._norm("Masala Factory")})
+    learned = []
+    monkeypatch.setattr(SR, "learn_alias", lambda p, b: learned.append((p, b)))
+    r, h = SR.handle_alias_confirm("Jagjeet Singh is Masala Factory")
+    assert h and learned and "auto-match" in r
