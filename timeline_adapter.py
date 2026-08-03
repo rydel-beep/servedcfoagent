@@ -161,14 +161,15 @@ def handle_timeline_risk(msg: str) -> tuple[str | None, bool]:
     parts = []
     for key, label in (("overdue", "overdue"), ("at_risk", "at risk"), ("stale", "stale")):
         d = r.get(key) or {}
-        total = d.get("count", d.get("total"))
-        rows = d.get("tasks") or d.get("items") or []
+        total = d.get("total", d.get("count"))
+        rows = d.get("items") or d.get("tasks") or []
         if total is None:
             total = len(rows)
-        by_client: dict[str, int] = {}
-        for t in rows:
-            ck = t.get("client_name") or t.get("client_key") or "?"
-            by_client[ck] = by_client.get(ck, 0) + 1
+        by_client = d.get("per_client") or {}      # the drill's own rollup — verbatim
+        if not by_client:
+            for t in rows:
+                ck = t.get("client_name") or t.get("client_key") or "?"
+                by_client[ck] = by_client.get(ck, 0) + 1
         worst = sorted(by_client.items(), key=lambda x: -x[1])[:3]
         head = "%d %s" % (total, label)
         if worst:
