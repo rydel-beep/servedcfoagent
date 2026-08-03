@@ -63,7 +63,9 @@ def validate_bridge_token(raw: str) -> str | None:
         return None
     _, expiry_s, user, purpose = parts
     try:
-        expiry = int(expiry_s)
+        # float (µs precision): tokens minted in the same second must still be
+        # unique, or back-to-back requests trip the single-use replay guard
+        expiry = float(expiry_s)
     except ValueError:
         return None
     now = time.time()

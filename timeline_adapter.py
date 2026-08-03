@@ -46,7 +46,7 @@ def configured() -> bool:
 
 def _mint() -> str:
     secret = (os.environ.get("EDITH_BRIDGE_SECRET") or "").encode()
-    payload = "v1:%d:%s:%s" % (int(time.time()) + _TTL, "rydel", _PURPOSE)
+    payload = "v1:%.6f:%s:%s" % (time.time() + _TTL, "rydel", _PURPOSE)   # µs → unique per request
     sig = base64.urlsafe_b64encode(
         hmac.new(secret, payload.encode(), hashlib.sha256).digest()).decode().rstrip("=")
     return payload + "." + sig
