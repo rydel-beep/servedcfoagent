@@ -286,18 +286,24 @@ def _finance_line(client_name: str) -> str:
         from snapshot import load_persisted
         snap = load_persisted() or {}
         n = _norm(client_name)
-        for c in ((snap.get("active_clients") or {}).get("clients") or []):
-            if _norm(c.get("name") or c.get("client") or "") == n or \
-               n in _norm(c.get("name") or c.get("client") or ""):
-                mrr = c.get("mrr") or c.get("monthly") or None
-                cash = c.get("cash_collected") or None
-                bits = []
-                if mrr is not None:
-                    bits.append("MRR $%s" % mrr)
-                if cash is not None:
-                    bits.append("cash collected $%s" % cash)
-                if bits:
-                    return "Finance side (CFO snapshot): %s." % ", ".join(bits)
+        for c in ((snap.get("active_clients") or {}).get("active") or []):
+            cn = _norm(c.get("name") or "")
+            if not cn or (cn != n and n not in cn and cn not in n):
+                continue
+            bits = []
+            if c.get("current_mrr") is not None:
+                bits.append("MRR $%s" % c["current_mrr"])
+            if c.get("cash_collected") is not None:
+                bits.append("cash collected $%s" % c["cash_collected"])
+            if c.get("package"):
+                bits.append("package %s" % c["package"])
+            if c.get("status"):
+                bits.append("status %s" % c["status"])
+            if c.get("awaiting_stripe"):
+                bits.append("awaiting Stripe")
+            if bits:
+                return "Finance side (CFO snapshot): %s." % "; ".join(bits)
+            return ""
         return ""
     except Exception:  # noqa: BLE001
         return ""
