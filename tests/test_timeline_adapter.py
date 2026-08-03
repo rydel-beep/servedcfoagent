@@ -109,3 +109,9 @@ def test_alias_confirm_still_learns_real_aliases(monkeypatch):
     monkeypatch.setattr(SR, "learn_alias", lambda p, b: learned.append((p, b)))
     r, h = SR.handle_alias_confirm("Jagjeet Singh is Masala Factory")
     assert h and learned and "auto-match" in r
+
+
+def test_pronouns_never_entity_match(monkeypatch):
+    _wire(monkeypatch, {"/bridge/data/overview": OV})
+    for msg in ("how is it doing overall?", "how's that going?", "how is the business tracking?"):
+        assert TA.handle_timeline_client(msg)[1] is False, msg

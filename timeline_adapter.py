@@ -243,6 +243,11 @@ def handle_timeline_client(msg: str) -> tuple[str | None, bool]:
     name = (m.group("a") or m.group("b") or m.group("c") or "").strip().rstrip("?.!")
     if not name or len(name) > 60:
         return None, False
+    # pronouns/anaphora are NOT entities — let the conversation brain resolve them
+    # from thread context ("how is it doing?" must never substring-match a client)
+    if name.lower() in {"it", "that", "this", "he", "she", "they", "them", "we",
+                        "things", "everything", "stuff", "business", "the business"}:
+        return None, False
     if not configured():
         return None, False          # bridge absent → let the model converse normally
     match, cands = resolve_client(name)
