@@ -82,7 +82,8 @@ def overview():
 
 
 def client_detail(client_key: str):
-    return _get("/bridge/data/client/%s" % client_key)
+    from urllib.parse import quote
+    return _get("/bridge/data/client/%s" % quote(client_key or "", safe=""))
 
 
 def risk():
