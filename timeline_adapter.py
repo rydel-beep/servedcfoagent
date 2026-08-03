@@ -1,0 +1,301 @@
+"""
+timeline_adapter.py — EDITH's read adapter for the Timeline Dashboard world.
+
+Universal-advisor Phase 2: deterministic, verbatim-grounded reads of the delivery
+world (per-client delivery/onboarding state, overdue/stale tasks, signals, client
+events, feedback) over the Timeline's token-gated /bridge/data/* API. READ-ONLY —
+this module contains no write path of any kind.
+
+Auth: mints the same 60s HMAC bridge tokens (EDITH_BRIDGE_SECRET, shared with the
+timeline service) the widget path uses, reversed direction. Fail-honest: if the
+bridge is unreachable or unconfigured, handlers SAY so — they never invent
+delivery state.
+
+Discipline (matches the rest of the tier-2 handlers):
+  • figures/names verbatim from the API payloads — no derived metric math here
+  • entity gate: ambiguous client names → ask; unknown names → say not found
+  • freshness stated from the Timeline's OWN sync clock, never assumed
+"""
+from __future__ import annotations
+
+import base64
+import hashlib
+import hmac
+import logging
+import os
+import re
+import time
+
+import requests
+
+logger = logging.getLogger(__name__)
+
+_TTL = 60
+_PURPOSE = "timeline"
+_CACHE_SECONDS = 45          # answer-time cache so one spoken exchange = one fetch
+_cache: dict[str, tuple[float, dict]] = {}
+
+
+def _base() -> str:
+    return (os.environ.get("TIMELINE_BRIDGE_URL") or "").rstrip("/")
+
+
+def configured() -> bool:
+    return bool(_base() and os.environ.get("EDITH_BRIDGE_SECRET"))
+
+
+def _mint() -> str:
+    secret = (os.environ.get("EDITH_BRIDGE_SECRET") or "").encode()
+    payload = "v1:%d:%s:%s" % (int(time.time()) + _TTL, "rydel", _PURPOSE)
+    sig = base64.urlsafe_b64encode(
+        hmac.new(secret, payload.encode(), hashlib.sha256).digest()).decode().rstrip("=")
+    return payload + "." + sig
+
+
+def _get(path: str, params: dict | None = None) -> dict | None:
+    """Token-per-request GET with a short cache. None on any failure (fail-honest)."""
+    key = path + repr(sorted((params or {}).items()))
+    now = time.time()
+    hit = _cache.get(key)
+    if hit and now - hit[0] < _CACHE_SECONDS:
+        return hit[1]
+    if not configured():
+        return None
+    try:
+        r = requests.get(_base() + path, params=params,
+                         headers={"X-Bridge-Token": _mint()},
+                         timeout=int(os.environ.get("HTTP_TIMEOUT", "10")))
+        if r.status_code != 200:
+            logger.warning("timeline bridge %s -> %s", path, r.status_code)
+            return None
+        data = r.json()
+        _cache[key] = (now, data)
+        return data
+    except Exception as e:  # noqa: BLE001
+        logger.warning("timeline bridge %s failed: %s", path, e)
+        return None
+
+
+# ── fetchers ──────────────────────────────────────────────────────────────────
+def overview():
+    return _get("/bridge/data/overview")
+
+
+def client_detail(client_key: str):
+    return _get("/bridge/data/client/%s" % client_key)
+
+
+def risk():
+    return _get("/bridge/data/risk")
+
+
+def signals(open_only: bool = False):
+    return _get("/bridge/data/signals", {"open_only": open_only} if open_only else None)
+
+
+def events(limit: int = 12):
+    return _get("/bridge/data/events", {"limit": limit})
+
+
+def automation_status():
+    return _get("/bridge/data/automation-status")
+
+
+# ── freshness line (the Timeline's own clock, verbatim) ───────────────────────
+def _freshness_line(ov: dict | None) -> str:
+    fr = (ov or {}).get("freshness") or {}
+    h = fr.get("hours_since_sync")
+    if h is None:
+        return ""
+    if fr.get("stale"):
+        return " (Timeline data is STALE — last synced %.1f hours ago.)" % h
+    return " (Timeline synced %.1f h ago.)" % h
+
+
+# ── entity gate ───────────────────────────────────────────────────────────────
+def _norm(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+def resolve_client(name: str) -> tuple[dict | None, list]:
+    """(match, candidates). match=None + candidates=[] → unknown;
+    match=None + candidates=[...] → ambiguous, ask."""
+    ov = overview()
+    rows = (ov or {}).get("clients") or []
+    n = _norm(name)
+    if not n or not rows:
+        return None, []
+    exact = [c for c in rows if _norm(c.get("client_name")) == n or _norm(c.get("client_key")) == n]
+    if len(exact) == 1:
+        return exact[0], []
+    part = [c for c in rows if n in _norm(c.get("client_name")) or n in _norm(c.get("client_key"))]
+    if len(part) == 1:
+        return part[0], []
+    return None, part
+
+
+_UNREACHABLE = ("I can't reach the Timeline bridge right now, so I won't guess at "
+                "delivery state. The dashboard itself is unaffected — try me again shortly.")
+
+
+# ── tier-2 handlers (message → (reply|None, handled)) ─────────────────────────
+_OVERDUE_RE = re.compile(r"\b(overdue|stalled?|stale (?:tasks|work)|behind schedule|slipp(?:ing|ed))\b", re.I)
+_SIGNALS_RE = re.compile(r"\b(complaints?|praise|signals?)\b", re.I)
+_EVENTS_RE = re.compile(r"\b(client )?events?( coming| upcoming)?\b.*\b(coming up|upcoming|soon|next|scheduled)\b|\bupcoming events\b|\bevents coming up\b", re.I)
+_CLIENT_Q_RE = re.compile(
+    r"(?:where(?:'s| is)\s+(?P<a>.+?)(?:'s)?\s+(?:onboarding|delivery)\s+(?:at|up to)"
+    r"|how(?:'s| is)\s+(?P<b>.+?)\s+(?:doing|going|tracking)(?:\s+overall)?"
+    r"|(?:onboarding|delivery)\s+(?:status|state)\s+(?:for|of)\s+(?P<c>.+?))\s*\??$", re.I)
+
+_WEEK_RE = re.compile(r"\bthis week\b|\bpast week\b|\blast 7\b", re.I)
+
+
+def handle_timeline_risk(msg: str) -> tuple[str | None, bool]:
+    """'what's overdue / stalled right now' → the Timeline's own drill, verbatim counts."""
+    if not msg or not _OVERDUE_RE.search(msg):
+        return None, False
+    r = risk()
+    if r is None:
+        return _UNREACHABLE, True
+    ov = overview()
+    parts = []
+    for key, label in (("overdue", "overdue"), ("at_risk", "at risk"), ("stale", "stale")):
+        d = r.get(key) or {}
+        total = d.get("count", d.get("total"))
+        rows = d.get("tasks") or d.get("items") or []
+        if total is None:
+            total = len(rows)
+        by_client: dict[str, int] = {}
+        for t in rows:
+            ck = t.get("client_name") or t.get("client_key") or "?"
+            by_client[ck] = by_client.get(ck, 0) + 1
+        worst = sorted(by_client.items(), key=lambda x: -x[1])[:3]
+        head = "%d %s" % (total, label)
+        if worst:
+            head += " (worst: %s)" % ", ".join("%s %d" % (k, v) for k, v in worst)
+        parts.append(head)
+    return "Delivery risk right now — %s.%s" % ("; ".join(parts), _freshness_line(ov)), True
+
+
+def handle_timeline_signals(msg: str) -> tuple[str | None, bool]:
+    """'any complaints this week?' / 'any praise?' → real signal rows with dates."""
+    if not msg or not _SIGNALS_RE.search(msg):
+        return None, False
+    data = signals()
+    if data is None:
+        return _UNREACHABLE, True
+    rows = data.get("signals") or []
+    want_praise = bool(re.search(r"\bpraise\b", msg, re.I))
+    if want_praise:
+        rows = [s for s in rows if (s.get("kind") or "") == "positive"]
+    else:
+        rows = [s for s in rows if (s.get("kind") or "complaint") != "positive"]
+    if _WEEK_RE.search(msg):
+        from helpers import today_sydney
+        import datetime as _dt
+        cutoff = (today_sydney() - _dt.timedelta(days=7)).isoformat()
+        rows = [s for s in rows if (s.get("created_at") or "") >= cutoff]
+        scope = "this week"
+    else:
+        scope = "on record"
+    label = "praise" if want_praise else "complaints"
+    if not rows:
+        return "No %s %s on the Timeline.%s" % (label, scope, _freshness_line(overview())), True
+    rows = sorted(rows, key=lambda s: s.get("created_at") or "", reverse=True)[:5]
+    lines = ["%s — %s (%s%s)" % (
+        s.get("client_key") or "?",
+        (s.get("description") or "").strip()[:110],
+        (s.get("created_at") or "")[:10],
+        (", severity " + s["severity"]) if s.get("severity") and not want_praise else "")
+        for s in rows]
+    return "%d %s %s. Most recent: %s.%s" % (
+        len(rows), label, scope, " · ".join(lines), _freshness_line(overview())), True
+
+
+def handle_timeline_events(msg: str) -> tuple[str | None, bool]:
+    """'what events are coming up?' → real countdowns."""
+    if not msg or not _EVENTS_RE.search(msg):
+        return None, False
+    data = events()
+    if data is None:
+        return _UNREACHABLE, True
+    evs = data.get("events") or []
+    if not evs:
+        return "No upcoming client events on the Timeline.%s" % _freshness_line(overview()), True
+    lines = []
+    for e in evs[:5]:
+        lines.append("%s — %s on %s (%s days out, %s/%s deliverables done)" % (
+            e.get("client_key") or "?", e.get("name") or "?", e.get("event_date") or "?",
+            e.get("days_out", "?"), e.get("done", "?"), e.get("total", "?")))
+    return "Upcoming events: %s.%s" % (" · ".join(lines), _freshness_line(overview())), True
+
+
+def handle_timeline_client(msg: str) -> tuple[str | None, bool]:
+    """'where's Pizzicotto's onboarding at' / 'how's X doing overall' → per-client
+    delivery state, cross-joined with finance when asked 'overall' (each fact labelled)."""
+    if not msg:
+        return None, False
+    m = _CLIENT_Q_RE.search(msg.strip())
+    if not m:
+        return None, False
+    name = (m.group("a") or m.group("b") or m.group("c") or "").strip().rstrip("?.!")
+    if not name or len(name) > 60:
+        return None, False
+    if not configured():
+        return None, False          # bridge absent → let the model converse normally
+    match, cands = resolve_client(name)
+    if match is None and cands:
+        return ("A few Timeline clients match \"%s\": %s — which one?"
+                % (name, ", ".join(c.get("client_name") or "?" for c in cands[:5])), True)
+    if match is None:
+        ov = overview()
+        if ov is None:
+            return _UNREACHABLE, True
+        return ("I don't see a client called \"%s\" on the Timeline — I'm not going to "
+                "guess. Closest I have is the roster on the dashboard." % name), True
+    detail = client_detail(match.get("client_key") or "")
+    if detail is None:
+        return _UNREACHABLE, True
+    h = detail.get("health") or {}
+    summ = detail.get("summary") or {}
+    bits = ["%s — onboarding: %s" % (match.get("client_name"), detail.get("onboarding_status") or "?"),
+            "health %s (%s)" % (h.get("score", "?"), h.get("light", "?")),
+            "%s open tasks, %s overdue" % (summ.get("open_tasks", "?"), summ.get("overdue", "?"))]
+    comps = detail.get("complaints") or []
+    if comps:
+        bits.append("%d signal(s) on record, latest %s" % (
+            len(comps), (comps[0].get("created_at") or "")[:10]))
+    evs = detail.get("events") or []
+    if evs:
+        e = evs[0]
+        bits.append("next event %s on %s" % (e.get("name") or "?", e.get("event_date") or "?"))
+    reply = "; ".join(bits) + "." + _freshness_line(overview())
+    # cross-domain join, finance side labelled from ITS source
+    if re.search(r"\boverall\b|\ball up\b|\bfull picture\b", msg, re.I):
+        fin = _finance_line(match.get("client_name") or "")
+        if fin:
+            reply += " " + fin
+    return reply, True
+
+
+def _finance_line(client_name: str) -> str:
+    """Finance join from the CFO snapshot (its own source, labelled). Verbatim fields."""
+    try:
+        from snapshot import load_persisted
+        snap = load_persisted() or {}
+        n = _norm(client_name)
+        for c in ((snap.get("active_clients") or {}).get("clients") or []):
+            if _norm(c.get("name") or c.get("client") or "") == n or \
+               n in _norm(c.get("name") or c.get("client") or ""):
+                mrr = c.get("mrr") or c.get("monthly") or None
+                cash = c.get("cash_collected") or None
+                bits = []
+                if mrr is not None:
+                    bits.append("MRR $%s" % mrr)
+                if cash is not None:
+                    bits.append("cash collected $%s" % cash)
+                if bits:
+                    return "Finance side (CFO snapshot): %s." % ", ".join(bits)
+        return ""
+    except Exception:  # noqa: BLE001
+        return ""

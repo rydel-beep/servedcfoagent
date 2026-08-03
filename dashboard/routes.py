@@ -742,6 +742,10 @@ def api_chat():
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
             (lambda m: __import__('open_loops').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # Pillar 1: 'remind me to X' / 'drop it' (internal reminders only)
+            (__import__('timeline_adapter').handle_timeline_client, False),   # Universal advisor P2: per-client delivery state (+finance join on 'overall')
+            (__import__('timeline_adapter').handle_timeline_risk, False),     # 'what's overdue/stalled' → Timeline drill, verbatim
+            (__import__('timeline_adapter').handle_timeline_signals, False),  # complaints/praise from the Timeline signals log
+            (__import__('timeline_adapter').handle_timeline_events, False),   # upcoming client events + countdowns
             (capacity_engine.handle_capacity_command, False),  # hiring/capacity/raise/afford questions
             (forecasting_engine.handle_forecast_command, False),  # cash-flow / MRR / runway forecasts
             (__import__('action_feed').handle_action_feed_command, False),  # 'what needs my attention'
@@ -906,6 +910,10 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str):
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
             (lambda m: __import__('open_loops').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # Pillar 1: 'remind me to X' / 'drop it' (internal reminders only)
+            (__import__('timeline_adapter').handle_timeline_client, False),   # Universal advisor P2: per-client delivery state (+finance join on 'overall')
+            (__import__('timeline_adapter').handle_timeline_risk, False),     # 'what's overdue/stalled' → Timeline drill, verbatim
+            (__import__('timeline_adapter').handle_timeline_signals, False),  # complaints/praise from the Timeline signals log
+            (__import__('timeline_adapter').handle_timeline_events, False),   # upcoming client events + countdowns
             (capacity_engine.handle_capacity_command, False),
             (forecasting_engine.handle_forecast_command, False),
             (__import__('action_feed').handle_action_feed_command, False),
