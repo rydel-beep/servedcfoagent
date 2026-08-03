@@ -207,18 +207,28 @@ def _key_from(msg: str) -> str:
     return "email"
 
 
+def _window_days(msg: str) -> int:
+    low = msg.lower()
+    if re.search(r"\bmonth\b|\b30 days\b|\blast 4 weeks\b", low):
+        return 30
+    if re.search(r"\bfortnight\b|\btwo weeks\b|\b2 weeks\b|\bweek or two\b|\b14 days\b", low):
+        return 14
+    return 7
+
+
 def handle_content_list(msg: str) -> tuple[str | None, bool]:
     if not msg or not _LIST_RE.search(msg):
         return None, False
     if not configured():
         return _NOT_CONNECTED, True
     key = _key_from(msg)
-    rows = list_recent(key, days=7)
+    days = _window_days(msg)
+    rows = list_recent(key, days=days)
     label = SOURCES[key][0]
     if rows is None:
         return "I can't reach the %s in Notion right now — not guessing at its contents." % label, True
     if not rows:
-        return "Nothing edited in the %s in the last 7 days." % label, True
+        return "Nothing edited in the %s in the last %d days." % (label, days), True
     lines = ["%s (%s, edited %s)" % (r["title"], r["status"] or "no status", r["edited"]) for r in rows]
     return "%s — last 7 days: %s. Say \"review <title>\" and we'll go through the actual copy together." % (
         label, "; ".join(lines)), True
