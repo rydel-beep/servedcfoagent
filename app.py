@@ -40,6 +40,11 @@ app.register_blueprint(dashboard_bp, url_prefix="/dashboard")
 from dashboard.memory_routes import bp as memory_bp
 app.register_blueprint(memory_bp, url_prefix="/dashboard/memory")
 
+# Owner-gated Timeline bridge (Layer 2 of the double gate; fail-closed without
+# EDITH_BRIDGE_SECRET). Token-only auth — never session/cookie. See dashboard/bridge.py.
+from dashboard.bridge import bp as bridge_bp
+app.register_blueprint(bridge_bp, url_prefix="/bridge")
+
 # In-memory cache of the latest snapshot
 _current_snapshot: dict | None = None
 

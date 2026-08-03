@@ -252,6 +252,14 @@ def api_tts():
     else:
         text = request.args.get("text", "")
         voice_id = request.args.get("voice_id")
+    return tts_response(text, voice_id)
+
+
+def tts_response(text: str, voice_id=None):
+    """Shared TTS proxy core (dashboard route above + the Timeline bridge).
+    Caller is responsible for auth."""
+    from dashboard.voice import stream_tts
+    from flask import Response
 
     try:
         gen = stream_tts(text, voice_id_override=voice_id)
@@ -304,6 +312,13 @@ def api_greeting():
     """EDITH's boot greeting: resolved location + salient NEW events, composed fresh each time.
     Session-gated — a quick refresh/resume within the idle gap returns the SAME greeting (no
     re-greet, no re-watermarking). A genuinely new session composes fresh and advances the feed."""
+    return greeting_response(force=(request.args.get("fresh") == "1"))
+
+
+def greeting_response(force: bool = False):
+    """Shared greeting core (dashboard route above + the Timeline bridge). The
+    25-min re-greet gate and the salience watermark are deliberately SHARED across
+    surfaces — news is announced once, whichever window he opens first."""
     import time as _t
     import kv_store
     from snapshot import load_persisted
@@ -311,7 +326,6 @@ def api_greeting():
     snap = load_persisted() or {}
     _IDLE = 25 * 60
     last = kv_store.get("greeting:last_delivered") or {}
-    force = (request.args.get("fresh") == "1")
     if not force and last.get("ts") and (_t.time() - last["ts"]) < _IDLE and last.get("payload"):
         return jsonify({**last["payload"], "regreet": False})
     payload = build_greeting(snap, mark=True)   # composes, watermarks, remembers shape
@@ -647,7 +661,8 @@ def api_chat():
     snap = load_persisted()
     snapshot_json = json.dumps(snap, indent=2) if snap else "{}"
 
-    token = request.cookies.get(COOKIE_NAME, "anon")
+    from dashboard.auth import current_actor
+    token = current_actor().get("user") or request.cookies.get(COOKIE_NAME, "anon")
     voice = bool(data.get("voice"))
 
     # Persistent memory: resume/start a conversation, persist the user turn (async),
@@ -810,15 +825,25 @@ def api_chat_stream():
     voice = bool(data.get("voice"))
     if not history:
         return jsonify({"error": "Empty message"}), 400
+    # Rate/state bucket: the authenticated user, so per-user sessions stop sharing
+    # one "anon" bucket (the legacy dash_token cookie no longer exists per-user).
+    from dashboard.auth import current_actor
+    token = current_actor().get("user") or request.cookies.get(COOKIE_NAME, "anon")
+    return chat_stream_response(history, voice,
+                                channel=("voice" if voice else "text"), token=token)
 
+
+def chat_stream_response(history: list, voice: bool, channel: str, token: str):
+    """The ONE streaming chat core — shared by the dashboard route above and the
+    owner-gated Timeline bridge (dashboard/bridge.py). channel scopes the thread
+    (db.get_or_create_active_conversation); token scopes rate-limit + pending-state
+    buckets. Caller is responsible for auth. Same brain everywhere — never fork."""
     from snapshot import load_persisted
     snap = load_persisted()
     snapshot_json = json.dumps(snap, indent=2) if snap else "{}"
-    token = request.cookies.get(COOKIE_NAME, "anon")
 
     # Persistent memory: resume/start conversation, persist user turn (async), build recall.
     import memory
-    channel = "voice" if voice else "text"
     conv_id = memory.start_conversation(channel)
     user_msg = (history[-1].get("content") if history else "") or ""
     # Rebuild the thread from the DB on refresh BEFORE writing the new turn (resume, not restart).

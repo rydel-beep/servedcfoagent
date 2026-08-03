@@ -169,18 +169,32 @@ from config import MEMORY_IDLE_GAP_HOURS  # noqa: E402
 
 def get_or_create_active_conversation(channel: str = "text") -> int | None:
     """Resume the most recent non-archived conversation if active within the idle gap,
-    else start a new one. Returns conversation id, or None if DB unavailable."""
+    else start a new one. Returns conversation id, or None if DB unavailable.
+
+    Threads are scoped per SURFACE: the CFO dashboard's text+voice turns share one
+    rolling thread (as they always have), while any other channel (e.g. "timeline",
+    the owner-gated Timeline Dashboard bridge) resumes only ITS OWN thread — an
+    external surface must never splice into the dashboard conversation. Memory
+    facts, recall and salience watermarks stay shared: one brain, separate threads."""
+    dashboard_surface = channel in ("text", "voice")
     try:
         with get_conn() as conn, conn.cursor() as cur:
+            if dashboard_surface:
+                surface_pred = "COALESCE(channel, 'text') IN ('text', 'voice')"
+                params = (MEMORY_IDLE_GAP_HOURS,)
+            else:
+                surface_pred = "channel = %s"
+                params = (MEMORY_IDLE_GAP_HOURS, channel)
             cur.execute(
-                """
+                f"""
                 SELECT id FROM conversations
                 WHERE archived = FALSE
                   AND last_active_at > now() - (%s * interval '1 hour')
+                  AND {surface_pred}
                 ORDER BY last_active_at DESC
                 LIMIT 1
                 """,
-                (MEMORY_IDLE_GAP_HOURS,),
+                params,
             )
             row = cur.fetchone()
             if row:
