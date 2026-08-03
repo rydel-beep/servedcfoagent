@@ -153,9 +153,11 @@ def normalize_for_speech(text: str) -> str:
         # big bare numbers with separators: 1,650 → words (plain digits ≤4 left alone —
         # ElevenLabs reads those fine)
         t = re.sub(r"\b\d{1,3}(?:,\d{3})+\b", lambda m: _int_words(int(m.group(0).replace(",", ""))), t)
-        # whitespace tidy
+        # punctuation + whitespace tidy (aside-commas can collide with ; . ,)
         t = re.sub(r"\s{2,}", " ", t).replace(" ,", ",")
-        t = re.sub(r",\s*,", ", ", t).strip()
+        t = re.sub(r",\s*,", ", ", t)
+        t = re.sub(r",\s*;", ";", t)
+        t = re.sub(r",\s*\.", ".", t).strip()
         return t or text
     except Exception:  # noqa: BLE001 — a TTS pre-pass must never break speech
         return text
