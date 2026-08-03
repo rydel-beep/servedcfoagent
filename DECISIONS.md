@@ -1043,3 +1043,50 @@
      items; anomaly runs deterministically. Regression: tests/test_salience_location.py updated to isolate
      close/leads salience from the new loop/anomaly events (they fire legitimately on an unconfigured capital
      buffer). Push: dashboard-only (per #102). Report: dashboard/JARVIS_UPGRADE_REPORT.md. Pillars 2–5 next.
+
+104. **Universal Advisor P1 — owner-exclusive Timeline voice bridge, ONE BRAIN (2026-08-03).** EDITH
+     is now reachable from the Timeline Dashboard as a voice widget for RYDEL ONLY, double-gated:
+     Layer 1 (timeline) — session cookie + user ∈ EDITH_BRIDGE_USERS ("rydel"; admin fallback
+     deliberately excluded) on same-origin proxy routes; Layer 2 (this repo, dashboard/bridge.py) —
+     every /bridge/* request independently validates a per-request 60s HMAC token (EDITH_BRIDGE_SECRET,
+     server-to-server only, µs-precision expiry, single-use per worker, fail-closed without the
+     secret; session cookies NEVER authorize /bridge/*). NO forked EDITH: the bridge delegates to the
+     same extracted cores (chat_stream_response / tts_response / greeting_response) with
+     channel="timeline". Conversations are now SURFACE-SCOPED (db.get_or_create_active_conversation:
+     dashboard text+voice share one thread; timeline gets its own) while memory facts, recall and
+     salience watermarks stay shared — proven live both directions (fact told on Timeline recalled on
+     the CFO dashboard and vice versa). Rate/state buckets now key on the authenticated user (the
+     "anon" shared bucket is retired). Adversarial evidence in dashboard/UNIVERSAL_ADVISOR_REPORT.md.
+
+105. **Universal Advisor P2 — Timeline context adapter, verbatim + entity-gated (2026-08-03).**
+     timeline_adapter.py reads the Timeline's token-gated /bridge/data/* API (overview, client
+     detail, risk drills, signals, events, automation-status) — READ-ONLY (test-enforced no non-GET),
+     figures verbatim with the Timeline's OWN freshness clock, fail-honest when unreachable ("I won't
+     guess at delivery state"). Entity gates extended to timeline clients: ambiguous → ask, unknown →
+     refused, pronouns → fall through to the conversation brain. Cross-domain joins compose existing
+     engines only ("full picture on X" = delivery state from the Timeline + MRR/cash/package from the
+     CFO snapshot, each labelled by source; NO new metric math). Fixed in passing: the pre-tier-2
+     stripe alias-confirm regex was swallowing any capitalized question ("What is overdue?" → payer
+     "What") — question openers now fall through (regression-tested both ways).
+
+106. **Universal Advisor P3 — automation-health registry with POSITIVE confirmation (2026-08-03).**
+     automations.py: declarative registry — 15 Timeline scheduled jobs (evidence = the APScheduler
+     listener's job:* rows in integrationstatus, read over the bridge) + 4 EDITH loops (snapshot age,
+     sheet_sync_state, ghl_sync_state, mrr_snapshots). States RUNNING/STALE/FAILING/UNKNOWN; an
+     unreachable evidence source is UNKNOWN and NEVER counted green. Salience: failures re-fire daily
+     while broken (day-bucketed watermarks); when everything is green a weekly watermarked event says
+     so ("All 19 automations green") — silence is never ambiguous in either direction. Conversational
+     registry truth verified live ("Are the automations healthy?" → all-19-green; "Did the sync run
+     today?" → "last success 10.6h ago" matching the 6am run).
+
+107. **Universal Advisor P4 — content review is READ-ONLY and copy-only for now (2026-08-03).**
+     notion_content.py reads the Email Library / Lead Magnets / Content Pieces / Email Command Centre
+     via a DEDICATED read-only Notion integration (NOTION_TOKEN on this service; GET + query/search
+     only — a write POST is refused by construction, test-enforced). Review mode injects the piece's
+     VERBATIM copy into the advisory context with a quote-only-this-text contract; never paraphrased
+     into something it doesn't say. GHL email stats: probed 3 Aug with the existing sales-location
+     key → 401 on every email/campaign endpoint → performance stats are cleanly SKIPPED and the
+     review says so (copy-only). STATUS AT SHIP: NOTION_TOKEN was NOT yet present on CFOagent —
+     every content path fail-honests ("integration isn't connected — I won't invent content",
+     verified live) and lights up the moment the token lands. No outbound/send/publish path exists
+     in either adapter (grep- and test-verified).
