@@ -1090,3 +1090,18 @@
      every content path fail-honests ("integration isn't connected — I won't invent content",
      verified live) and lights up the moment the token lands. No outbound/send/publish path exists
      in either adapter (grep- and test-verified).
+
+108. **Content review verified LIVE + a starved-recall bug fixed (2026-08-03, close-out).** With
+     NOTION_TOKEN provisioned: Email Library (37 rows) / Lead Magnets (1) / Content Pieces (17) all
+     REACHABLE; the "Email Command Centre" is a PAGE ("Email Marketing — Command Centre",
+     3498984c-0474-81b6-b0a3-c8c5be0dc6b4) — wired in as the Newsletter-SOP RULES reference for
+     critique, not a listable library. Anti-fabrication gate PASSED: 8/8 quoted strings across 3
+     real pieces matched the raw Notion blocks exactly; a genuinely-empty page, empty windows and a
+     nonexistent title all fail-honested; GHL stats remain 401 → copy-only reviews (accepted
+     constraint). Boundary re-grepped (no write verbs, no outbound), owner gate re-confirmed.
+     FOUND+FIXED pre-existing: 60 distilled facts alone blew the 8000-char memory budget, tail-
+     truncating the trigram-recall section on every turn — cross-conversation recall was silently
+     dead (only distilled facts crossed surfaces). Facts now cap at budget−2000; regression-locked;
+     recall of the timeline review verified live on the CFO dashboard. Known gap left as-is:
+     db.decay_facts still unscheduled (fact store only grows). Report:
+     dashboard/CONTENT_REVIEW_VERIFICATION.md. Suites 424 green.

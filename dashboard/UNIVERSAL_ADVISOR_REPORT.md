@@ -89,7 +89,9 @@ copy with a quote-only-this-text contract. GHL email stats: **probed with the ex
 sales-location key → 401 on every email/campaign endpoint → stats cleanly skipped**, and
 the review context says so (copy-only).
 
-**⚠ BLOCKED AT SHIP: `NOTION_TOKEN` is not present on the CFOagent Railway service** (the
+**UPDATE 2026-08-03 (later): NOTION_TOKEN landed — content review is LIVE and verbatim-proven.** Per-DB reachability, the 8/8 exact-quote validation, fail-honest evidence and a recall bug found+fixed in the process: see CONTENT_REVIEW_VERIFICATION.md. The paragraph below is preserved as the state at original ship time.
+
+**⚠ BLOCKED AT SHIP (superseded): `NOTION_TOKEN` was not present on the CFOagent Railway service** (the
 provisioning was reported done but the variable isn't there — possibly saved on another
 service or not saved). Until it lands, every content path fail-honests (verified live:
 *“The read-only Notion integration isn't connected on my side yet … I won't invent
