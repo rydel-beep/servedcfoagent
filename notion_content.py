@@ -43,7 +43,12 @@ SOURCES = {
     "email":       ("Email Library",        "NOTION_EMAIL_LIBRARY_ID",   "3118984c-0474-8002-bb33-000b0cbfd361"),
     "lead_magnet": ("Lead Magnets",         "NOTION_LEAD_MAGNETS_ID",    "a4be22d4-d068-4414-bb82-21be82a6659d"),
     "content":     ("Content Pieces",       "NOTION_CONTENT_PIECES_ID",  "927ea6f5-cceb-49fd-a717-a89e31feccc0"),
-    "command":     ("Email Command Centre", "NOTION_COMMAND_CENTRE_ID",  ""),   # discovered via search
+    # The "Email Command Centre" turned out to be a PAGE ("Email Marketing — Command
+    # Centre", discovered 2026-08-03 once the token landed), not a row database — it
+    # holds the Newsletter SOP / offer-strategy child pages. It joins content review as
+    # the RULES reference (_rules_copy), not as a listable library.
+    "command":     ("Email Marketing — Command Centre", "NOTION_COMMAND_CENTRE_ID",
+                    "3498984c-0474-81b6-b0a3-c8c5be0dc6b4"),
 }
 _CACHE_SECONDS = 120
 _cache: dict = {}
@@ -261,9 +266,31 @@ def content_context(msg: str) -> str:
         copy = page_copy(r["id"]) or "(couldn't fetch this page's body)"
         parts.append("--- %s (status: %s, edited %s) ---\n%s" % (r["title"], r["status"] or "?",
                                                                  r["edited"], copy))
+    if key == "email":
+        rules = _rules_copy()
+        if rules:
+            parts.append("[NEWSLETTER RULES — verbatim from Notion 'Newsletter SOP — Manual "
+                         "First'; critique consistency against THESE rules]\n" + rules)
     parts.append("[END CONTENT REVIEW]")
     return "\n\n".join(parts)
 
 
 def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9 ]", "", (s or "").lower())
+
+
+def _rules_copy() -> str:
+    """The Newsletter SOP's verbatim text (child page of the Command Centre page) —
+    the 'newsletter rules' the review register critiques against. Cached 1h."""
+    hit = _cache.get("rules")
+    if hit and time.time() - hit[0] < 3600:
+        return hit[1]
+    out = ""
+    page_id = (os.environ.get("NOTION_COMMAND_CENTRE_ID") or SOURCES["command"][2]).strip()
+    kids = _req("GET", "/blocks/%s/children?page_size=100" % page_id) if page_id else None
+    for b in (kids or {}).get("results", []):
+        if b.get("type") == "child_page" and "newsletter sop" in (b["child_page"].get("title") or "").lower():
+            out = page_copy(b["id"], max_chars=2500) or ""
+            break
+    _cache["rules"] = (time.time(), out)
+    return out
