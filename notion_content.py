@@ -230,8 +230,8 @@ def handle_content_list(msg: str) -> tuple[str | None, bool]:
     if not rows:
         return "Nothing edited in the %s in the last %d days." % (label, days), True
     lines = ["%s (%s, edited %s)" % (r["title"], r["status"] or "no status", r["edited"]) for r in rows]
-    return "%s — last 7 days: %s. Say \"review <title>\" and we'll go through the actual copy together." % (
-        label, "; ".join(lines)), True
+    return "%s — last %d days: %s. Say \"review <title>\" and we'll go through the actual copy together." % (
+        label, days, "; ".join(lines)), True
 
 
 # ── context injection for the advisory register ──────────────────────────────
@@ -251,12 +251,13 @@ def content_context(msg: str) -> str:
                 "from memory as if read today. [END CONTENT REVIEW]")
     key = _key_from(msg)
     label = SOURCES[key][0]
-    rows = list_recent(key, days=14, limit=5)
+    # a NAMED piece is findable regardless of edit date; the un-named flow reviews recent
+    rows = list_recent(key, days=0, limit=10)
     if rows is None:
         return ("[CONTENT REVIEW] Notion (%s) is unreachable right now — say so; do not "
                 "invent content. [END CONTENT REVIEW]" % label)
     if not rows:
-        return ("[CONTENT REVIEW] %s: nothing edited in the last 14 days — say so. "
+        return ("[CONTENT REVIEW] %s: the library is empty or unreadable — say so. "
                 "[END CONTENT REVIEW]" % label)
     # named piece? ("review the launch email" → title token match)
     target = None
@@ -267,7 +268,9 @@ def content_context(msg: str) -> str:
         if toks and any(t in low for t in toks):
             target = r
             break
-    picks = [target] if target else rows[:2]
+    recent_cutoff = (now_sydney() - _dt.timedelta(days=14)).date().isoformat()
+    recent = [r for r in rows if (r.get("edited") or "") >= recent_cutoff]
+    picks = [target] if target else (recent[:2] or rows[:2])
     parts = ["[CONTENT REVIEW — VERBATIM from Notion %s, fetched %s. Quote ONLY from this text; "
              "if something isn't in it, say it isn't there. Performance stats are NOT available "
              "(GHL email metrics unreachable with current access) — review is copy-only.]"
