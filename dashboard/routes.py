@@ -257,9 +257,13 @@ def api_tts():
 
 def tts_response(text: str, voice_id=None):
     """Shared TTS proxy core (dashboard route above + the Timeline bridge).
-    Caller is responsible for auth."""
+    Caller is responsible for auth. The text is rewritten FOR THE EAR here —
+    currency, ratios, acronyms, dates, eye-formatting — so BOTH surfaces speak
+    cleanly; the client keeps the eye-formatted text for its captions."""
     from dashboard.voice import stream_tts
     from flask import Response
+    from speech_normalize import normalize_for_speech
+    text = normalize_for_speech(text)
 
     try:
         gen = stream_tts(text, voice_id_override=voice_id)
@@ -810,8 +814,15 @@ def api_chat():
     _cc = notion_content.content_context(user_msg)
     if _cc:
         _mem_block = _cc + "\n\n" + (_mem_block or "")
+    # Timeline surface: ground Tier-3 conversation in the delivery world (overview
+    # digest + entity vocabulary + freshness) so delivery talk is never free-styled.
+    if channel == "timeline":
+        import timeline_adapter
+        _tl_ctx = timeline_adapter.conversation_context()
+        if _tl_ctx:
+            _mem_block = _tl_ctx + "\n\n" + (_mem_block or "")
 
-    result = chat_fn(history, snapshot_json, token, voice=voice, memory_block=_mem_block)
+    result = chat_fn(history, snapshot_json, token, voice=voice, memory_block=_mem_block, channel=channel)
 
     reply = result.get("reply")
     if reply:
@@ -986,13 +997,21 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str):
     _cc = notion_content.content_context(user_msg)
     if _cc:
         _mem_block = _cc + "\n\n" + (_mem_block or "")
+    # Timeline surface: ground Tier-3 conversation in the delivery world (overview
+    # digest + entity vocabulary + freshness) so delivery talk is never free-styled.
+    if channel == "timeline":
+        import timeline_adapter
+        _tl_ctx = timeline_adapter.conversation_context()
+        if _tl_ctx:
+            _mem_block = _tl_ctx + "\n\n" + (_mem_block or "")
 
     @stream_with_context
     def generate():
         final_reply = ""
         try:
             for event_type, payload in chat_stream_fn(history, snapshot_json, token,
-                                                      voice=voice, memory_block=_mem_block):
+                                                      voice=voice, memory_block=_mem_block,
+                                                      channel=channel):
                 if event_type == "delta":
                     yield sse("delta", {"text": payload})
                 elif event_type == "meta":

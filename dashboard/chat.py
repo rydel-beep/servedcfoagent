@@ -312,7 +312,7 @@ def is_business_intent(messages: list) -> bool:
 
 
 def build_system_prompt(messages: list, snapshot_json: str, voice: bool = False,
-                        memory_block: str = "") -> tuple[str, bool]:
+                        memory_block: str = "", channel: str = "voice") -> tuple[str, bool]:
     """Assemble EDITH's system prompt for this turn — the single auditable place
     where register and context are decided.
 
@@ -335,7 +335,8 @@ def build_system_prompt(messages: list, snapshot_json: str, voice: bool = False,
             context_block=_build_context_block(snapshot_json, lean=voice)
         )
     if voice:
-        system += VOICE_ADDENDUM
+        from prompts.spoken_channel import build as spoken_layer
+        system += spoken_layer(channel)   # versioned v2 layer (supersedes VOICE_ADDENDUM)
     # Persistent recall (cross-session). Applies to BOTH registers — it's conversational
     # context, not financial truth (the block self-labels that). Empty when memory is off.
     if memory_block:
@@ -588,7 +589,7 @@ def _sanitize_history(history: list) -> list:
 
 
 def chat(history: list, snapshot_json: str, token: str, voice: bool = False,
-         memory_block: str = "") -> dict:
+         memory_block: str = "", channel: str = "voice") -> dict:
     """Send a multi-turn chat message with snapshot context and conversation history.
 
     voice=True swaps in the spoken register (same brain, same discipline, same
@@ -612,7 +613,7 @@ def chat(history: list, snapshot_json: str, token: str, voice: bool = False,
 
     # Intent-routed context: attach the live financial snapshot ONLY when the turn
     # is about the business. General turns answer as open Claude (and save tokens).
-    system, business_intent = build_system_prompt(messages, snapshot_json, voice=voice, memory_block=memory_block)
+    system, business_intent = build_system_prompt(messages, snapshot_json, voice=voice, memory_block=memory_block, channel=channel)
     intent = "business" if business_intent else "general"
     # Phase 4: watch context size — general turns must stay lean (no snapshot).
     logger.info("chat intent=%s context~%d tokens voice=%s",
@@ -651,7 +652,7 @@ def _estimate_tokens(text: str) -> int:
 
 
 def chat_stream(history: list, snapshot_json: str, token: str, voice: bool = False,
-                memory_block: str = ""):
+                memory_block: str = "", channel: str = "voice"):
     """Streaming sibling of chat(): same brain, same intent routing, same accuracy
     rules — but yields the reply as it is generated so the caller can start TTS on
     the first sentence instead of waiting for the whole reply (Phase 1, the big win).
@@ -675,7 +676,7 @@ def chat_stream(history: list, snapshot_json: str, token: str, voice: bool = Fal
         yield ("error", "Empty message")
         return
 
-    system, business_intent = build_system_prompt(messages, snapshot_json, voice=voice, memory_block=memory_block)
+    system, business_intent = build_system_prompt(messages, snapshot_json, voice=voice, memory_block=memory_block, channel=channel)
     intent = "business" if business_intent else "general"
     ctx_tokens = _estimate_tokens(system)
     # Phase 4: watch context size. General turns must NOT carry the snapshot.

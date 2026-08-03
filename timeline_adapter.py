@@ -314,3 +314,38 @@ def _finance_line(client_name: str) -> str:
         return ""
     except Exception:  # noqa: BLE001
         return ""
+
+
+def conversation_context() -> str:
+    """Compact delivery-world grounding injected into TIER-3 turns on the timeline
+    channel (the deterministic tier-2 handlers stay exact and take precedence). Gives
+    the model the REAL client roster + headline risk + freshness so conversational
+    delivery talk is grounded, with the entity rule stated in-band. ≤ ~2k chars."""
+    ov = overview()
+    if ov is None:
+        return ("[TIMELINE CONTEXT] The Timeline bridge is unreachable right now — if he "
+                "asks about delivery state, SAY SO; never invent tasks, signals or client "
+                "state. [END TIMELINE CONTEXT]")
+    rows = (ov.get("clients") or [])[:40]
+    ents = []
+    for c in rows:
+        bits = [str(c.get("health_score", "?"))]
+        for k in ("overdue", "real_breaches", "open_tasks"):
+            if c.get(k):
+                bits.append("%s %s" % (k.replace("_", " "), c[k]))
+                break
+        ents.append("%s (%s)" % (c.get("client_name", "?"), ", ".join(bits)))
+    fr = ov.get("freshness") or {}
+    tot = ov.get("totals") or {}
+    head = ("[TIMELINE CONTEXT — live delivery world, synced %.1fh ago. These are the ONLY "
+            "Timeline clients; a name not on this list is NOT a client (say so, never invent). "
+            "Figures here are the dashboard's own; deeper task/signal/event detail comes from "
+            "the data handlers — if it isn't in front of you, offer to pull it rather than "
+            "guessing.]" % (fr.get("hours_since_sync") if fr.get("hours_since_sync") is not None else -1))
+    parts = [head]
+    if tot:
+        parts.append("Totals: " + ", ".join("%s %s" % (k, v) for k, v in list(tot.items())[:6]))
+    parts.append("Clients (health): " + "; ".join(ents))
+    parts.append("[END TIMELINE CONTEXT]")
+    out = "\n".join(parts)
+    return out[:2200]

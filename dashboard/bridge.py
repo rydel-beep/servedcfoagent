@@ -112,6 +112,10 @@ def bridge_chat_stream():
     voice = bool(data.get("voice"))
     if not history:
         return jsonify({"error": "Empty message"}), 400
+    # STT diagnosability: log the raw transcript per turn so "she misheard" reports
+    # can be traced to what the browser actually transcribed.
+    logger.info("timeline transcript (voice=%s): %.200s", voice,
+                (history[-1].get("content") or "").replace("\n", " "))
     return chat_stream_response(history, voice, channel=_PURPOSE,
                                 token="%s:%s" % (_PURPOSE, g.actor["user"]))
 

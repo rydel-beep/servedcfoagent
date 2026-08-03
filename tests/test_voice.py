@@ -111,10 +111,24 @@ def test_tts_truncates_oversize_text():
 
 # ── Voice register ───────────────────────────────────────────────────────────
 
-def test_voice_addendum_exists_and_keeps_discipline():
-    from dashboard.chat import VOICE_ADDENDUM, SYSTEM_PROMPT
-    assert "SPOKEN ALOUD" in VOICE_ADDENDUM
-    assert "No markdown" in VOICE_ADDENDUM or "no markdown" in VOICE_ADDENDUM
+def test_spoken_layer_exists_and_keeps_discipline():
+    """v2 (2026-08-03): the versioned spoken-channel layer supersedes VOICE_ADDENDUM.
+    Same non-negotiables: spoken-aloud register, no markdown, business layer owns truth."""
+    from prompts.spoken_channel import build, SPOKEN_LAYER_VERSION
+    from dashboard.chat import SYSTEM_PROMPT, build_system_prompt
+    core = build("voice")
+    assert "SPOKEN ALOUD" in core
+    assert "no markdown" in core.lower()
+    assert "exact" in core.lower()                      # money stays exact
+    assert SPOKEN_LAYER_VERSION.startswith("v2")
+    # the timeline channel note adds delivery vocabulary; the CFO channel stays core-only
+    tl = build("timeline")
+    assert "TIMELINE DASHBOARD" in tl and len(tl) > len(core)
+    # wired: a voice turn's system prompt carries the layer; channel note only on timeline
+    sys_v, _ = build_system_prompt([_U("hey")], "{}", voice=True, channel="voice")
+    sys_t, _ = build_system_prompt([_U("hey")], "{}", voice=True, channel="timeline")
+    assert "SPOKEN CHANNEL" in sys_v and "TIMELINE DASHBOARD" not in sys_v
+    assert "TIMELINE DASHBOARD" in sys_t
     # the addendum extends, never replaces, the discipline prompt
     assert "METRIC DEFINITIONS" in SYSTEM_PROMPT
 
