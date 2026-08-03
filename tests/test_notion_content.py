@@ -76,3 +76,27 @@ def test_named_piece_targets_that_page(monkeypatch):
 def test_non_review_messages_inject_nothing():
     assert NC.content_context("how's cash looking?") == ""
     assert NC.handle_content_list("how's cash looking?")[1] is False
+
+
+def test_recall_never_starved_by_fact_bloat(monkeypatch):
+    """2026-08-03: 60 distilled facts alone exceeded MEMORY_MAX_CONTEXT_CHARS, so the
+    trigram-recall section was tail-truncated away — cross-conversation recall silently
+    died. Facts must leave headroom; the recall section must survive a bloated store."""
+    import memory, db as _db
+    monkeypatch.setattr(_db, "db_configured", lambda: True)
+    monkeypatch.setattr(_db, "active_facts",
+                        lambda limit=60: [{"id": i, "category": "business",
+                                           "fact": "F%03d " % i + "x" * 150,
+                                           "last_referenced_at": None} for i in range(60)])
+    monkeypatch.setattr(_db, "search_messages",
+                        lambda q, exclude_conversation_id=None, limit=6:
+                        [{"role": "assistant", "content": "Here's the full review of the "
+                          "slowest weeknight email — hooks solid", "created_at": None,
+                          "conversation_id": 19, "sim": 0.46}])
+    monkeypatch.setattr(_db, "touch_facts", lambda ids: None)
+    r = memory.build_recall_context("what did you make of the weeknight email?",
+                                    conversation_id=20)
+    assert "Relevant earlier discussion" in r["block"]
+    assert "slowest weeknight email" in r["block"]
+    assert "older facts trimmed" in r["block"]
+    assert len(r["block"]) <= memory.MEMORY_MAX_CONTEXT_CHARS + 100

@@ -127,10 +127,22 @@ def build_recall_context(user_message: str, conversation_id: int | None = None) 
         if facts:
             lines.append("What EDITH knows (durable context — NOT financial truth; verify "
                          "figures against live data):")
+            # Reserve headroom for the recall section below. Without this, once the fact
+            # store grows past the budget the recall snippets get tail-truncated away and
+            # cross-conversation recall silently dies (found 2026-08-03: 60 facts = 8044
+            # chars > 8000 budget → "Relevant earlier discussion" never reached the model).
+            fact_budget = MEMORY_MAX_CONTEXT_CHARS - 2000
+            used = len(lines[-1])
             for f in facts:
                 ts = f.get("last_referenced_at")
                 stamp = ts.date().isoformat() if hasattr(ts, "date") else ""
-                lines.append(f"- [{f['category']}] {f['fact']}" + (f" (as of {stamp})" if stamp else ""))
+                line = f"- [{f['category']}] {f['fact']}" + (f" (as of {stamp})" if stamp else "")
+                if used + len(line) > fact_budget:
+                    lines.append(f"…({len(facts) - len(used_fact_ids)} older facts trimmed "
+                                 "to keep room for recall)")
+                    break
+                lines.append(line)
+                used += len(line) + 1
                 used_fact_ids.append(f["id"])
 
         # Relevance recall: always try (cheap); the search itself filters by similarity.
