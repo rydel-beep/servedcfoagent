@@ -1105,3 +1105,19 @@
      recall of the timeline review verified live on the CFO dashboard. Known gap left as-is:
      db.decay_facts still unscheduled (fact store only grows). Report:
      dashboard/CONTENT_REVIEW_VERIFICATION.md. Suites 424 green.
+
+109. **Timeline voice overhaul — the mouth/memory/brain decomposition (2026-08-03).** Rydel's
+     live verdict (hallucinates, drags, creepy, contextless) root-caused via a parity table: the
+     bridge had ported the transport but dropped tuned pieces. Fixes: (MOUTH) speech_normalize.py
+     runs in the ONE shared tts core so BOTH surfaces speak ear-clean (currency→words, ratios,
+     acronym lexicon env-extensible via SPEECH_LEXICON, dates, eye-formatting stripped; captions
+     keep eye-format); widget v2 = verbatim CFO chunker + GAPLESS WebAudio scheduled playback
+     (0ms seams by construction, prefetch, generation tokens, node cleanup); measured first-audio
+     0.48–0.70s. (MEMORY) timeline-channel Tier-3 turns carry a delivery-world grounding block
+     (roster+risk+freshness+entity rule) — conversational delivery talk grounded, adversarial set
+     green on-channel; STT confidence gate (<0.5 → "didn't catch that", no model call), self-echo
+     guard, adaptive endpointing, raw transcripts logged. (BRAIN) prompts/spoken_channel.py —
+     VERSIONED v2 spoken layer, parameterized per channel, supersedes inline VOICE_ADDENDUM;
+     channel threaded through the chat stack. One source for voice settings confirmed (no drift
+     possible). Gate + CFO voice loop regression-checked; suite 432 green. ACCEPTANCE: Rydel's
+     ears (pending his click-test). Report: dashboard/TIMELINE_VOICE_OVERHAUL.md.
