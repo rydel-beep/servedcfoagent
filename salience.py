@@ -236,6 +236,17 @@ def collect(snap: dict | None = None) -> list[dict]:
     except Exception:
         pass
 
+    # 10) Automation health (universal advisor P3) — failures/staleness re-fire daily
+    #     while broken; the weekly all-green event is the POSITIVE confirmation so
+    #     silence is never ambiguous. Watermarked like everything else.
+    try:
+        import automations
+        for a in (automations.salience_events() or []):
+            if a["id"] not in told:
+                events.append(a)
+    except Exception:
+        pass
+
     events.sort(key=lambda e: (e["salience"], -e["ago"]), reverse=True)
     return events
 

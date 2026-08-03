@@ -16,9 +16,11 @@ def _reset():
 
 def _no_loops(monkeypatch):
     # isolate close/leads salience from Pillar-1 loop/anomaly events (tested in test_open_loops)
-    import open_loops, anomaly_watch
+    # and from the P3 automation-health events (tested in test_automations)
+    import open_loops, anomaly_watch, automations
     monkeypatch.setattr(open_loops, "due_followups", lambda snap=None: [])
     monkeypatch.setattr(anomaly_watch, "check", lambda snap=None: [])
+    monkeypatch.setattr(automations, "salience_events", lambda: [])
 
 
 def test_ranking_money_at_risk_first(monkeypatch):

@@ -746,6 +746,8 @@ def api_chat():
             (__import__('timeline_adapter').handle_timeline_risk, False),     # 'what's overdue/stalled' → Timeline drill, verbatim
             (__import__('timeline_adapter').handle_timeline_signals, False),  # complaints/praise from the Timeline signals log
             (__import__('timeline_adapter').handle_timeline_events, False),   # upcoming client events + countdowns
+            (__import__('automations').handle_automation_health, False),      # P3: automation-health registry truth
+            (__import__('notion_content').handle_content_list, False),        # P4: what emails/lead magnets went out this week
             (capacity_engine.handle_capacity_command, False),  # hiring/capacity/raise/afford questions
             (forecasting_engine.handle_forecast_command, False),  # cash-flow / MRR / runway forecasts
             (__import__('action_feed').handle_action_feed_command, False),  # 'what needs my attention'
@@ -802,6 +804,12 @@ def api_chat():
     _trk_ctx = tracker_read.client_context(user_msg)
     if _trk_ctx:
         _mem_block = _trk_ctx + "\n\n" + (_mem_block or "")
+    # Universal advisor P4: content-review turns get the piece's VERBATIM Notion copy
+    # (read-only integration) so the advisory register critiques the real text.
+    import notion_content
+    _cc = notion_content.content_context(user_msg)
+    if _cc:
+        _mem_block = _cc + "\n\n" + (_mem_block or "")
 
     result = chat_fn(history, snapshot_json, token, voice=voice, memory_block=_mem_block)
 
@@ -914,6 +922,8 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str):
             (__import__('timeline_adapter').handle_timeline_risk, False),     # 'what's overdue/stalled' → Timeline drill, verbatim
             (__import__('timeline_adapter').handle_timeline_signals, False),  # complaints/praise from the Timeline signals log
             (__import__('timeline_adapter').handle_timeline_events, False),   # upcoming client events + countdowns
+            (__import__('automations').handle_automation_health, False),      # P3: automation-health registry truth
+            (__import__('notion_content').handle_content_list, False),        # P4: what emails/lead magnets went out this week
             (capacity_engine.handle_capacity_command, False),
             (forecasting_engine.handle_forecast_command, False),
             (__import__('action_feed').handle_action_feed_command, False),
@@ -970,6 +980,12 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str):
     _trk_ctx = tracker_read.client_context(user_msg)
     if _trk_ctx:
         _mem_block = _trk_ctx + "\n\n" + (_mem_block or "")
+    # Universal advisor P4: content-review turns get the piece's VERBATIM Notion copy
+    # (read-only integration) so the advisory register critiques the real text.
+    import notion_content
+    _cc = notion_content.content_context(user_msg)
+    if _cc:
+        _mem_block = _cc + "\n\n" + (_mem_block or "")
 
     @stream_with_context
     def generate():
