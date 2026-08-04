@@ -241,6 +241,25 @@ def refresh_snapshot():
     return jsonify({"status": "refreshed", "ok": snap.get("ok"), "degraded_count": len(snap.get("degraded", []))})
 
 
+@app.route("/cfo/attribution", methods=["GET"])
+def get_attribution():
+    """Per-creative ad attribution (owner surface — same gate as the snapshot: it names
+    real leads/deals). Windows: ?days=30|60|90 or ?start=&end= (ISO). ads_read only."""
+    if not _snapshot_request_authorized():
+        return jsonify({"error": "Unauthorized"}), 401
+    import attribution_engine
+    try:
+        days = min(max(int(request.args.get("days", 30)), 1), 365)
+    except ValueError:
+        return jsonify({"error": "bad days"}), 400
+    result = attribution_engine.compute(
+        days=days, start=request.args.get("start"), end=request.args.get("end"),
+        force=request.args.get("force") == "1")
+    resp = jsonify(result)
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
 # Scope set must match what the Xero app has ENABLED, or consent 500s with
 # invalid_scope. This app exposes only GRANULAR report scopes — the broad
 # accounting.reports.read / accounting.transactions.read are NOT enabled
@@ -545,6 +564,14 @@ def _deferred_startup():
             capital_allocation.migrate()
         except Exception as _e:
             logger.error("Capital-allocation boot skipped: %s", _e)
+        # Ad attribution: attr_contacts table + periodic recompute (lazy on request too).
+        try:
+            import attribution_join
+            import attribution_engine
+            attribution_join.migrate()
+            attribution_engine.start_loop()
+        except Exception as _e:
+            logger.error("Attribution boot skipped: %s", _e)
         _startup_refresh()
         _start_scheduled_refresh()
 
