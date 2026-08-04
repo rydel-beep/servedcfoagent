@@ -1121,3 +1121,20 @@
      channel threaded through the chat stack. One source for voice settings confirmed (no drift
      possible). Gate + CFO voice loop regression-checked; suite 432 green. ACCEPTANCE: Rydel's
      ears (pending his click-test). Report: dashboard/TIMELINE_VOICE_OVERHAUL.md.
+
+110. **EMAIL ENGINE — the boundary amendment + Phase A live (2026-08-04).** The standing "EDITH
+     never sends" rule is AMENDED in exactly one controlled way: owner-executed sends via the
+     confirmed chain (draft → Rydel approval → GHL draft read-back → recipient list displayed →
+     his explicit press → count-echo confirm → execute → read-back → audit). Autonomous contact
+     remains forbidden forever: v1 has no schedulers touching sends; ghl_email.send_email refuses
+     without an owner chain token that cannot exist until Phase C is built (verify_chain_token
+     always False) — structurally impossible, test-enforced. GHL access: dedicated GHL_EMAIL_TOKEN
+     (Rydel-created; sales key untouched, reads only); location PINNED to Served Marketing
+     8nmZRSNCIslNgLwJSt3h (API-verified name) with LocationViolation raised on any other location
+     in any parameter — client sub-accounts structurally unreachable. Phase A shipped + live:
+     email_drafts store (append-only events), grounded generation (SOP + Email Library voice +
+     both Wins DBs — Google Wins now shared), THE THREE GATES (proof/link/relation) blocking
+     READY_FOR_REVIEW, bridge endpoints, salience announce, pipeline-memory queries. LIVE PROOF:
+     draft #1 (weekly) generated grounded and gate-passed; winback generation REFUSED (no doctrine
+     documented + empty P&D cohort — never invented). OPEN: newsletter segment undefined (staging
+     blocked until named); winback doctrine; timeline EMAIL board UI; Phases B/C after triple-pass.
