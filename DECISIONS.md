@@ -1181,3 +1181,14 @@
    correctly refuses on the empty P&D cohort.)
 4) Board eyeball is Rydel's; engine only guarantees it renders the live store
    (verified: 14 ready / 9 held / #1 approved).
+
+111. **Email system COMPLETED to the send chain (2026-08-04, one-shot).** Winback verdict executed
+     (skill-written → PD DB → ingest; EDITH generates weekly ONLY, GENERATABLE enforced + live-
+     refusal-verified). Cadence Mon 09:00 Sydney drafts-only daemon. PD ingest with history mapping
+     + cohort-block. Phase B staging live-proven (pinned location, inert draft, id-before-read-back,
+     orphan adoption, honest metadata-only read-back). Phase C owner send chain shipped: live
+     recipient resolution with CODE-level exclusions, count-echo confirm, single-use bound chain
+     tokens, one send call site verifying its own token, full audit. Adversarially verified live to
+     the empty-list boundary; a real test-segment send waits only on one tagged internal contact.
+     Incidents (hotfixed, recorded): bridge-escape boot break, dropped status UPDATE, falsy-zero
+     count parse. State doc updated as-built: dashboard/EMAIL_SYSTEM_STATE.md.

@@ -93,7 +93,55 @@ Owner-executed sends only (boundary amendment, DECISIONS #110); pinned Served lo
 8nmZRSNCIslNgLwJSt3h with LocationViolation; three gates on every path incl. ingest; Notion
 read-only; test-segment-only sends during build; one brain; append-only pipeline history.
 
-## What happens next (post-verdict)
+## SUPERSEDED planning section (kept for history)
 Fix pass (dead-code content-linked generation; cadence job; winback per Rydel's call) → Phase B
 staging (needs the newsletter tag; builds against a temp internal test tag) → winback-ready
 idle state → Phase C send chain → triple-pass ×3 + five-scan → EMAIL_ENGINE_REPORT.md.
+
+
+# AS-BUILT UPDATE — 2026-08-04 (completion session; this section is the current truth)
+
+VERDICT EXECUTED: winback follows the content-linked pattern. Final architecture LIVE:
+  served-newsletter skill → Email Library ("Draft Ready") ─┐
+  served-winback skill → PD Email Review DB (≥Rydel Review) ─┤→ EDITH INGEST (3 gates)
+  EDITH weekly generation (THE only generative lane) ───────┘        │
+        ONE pipeline store → ONE board (✉ Email) → APPROVE (click/voice)
+        → Phase B STAGE: inert GHL draft in the PINNED Served location, id recorded
+          pre-read-back, orphan adoption, read-back = existence+name verbatim (GHL's
+          builder API exposes metadata only — surfaced honestly, never hidden)
+        → Phase C SEND CHAIN: live recipient view (exclusions in code: DND/banned/
+          no-email; winback = exactly the live P&D cohort minus banned/active clients;
+          unresolvable list BLOCKS) → count-echo confirm → single-use 5-min chain token
+          bound to draft+count → fresh re-resolution + count re-check → the ONE send
+          call (verifies its own execution token; grep: single call site, no scheduler
+          path) → SENT + audit (pressed_by/executed_by/count/definition).
+
+- Generation: GENERATABLE=("weekly",) — content-linked + winback generation refuse with
+  a pointer here (live-verified refusals).
+- Cadence: Mon 09:00–09:30 Sydney daemon (kv-stamped once/day): weekly generation +
+  Library sweep + PD sweep. DRAFTS ONLY — structurally cannot stage or send.
+- PD reconciliation finding: all 8 pd-2026-08 rows were "Rydel Review"; Loaded/Sent
+  ladder options historically UNUSED; no non-chain send path exists in code (grep both
+  repos). The 8 are ingested as winback drafts, blocked DRAFTING with reason (cohort 0).
+- Live verification: staging proven on draft #1 (STAGED_IN_GHL, GHL 6a71919a…, no
+  duplicate); chain refusals proven live (forged token, wrong count, empty list, non-
+  staged draft); recipient view resolves live and blocks honestly.
+- Send testing status: the full chain is code-complete and adversarially verified to
+  the empty-list boundary. An actual test-segment SEND awaits one human step: tag ONE
+  internal contact `edith-test-internal` in GHL — then the board's Recipients & Send
+  walks the whole chain against real internal addresses. The first REAL-list send
+  remains Rydel's own act after the newsletter tag exists.
+- Incidents during the build (honest record): one boot-breaking syntax error deployed
+  and hotfixed within minutes (bridge echo escape); one dropped status-UPDATE caught by
+  re-verification; a falsy-zero count parse bug caught by the adversarial battery. All
+  fixed + regression-covered where testable.
+
+RYDEL'S LIST (shrunken):
+1. Tristan: create the `newsletter` tag (task text above) — swaps the send list from
+   TEST to real by config.
+2. Tag one internal contact `edith-test-internal` → then run one test-segment send from
+   the board (your press, end to end).
+3. Paste the Winback SOP into the Command Centre (doctrine reference — no longer a
+   build blocker).
+4. Push Two Faucets from the skill session when the episode ships.
+5. Populate P&D when sales is ready — winback ingests are waiting, blocked honestly.
