@@ -563,9 +563,9 @@ _CHANGES_RE = re.compile(r"\b(change|rework|redo|tighten|soften)\b.{0,40}\b(draf
 
 
 def _find_draft_by_ref(num: str | None, kind: str | None) -> dict | None:
-    rows = list_drafts(20)
     if num:
-        return next((r for r in rows if r["id"] == int(num)), None)
+        return get_draft(int(num))        # direct fetch — never limited by the recent window
+    rows = list_drafts(20)
     if kind:
         k = "content-linked" if "content" in kind or "yt" in kind else kind
         return next((r for r in rows if r["type"] == k and r["status"] == "READY_FOR_REVIEW"), None)
