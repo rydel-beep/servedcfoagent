@@ -848,6 +848,14 @@ def stage_draft(draft_id: int, actor: str = "rydel") -> dict:
     transforms.append("GHL's builder list API exposes metadata only (no subject/html read-back) — "
                       "content verified at create-payload level; name (embeds id+subject) verified "
                       "verbatim from GHL: %s" % name_verbatim)
+    try:
+        with db.get_conn() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE email_drafts SET status='STAGED_IN_GHL', recipient_def=%s, "
+                        "updated_at=now() WHERE id=%s",
+                        ("TEST SEGMENT — tag '%s' (internal only; real list pending Rydel's "
+                         "newsletter tag)" % TEST_SEGMENT_TAG, draft_id))
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "reason": "status write failed: %s" % str(e)[:120]}
     _log_event(draft_id, "staged_in_ghl", {"ghl_draft_id": str(gid), "name_verbatim": name_verbatim,
                                            "transforms": transforms}, actor)
     return {"ok": True, "id": draft_id, "status": "STAGED_IN_GHL", "ghl_draft_id": str(gid),
