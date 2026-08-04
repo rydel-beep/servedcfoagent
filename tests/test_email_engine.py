@@ -51,3 +51,27 @@ def test_send_structurally_impossible_without_chain():
     assert "_refused" in out
     out2 = GE.send_email({"anything": 1}, chain_token="forged")
     assert "_refused" in out2                     # verify_chain_token always False in v1
+
+
+def test_generation_is_weekly_only():
+    """ONE WRITER PER LANE: content-linked + winback generation are dead-coded."""
+    for t in ("content-linked", "winback"):
+        r = EP.generate_draft(t)
+        assert not r["ok"] and "ingest" in r["reason"].lower(), t
+    assert EP.GENERATABLE == ("weekly",)
+
+
+def test_pd_status_map_and_history_flags():
+    assert EP.PD_STATUS_MAP["rydel review"] == "READY_FOR_REVIEW"
+    assert EP.PD_STATUS_MAP["loaded in ghl"] == "STAGED_IN_GHL"
+    assert EP.PD_STATUS_MAP["sent"] == "SENT"
+
+
+def test_cadence_never_fires_outside_window(monkeypatch):
+    import helpers, datetime as dt
+    class FakeNow(dt.datetime):
+        pass
+    # Tuesday 09:05 Sydney → no fire
+    monkeypatch.setattr(EP, "now_sydney",
+                        lambda: dt.datetime(2026, 8, 4, 9, 5, tzinfo=dt.timezone.utc))
+    assert EP.cadence_tick() is None

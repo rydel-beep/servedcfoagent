@@ -317,11 +317,20 @@ Return STRICT JSON: {{"subjects": ["...","...","..."], "text": "plain-text email
         return None
 
 
+GENERATABLE = ("weekly",)   # ONE WRITER PER LANE (EMAIL_SYSTEM_STATE.md, verdict 2026-08-04):
+# content-linked is WRITTEN by the served-newsletter skill (→ Email Library → ingest);
+# winback is WRITTEN by the served-winback skill (→ PD Email Review DB → ingest).
+# EDITH generates the weekly ONLY. The other lanes are ingest-only by construction.
+
+
 def generate_draft(dtype: str, note: str = "", actor: str = "edith") -> dict:
     """The full A2 flow: gather → generate → gates → store. Returns the stored row
     (or the named failure — never silently fixed)."""
     if dtype not in TYPES:
         return {"ok": False, "reason": "unknown type %r" % dtype}
+    if dtype not in GENERATABLE:
+        return {"ok": False, "reason": "EDITH doesn't write %s emails — that lane is skill-written "
+                "and ingest-only (see dashboard/EMAIL_SYSTEM_STATE.md). Use the ingest sweep." % dtype}
     migrate()
     grounding = gather_grounding(dtype)
     rel = relation_gate(dtype, grounding)
@@ -670,3 +679,174 @@ def handle_review_command(msg: str, token: str) -> tuple[str | None, bool]:
     kv_store.put(key, {"action": action, "id": row["id"], "note": msg if action == "request_changes" else ""})
     return ("To confirm: %s draft #%s — the %s titled \"%s\"? Say yes to lock it in."
             % (action.replace("_", " "), row["id"], row["type"], subj[:70])), True
+
+
+# ── 1C: WINBACK INGEST (the verdict): served-winback skill → PD Email Review DB
+#    → this pipeline. Gates on ingest; empty/stale cohort ⇒ blocked-with-reason.
+PD_DS = "f38d3581-8844-4249-aea2-8e041be37e41"
+PD_STATUS_MAP = {                       # PD ladder → pipeline ladder
+    "rydel review": "READY_FOR_REVIEW",
+    "approved — ready for ghl": "APPROVED",
+    "approved - ready for ghl": "APPROVED",
+    "loaded in ghl": "STAGED_IN_GHL",   # imported history only — no chain writes these
+    "sent": "SENT",
+}
+
+
+def _pd_cohort_count() -> int | None:
+    try:
+        import ghl_email
+        c = ghl_email.pd_cohort()
+        return None if c is None else len(c)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def ingest_from_pd(actor: str = "edith") -> dict:
+    """Pull PD Email Review rows (status ≥ Rydel Review) into the pipeline as
+    type=winback, source=skill-winback. Three gates on ingest. An empty/unreadable
+    P&D cohort forces non-historical rows to DRAFTING with the reason stated —
+    nothing winback ever stages against a cohort that doesn't exist."""
+    import notion_content as NC
+    migrate()
+    q = NC._req("POST", "/data_sources/%s/query" % PD_DS, {"page_size": 100})
+    if q is None:
+        return {"ok": False, "reason": "PD Email Review DB unreachable — nothing ingested"}
+    existing = set()
+    try:
+        with db.get_conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT grounding->>'notion_id' AS nid FROM email_drafts "
+                        "WHERE grounding->>'source'='skill-winback'")
+            existing = {r["nid"] for r in cur.fetchall() if r["nid"]}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "reason": "store read failed: %s" % str(e)[:100]}
+    cohort_n = _pd_cohort_count()
+    grounding_base = None
+    out, skipped = [], 0
+    for pg in q.get("results", []):
+        raw_status = ((pg.get("properties", {}).get("Status", {}) or {}).get("select") or {}).get("name") or ""
+        mapped = PD_STATUS_MAP.get(raw_status.strip().lower())
+        if not mapped:
+            continue                                   # Draft → not ready; skip
+        if pg["id"] in existing:
+            skipped += 1
+            continue
+        title = NC._title_of(pg)
+        props = pg.get("properties", {})
+        subject = "".join(t.get("plain_text", "") for t in (props.get("Subject", {}).get("rich_text") or []))
+        body = NC.page_copy(pg["id"], max_chars=8000) or ""
+        if not body.strip():
+            out.append({"id": None, "title": title, "ok": False, "reason": "empty body — flagged, not guessed"})
+            continue
+        if grounding_base is None:
+            grounding_base = gather_grounding("weekly")   # wins + voice corpus for the gates
+        validation = run_gates("weekly", [subject or title], body, body, grounding_base)
+        validation["relation"] = {"gate": "relation", "ok": True, "failures": []}
+        imported_history = mapped in ("STAGED_IN_GHL", "SENT")
+        status = mapped
+        if not imported_history:
+            if not validation["proof"]["ok"] or not validation["link"]["ok"]:
+                status = "DRAFTING"
+            if not cohort_n:
+                status = "DRAFTING"
+                validation["relation"] = {"gate": "relation", "ok": False, "failures": [
+                    "P&D cohort is %s — winback blocked until it populates"
+                    % ("empty (0 contacts)" if cohort_n == 0 else "unreadable")]}
+        validation["ok"] = all(validation[g]["ok"] for g in ("proof", "link", "relation"))
+        cohort = ((props.get("Cohort", {}) or {}).get("select") or {}).get("name") or "?"
+        slim = {"source": "skill-winback", "notion_id": pg["id"], "notion_title": title,
+                "pd_status": raw_status, "imported_history": imported_history,
+                "cohort": cohort, "week": ((props.get("Week", {}) or {}).get("select") or {}).get("name"),
+                "fetched_at": now_sydney().isoformat(timespec="seconds"),
+                "recipient": "the LIVE P&D stage cohort (currently %s)" %
+                             (cohort_n if cohort_n is not None else "unreadable")}
+        try:
+            with db.get_conn() as conn, conn.cursor() as cur:
+                cur.execute("""INSERT INTO email_drafts (type, subject_options, body_html, body_text,
+                               grounding, validation, recipient_def, status)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                            ("winback", json.dumps([subject or title]), "", body,
+                             json.dumps(slim), json.dumps(validation), slim["recipient"], status))
+                did = cur.fetchone()["id"]
+            _log_event(did, "ingested_from_pd", {"notion_id": pg["id"], "pd_status": raw_status,
+                                                 "mapped": status,
+                                                 "imported_history": imported_history}, actor)
+            out.append({"id": did, "title": title, "ok": True, "status": status})
+        except Exception as e:  # noqa: BLE001
+            out.append({"id": None, "title": title, "ok": False, "reason": str(e)[:100]})
+    return {"ok": True, "ingested": out, "already": skipped, "pd_cohort": cohort_n}
+
+
+# ── 1B: the Monday 09:00 Sydney cadence — DRAFTS ONLY, never stages or sends. ─
+def cadence_tick() -> dict | None:
+    """Called by the app's daemon loop. Fires once per Monday 09:00–09:30 window
+    (kv-stamped, cross-worker). (1) weekly generation, (2) Library sweep, (3) PD sweep."""
+    import kv_store
+    now = now_sydney()
+    if now.weekday() != 0 or not (9 <= now.hour < 10 and now.minute < 30):
+        return None
+    stamp = "email:cadence:%s" % now.date().isoformat()
+    if kv_store.get(stamp):
+        return None
+    kv_store.put(stamp, {"at": now.isoformat(timespec="seconds")})
+    res = {"weekly": generate_draft("weekly", actor="cadence"),
+           "library": ingest_from_library(actor="cadence"),
+           "pd": ingest_from_pd(actor="cadence")}
+    logger.info("email cadence ran: weekly=%s library=%s pd=%s",
+                res["weekly"].get("ok"), res["library"].get("ok"), res["pd"].get("ok"))
+    return res
+
+
+# ── PHASE B: GHL DRAFT STAGING (the first sanctioned write — pinned + read-back) ─
+TEST_SEGMENT_TAG = "edith-test-internal"   # real `newsletter` tag pending Rydel; swap = config
+
+
+def stage_draft(draft_id: int, actor: str = "rydel") -> dict:
+    """APPROVED → create an INERT GHL email draft in the pinned Served location,
+    READ BACK and verify verbatim, then STAGED_IN_GHL. Never claims staged without
+    the read-back; GHL errors reported verbatim. Nothing here sends."""
+    import ghl_email
+    row = get_draft(draft_id)
+    if not row:
+        return {"ok": False, "reason": "draft %s not found" % draft_id}
+    if row["status"] != "APPROVED":
+        return {"ok": False, "reason": "draft is %s — only APPROVED drafts stage" % row["status"]}
+    if not ghl_email.configured():
+        return {"ok": False, "reason": "GHL_EMAIL_TOKEN not configured"}
+    subject = (row["subject_options"] or ["(no subject)"])[0]
+    html = row["body_html"] or ("<html><body>%s</body></html>" %
+                                (row["body_text"] or "").replace("\n", "<br>"))
+    name = "EDITH #%s %s — %s" % (row["id"], row["type"], subject[:60])
+    created = ghl_email.create_email_draft(subject, html, name)
+    if not created or created.get("_error"):
+        return {"ok": False, "reason": "GHL create failed: %s" %
+                ((created or {}).get("_text") or "no response")}
+    gid = created.get("id") or (created.get("builder") or {}).get("id") or created.get("_id")
+    if not gid:
+        return {"ok": False, "reason": "GHL create returned no draft id: %s" % str(created)[:150]}
+    back = ghl_email.get_email_draft(str(gid))
+    verified, transforms = False, []
+    if isinstance(back, dict) and not back.get("_error"):
+        got_subj = back.get("subject") or (back.get("builder") or {}).get("subject") or ""
+        got_html = back.get("html") or (back.get("builder") or {}).get("html") or ""
+        verified = (got_subj == subject) and (html in got_html or got_html == html or
+                                              _norm(got_html) == _norm(html))
+        if got_subj != subject:
+            transforms.append("subject transformed by GHL: %r" % got_subj[:80])
+        if got_html != html and html not in got_html:
+            transforms.append("html transformed by GHL (len %s → %s)" % (len(html), len(got_html)))
+    if not verified and not transforms:
+        return {"ok": False, "reason": "read-back failed: %s" % str(back)[:150]}
+    try:
+        with db.get_conn() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE email_drafts SET status='STAGED_IN_GHL', ghl_draft_id=%s, "
+                        "recipient_def=%s, updated_at=now() WHERE id=%s",
+                        (str(gid), "TEST SEGMENT — tag '%s' (internal only; real list pending "
+                         "Rydel's newsletter tag)" % TEST_SEGMENT_TAG, draft_id))
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "reason": str(e)[:120]}
+    _log_event(draft_id, "staged_in_ghl", {"ghl_draft_id": str(gid), "verified_verbatim": verified,
+                                           "transforms": transforms}, actor)
+    return {"ok": True, "id": draft_id, "status": "STAGED_IN_GHL", "ghl_draft_id": str(gid),
+            "verified_verbatim": verified, "transforms": transforms,
+            "note": "INERT draft — no recipients attached, nothing scheduled, nothing sent."}

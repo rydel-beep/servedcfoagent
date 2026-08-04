@@ -188,5 +188,15 @@ def _json_safe(x):
 @bp.route("/email/ingest", methods=["POST"])
 @require_bridge
 def bridge_email_ingest():
+    """Both sweeps: the Email Library (content-linked) and the PD Email Review DB (winback)."""
     import email_pipeline as EP
-    return jsonify(_json_safe(EP.ingest_from_library(actor=g.actor["user"])))
+    return jsonify(_json_safe({"library": EP.ingest_from_library(actor=g.actor["user"]),
+                               "pd": EP.ingest_from_pd(actor=g.actor["user"])}))
+
+
+@bp.route("/email/stage", methods=["POST"])
+@require_bridge
+def bridge_email_stage():
+    import email_pipeline as EP
+    data = request.get_json(silent=True) or {}
+    return jsonify(_json_safe(EP.stage_draft(int(data.get("id") or 0), actor=g.actor["user"])))

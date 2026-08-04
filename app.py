@@ -138,6 +138,25 @@ def _scheduled_refresh_loop() -> None:
             logger.error("Scheduled refresh failed: %s — keeping previous snapshot", e)
 
 
+def _email_cadence_loop() -> None:
+    """Monday 09:00 Sydney drafts-only cadence (weekly generation + Library + PD ingest
+    sweeps). By construction this can NEVER stage or send — it only writes pipeline rows
+    (see EMAIL_SYSTEM_STATE.md + DECISIONS #110). kv-stamped so 2 workers fire once."""
+    while True:
+        time.sleep(15 * 60)
+        try:
+            import email_pipeline
+            email_pipeline.cadence_tick()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("email cadence tick failed: %s", e)
+
+
+def _start_email_cadence() -> None:
+    import threading
+    threading.Thread(target=_email_cadence_loop, daemon=True, name="email-cadence").start()
+    logger.info("email cadence thread started (Mon 09:00 Sydney window)")
+
+
 def _start_scheduled_refresh() -> None:
     import threading
     t = threading.Thread(target=_scheduled_refresh_loop, daemon=True, name="cfo-scheduled-refresh")
@@ -574,6 +593,7 @@ def _deferred_startup():
             logger.error("Attribution boot skipped: %s", _e)
         _startup_refresh()
         _start_scheduled_refresh()
+    _start_email_cadence()
 
 _startup_thread = threading.Thread(target=_deferred_startup, daemon=True)
 _startup_thread.start()
