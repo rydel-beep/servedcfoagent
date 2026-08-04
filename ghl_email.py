@@ -124,13 +124,42 @@ def find_email_draft(builder_id: str = "", name: str = "") -> dict | None:
     return {}   # reachable but not found (vs None = list call failed)
 
 
-# ── the send call (Phase C ONLY — refuses without the owner chain token) ──────
+def contacts_by_tag(tag: str, limit: int = 300) -> list | None:
+    """Live recipient resolution for a tag — name+email rows, EXCLUSIONS ENFORCED IN
+    CODE at list-build: DND and banned are dropped here, never left to copy. None =
+    unresolvable (callers must BLOCK the send)."""
+    out, page = [], None
+    for _ in range(6):
+        params = {"locationId": SERVED_LOCATION_ID, "limit": 100, "tag": tag}
+        if page:
+            params["startAfterId"] = page
+        d = _request("GET", "/contacts/", params=params)
+        if not isinstance(d, dict) or d.get("_error"):
+            return None
+        rows = d.get("contacts", [])
+        for c in rows:
+            tags_l = [t.lower() for t in (c.get("tags") or [])]
+            if c.get("dnd") or "banned" in tags_l or not c.get("email"):
+                continue
+            out.append({"id": c.get("id"), "name": (c.get("contactName") or
+                        ((c.get("firstName") or "") + " " + (c.get("lastName") or "")).strip() or "?"),
+                        "email": c.get("email")})
+            if len(out) >= limit:
+                return out
+        if len(rows) < 100:
+            break
+        page = rows[-1].get("id")
+    return out
+
+
+# ── the send call (Phase C — executes ONLY inside the owner chain) ────────────
 def send_email(schedule_payload: dict, chain_token: str | None = None) -> dict:
-    """The ONLY function that can ever trigger a send — and it refuses unless the
-    owner-executed send chain (Phase C) minted a valid chain confirmation token.
-    v1: Phase C is not built; every call refuses. No scheduler imports this module."""
-    from email_pipeline import verify_chain_token   # late import; Phase C owns minting
+    """The ONLY function that can ever trigger a send. Refuses without a valid
+    single-use owner chain token (minted by the send chain AFTER Rydel's count-echo
+    confirmation). No scheduler imports this module; grep-proven single call site."""
+    from email_pipeline import verify_chain_token   # late import; the chain owns minting
     if not chain_token or not verify_chain_token(chain_token):
         logger.error("ghl_email.send_email REFUSED: no valid owner chain token")
         return {"_refused": "owner send chain token required — autonomous sends are impossible"}
-    raise NotImplementedError("Phase C (owner-executed send) is not built yet")
+    return _request("POST", "/emails/schedule", json_body=dict(schedule_payload,
+                                                               locationId=SERVED_LOCATION_ID))

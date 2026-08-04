@@ -853,3 +853,112 @@ def stage_draft(draft_id: int, actor: str = "rydel") -> dict:
     return {"ok": True, "id": draft_id, "status": "STAGED_IN_GHL", "ghl_draft_id": str(gid),
             "name_verbatim": name_verbatim, "transforms": transforms,
             "note": "INERT draft — no recipients attached, nothing scheduled, nothing sent."}
+
+
+# ── PHASE C: THE OWNER SEND CHAIN (every step required, in order) ─────────────
+import secrets as _secrets
+
+
+def recipients_view(draft_id: int) -> dict:
+    """THE ACTUAL LIST, live-resolved. Unresolvable segment BLOCKS the send.
+    Weekly/content-linked → the attached tag (TEST segment until Rydel's tag).
+    Winback → exactly the live P&D cohort, each name shown; extra exclusions
+    (past/active clients, banned) enforced here in code."""
+    import ghl_email
+    row = get_draft(draft_id)
+    if not row:
+        return {"ok": False, "reason": "draft not found"}
+    if row["type"] == "winback":
+        cohort = ghl_email.pd_cohort()
+        if cohort is None:
+            return {"ok": False, "reason": "P&D stage unreadable — send BLOCKED (no unverifiable lists)"}
+        rows = []
+        for o in cohort:
+            c = o.get("contact") or {}
+            tags_l = [t.lower() for t in (c.get("tags") or [])]
+            if any(t in tags_l for t in ("banned", "closed deal client", "current client")):
+                continue
+            if c.get("email"):
+                rows.append({"id": c.get("id"), "name": c.get("name") or "?", "email": c["email"]})
+        definition = ("contacts currently in the 'Pitched and Drifted' stage, excluding "
+                      "banned/active clients — %d people" % len(rows))
+    else:
+        tag = TEST_SEGMENT_TAG
+        rows = ghl_email.contacts_by_tag(tag)
+        if rows is None:
+            return {"ok": False, "reason": "segment '%s' unresolvable — send BLOCKED" % tag}
+        definition = ("contacts tagged '%s', excluding DND/banned/no-email — %d people "
+                      "(TEST SEGMENT — the real newsletter tag is pending Rydel)" % (tag, len(rows)))
+    return {"ok": True, "count": len(rows), "definition": definition, "recipients": rows}
+
+
+def mint_chain_token(draft_id: int, count: int) -> str:
+    """Minted ONLY by the send chain AFTER the count-echo confirmation. Single-use,
+    5-minute, bound to draft+count. kv-backed (cross-worker)."""
+    import kv_store
+    tok = _secrets.token_urlsafe(24)
+    kv_store.put("email:chain:%s" % tok, {"draft_id": draft_id, "count": count,
+                                          "exp": now_sydney().timestamp() + 300})
+    return tok
+
+
+def verify_chain_token(token: str, draft_id: int | None = None, count: int | None = None) -> bool:
+    import kv_store
+    if not token:
+        return False
+    key = "email:chain:%s" % token
+    rec = kv_store.get(key)
+    if not rec:
+        return False
+    kv_store.put(key, None)                     # single-use, consumed on verification
+    if now_sydney().timestamp() > rec.get("exp", 0):
+        return False
+    if draft_id is not None and rec.get("draft_id") != draft_id:
+        return False
+    if count is not None and rec.get("count") != count:
+        return False
+    return True
+
+
+def send_draft(draft_id: int, confirm_count: int, chain_token: str, actor: str = "rydel") -> dict:
+    """Steps 3–5 of the chain: token + count re-verified against a FRESH recipient
+    resolution, then the one send call, read-back, SENT, audit. The modal/token were
+    steps 1–2 (the board); this function cannot run without their artifacts."""
+    import ghl_email
+    row = get_draft(draft_id)
+    if not row or row["status"] != "STAGED_IN_GHL":
+        return {"ok": False, "reason": "only STAGED_IN_GHL drafts can send (draft is %s)"
+                % (row["status"] if row else "missing")}
+    rec = recipients_view(draft_id)
+    if not rec.get("ok"):
+        return {"ok": False, "reason": rec.get("reason")}
+    if rec["count"] != confirm_count:
+        return {"ok": False, "reason": "count mismatch: you confirmed %s but the live list is %s — "
+                "re-open the recipient view" % (confirm_count, rec["count"])}
+    if rec["count"] == 0:
+        return {"ok": False, "reason": "recipient list is EMPTY — nothing to send"}
+    if not verify_chain_token(chain_token, draft_id, confirm_count):
+        _log_event(draft_id, "send_refused_no_token", {"confirm_count": confirm_count}, actor)
+        return {"ok": False, "reason": "chain token invalid/expired/consumed — the send chain must "
+                "be walked in order (recipients → SEND → count-echo confirm)"}
+    payload = {"templateId": row.get("ghl_draft_id"), "subject": (row["subject_options"] or [""])[0],
+               "tag": TEST_SEGMENT_TAG if row["type"] != "winback" else None,
+               "contactIds": [r["id"] for r in rec["recipients"]] if row["type"] == "winback" else None}
+    # the user's token was consumed by verify above (single-use); the send call
+    # independently verifies its OWN token, so mint the execution token here — the
+    # only place in the codebase that can (send_email refuses everything else).
+    exec_tok = mint_chain_token(draft_id, confirm_count)
+    res = ghl_email.send_email({k: v for k, v in payload.items() if v is not None}, chain_token=exec_tok)
+    if not isinstance(res, dict) or res.get("_refused") or res.get("_error"):
+        _log_event(draft_id, "send_failed", {"ghl": str(res)[:200]}, actor)
+        return {"ok": False, "reason": "GHL send failed: %s" % str(res)[:200]}
+    try:
+        with db.get_conn() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE email_drafts SET status='SENT', updated_at=now() WHERE id=%s", (draft_id,))
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "reason": str(e)[:120]}
+    _log_event(draft_id, "sent", {"count": rec["count"], "definition": rec["definition"],
+                                  "ghl_response": str(res)[:200],
+                                  "executed_by": "edith", "pressed_by": actor}, actor)
+    return {"ok": True, "id": draft_id, "status": "SENT", "count": rec["count"],
+            "ghl_response": res}

@@ -75,3 +75,24 @@ def test_cadence_never_fires_outside_window(monkeypatch):
     monkeypatch.setattr(EP, "now_sydney",
                         lambda: dt.datetime(2026, 8, 4, 9, 5, tzinfo=dt.timezone.utc))
     assert EP.cadence_tick() is None
+
+
+def test_chain_token_single_use_and_binding(monkeypatch):
+    import kv_store
+    store = {}
+    monkeypatch.setattr(kv_store, "put", lambda k, v: store.__setitem__(k, v))
+    monkeypatch.setattr(kv_store, "get", lambda k: store.get(k))
+    t = EP.mint_chain_token(7, 3)
+    assert not EP.verify_chain_token(t, draft_id=7, count=99)   # wrong count consumed it
+    t2 = EP.mint_chain_token(7, 3)
+    assert EP.verify_chain_token(t2, draft_id=7, count=3)
+    assert not EP.verify_chain_token(t2, draft_id=7, count=3)   # single-use
+    assert not EP.verify_chain_token("forged", draft_id=7, count=3)
+
+
+def test_send_requires_staged_and_chain(monkeypatch):
+    monkeypatch.setattr(EP, "get_draft", lambda i: {"id": i, "status": "APPROVED",
+                                                    "subject_options": ["x"], "type": "weekly",
+                                                    "ghl_draft_id": None})
+    r = EP.send_draft(1, 5, "any")
+    assert not r["ok"] and "STAGED_IN_GHL" in r["reason"]

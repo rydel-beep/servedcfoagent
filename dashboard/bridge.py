@@ -200,3 +200,33 @@ def bridge_email_stage():
     import email_pipeline as EP
     data = request.get_json(silent=True) or {}
     return jsonify(_json_safe(EP.stage_draft(int(data.get("id") or 0), actor=g.actor["user"])))
+
+
+@bp.route("/email/recipients/<int:draft_id>", methods=["GET"])
+@require_bridge
+def bridge_email_recipients(draft_id):
+    import email_pipeline as EP
+    return jsonify(_json_safe(EP.recipients_view(draft_id)))
+
+
+@bp.route("/email/send", methods=["POST"])
+@require_bridge
+def bridge_email_send():
+    """Owner send chain steps 2-5: mint on confirm, execute, read back, audit.
+    Two-step: {'id','count'} → returns a chain token + the echo line;
+    {'id','count','chain_token','confirm':true} → executes."""
+    import email_pipeline as EP
+    d = request.get_json(silent=True) or {}
+    draft_id, count = int(d.get("id") or 0), int(d.get("count") or -1)
+    if not d.get("confirm"):
+        rec = EP.recipients_view(draft_id)
+        if not rec.get("ok"):
+            return jsonify(rec)
+        row = EP.get_draft(draft_id)
+        subj = (row["subject_options"] or ["?"])[0] if row else "?"
+        tok = EP.mint_chain_token(draft_id, rec["count"])
+        return jsonify({"ok": True, "step": "confirm_required", "chain_token": tok,
+                        "echo": "Send \\"%s\\" to %d recipients now?" % (subj[:70], rec["count"]),
+                        "count": rec["count"], "definition": rec["definition"]})
+    return jsonify(_json_safe(EP.send_draft(draft_id, count, d.get("chain_token") or "",
+                                            actor=g.actor["user"])))
