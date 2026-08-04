@@ -247,6 +247,16 @@ def collect(snap: dict | None = None) -> list[dict]:
     except Exception:
         pass
 
+    # 11) Email pipeline (universal advisor — email engine Phase A): drafts pending
+    #     Rydel's review, watermarked on the ready-set so it announces once per set.
+    try:
+        import email_pipeline
+        for a in (email_pipeline.salience_events() or []):
+            if a["id"] not in told:
+                events.append(a)
+    except Exception:
+        pass
+
     events.sort(key=lambda e: (e["salience"], -e["ago"]), reverse=True)
     return events
 

@@ -752,6 +752,7 @@ def api_chat():
             (__import__('timeline_adapter').handle_timeline_events, False),   # upcoming client events + countdowns
             (__import__('automations').handle_automation_health, False),      # P3: automation-health registry truth
             (__import__('notion_content').handle_content_list, False),        # P4: what emails/lead magnets went out this week
+            (__import__('email_pipeline').handle_pipeline_query, False),     # Email engine: what's pending my review / pipeline state
             (capacity_engine.handle_capacity_command, False),  # hiring/capacity/raise/afford questions
             (forecasting_engine.handle_forecast_command, False),  # cash-flow / MRR / runway forecasts
             (__import__('action_feed').handle_action_feed_command, False),  # 'what needs my attention'
@@ -935,6 +936,7 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str):
             (__import__('timeline_adapter').handle_timeline_events, False),   # upcoming client events + countdowns
             (__import__('automations').handle_automation_health, False),      # P3: automation-health registry truth
             (__import__('notion_content').handle_content_list, False),        # P4: what emails/lead magnets went out this week
+            (__import__('email_pipeline').handle_pipeline_query, False),     # Email engine: what's pending my review / pipeline state
             (capacity_engine.handle_capacity_command, False),
             (forecasting_engine.handle_forecast_command, False),
             (__import__('action_feed').handle_action_feed_command, False),

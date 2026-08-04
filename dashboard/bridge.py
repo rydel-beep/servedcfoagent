@@ -137,3 +137,49 @@ def bridge_tts():
 def bridge_greeting():
     from dashboard.routes import greeting_response
     return greeting_response(force=(request.args.get("fresh") == "1"))
+
+
+# ── EMAIL ENGINE (Phase A: drafts + review — zero outbound; owner-token gated) ─
+@bp.route("/email/list", methods=["GET"])
+@require_bridge
+def bridge_email_list():
+    import email_pipeline as EP
+    d = EP.pipeline_digest()
+    return jsonify({"digest": d, "drafts": _json_safe(EP.list_drafts())})
+
+
+@bp.route("/email/draft/<int:draft_id>", methods=["GET"])
+@require_bridge
+def bridge_email_draft(draft_id):
+    import email_pipeline as EP
+    row = EP.get_draft(draft_id)
+    return (jsonify(_json_safe(row)), 200) if row else (jsonify({"error": "not found"}), 404)
+
+
+@bp.route("/email/generate", methods=["POST"])
+@require_bridge
+def bridge_email_generate():
+    import email_pipeline as EP
+    data = request.get_json(silent=True) or {}
+    return jsonify(EP.generate_draft((data.get("type") or "weekly").strip(),
+                                     note=data.get("note") or "", actor=g.actor["user"]))
+
+
+@bp.route("/email/act", methods=["POST"])
+@require_bridge
+def bridge_email_act():
+    import email_pipeline as EP
+    data = request.get_json(silent=True) or {}
+    return jsonify(EP.act(int(data.get("id") or 0), (data.get("action") or "").strip(),
+                          note=data.get("note") or "", actor=g.actor["user"]))
+
+
+def _json_safe(x):
+    import datetime as _d
+    if isinstance(x, dict):
+        return {k: _json_safe(v) for k, v in x.items()}
+    if isinstance(x, list):
+        return [_json_safe(v) for v in x]
+    if isinstance(x, (_d.datetime, _d.date)):
+        return x.isoformat()
+    return x
