@@ -217,7 +217,8 @@ def bridge_email_send():
     {'id','count','chain_token','confirm':true} → executes."""
     import email_pipeline as EP
     d = request.get_json(silent=True) or {}
-    draft_id, count = int(d.get("id") or 0), int(d.get("count") or -1)
+    draft_id = int(d.get("id") or 0)
+    count = int(d["count"]) if str(d.get("count", "")).lstrip("-").isdigit() else -1
     if not d.get("confirm"):
         rec = EP.recipients_view(draft_id)
         if not rec.get("ok"):
