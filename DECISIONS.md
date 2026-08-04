@@ -1164,3 +1164,20 @@
      the account-level engine total — test-enforced; (f) new auth surface: NONE — /cfo/attribution
      reuses _snapshot_request_authorized; media_buyer role comes in Phase 4 and ships disabled;
      (g) ads_read only, structurally: no Meta POST anywhere in the new modules (grep-tested).
+
+## #112 — 2026-08-04 — Email engine: the four held decisions land (Rydel, verbatim)
+1) Segment ladder = the S0–S5 doctrine model, encoded in segments.py (nowhere else);
+   staging/sending resolve recipients ONLY through it. S4 is the sole sendable segment
+   (HOT/WARM/COLD tier rules), governor 3/contact/week + 1 convert-ask/week list-wide,
+   global discount lock (bonuses only — staging refuses discount language).
+   Named approximation: HOT "engaged ≤30d" proxies via lastActivity/dateUpdated until
+   campaign stats wire in (contacts API exposes no per-contact open/click recency).
+2) Proof gate: explicitly-hypothetical math allowed (same-sentence triggers: if/say/
+   imagine/suppose/roughly/for example/works out to, or per-unit build-up ×/=);
+   achieved-result phrasing still holds; ambiguity holds. Hypothetical framing does
+   NOT launder client names. Allowances are reported on the gate result, not silent.
+3) Winback SOP: probe each run; refuse honestly while invisible. (Probed 2026-08-04:
+   NOW VISIBLE, 2500 chars — winback un-gates automatically via relation_gate; still
+   correctly refuses on the empty P&D cohort.)
+4) Board eyeball is Rydel's; engine only guarantees it renders the live store
+   (verified: 14 ready / 9 held / #1 approved).

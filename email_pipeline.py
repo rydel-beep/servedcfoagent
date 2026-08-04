@@ -142,18 +142,52 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 
+# Rydel's decision (2026-08-04): illustrative/teaching math is allowed ONLY when the
+# figure's own sentence frames it as hypothetical; anything reading as an achieved
+# result stays held. Ambiguous → hold (a held draft is a trivial unhold; a fabricated
+# fact-looking number in a sent email is a credibility hit).
+_HYPO_TRIGGER_RE = re.compile(
+    r"\b(if|say|imagine|suppose|roughly|for example|e\.g\.|let'?s say|picture|"
+    r"works out to|call it|assume|hypothetically)\b", re.I)
+_BUILDUP_RE = re.compile(r"[x×]\s*\$?\d|\$?\d[\d,]*\s*[x×]|=\s*\$?\d")  # $90 × 10 = …
+_SENT_SPLIT_RE = re.compile(r"(?<=[.!?;])\s+")
+
+
+def _sentence_containing(line: str, pos: int) -> str:
+    start = 0
+    for m in _SENT_SPLIT_RE.finditer(line):
+        if m.end() <= pos:
+            start = m.end()
+        else:
+            return line[start:m.start()]
+    return line[start:]
+
+
+def _is_hypothetical(line: str, pos: int) -> bool:
+    sent = _sentence_containing(line, pos)
+    return bool(_HYPO_TRIGGER_RE.search(sent) or _BUILDUP_RE.search(sent))
+
+
 def proof_gate(text: str, grounding: dict) -> dict:
     """Every result figure ($X, Nx, N%) and every cited client name must appear in
-    the grounding corpus (wins + voice examples + content piece). Fail names lines."""
+    the grounding corpus (wins + voice examples + content piece) — UNLESS the
+    figure's own sentence frames it as explicitly hypothetical (teaching math).
+    Fail names lines; hypothetical allowances are reported, not silent."""
     corpus = " ".join([w["title"] + " " + w["body"] for w in grounding.get("wins", [])]
                       + [v["copy"] for v in grounding.get("voice_examples", [])]
                       + [(grounding.get("content_piece") or {}).get("copy", "") or ""])
     ncorpus = _norm(corpus)
     failures = []
+    hypothetical_allowed = []
     for line in (text or "").splitlines():
         for m in re.finditer(r"\$[\d,]+(?:\.\d+)?[kKmM]?|\b\d+(?:\.\d+)?x\b|\b\d{2,}(?:\.\d+)?%", line):
-            if _norm(m.group(0)) not in ncorpus:
-                failures.append("untraceable figure %r in: %s" % (m.group(0), line.strip()[:90]))
+            if _norm(m.group(0)) in ncorpus:
+                continue
+            if _is_hypothetical(line, m.start()):
+                hypothetical_allowed.append("%s (hypothetical framing) in: %s"
+                                            % (m.group(0), line.strip()[:90]))
+                continue
+            failures.append("untraceable figure %r in: %s" % (m.group(0), line.strip()[:90]))
         # client-name check: proper-noun runs that match a wins title token set but not verbatim
         for m in re.finditer(r"\b([A-Z][a-z’']+(?:\s+[A-Z][a-z’']+){1,3})\b", line):
             name = m.group(1)
@@ -165,7 +199,8 @@ def proof_gate(text: str, grounding: dict) -> dict:
             if re.search(r"\d", line) and any(k in line.lower() for k in
                                               ("revenue", "covers", "bookings", "roas", "spend", "made", "$")):
                 failures.append("client/result %r not traceable to Wins in: %s" % (name, line.strip()[:90]))
-    return {"gate": "proof", "ok": not failures, "failures": failures}
+    return {"gate": "proof", "ok": not failures, "failures": failures,
+            "hypothetical_allowed": hypothetical_allowed}
 
 
 def link_gate(html: str, grounding: dict) -> dict:
@@ -403,6 +438,37 @@ def pipeline_digest() -> dict:
         line = "%d email draft%s ready for your review (%s)." % (
             len(ready), "s" if len(ready) != 1 else "", kinds)
     return {"counts": {k: len(v) for k, v in by.items()}, "ready": len(ready), "line": line}
+
+
+def regate_held(actor: str = "edith") -> dict:
+    """Re-run the three gates on every DRAFTING (held) draft against FRESH
+    grounding — used after a gate-policy refinement. Drafts that now pass flip to
+    READY_FOR_REVIEW (event-logged with the policy note); still-failing drafts
+    stay held with their failures updated. Nothing else is touched."""
+    held = [r for r in list_drafts(100) if r["status"] == "DRAFTING"]
+    report = []
+    for r in held:
+        d = get_draft(r["id"])
+        grounding = gather_grounding(d["type"])
+        validation = run_gates(d["type"], d["subject_options"] or [],
+                               d["body_html"] or "", d["body_text"] or "", grounding)
+        new_status = "READY_FOR_REVIEW" if validation["ok"] else "DRAFTING"
+        with db.get_conn() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE email_drafts SET validation=%s, status=%s, updated_at=now() "
+                        "WHERE id=%s", (json.dumps(validation), new_status, d["id"]))
+        _log_event(d["id"], "regate_pass" if validation["ok"] else "regate_still_held",
+                   {"policy": "hypothetical-math allowance (Rydel 2026-08-04)",
+                    "failures": validation["proof"]["failures"][:6],
+                    "hypothetical_allowed": validation["proof"].get("hypothetical_allowed", [])[:6]},
+                   actor=actor)
+        report.append({"id": d["id"],
+                       "subject": (d["subject_options"] or ["(no subject)"])[0][:70],
+                       "flipped": validation["ok"],
+                       "hypothetical_allowed": validation["proof"].get("hypothetical_allowed", []),
+                       "remaining_failures": [f for g in ("proof", "link", "relation")
+                                              for f in validation[g]["failures"]]})
+    return {"held_checked": len(held), "flipped": sum(1 for x in report if x["flipped"]),
+            "report": report}
 
 
 # ── Phase C stub: chain tokens do not exist yet — sends impossible ───────────
