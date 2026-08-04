@@ -535,6 +535,7 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
         logger.warning("canonical lead count unavailable: %s", e)
     closer_comm = setter_comm = 0.0
     margin = None
+    input_degraded: list[dict] = []
     try:
         import range_unit_economics as rue
         ltc = rue._ltc_in_window(w0, w1)
@@ -545,6 +546,13 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
         margin = rue._gross_margin()
     except Exception as e:
         logger.warning("canonical close/comm inputs unavailable: %s", e)
+        input_degraded.append({"metric": "attribution_loaded_inputs",
+                               "reason": f"comm/close inputs unavailable ({type(e).__name__}) "
+                                         "— loaded cost-per-close understated"})
+    if margin is None:
+        input_degraded.append({"metric": "attribution_ltgp_cac",
+                               "reason": "gross margin unavailable — LTGP/LTGP:CAC omitted, "
+                                         "never guessed"})
     try:
         import meta_spend
         canonical["account_spend"] = meta_spend.spend_in_range(str(w0), str(w1)).get("spend")
@@ -562,7 +570,7 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
         "spend_source": spend.get("source"),
         "entity_ads": len(entity_store.get("ads") or {}),
     }
-    degraded = list(spend.get("degraded") or [])
+    degraded = list(spend.get("degraded") or []) + input_degraded
     if not contacts:
         degraded.append({"metric": "attribution", "reason": "attr_contacts empty — sync pending"})
     result["degraded"] = degraded
