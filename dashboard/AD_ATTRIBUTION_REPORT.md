@@ -1,5 +1,54 @@
 # EDITH — Ad Creative Attribution Engine
 
+## PHASES 1-2 — THE JOIN + THE PER-CREATIVE ENGINE (2026-08-04) — LIVE
+
+Rydel's Phase-0 confirmations are encoded in DECISIONS #111. Modules (all read-only against
+external systems; ads_read only, test-enforced — no Meta write call exists):
+
+- **meta_entities.py** — ad entity map (ALL effective statuses incl. ARCHIVED — the default
+  /ads listing was proven incomplete in Phase 0), direct-id lookups with negative caching,
+  insights name→id alias recovery (kv `attr:ad_aliases`, learned like payment aliases),
+  per-ad daily spend store (level=ad insights, meta_spend's retroactive-backfill discipline),
+  and `reconcile_spend()` proving Σ(per-ad) against the canonical account engine.
+- **attribution_join.py** — full-CRM contact sweep (list endpoint carries `attributions`;
+  ~36 GETs, TTL 6h) into the auth-gated `attr_contacts` table; pure classification:
+  id-first ad refs (utmAdId → id-style utm_content → name), tiers ad / ig_dm / other / none;
+  `resolve_ref()` → creative identity keyed by NORMALIZED AD NAME (survives the 114
+  duplicate names; ambiguous names group at creative level with member ad ids listed,
+  adset/campaign never guessed).
+- **attribution_engine.py** — tracker-row-centric stitch (the lead universe IS the clean
+  tracker, so lead totals reconcile structurally): qualified = setter outcome ≠ DQ; funnel
+  cohort by Input Date; money metrics close-date basis (unit_economics parity); the dedupe
+  rule for duplicate won rows (counted once, flagged, explicit term in the closes
+  reconciliation); IG-DM channel row + always-visible Unattributed row; IG non-lead
+  inquiries bucket (excluded from lead math, visible, borderline flagged); min-n gates
+  (KILL needs 30 leads, scale fires on 3 closes, else "watch — insufficient data (n=…)");
+  validation flags (qualified-vs-inquiry-signals, DQ-but-progressed, unmatched leads) —
+  flag only, never reclassify. `/cfo/attribution?days=` (same owner gate as the snapshot).
+
+### Live verification (production data, 2026-08-04)
+
+| Window | Leads | Attributed | Closes | Cash | Spend | Reconciliation |
+|---|---|---|---|---|---|---|
+| 30d (Jul 6 → Aug 4) | 78 | 67 (**85.9%**) | 6 | $41,635 | $10,363.77 | **ALL OK, 0.0% drift** |
+| 60d (Jun 6 → Aug 4) | 164 | 148 (**90.2%**) | 10 | $59,945 | $18,923.18 | **ALL OK, 0.0% drift** |
+
+- All four identities exact both windows: leads engine=canonical, closes (with the explicit
+  duplicates term), cash to the cent, Σ per-creative spend = account engine total.
+- The dedupe rule caught the real Nirosha duplicate won row live (same contract value,
+  counted once, flagged "fix at source"); the two John Tamayo rows share a close date and
+  dedupe likewise. Ads with spend but zero leads appear in the table (the kill signal is
+  visible, e.g. B009_A03 at $317.52 / 0 leads in 30d).
+- IG non-lead inquiries: 112 (30d) / 224 (60d) — visible, excluded from lead math.
+- Every creative currently gates "watch — insufficient data" at 30d (top spender
+  B008_A04: 17 leads, 1 close) — the min-n discipline working as confirmed: no verdict
+  until 30 leads or 3 closes. At 60d, B004_A04 (2 closes, $24,255 cash, ROAS-c 46×) is the
+  closest to a scale-gate creative.
+- LTGP:CAC omits (with an explicit degraded entry) when gross margin is unavailable —
+  populated on the deployed service where the persisted snapshot carries
+  xero.gross_margin_pct.
+- Suite: 478 tests green including 19 new adversarial attribution tests.
+
 ## PHASE 0 — THE ATTRIBUTION TRUTH AUDIT (2026-08-04) — AWAITING RYDEL'S CONFIRMATIONS
 
 Read-only audit. Sources: GHL contacts API (all 3,527 contacts, full sweep — not a sample),
