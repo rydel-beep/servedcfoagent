@@ -226,7 +226,7 @@ def bridge_email_send():
         subj = (row["subject_options"] or ["?"])[0] if row else "?"
         tok = EP.mint_chain_token(draft_id, rec["count"])
         return jsonify({"ok": True, "step": "confirm_required", "chain_token": tok,
-                        "echo": "Send \\"%s\\" to %d recipients now?" % (subj[:70], rec["count"]),
+                        "echo": "Send %r to %d recipients now?" % (subj[:70], rec["count"]),
                         "count": rec["count"], "definition": rec["definition"]})
     return jsonify(_json_safe(EP.send_draft(draft_id, count, d.get("chain_token") or "",
                                             actor=g.actor["user"])))
