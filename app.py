@@ -32,18 +32,44 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "cfo-dashboard-dev-key-change-me")
 
+# Boot visibility (DECISIONS #112): a pre_import line before each risky module-level
+# import means a boot-crashing SyntaxError/ImportError always names its module in the
+# final log lines. Imports still crash the boot on purpose — with the build gate +
+# healthcheck, a crashed boot never replaces the serving deployment.
+import boot_banner
+
 # Register dashboard blueprint
+boot_banner.pre_import("dashboard.routes")
 from dashboard.routes import bp as dashboard_bp
 app.register_blueprint(dashboard_bp, url_prefix="/dashboard")
+boot_banner.module_ok("dashboard.routes")
 
 # Register EDITH memory blueprint (Phase 5 UI). Self-contained; degrades to no-op if DB down.
+boot_banner.pre_import("dashboard.memory_routes")
 from dashboard.memory_routes import bp as memory_bp
 app.register_blueprint(memory_bp, url_prefix="/dashboard/memory")
+boot_banner.module_ok("dashboard.memory_routes")
 
 # Owner-gated Timeline bridge (Layer 2 of the double gate; fail-closed without
 # EDITH_BRIDGE_SECRET). Token-only auth — never session/cookie. See dashboard/bridge.py.
+boot_banner.pre_import("dashboard.bridge")
 from dashboard.bridge import bp as bridge_bp
 app.register_blueprint(bridge_bp, url_prefix="/bridge")
+boot_banner.module_ok("dashboard.bridge")
+
+boot_banner.emit()
+
+
+@app.errorhandler(Exception)
+def _log_uncaught(e):
+    """Structured last-words logging for any exception escaping a handler (DECISIONS
+    #112) — no silent worker deaths. HTTP errors (404/405/…) pass through untouched."""
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return e
+    logger.error("UNCAUGHT %s on %s %s: %s", type(e).__name__,
+                 request.method, request.path, e, exc_info=True)
+    return jsonify({"error": "internal error", "class": type(e).__name__}), 500
 
 # In-memory cache of the latest snapshot
 _current_snapshot: dict | None = None
@@ -171,6 +197,10 @@ def health():
     sources are degraded. Returns 200 always (the server IS up if this responds); the body
     carries the real state."""
     subsystems: dict = {"server": "ok"}
+    # Deploy identity (DECISIONS #112): which build is live, when it booted, what imported.
+    boot = {"commit": boot_banner.BOOT_INFO.get("commit"),
+            "booted_at": boot_banner.BOOT_INFO.get("booted_at"),
+            "modules_ok": boot_banner.BOOT_INFO.get("modules_ok")}
 
     # DB / mirror reachability
     try:
@@ -217,7 +247,9 @@ def health():
     healthy = (subsystems.get("db") in ("ok", "not_configured")
                and isinstance(snap_state, dict) and snap_state.get("present")
                and not snap_state.get("stale"))
-    return jsonify({"status": "ok" if healthy else "degraded", "subsystems": subsystems})
+    return jsonify({"status": "ok" if healthy else "degraded", "subsystems": subsystems,
+                    "commit": boot["commit"], "booted_at": boot["booted_at"],
+                    "modules_ok": boot["modules_ok"]})
 
 
 def _snapshot_request_authorized() -> bool:

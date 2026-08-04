@@ -1192,3 +1192,24 @@
      the empty-list boundary; a real test-segment send waits only on one tagged internal contact.
      Incidents (hotfixed, recorded): bridge-escape boot break, dropped status UPDATE, falsy-zero
      count parse. State doc updated as-built: dashboard/EMAIL_SYSTEM_STATE.md.
+
+112. **INCIDENT + THE DEPLOY GATE (2026-08-04, ~17:20 AEST).** (Numbering note: two #111
+     entries exist — the attribution design and the email completion, written by parallel
+     sessions; both stand; numbering continues from here.) WHAT SHIPPED BROKEN: deploy
+     750666c2 (the Phase C send-chain increment) carried a SyntaxError in
+     dashboard/bridge.py:229 — double-escaped quotes (JSON-style \" inside a double-quoted
+     Python string). app.py imports the bridge at module level → the whole service failed
+     boot. WHY THE GATE DIDN'T RUN: a syntax error fails pytest COLLECTION, so the suite
+     cannot have been green against that tree — the mid-build increment was deployed
+     without it. FAIL-CLOSED HELD: no sends were possible while down, Postgres separate
+     and healthy, no data lost. DOWNTIME: ~4-6 minutes (crash ~17:20 → hotfix 6b76314
+     committed 17:24, live minutes later, by the same session). THE PATTERN, NOT BLAME:
+     mid-build increments were deployable with zero structural check. CLOSED STRUCTURALLY:
+     (a) the Railway build now runs `python -m compileall -q .` + `python -c "import app"`
+     — a boot-breaking error fails the BUILD and the previous deployment keeps serving;
+     (b) healthcheck instructions handed to Rydel (deploy-replacement requires a passing
+     /health); (c) boot banner + enriched /health + uncaught-exception logging so a bad
+     boot's last lines always name the failing module. THE RULE: no deploy without
+     compileall clean + import smoke + full suite green — the build enforces the first
+     two; the suite is the agent's non-negotiable pre-push step, INCLUDING mid-build
+     increments. Incremental deploys are still deploys.

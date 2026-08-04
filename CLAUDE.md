@@ -191,3 +191,12 @@ data-quality flags so the bookkeeper can fix at source.
 This document is authoritative. If a future build or investigation appears to contradict
 something here, the contradiction itself is the finding — pause and resolve, don't paper
 over.
+
+## Deploy rule (DECISIONS #112 — after the 2026-08-04 boot-crash incident)
+
+No deploy without: `python -m compileall -q .` clean + `python -c "import app"` succeeding
++ the FULL test suite green. The Railway build gate (railway.json buildCommand) enforces the
+first two structurally — a syntax or import-time error fails the BUILD and the previous
+deployment keeps serving. The suite is the agent's non-negotiable pre-push step, INCLUDING
+mid-build increments. Incremental deploys are still deploys. A syntax error fails pytest
+COLLECTION — if the suite didn't run, the code was never checked at all.
