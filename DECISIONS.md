@@ -1138,3 +1138,29 @@
      draft #1 (weekly) generated grounded and gate-passed; winback generation REFUSED (no doctrine
      documented + empty P&D cohort — never invented). OPEN: newsletter segment undefined (staging
      blocked until named); winback doctrine; timeline EMAIL board UI; Phases B/C after triple-pass.
+
+111. **AD ATTRIBUTION ENGINE — Phases 1-2 design (2026-08-04).** Rydel confirmed at the Phase-0
+     hard stop: FIRST-TOUCH default (last-touch stored + shown, labelled, never blended);
+     QUALIFIED = tracker setter Call Outcome ≠ DQ (deterministic core) plus a flag-only
+     validation sweep (GHL stages/notes/tracker comments disagreements FLAG for review — a
+     number only changes after human review, never silently); MIN-N = 30 attributed leads or
+     3 closes, KILL verdicts require the 30-lead bar, scale verdicts may fire on 3 closes;
+     IG DM = a CHANNEL-LEVEL tier (lead denominator = DM contacts that entered the tracker;
+     influencer/photographer/vendor DMs = explicit "IG non-lead inquiries" bucket, excluded
+     from lead math, visible; borderline flagged). Tiers: ad-level / IG-DM channel / non-lead
+     inquiries / unattributed. Build decisions: (a) LEAD UNIVERSE = clean tracker rows (the
+     leads_view one-engine definition) — reconciliation to canonical totals is structural, not
+     aspirational; (b) per-CREATIVE key = normalized ad NAME (creative identity survives the
+     114-duplicate-name reality; member ad_ids listed; adset/campaign rollups from id-resolved
+     members, coverage labelled) — id-first resolution order utmAdId → id-style utm_content →
+     unique name → learned alias (insights name→id recovery, kv `attr:ad_aliases`, learned like
+     payment aliases); (c) closes/cash per creative on the CLOSE-DATE basis (parity with
+     unit_economics); cohort lead→set→show rates shown for diagnostics, labelled; (d) DEDUPE
+     RULE for duplicate won rows: same email (name fallback) + same close date or same contract
+     value → one deal (keep most money-complete row), duplicates surfaced as data-quality flags
+     for fix-at-source, and the reconciliation identity carries the duplicates term explicitly
+     so canonical totals still balance; (e) per-ad daily spend store (level=ad insights,
+     meta_ad_spend_daily.json) with meta_spend's retroactive-backfill discipline, reconciled to
+     the account-level engine total — test-enforced; (f) new auth surface: NONE — /cfo/attribution
+     reuses _snapshot_request_authorized; media_buyer role comes in Phase 4 and ships disabled;
+     (g) ads_read only, structurally: no Meta POST anywhere in the new modules (grep-tested).
