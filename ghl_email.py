@@ -109,9 +109,19 @@ def create_email_draft(subject: str, html: str, name: str) -> dict | None:
                                "title": name, "subject": subject, "html": html})
 
 
-def get_email_draft(builder_id: str) -> dict | None:
-    return _request("GET", "/emails/builder/%s" % builder_id,
-                    params={"locationId": SERVED_LOCATION_ID})
+def find_email_draft(builder_id: str = "", name: str = "") -> dict | None:
+    """Read-back via the LIST endpoint (GHL offers no per-id GET for builders; the
+    list carries metadata only — id, name, previewUrl — so content-level verification
+    is NOT available from the API; callers must surface that honestly)."""
+    d = _request("GET", "/emails/builder",
+                 params={"locationId": SERVED_LOCATION_ID, "limit": 100})
+    if not isinstance(d, dict) or d.get("_error"):
+        return None
+    for b in d.get("builders", []):
+        bid = b.get("id") or b.get("_id")
+        if (builder_id and bid == builder_id) or (name and b.get("name") == name):
+            return b
+    return {}   # reachable but not found (vs None = list call failed)
 
 
 # ── the send call (Phase C ONLY — refuses without the owner chain token) ──────

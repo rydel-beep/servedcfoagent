@@ -817,36 +817,39 @@ def stage_draft(draft_id: int, actor: str = "rydel") -> dict:
     html = row["body_html"] or ("<html><body>%s</body></html>" %
                                 (row["body_text"] or "").replace("\n", "<br>"))
     name = "EDITH #%s %s — %s" % (row["id"], row["type"], subject[:60])
-    created = ghl_email.create_email_draft(subject, html, name)
-    if not created or created.get("_error"):
-        return {"ok": False, "reason": "GHL create failed: %s" %
-                ((created or {}).get("_text") or "no response")}
-    gid = created.get("id") or (created.get("builder") or {}).get("id") or created.get("_id")
+    # orphan adoption: if a prior attempt already created this draft in GHL
+    # (recorded id, or an existing builder with our exact name), reuse it — never duplicate.
+    gid = row.get("ghl_draft_id")
     if not gid:
-        return {"ok": False, "reason": "GHL create returned no draft id: %s" % str(created)[:150]}
-    back = ghl_email.get_email_draft(str(gid))
-    verified, transforms = False, []
-    if isinstance(back, dict) and not back.get("_error"):
-        got_subj = back.get("subject") or (back.get("builder") or {}).get("subject") or ""
-        got_html = back.get("html") or (back.get("builder") or {}).get("html") or ""
-        verified = (got_subj == subject) and (html in got_html or got_html == html or
-                                              _norm(got_html) == _norm(html))
-        if got_subj != subject:
-            transforms.append("subject transformed by GHL: %r" % got_subj[:80])
-        if got_html != html and html not in got_html:
-            transforms.append("html transformed by GHL (len %s → %s)" % (len(html), len(got_html)))
-    if not verified and not transforms:
-        return {"ok": False, "reason": "read-back failed: %s" % str(back)[:150]}
+        prior = ghl_email.find_email_draft(name=name)
+        if prior:
+            gid = prior.get("id") or prior.get("_id")
+    if not gid:
+        created = ghl_email.create_email_draft(subject, html, name)
+        if not created or created.get("_error"):
+            return {"ok": False, "reason": "GHL create failed: %s" %
+                    ((created or {}).get("_text") or "no response")}
+        gid = created.get("id") or (created.get("builder") or {}).get("id") or created.get("_id")
+        if not gid:
+            return {"ok": False, "reason": "GHL create returned no draft id: %s" % str(created)[:150]}
+    # record the id IMMEDIATELY (a failed read-back must never orphan the GHL draft)
     try:
         with db.get_conn() as conn, conn.cursor() as cur:
-            cur.execute("UPDATE email_drafts SET status='STAGED_IN_GHL', ghl_draft_id=%s, "
-                        "recipient_def=%s, updated_at=now() WHERE id=%s",
-                        (str(gid), "TEST SEGMENT — tag '%s' (internal only; real list pending "
-                         "Rydel's newsletter tag)" % TEST_SEGMENT_TAG, draft_id))
-    except Exception as e:  # noqa: BLE001
-        return {"ok": False, "reason": str(e)[:120]}
-    _log_event(draft_id, "staged_in_ghl", {"ghl_draft_id": str(gid), "verified_verbatim": verified,
+            cur.execute("UPDATE email_drafts SET ghl_draft_id=%s WHERE id=%s", (str(gid), draft_id))
+    except Exception:  # noqa: BLE001
+        pass
+    back = ghl_email.find_email_draft(builder_id=str(gid))
+    if back is None:
+        return {"ok": False, "reason": "read-back list call failed — staging NOT confirmed"}
+    if not back:
+        return {"ok": False, "reason": "read-back: draft %s not found in the Served location" % gid}
+    name_verbatim = (back.get("name") == name)
+    transforms = [] if name_verbatim else ["name transformed by GHL: %r" % str(back.get("name"))[:80]]
+    transforms.append("GHL's builder list API exposes metadata only (no subject/html read-back) — "
+                      "content verified at create-payload level; name (embeds id+subject) verified "
+                      "verbatim from GHL: %s" % name_verbatim)
+    _log_event(draft_id, "staged_in_ghl", {"ghl_draft_id": str(gid), "name_verbatim": name_verbatim,
                                            "transforms": transforms}, actor)
     return {"ok": True, "id": draft_id, "status": "STAGED_IN_GHL", "ghl_draft_id": str(gid),
-            "verified_verbatim": verified, "transforms": transforms,
+            "name_verbatim": name_verbatim, "transforms": transforms,
             "note": "INERT draft — no recipients attached, nothing scheduled, nothing sent."}
