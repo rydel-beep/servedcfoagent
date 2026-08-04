@@ -201,8 +201,23 @@ def relation_gate(dtype: str, grounding: dict) -> dict:
     if dtype == "content-linked" and not grounding.get("content_piece"):
         failures.append("no Content Pieces entry with status Live in the last 14 days — orphaned YT-push")
     if dtype == "winback":
-        failures.append("winback is gated OFF: no documented winback doctrine in Notion and the "
-                        "P&D cohort is empty — not inventing either")
+        rules = ""
+        try:
+            rules = winback_rules()
+        except Exception:  # noqa: BLE001
+            rules = ""
+        if not rules:
+            failures.append("the Winback SOP page isn't readable by the integration yet — "
+                            "not inventing content doctrine (sequencing params are encoded in "
+                            "prompts/winback_doctrine.py)")
+        cohort = None
+        try:
+            import ghl_email
+            cohort = ghl_email.pd_cohort()
+        except Exception:  # noqa: BLE001
+            cohort = None
+        if not cohort:
+            failures.append("the P&D cohort is empty (or unreadable) — no one to win back today")
     return {"gate": "relation", "ok": not failures, "failures": failures}
 
 
@@ -429,3 +444,163 @@ def handle_pipeline_query(msg: str) -> tuple[str | None, bool]:
         bits.append("#%s %s — %s (%s)" % (r["id"], r["type"], subj[:60], r["status"].replace("_", " ").lower()))
     head = d["line"] or "Nothing waiting on you right now."
     return head + " Pipeline: " + " · ".join(bits), True
+
+
+# ── winback rulebook (the Winback SOP page, once visible) ─────────────────────
+def winback_rules() -> str:
+    """The Winback SOP text from the Email Command Centre. Honest-empty until the
+    page is visible to the EDITH Read-Only integration (checked as a Command-Centre
+    child first, then by search). Cached 10 min."""
+    import notion_content as NC
+    import time as _t
+    hit = _cache_wb.get("rules")
+    if hit and _t.time() - hit[0] < 600:
+        return hit[1]
+    out = ""
+    kids = NC._req("GET", "/blocks/%s/children?page_size=100" %
+                   (NC.SOURCES["command"][2])) or {}
+    for b in kids.get("results", []):
+        if b.get("type") == "child_page" and "winback" in (b["child_page"].get("title") or "").lower():
+            out = NC.page_copy(b["id"], max_chars=2500) or ""
+            break
+    if not out:
+        found = NC._req("POST", "/search", {"query": "Winback SOP", "page_size": 5}) or {}
+        for res in found.get("results", []):
+            if res.get("object") == "page":
+                out = NC.page_copy(res["id"], max_chars=2500) or ""
+                if out:
+                    break
+    _cache_wb["rules"] = (_t.time(), out)
+    return out
+
+
+_cache_wb: dict = {}
+
+
+# ── INGEST: the served-newsletter skill writes content-linked emails to the
+#    Email Library; entries marked ready are PULLED into this pipeline (source:
+#    skill) with the SAME three gates applied. EDITH writes weekly+winback only. ──
+INGEST_READY_STATUS = "draft ready"
+
+
+def ingest_from_library(actor: str = "edith") -> dict:
+    """Pull not-yet-ingested Email Library entries with the ready status into the
+    board as content-linked drafts. Gates run on the ingested copy; failures land
+    as DRAFTING with the defects named (never silently fixed)."""
+    import notion_content as NC
+    migrate()
+    rows = NC.list_recent("email", days=30, limit=25) or []
+    ready = [r for r in rows if (r.get("status") or "").strip().lower() == INGEST_READY_STATUS]
+    existing = set()
+    try:
+        with db.get_conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT grounding->>'notion_id' AS nid FROM email_drafts "
+                        "WHERE grounding->>'source'='skill'")
+            existing = {r["nid"] for r in cur.fetchall() if r["nid"]}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "reason": "store read failed: %s" % str(e)[:100]}
+    ingested, skipped = [], 0
+    grounding_base = None
+    for r in ready:
+        if r["id"] in existing:
+            skipped += 1
+            continue
+        copy = NC.page_copy(r["id"], max_chars=8000) or ""
+        if not copy.strip():
+            ingested.append({"id": None, "title": r["title"], "ok": False,
+                             "reason": "page body empty — nothing to ingest"})
+            continue
+        subjects, body = _split_library_copy(copy, r["title"])
+        if grounding_base is None:
+            grounding_base = gather_grounding("content-linked")
+        validation = run_gates("content-linked", subjects, copy, body, grounding_base)
+        status = "READY_FOR_REVIEW" if validation["ok"] else "DRAFTING"
+        slim = {"source": "skill", "notion_id": r["id"], "notion_title": r["title"],
+                "fetched_at": now_sydney().isoformat(timespec="seconds"),
+                "recipient": RECIPIENT_UNDEFINED}
+        try:
+            with db.get_conn() as conn, conn.cursor() as cur:
+                cur.execute("""INSERT INTO email_drafts (type, subject_options, body_html,
+                               body_text, grounding, validation, recipient_def, status)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                            ("content-linked", json.dumps(subjects), "", body,
+                             json.dumps(slim), json.dumps(validation),
+                             RECIPIENT_UNDEFINED, status))
+                did = cur.fetchone()["id"]
+            _log_event(did, "ingested_from_library",
+                       {"notion_id": r["id"], "gates_ok": validation["ok"]}, actor)
+            ingested.append({"id": did, "title": r["title"], "ok": True, "status": status,
+                             "gate_failures": [] if validation["ok"] else
+                             validation["proof"]["failures"] + validation["link"]["failures"]})
+        except Exception as e:  # noqa: BLE001
+            ingested.append({"id": None, "title": r["title"], "ok": False,
+                             "reason": str(e)[:100]})
+    return {"ok": True, "ready_found": len(ready), "ingested": ingested, "already": skipped}
+
+
+def _split_library_copy(copy: str, title: str) -> tuple[list, str]:
+    """Library pages follow 'Subject Line Options' then 'Email Body' headings."""
+    subjects, body_lines, mode = [], [], ""
+    for line in copy.splitlines():
+        low = line.strip().lower()
+        if "subject line" in low:
+            mode = "subj"; continue
+        if low.startswith("email body") or low == "body":
+            mode = "body"; continue
+        if mode == "subj" and line.strip():
+            subjects.append(line.strip())
+        elif mode == "body":
+            body_lines.append(line)
+    if not subjects:
+        subjects = [title]
+    return subjects[:5], "\n".join(body_lines).strip() or copy
+
+
+# ── voice-approve: confirmation loop (echo the exact draft, then yes) ─────────
+_REVIEW_CMD_RE = re.compile(r"\b(approve|discard)\b.{0,30}\b(draft\s*#?\s*(\d+)|the (weekly|winback|content[- ]linked|yt[- ]push))\b", re.I)
+_CONFIRM_RE = re.compile(r"^\s*(yes|yep|confirm|do it|go ahead)\b", re.I)
+_CHANGES_RE = re.compile(r"\b(change|rework|redo|tighten|soften)\b.{0,40}\b(draft\s*#?\s*(\d+)|the (weekly|winback|content[- ]linked))\b", re.I)
+
+
+def _find_draft_by_ref(num: str | None, kind: str | None) -> dict | None:
+    rows = list_drafts(20)
+    if num:
+        return next((r for r in rows if r["id"] == int(num)), None)
+    if kind:
+        k = "content-linked" if "content" in kind or "yt" in kind else kind
+        return next((r for r in rows if r["type"] == k and r["status"] == "READY_FOR_REVIEW"), None)
+    return None
+
+
+def handle_review_command(msg: str, token: str) -> tuple[str | None, bool]:
+    """Tier-1-style: 'approve the weekly' → echo the exact draft → 'yes' executes.
+    Pending state in kv_store keyed per user token (worker-safe)."""
+    import kv_store
+    key = "email:pending:%s" % token
+    if _CONFIRM_RE.search(msg or ""):
+        pend = kv_store.get(key)
+        if pend:
+            kv_store.put(key, None)
+            res = act(pend["id"], pend["action"], note=pend.get("note", ""), actor="rydel")
+            if res.get("ok"):
+                return "Done — draft #%s %s." % (pend["id"], res["status"].replace("_", " ").lower()), True
+            return "Couldn't: %s." % res.get("reason"), True
+        return None, False
+    m = _REVIEW_CMD_RE.search(msg or "")
+    action = None
+    if m:
+        action = "approve" if m.group(1).lower() == "approve" else "discard"
+        num, kind = m.group(3), m.group(4)
+    else:
+        m = _CHANGES_RE.search(msg or "")
+        if m:
+            action, num, kind = "request_changes", m.group(3), m.group(4)
+    if not action:
+        return None, False
+    row = _find_draft_by_ref(num, kind)
+    if not row:
+        return "I don't have a matching draft in review — say \"what's pending my review\" to see the board.", True
+    subj = (row["subject_options"] or ["(no subject)"])[0]
+    kv_store.put(key, {"action": action, "id": row["id"], "note": msg if action == "request_changes" else ""})
+    return ("To confirm: %s draft #%s — the %s titled \"%s\"? Say yes to lock it in."
+            % (action.replace("_", " "), row["id"], row["type"], subj[:70])), True

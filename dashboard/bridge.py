@@ -183,3 +183,10 @@ def _json_safe(x):
     if isinstance(x, (_d.datetime, _d.date)):
         return x.isoformat()
     return x
+
+
+@bp.route("/email/ingest", methods=["POST"])
+@require_bridge
+def bridge_email_ingest():
+    import email_pipeline as EP
+    return jsonify(_json_safe(EP.ingest_from_library(actor=g.actor["user"])))

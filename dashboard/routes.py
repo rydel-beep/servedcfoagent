@@ -697,6 +697,13 @@ def api_chat():
         memory.record_turn(conv_id, "assistant", tgt_reply, channel=channel, intent="command")
         return jsonify({"reply": tgt_reply, "error": None, "intent": "command"})
 
+    # Email-engine review commands ("approve the weekly" → echo → "yes"): confirmation loop.
+    import email_pipeline as _ep
+    _er, _eh = _ep.handle_review_command(user_msg, token)
+    if _eh:
+        memory.record_turn(conv_id, "assistant", _er, channel=channel, intent="command")
+        return jsonify({"reply": _er, "error": None, "intent": "command"})
+
     # Client churn/downgrade WRITE-BACK (dashboard override, confirmation loop) + undo + Piolo queue.
     # Checked early so a "yes/no" confirmation lands here. Auth already enforced (only Rydel writes).
     import client_overrides
@@ -888,6 +895,11 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str):
             break
     if _cmd_reply is None:
         _r, _handled = manual_targets.handle_turn(user_msg, token)
+        if _handled:
+            _cmd_reply = _r
+    if _cmd_reply is None:
+        import email_pipeline as _ep
+        _r, _handled = _ep.handle_review_command(user_msg, token)
         if _handled:
             _cmd_reply = _r
     if _cmd_reply is None:
