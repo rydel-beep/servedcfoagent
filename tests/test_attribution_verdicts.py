@@ -149,3 +149,15 @@ def test_apply_stamps_rules_and_bands():
     assert vl["bands"] == {"double_down_at": 3.3, "kill_below": 2.7}
     assert "nothing auto-pauses" in vl["rules"]
     assert res["creatives"][0]["verdict"] == AV.DOUBLE_DOWN
+
+
+def test_constraint_check_indeterminate_when_ltgp_cac_unavailable():
+    # sufficient-n rows whose LTGP:CAC can't be computed (margin missing) must never
+    # read as "clears the floor" — the exact distortion caught in the Phase-5 scan
+    r3 = row("NoMargin", leads=40, qualified=30, sets=12, shows=8, closes_cohort=3,
+             closes=3, spend=3000)  # ltgp_cac None
+    res = {"creatives": [r3]}
+    AV.apply(res, FLOOR)
+    cc = res["verdict_layer"]["constraint_check"]
+    assert cc["creatives_are_constraint"] is None
+    assert "can't be called" in cc["read"] and "unavailable" in cc["read"]

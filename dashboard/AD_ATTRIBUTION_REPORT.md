@@ -1,5 +1,50 @@
 # EDITH — Ad Creative Attribution Engine
 
+## PHASE 5 — ACCEPTANCE SCANS, ADAPTED (2026-08-05) — CFO-side COMPLETE
+
+Rydel waived the Romano UTM task (DECISIONS #114): the forward-capture mechanism of
+record is the FB lead-form integration (stamps utmAdId on every lead-form contact
+today); site-click ads knowingly remain in the visible Unattributed bucket; no synthetic
+form submission was made or needed. UI-dependent checks (width sweep, drill-ins, EDITH's
+five queries, on-screen salience demo) run when Phase 4 ships.
+
+### SCAN 1 — DATA (all live, production)
+- **15 hand-verified chains, 15/15 OK**: contact utmAdId → INDEPENDENT live Graph lookup
+  (not the cached map) → name-key match → tracker funnel row (input date, setter outcome,
+  set/show/close, cash). Freshest examples are from yesterday's leads.
+- **Forward-capture trace**: newest id-attributed contact (added 2026-08-04 22:34,
+  medium=facebook lead form) carries utmAdId → resolves basis=id to "C G3 Q326 Served
+  Graphics July 2026 2nd Batch" [TOF] — the live path captures TODAY with zero manual steps.
+- **Test-lead coexistence**: 17 test rows voided from the clean view while attribution
+  runs beside it (raw 1,310 → clean 1,293).
+- **Ledger closure**: 30d 80 = 69+0+11 · 60d 165 = 150+0+15 · 90d 272 = 251+0+21
+  (attributed + ig_dm + unattributed = total), reconciliation OK on all three.
+  NOTE: ig_dm tier currently stitches 0 tracker leads — DM-origin leads that reach the
+  tracker rarely share the DM contact's email; they land honestly in Unattributed.
+
+### SCAN 2 — FUNCTIONAL (deployed API)
+30/60/90/custom windows all HTTP 200, window-consistent, recon ok, gates on every ad
+row, Unattributed + IG-DM rows always present. **First real verdict at 90d:
+[DOUBLE DOWN] "Served 2026 Q1 ADS 36 - Rydel AD B" — "scale spend; every $1 here returns
+$6.95 of LTGP (3 closes, LTGP $37,314 vs loaded $1,789/close)"** on $299 window spend /
+$18,105 cash. Constraint check: "creative selection isn't the constraint;
+volume/capacity is." The crossing is pending in salience (announces once, watermarked).
+
+### SCAN 3 — SAFETY/REGRESSION
+- ads_read only: live grep zero Meta write calls across all four modules (also
+  test-enforced).
+- Role scoping live: romano token 403 on /bridge/attribution (role disabled) and on
+  every owner route when enabled (tests).
+- Full suite **514 green**; email engine + gates untouched (bridge email routes
+  byte-identical bar the owner-role check refactor, all bridge tests green).
+- **Honesty bug caught by the scan and fixed**: with margin inputs missing, the
+  constraint check previously read indeterminate LTGP:CAC as "clears the floor" — now
+  sufficient-n rows without a computable LTGP:CAC yield "the constraint can't be called"
+  (test added).
+
+REMAINING FOR RYDEL'S READ (Phase 4): the five-minute-review question runs on the
+Timeline section once he says "Phase 4 go".
+
 ## PHASE 3 — THE HORMOZI VERDICT LAYER (2026-08-05) — LIVE (Phase 4 held by Rydel)
 
 `attribution_verdicts.py` (pure, DECISIONS #113), applied inside the engine so every

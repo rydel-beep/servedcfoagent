@@ -194,6 +194,14 @@ def constraint_check(rows: list[dict], floor: float, capacity_note: str | None =
     kills = [r for r in sufficient if r["verdict"] == KILL]
     below = [r for r in sufficient if (r.get("ltgp_cac") is not None
                                        and r["ltgp_cac"] < floor)]
+    measurable = [r for r in sufficient if r.get("ltgp_cac") is not None]
+    if not kills and not measurable:
+        # sufficient-n creatives exist but none has a computable LTGP:CAC (e.g. margin
+        # input missing) — indeterminate must NEVER read as "clears the floor".
+        return {"creatives_are_constraint": None,
+                "read": f"{len(sufficient)} verdict-eligible creative(s) but LTGP:CAC is "
+                        f"unavailable on all of them (margin/close inputs missing) — the "
+                        f"constraint can't be called; nothing is assumed to clear the floor"}
     if not kills and not below:
         read = ("creative selection isn't the constraint; volume/capacity is — every "
                 f"sufficient-n creative clears the {floor}x floor")

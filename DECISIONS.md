@@ -1239,3 +1239,18 @@
      today exactly ONE: GET /bridge/attribution. Every owner route 403s the role
      server-side (test-enforced: ping/email list/send all 403 romano even when enabled).
      Flip-on = setting the env var; nothing else changes.
+
+114. **UTM TEMPLATE WAIVED; PHASE 5 ACCEPTANCE ADAPTED (2026-08-05).** Rydel: "No need on
+     Romano's UTMs — proceed." Consequences, recorded so nothing nags later: (a) site-click
+     ads keep carrying no UTM params → website-path leads REMAIN in the explicit
+     Unattributed bucket by choice — the attribution-rate banner keeps that visible, never
+     hidden; (b) the FORWARD-CAPTURE mechanism of record is the FB lead-form integration,
+     which stamps utmAdId + utmCampaignId on every lead-form contact TODAY (Phase 0/2
+     proven, 212 of the recent-90d ad-attributed leads) — no manual step required to keep
+     it; (c) Phase 5's forward proof therefore uses a live trace of the newest real
+     lead-form lead (dateAdded → utmAdId → resolved creative → tracker → engine tier)
+     instead of a synthetic form submission — no test submission is made (also honours the
+     no-form-POST safety rule); (d) the triple-scan runs CFO-side now; the UI-dependent
+     checks (width sweep, drill-ins, EDITH's five queries, salience-once demo on screen)
+     execute when Phase 4 ships. IG click-to-DM remains the largest honest gap (~43% of
+     recent leads, channel-tier by design).
