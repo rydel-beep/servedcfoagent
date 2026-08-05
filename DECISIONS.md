@@ -1330,3 +1330,31 @@
      sweep 403s/bounces chat, snapshot, greeting, collab, targets, data-sources, leads;
      /cfo/* never honors sessions (401). Sales cannot reach /ads. Suite 563 green
      (17 new tests). Five-pass evidence in the report; Rydel's minute is the gate.
+
+118. **CLOSE-COUNT INTEGRITY + THE INSUFFICIENT-DATA FIX (2026-08-05).** Phase-0 three-way
+     matrix (tracker vs GHL vs Stripe, name by name) ruled on by Rydel: the SIX 30d closes
+     are COMPLETE (Sam King, James Xu, Tesla Zhong, Lucas Cristofle, Glen Fitzgerald, Tony
+     Thai) — the engine had been counting the tracker faithfully; AUTHORITY = the sales
+     tracker counted by its Close Date (GHL stage + Stripe cash VALIDATE, flags only,
+     never silently reconciled); all four classifications confirmed. FINDINGS: GHL's
+     closed-won lane DEAD ~90d (ops habit — the printed rule: move the stage the same day
+     the tracker records the close); 19/67 won rows have BLANK Close Dates (historical
+     hygiene debt, listed for humans); 5 won rows also missing Input Date were PARSER-
+     INVISIBLE (a real engine gap — FIXED: a won row with a Close Date counts as a close
+     without an Input Date; non-won rows still need one); "Allan Thai" Stripe payments
+     ($2,805+$550) sum exactly to Tony Thai's $3,355 recorded cash → payer alias, learned
+     via the existing matcher. BUILT: close_integrity.py — the STANDING daily three-way
+     matrix (kv-stamped tick in the attribution loop; tracker mirror + ghl_opportunities
+     mirror + the Stripe reconcile), classified disagreements → the /ads DATA HYGIENE
+     panel + the action feed (Piolo's queue, self-retiring) + salience (new sev1/2
+     disagreement announces once) + EDITH "do the systems agree on closes?" verbatim.
+     INSUFFICIENT-DATA FIX (gates UNTOUCHED — 30 leads/3 closes, now imported from the
+     engine so they cannot fork): PROVISIONAL signal below min-n (TRENDING STRONG/WEAK/
+     EARLY, dashed badges, why + "N more leads or M more closes" progress — never phrased
+     or styled as a decision; adversarially tested: a 2-lead creative can never render
+     DOUBLE DOWN); the AGGREGATION LADDER (batch B###_ prefix → campaign → account, same
+     engine sums — roll-up == component sums test-enforced — same thresholds, so a level
+     that clears n earns a REAL verdict; scorecard defaults to the highest confirmed
+     level); always-valid account reads; honest empty state; 30d window guidance ("closes
+     trail leads — 60/90d is the honest read"); the DEFINITIONS panel (every number's
+     basis one click away).

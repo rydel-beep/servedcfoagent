@@ -61,3 +61,28 @@ REAL min-n behavior at 30d, not starvation from Problem 1; the Phase-4 usefulnes
 (b) DATE CONVENTION: tracker Close Date (not payment date, not stage-move date) — confirm.
 (c) The classifications above — and critically: NAME any deal you know closed in the
     last 30 days that is NOT among the six listed. That names the gap directly.
+
+## RYDEL'S RULINGS (the hard-stop gate, 2026-08-05)
+The six are COMPLETE · authority = tracker Close Date · all four classifications
+confirmed (blank dates + missing inputs = source errors; GHL lane = ops habit; Allan
+Thai = Tony Thai's payer alias, learned).
+
+## THE BUILD (Phases 1-5)
+- COUNTING FIX: a won row with a Close Date now counts WITHOUT an Input Date (5 real
+  deals incl. John Tamayo $24k were parser-invisible; impact today: 0 windowed-count
+  change — all 5 also lack Close Dates — but the gap is closed for the moment humans
+  fill them). Alias learned. Impact table in the live-verify output below.
+- STANDING CHECK: close_integrity.py — daily three-way matrix (kv tick in the
+  attribution loop), classified disagreements → the /ads DATA HYGIENE panel, the action
+  feed → Piolo's queue (self-retiring), salience once per new sev1/2 item, EDITH
+  "do the systems agree on closes?".
+- HUMAN FIX LIST (routed): 19 blank Close Dates + 5 blank Input Dates → per-row items
+  in the hygiene panel/queue with the exact field + owner; THE OPS RULE for the team:
+  "closed deals move to the GHL closed-won stage the SAME DAY the tracker records the
+  close."
+- USEFUL BEFORE CERTAINTY: provisional TRENDING badges (dashed, labelled, never
+  decisions) + progress-to-verdict; the aggregation ladder (batch → campaign → account,
+  same sums, same thresholds, real verdicts where n clears; default = highest confirmed
+  level); always-valid account row; honest empty state; 30d close-lag guidance.
+- DEFINITIONS PANEL: close / qualified / attribution / verdicts+min-n / windows / cost
+  bases — one click, plain language.

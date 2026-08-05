@@ -18,6 +18,7 @@
       <button class="adx-win" data-days="60">60d</button>
       <button class="adx-win" data-days="90">90d</button>
     </div>
+    <button class="adx-defs-btn" id="adx-defs-btn" title="How these numbers are counted">ⓘ definitions</button>
     <span class="adx-who" id="adx-who"></span>
     <a class="adx-logout" href="/dashboard/logout">log out</a>
   </div>
@@ -33,9 +34,23 @@
     <div class="adx-flags" id="adx-flags"></div>
   </section>
 
-  <!-- THE CREATIVE TABLE -->
+  <!-- DATA HYGIENE (the standing cross-system check) -->
+  <section class="adx-panel adx-hygiene" id="adx-hygiene" style="display:none">
+    <h2>Data hygiene <span class="adx-h2-sub">tracker is the authority · GHL + Stripe validate · disagreements surface, never silently reconciled</span></h2>
+    <div id="adx-hygiene-body"></div>
+  </section>
+
+  <!-- THE CREATIVE TABLE (with the aggregation ladder) -->
   <section class="adx-panel">
-    <h2>Creatives <span class="adx-h2-sub" id="adx-table-window"></span></h2>
+    <div class="adx-table-head">
+      <h2 id="adx-table-title">Creatives <span class="adx-h2-sub" id="adx-table-window"></span></h2>
+      <div class="adx-levels" id="adx-levels">
+        <button class="adx-level" data-level="creative">Creatives</button>
+        <button class="adx-level" data-level="batch">Batches</button>
+        <button class="adx-level" data-level="campaign">Campaigns</button>
+        <button class="adx-level" data-level="account">Account</button>
+      </div>
+    </div>
     <div class="adx-table-wrap">
       <table class="adx-table" id="adx-scoreboard"><thead></thead><tbody></tbody></table>
     </div>
@@ -64,6 +79,15 @@
       <button id="adx-drill-close">✕</button>
     </div>
     <div class="adx-drill-body" id="adx-drill-body"></div>
+  </aside>
+</div>
+
+<!-- DEFINITIONS: every number's basis, one click away -->
+<div class="adx-drill-scrim" id="adx-defs-scrim" style="display:none">
+  <aside class="adx-drill">
+    <div class="adx-drill-head"><div>How these numbers are counted</div>
+      <button id="adx-defs-close">✕</button></div>
+    <div class="adx-drill-body" id="adx-defs-body"></div>
   </aside>
 </div>
 

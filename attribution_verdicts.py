@@ -227,6 +227,10 @@ def apply(result: dict, floor: float, capacity_note: str | None = None) -> dict:
         r["verdict_driver"] = v["driver"]
         r["verdict_math"] = v.get("math")
         r["stage_diagnostics"] = v.get("stage")
+        if r.get("tier") == "ad":
+            p = provisional_for_row(r, floor, base)
+            if p:
+                r["provisional"] = p
     result["verdict_layer"] = {
         "floor": floor, "floor_source": "manual_targets ltgp_cac_target",
         "bands": {"double_down_at": round(floor * _MARGIN, 2),
@@ -237,3 +241,150 @@ def apply(result: dict, floor: float, capacity_note: str | None = None) -> dict:
         "constraint_check": constraint_check(rows, floor, capacity_note),
     }
     return result
+
+
+# ── Phase 4 (CLOSE_INTEGRITY_AND_SIGNAL_REPORT): useful before certainty ─────
+# PROVISIONAL SIGNAL below min-n (labelled, never a decision), PROGRESS TO VERDICT,
+# and the AGGREGATION LADDER (batch → campaign → account) — the same engine numbers
+# rolled up; levels that clear min-n earn REAL verdicts with the SAME thresholds.
+
+import re as _re
+
+# THE one source for the min-n bars (gate-integrity: these are the engine's constants,
+# imported — not redefined — so the thresholds cannot silently fork).
+from attribution_engine import MIN_N_LEADS_KILL, MIN_N_CLOSES_SCALE
+
+_BATCH_RE = _re.compile(r"^([A-Z]\d{3})[_ ]")
+
+
+def provisional_for_row(row: dict, floor: float, base: dict) -> dict | None:
+    """Direction below min-n — deterministic, from figures the engine already computed.
+    NEVER phrased as a decision; visually distinct client-side. None when a real verdict
+    exists or there is nothing to read."""
+    g = row.get("gates") or {}
+    if g.get("sufficient_for_scale") or g.get("sufficient_for_kill"):
+        return None
+    n_leads, n_closes = g.get("n_leads", 0), g.get("n_closes", 0)
+    if not (row.get("spend") or n_leads):
+        return None
+    lc = row.get("ltgp_cac")
+    trend, why = "early", "not enough signal either way yet"
+    if lc is not None:
+        trend = "strong" if lc >= floor else "weak"
+        why = f"provisional LTGP:CAC {lc}x vs the {floor}x floor"
+    elif n_leads >= 3:
+        b_leads = (base.get("lead_to_qualified") or {}).get("den") or 0
+        b_qual = (base.get("lead_to_qualified") or {}).get("num") or 0
+        if b_leads:
+            acct_q = b_qual / b_leads
+            q = (row.get("qualified") or 0) / n_leads
+            if q >= acct_q and (row.get("sets") or 0) > 0:
+                trend, why = "strong", (f"qualified rate {100*q:.0f}% ≥ account "
+                                        f"{100*acct_q:.0f}% with sets behind it")
+            elif q < acct_q * 0.5:
+                trend, why = "weak", (f"qualified rate {100*q:.0f}% vs account "
+                                      f"{100*acct_q:.0f}%")
+    need_leads = max(0, MIN_N_LEADS_KILL - n_leads)
+    need_closes = max(0, MIN_N_CLOSES_SCALE - n_closes)
+    progress = (f"{need_leads} more lead{'s' if need_leads != 1 else ''} or "
+                f"{need_closes} more close{'s' if need_closes != 1 else ''} to a verdict")
+    label = {"strong": f"TRENDING STRONG (provisional, {n_leads}/{MIN_N_LEADS_KILL} leads)",
+             "weak": f"TRENDING WEAK (provisional, {n_leads}/{MIN_N_LEADS_KILL} leads)",
+             "early": f"EARLY (provisional, {n_leads}/{MIN_N_LEADS_KILL} leads)"}[trend]
+    return {"trend": trend, "label": label, "why": why, "progress": progress}
+
+
+def _aggregate(rows: list[dict], key: str, label: str) -> dict:
+    """Union of member creatives — sums only (roll-up sums == component sums is
+    test-enforced); loaded/LTGP derived from member fields the engine already computed."""
+    agg = {"creative_key": key, "label": label, "tier": "ad", "members": len(rows),
+           "member_keys": [r["creative_key"] for r in rows]}
+    for k in ("leads", "qualified", "sets", "shows", "closes_cohort", "closes",
+              "revenue_unknown", "impressions", "clicks"):
+        agg[k] = sum(r.get(k) or 0 for r in rows)
+    for k in ("cash", "contract", "spend"):
+        agg[k] = round(sum(r.get(k) or 0 for r in rows), 2)
+    spend, closes = agg["spend"], agg["closes"]
+    agg["cost_per_lead"] = round(spend / agg["leads"], 2) if agg["leads"] else None
+    agg["cost_per_qualified"] = round(spend / agg["qualified"], 2) if agg["qualified"] else None
+    agg["cost_per_set"] = round(spend / agg["sets"], 2) if agg["sets"] else None
+    agg["cost_per_close"] = round(spend / closes, 2) if closes else None
+    # loaded at the union grain: every member's spend + the closing members' comms share
+    ltgp = sum(r.get("ltgp") or 0 for r in rows)
+    loaded_total = sum((r.get("cost_per_close_loaded") or 0) * (r.get("closes") or 0)
+                       for r in rows)
+    loaded_total += sum((r.get("spend") or 0) for r in rows if not r.get("closes"))
+    if closes and loaded_total:
+        agg["cost_per_close_loaded"] = round(loaded_total / closes, 2)
+        if ltgp:
+            agg["ltgp"] = round(ltgp, 2)
+            agg["ltgp_cac"] = round(ltgp / loaded_total, 2)
+    agg["gates"] = {
+        "n_leads": agg["leads"], "n_closes": closes,
+        "sufficient_for_scale": closes >= MIN_N_CLOSES_SCALE,
+        "sufficient_for_kill": agg["leads"] >= MIN_N_LEADS_KILL,
+        "gate": ("ok" if (closes >= MIN_N_CLOSES_SCALE or agg["leads"] >= MIN_N_LEADS_KILL)
+                 else f"watch — insufficient data (n={agg['leads']} leads, {closes} closes)"),
+    }
+    return agg
+
+
+def ladder(result: dict, floor: float) -> dict:
+    """batch (B008…) → campaign → account, each with the SAME verdict rules. The
+    scorecard defaults to the highest level holding a confirmed verdict."""
+    ads = [r for r in (result.get("creatives") or []) if r.get("tier") == "ad"
+           and (r.get("spend") or r.get("leads") or r.get("closes"))]
+    base = baselines(result.get("creatives") or [])
+
+    _MIXED_KEYS = {"UNBATCHED", "MIXED/AMBIGUOUS", "NO CAMPAIGN DATA"}
+
+    def verd(rows_agg):
+        for a in rows_agg:
+            # a grab-bag of unrelated creatives is COVERAGE, not an angle — it can never
+            # carry a verdict (killing "everything unbatched" as one unit is a category
+            # error caught live: 32 mixed leads earned a KILL). Sums stay visible.
+            if a["creative_key"] in _MIXED_KEYS:
+                a["verdict"] = None
+                a["verdict_driver"] = ("mixed group — no shared angle; drill to the "
+                                       "creatives for judgement")
+                continue
+            v = verdict_for_row(a, floor, base)
+            a["verdict"], a["verdict_driver"] = v["verdict"], v["driver"]
+            p = provisional_for_row(a, floor, base)
+            if p:
+                a["provisional"] = p
+        rows_agg.sort(key=lambda a: (-(a.get("spend") or 0)))
+        return rows_agg
+
+    batches: dict = {}
+    for r in ads:
+        m = _BATCH_RE.match(r.get("label") or "")
+        key = m.group(1) if m else "UNBATCHED"
+        batches.setdefault(key, []).append(r)
+    batch_rows = verd([_aggregate(v, k, f"Batch {k}" if k != "UNBATCHED" else
+                                  "Unbatched creatives") for k, v in batches.items()])
+
+    camps: dict = {}
+    for r in ads:
+        cs = r.get("campaigns") or []
+        key = cs[0] if len(cs) == 1 else ("MIXED/AMBIGUOUS" if cs or r.get("leads") else "NO CAMPAIGN DATA")
+        camps.setdefault(key, []).append(r)
+    camp_rows = verd([_aggregate(v, k, k) for k, v in camps.items()])
+
+    account = _aggregate(ads, "__account__", "Attributed ads (account)")
+    account["note"] = ("ad-attributed rows only — the banner totals carry the WHOLE "
+                       "account incl. IG-DM and unattributed closes")
+    v = verdict_for_row(account, floor, base)
+    account["verdict"], account["verdict_driver"] = v["verdict"], v["driver"]
+
+    def has_confirmed(rows_):
+        return any(a.get("verdict") in (DOUBLE_DOWN, KILL) or
+                   (a.get("verdict") and (a.get("gates") or {}).get("gate") == "ok")
+                   for a in rows_)
+    default_level = ("creative" if has_confirmed(result.get("creatives") or []) else
+                     "batch" if has_confirmed(batch_rows) else
+                     "campaign" if has_confirmed(camp_rows) else "account")
+    return {"batch": batch_rows, "campaign": camp_rows, "account": account,
+            "default_level": default_level,
+            "note": "same engine, same thresholds — a level earns a verdict only when "
+                    "ITS n clears the bars"}

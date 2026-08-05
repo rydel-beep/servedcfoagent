@@ -284,6 +284,18 @@ def collect(snap: dict | None = None) -> list[dict]:
     except Exception:
         pass
 
+    # 14) Cross-system close-integrity disagreements (the data-hygiene doctrine):
+    #     a NEW severity-1/2 disagreement announces once, watermarked.
+    try:
+        import kv_store
+        for c in (kv_store.get("integrity:pending") or []):
+            if c.get("id") and c["id"] not in told:
+                events.append({"id": c["id"], "type": "data_integrity", "salience": 72,
+                               "ago": 0,
+                               "spoken": f"Data integrity: {c.get('detail')} — {c.get('fix')}"})
+    except Exception:
+        pass
+
     events.sort(key=lambda e: (e["salience"], -e["ago"]), reverse=True)
     return events
 

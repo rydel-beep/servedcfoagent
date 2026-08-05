@@ -136,10 +136,16 @@ def parse_tracker(rows: list[list[str]]) -> tuple[list[dict], dict]:
             return r[i].strip() if (i is not None and i < len(r)) else ""
         name = g("name")
         input_date = _date(g("input_date"))
-        if not name or input_date is None:
-            continue
         setter_out = g("setter_outcome").lower()
         closer_out = g("closer_outcome").lower()
+        # CLOSE-INTEGRITY fix (DECISIONS #118): a WON row with a Close Date is a close
+        # even when Input Date is blank — closes count off the won outcome + Close Date
+        # alone (parity with the unit-economics reader; 5 real deals incl. a $24k were
+        # parser-invisible before this). Non-won rows still need Input Date (cohort rows).
+        if not name:
+            continue
+        if input_date is None and not (closer_out == "won" and _date(g("close_date"))):
+            continue
         leads.append({
             "name": name, "name_norm": _norm(name),
             "email": _norm(g("email")),
@@ -284,7 +290,7 @@ def compute_from_inputs(
     bucket(_IG_KEY, "IG DM (channel)")
     bucket(_UNATTR_KEY, "Unattributed")
 
-    window_leads = [l for l in leads if w0 <= l["input_date"] <= w1]
+    window_leads = [l for l in leads if l["input_date"] and w0 <= l["input_date"] <= w1]
     window_closes = [l for l in leads if l["won"] and l["close_date"]
                      and w0 <= l["close_date"] <= w1]
     dupes_in_window = [l for l in leads if l.get("_dup_removed") and l["close_date"]
@@ -532,6 +538,7 @@ def scoreboard_view(result: dict) -> dict:
         rows.append({
             "creative": c["label"], "creative_key": c["creative_key"], "tier": c["tier"],
             "verdict": c.get("verdict"), "verdict_driver": c.get("verdict_driver"),
+            "provisional": c.get("provisional"),
             "gate": (c.get("gates") or {}).get("gate"),
             "leads": c["leads"], "qualified": c["qualified"],
             "revenue_unknown": c.get("revenue_unknown", 0),
@@ -807,5 +814,10 @@ def start_loop(interval_s: int = 6 * 3600) -> None:
                 compute(30, force=True)
             except Exception as e:
                 logger.warning("attribution loop recompute failed: %s", e)
+            try:
+                import close_integrity
+                close_integrity.daily_tick()      # kv-stamped: once a day
+            except Exception as e:
+                logger.warning("integrity tick failed: %s", e)
 
     threading.Thread(target=_loop, daemon=True, name="attribution-recompute").start()

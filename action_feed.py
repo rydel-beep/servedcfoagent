@@ -66,6 +66,18 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
     except Exception as e:
         logger.info("action_feed attribution flags failed: %s", e)
 
+    # 2c) Close-integrity disagreements (kv matrix, daily) — data_quality → PIOLO'S QUEUE.
+    # Self-retiring: the matrix recomputes daily; fixed rows drop off.
+    try:
+        import kv_store
+        mx = kv_store.get("integrity:matrix") or {}
+        for d in (mx.get("disagreements") or [])[:20]:
+            items.append({"severity": f"S{d.get('severity', 3)}", "category": "data_quality",
+                          "title": (d.get("detail") or "")[:140],
+                          "action": (d.get("fix") or "")[:140]})
+    except Exception as e:
+        logger.info("action_feed integrity items failed: %s", e)
+
     # 3) UNRECOGNISED Stripe payments — only genuine anomalies after multi-signal matching
     # (existing-client repeats + payer≠business auto-resolve and are NOT surfaced here).
     sr = snap.get("stripe_reconciliation") or {}

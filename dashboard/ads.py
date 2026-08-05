@@ -80,7 +80,24 @@ def board():
         logger.info("trailing rate unavailable: %s", e)
     sc = attribution_flags.scorecard(result, trailing_attr_rate=trailing)
     attribution_flags.record_flag_salience(sc["flags"])
+    hygiene = None
+    try:
+        import close_integrity
+        hygiene = close_integrity.latest()
+        if hygiene is None or request.args.get("force") == "1":
+            hygiene = close_integrity.refresh(30)
+    except Exception as e:
+        logger.info("hygiene block unavailable: %s", e)
+    ladder = None
+    try:
+        import attribution_verdicts
+        floor = (result.get("verdict_layer") or {}).get("floor") or 3.0
+        ladder = attribution_verdicts.ladder(result, floor)
+    except Exception as e:
+        logger.info("ladder unavailable: %s", e)
     resp = jsonify({
+        "hygiene": hygiene,
+        "ladder": ladder,
         "window": result.get("window"),
         "scoreboard": attribution_engine.scoreboard_view(result),
         "scorecard": sc,
@@ -159,7 +176,8 @@ def roster():
         for p in people:
             l = by_name.get(re.sub(r"[^a-z0-9 @.]", "", p["name"].lower()).strip())
             if l:
-                p.update({"business": l["business"], "input_date": str(l["input_date"]),
+                p.update({"business": l["business"],
+                          "input_date": str(l["input_date"]) if l["input_date"] else None,
                           "setter_outcome": l["setter_outcome"] or None,
                           "revenue": {"band": None, "state": "unknown", "source": None},
                           "setter_notes": l.get("setter_notes") or None,

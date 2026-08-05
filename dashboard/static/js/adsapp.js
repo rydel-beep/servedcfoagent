@@ -12,7 +12,7 @@
   'use strict';
 
   var state = { days: 30, sort: 'spend', sortDir: -1, verdict: null, creative: null,
-                q: '', board: null, shown: 0, reqToken: 0 };
+                q: '', board: null, shown: 0, reqToken: 0, level: 'creative' };
   var PAGE = 150;
 
   function $(s) { return document.querySelector(s); }
@@ -89,9 +89,52 @@
 
   function windowStamp() { return state.board.window.days + 'd'; }
 
+  var levelChosen = false;   // the user's explicit pick beats the default
   function renderAll() {
-    renderBanner(); renderScorecard(); renderScoreboard(); renderRows(true);
+    if (!levelChosen && state.board.ladder && state.board.ladder.default_level) {
+      state.level = state.board.ladder.default_level;
+    }
+    renderBanner(); renderScorecard(); renderHygiene(); renderScoreboard(); renderRows(true);
     $('#adx-table-window').textContent = '· ' + windowStamp() + ' window';
+  }
+
+  function renderHygiene() {
+    var h = state.board.hygiene;
+    var sec = $('#adx-hygiene');
+    if (!h) { sec.style.display = 'none'; return; }
+    sec.style.display = '';
+    var ag = h.agreement || {};
+    var line = 'Tracker (authority): <strong>' + h.tracker_closes + '</strong> close(s) in ' +
+      h.window_days + 'd · GHL closed-won moved: <strong>' + (h.ghl_won_in_window == null ? '?' : h.ghl_won_in_window) +
+      '</strong>' + (ag.tracker_vs_ghl === true ? ' <span class="adx-ok">in sync</span>'
+                     : ag.tracker_vs_ghl === false ? ' <span class="adx-lag">lane lags</span>' : '') +
+      ' · Stripe: ' + ((h.stripe || {}).checked || '?') + ' charges, ' +
+      ((h.stripe || {}).missing_from_tracker != null ? (h.stripe.missing_from_tracker + ' missing') : '?');
+    var ds = (h.disagreements || []);
+    var items = ds.slice(0, 8).map(function (d) {
+      return '<div class="adx-hyg-item adx-sev' + d.severity + '"><span>' + esc(d.detail) + '</span>' +
+        '<span class="adx-hyg-fix">fix: ' + esc(d.fix) + ' · ' + esc(d.owner || '') + '</span></div>';
+    }).join('');
+    $('#adx-hygiene-body').innerHTML = '<div class="adx-hyg-line">' + line + '</div>' +
+      (ds.length ? items + (ds.length > 8 ? '<div class="adx-hyg-more">+' + (ds.length - 8) + ' more in the action feed</div>' : '')
+                 : '<div class="adx-hyg-clean">No open disagreements — systems agree.</div>');
+  }
+
+  function renderDefs() {
+    var b = state.board || {};
+    var qr = b.qualified_rule || {};
+    var sc = (b.scoreboard || {});
+    var floorLine = (sc.verdict_floor || 3.0);
+    $('#adx-defs-body').innerHTML = [
+      ['A close', 'A tracker row marked won by the closer, counted on its Close Date (the tracker is the one authority — Rydel-confirmed). Duplicate rows count once and are flagged. GHL stage moves and Stripe cash are validators that raise flags, never counts.'],
+      ['Qualified', 'Setter outcome is not DQ, AND the venue\'s revenue band is at or above $' + Math.round((qr.floor_monthly || 20000) / 1000) + 'k/month (tracker cell first, the GHL form answer fills gaps; unknown revenue is excluded and shown), AND the form was answered.'],
+      ['Attribution', 'First-touch by default: the ad that created the lead (utmAdId from the lead form, exact ids first). Last-touch is stored and labelled, never blended. Tiers: ad-level · IG-DM channel · unattributed — always visible.'],
+      ['Verdicts + min-n', 'DOUBLE DOWN needs LTGP:CAC ≥ ' + floorLine + 'x with margin at 3+ closes. KILL needs 30+ leads below the floor. Below those: TRENDING labels are provisional signal, never decisions.'],
+      ['Windows', 'Leads/qualified/sets/shows are counted by Input Date in the window (cohort). Closes and cash are counted by Close Date in the window. Closes trail leads by weeks — 60/90d is the honest read for close-based verdicts.'],
+      ['Cost bases', 'CPL/C-Qual/C-Set/C-Close (ad) use ad spend only. C/Close (loaded) adds closer + setter commissions. Contracted = contract value; Cash = money actually collected (Stripe-validated).'],
+    ].map(function (d) {
+      return '<div class="adx-def"><div class="adx-def-t">' + d[0] + '</div><div class="adx-def-b">' + d[1] + '</div></div>';
+    }).join('');
   }
 
   function renderBanner() {
@@ -104,7 +147,12 @@
       ' · window <strong>' + windowStamp() + '</strong>' +
       ' · qualified = ≠DQ + revenue ≥ $' + Math.round((qr.floor_monthly || 20000) / 1000) + 'k/mo + form answered' +
       ' · contacts synced ' + esc(String(fr.contacts_synced || '').slice(11, 16) || '—') +
-      ' · sheet mirror ~90s';
+      ' · sheet mirror ~90s' +
+      (state.days === 30 ? ' · <span class="adx-guide">closes trail leads — 60/90d is the honest read for LTGP:CAC verdicts</span>' : '');
+    if (!(b.leads)) {
+      $('#adx-banner').innerHTML = 'No leads in this ' + windowStamp() + ' window. ' +
+        '<button class="adx-win-inline" onclick="AdsApp.setWindow(90)">view 90d instead</button>';
+    }
   }
 
   function renderScorecard() {
@@ -143,26 +191,53 @@
   }
 
   function badge(row) {
-    var v = row.verdict, n = row.n || {};
+    var v = row.verdict, n = row.n || (row.gates ? { leads: row.gates.n_leads, closes: row.gates.n_closes } : {});
     var reason = esc(row.verdict_driver || row.gate || '');
     if (v === 'DOUBLE DOWN') return '<span class="adx-badge adx-dd" title="' + reason + '">DOUBLE DOWN</span>';
     if (v === 'KILL') return '<span class="adx-badge adx-kill" title="' + reason + '">KILL</span>';
+    // below min-n: the PROVISIONAL layer — visually distinct, never a decision
+    var p = row.provisional;
+    if (p) {
+      var cls = p.trend === 'strong' ? 'adx-prov-strong' : p.trend === 'weak' ? 'adx-prov-weak' : 'adx-prov-early';
+      return '<span class="adx-badge adx-prov ' + cls + '" title="' + esc(p.why + ' · ' + p.progress) + '">' +
+        esc(p.label) + '</span>';
+    }
     if (v === 'WATCH') return '<span class="adx-badge adx-watch" title="' + reason + '">WATCH <span class="adx-n">n=' + (n.leads || 0) + '/' + (n.closes || 0) + '</span></span>';
     return '<span class="adx-badge adx-none">—</span>';
   }
 
+  function levelRows() {
+    var b = state.board;
+    if (state.level === 'creative') return b.scoreboard.rows;
+    var lad = b.ladder || {};
+    if (state.level === 'account') {
+      var a = lad.account;
+      return a ? [Object.assign({ creative: a.label, tier: 'ad', n: { leads: a.gates.n_leads, closes: a.gates.n_closes } }, a)] : [];
+    }
+    return (lad[state.level] || []).map(function (a) {
+      return Object.assign({ creative: a.label + ' (' + a.members + ' creatives)', tier: 'ad',
+                             n: { leads: a.gates.n_leads, closes: a.gates.n_closes } }, a);
+    });
+  }
+
   function renderScoreboard() {
     var sb = state.board.scoreboard;
+    document.querySelectorAll('.adx-level').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.level === state.level);
+    });
+    $('#adx-table-title').childNodes[0].textContent =
+      { creative: 'Creatives ', batch: 'Batches ', campaign: 'Campaigns ', account: 'Account ' }[state.level];
     var thead = $('#adx-scoreboard thead'), tbody = $('#adx-scoreboard tbody');
     thead.innerHTML = '<tr>' + COLS.map(function (c) {
       var cls = c.k === state.sort ? (state.sortDir === -1 ? 'sorted desc' : 'sorted asc') : '';
       return '<th data-sort="' + c.k + '" class="' + cls + '" title="' + esc(TIPS[c.k] || '') + '">' + c.label + '</th>';
     }).join('') + '</tr>';
-    var rows = sb.rows.filter(function (r) {
+    var rows = levelRows().filter(function (r) {
       if (r.tier !== 'ad') return true;
       if (state.verdict && r.verdict !== state.verdict) return false;
       return (r.spend || r.leads || r.closes);
     });
+    if (state.level !== 'creative') rows = rows.filter(function (r) { return r.tier === 'ad'; });
     tbody.innerHTML = sortRows(rows).map(function (r) {
       var cls = 'adx-tier-' + r.tier + (state.creative === r.creative_key ? ' adx-selected' : '');
       return '<tr class="' + cls + '" data-key="' + esc(r.creative_key) + '" data-tier="' + r.tier + '" data-window="' + windowStamp() + '">' +
@@ -170,7 +245,7 @@
         '<td>' + (r.tier === 'ad' ? badge(r) : '—') + '</td>' +
         COLS.slice(2).map(function (c) {
           var v = r[c.k];
-          var drill = DRILLABLE[c.k] && r.tier === 'ad' && v ?
+          var drill = DRILLABLE[c.k] && r.tier === 'ad' && v && state.level === 'creative' ?
             ' class="adx-cell-drill" data-stage="' + c.k + '"' : '';
           return '<td' + drill + '>' + (c.money ? money(v) : num(v)) + '</td>';
         }).join('') + '</tr>';
@@ -316,6 +391,18 @@
     $('#adx-drill-close').addEventListener('click', closeDrill);
     $('#adx-drill-scrim').addEventListener('click', function (e) {
       if (e.target === $('#adx-drill-scrim')) closeDrill();
+    });
+    document.querySelectorAll('.adx-level').forEach(function (b) {
+      b.addEventListener('click', function () {
+        levelChosen = true; state.level = b.dataset.level; renderScoreboard();
+      });
+    });
+    $('#adx-defs-btn').addEventListener('click', function () {
+      renderDefs(); $('#adx-defs-scrim').style.display = '';
+    });
+    $('#adx-defs-close').addEventListener('click', function () { $('#adx-defs-scrim').style.display = 'none'; });
+    $('#adx-defs-scrim').addEventListener('click', function (e) {
+      if (e.target === $('#adx-defs-scrim')) $('#adx-defs-scrim').style.display = 'none';
     });
     var deb = null;
     $('#adx-search').addEventListener('input', function () {

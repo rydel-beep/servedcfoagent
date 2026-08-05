@@ -127,3 +127,34 @@ body.adx-loading .adx-panel, body.adx-loading .adx-scorecard { opacity: .55; tra
   .adx-table { font-size: 11.5px; }
   #adx-search { width: 100%; }
 }
+
+/* ── close-integrity build: hygiene, ladder, provisional, definitions ──────── */
+.adx-defs-btn { background: none; border: 1px solid var(--line); color: var(--muted);
+  border-radius: 7px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+.adx-table-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.adx-levels { display: flex; gap: 4px; }
+.adx-level { background: transparent; border: 1px solid var(--line); color: var(--muted);
+  border-radius: 7px; padding: 3px 11px; font-size: 12px; cursor: pointer; }
+.adx-level.active { color: var(--fg); border-color: var(--accent); background: rgba(79,140,255,.12); }
+.adx-badge.adx-prov { background: transparent; font-weight: 600; letter-spacing: .2px;
+  border-style: dashed; }
+.adx-prov-strong { color: #7fd7a8; border: 1px dashed rgba(52,199,123,.55); }
+.adx-prov-weak { color: #f0a0a0; border: 1px dashed rgba(255,92,92,.5); }
+.adx-prov-early { color: var(--muted); border: 1px dashed rgba(255,255,255,.25); }
+.adx-hyg-line { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.adx-hyg-line strong { color: var(--fg); }
+.adx-ok { color: var(--good); } .adx-lag { color: var(--warn); }
+.adx-hyg-item { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px;
+  padding: 6px 9px; border-left: 3px solid var(--warn); background: var(--panel2);
+  border-radius: 6px; margin-top: 5px; }
+.adx-hyg-item.adx-sev1 { border-left-color: var(--bad); }
+.adx-hyg-item.adx-sev3 { border-left-color: var(--accent); }
+.adx-hyg-fix { color: var(--dim); font-size: 11px; white-space: nowrap; max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
+.adx-hyg-clean { color: var(--good); font-size: 12.5px; }
+.adx-hyg-more { color: var(--dim); font-size: 11.5px; margin-top: 5px; }
+.adx-guide { color: var(--dim); font-style: italic; }
+.adx-win-inline { background: none; border: 1px solid var(--accent); color: var(--accent);
+  border-radius: 6px; padding: 2px 10px; font-size: 12px; cursor: pointer; }
+.adx-def { margin-bottom: 12px; }
+.adx-def-t { font-weight: 700; font-size: 13px; margin-bottom: 3px; }
+.adx-def-b { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
