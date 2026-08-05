@@ -284,3 +284,49 @@ def attribution():
         force=request.args.get("force") == "1")
     logger.info("bridge attribution read by %s (%s)", g.actor["user"], g.actor["role"])
     return jsonify(result)
+
+
+@bp.route("/attribution/scoreboard", methods=["GET"])
+@require_bridge_any_role
+def attribution_scoreboard():
+    """The tally scoreboard for the Timeline section. Owner + media_buyer (Rydel
+    2026-08-05: Romano's role sees the FULL view, rows included, when enabled)."""
+    import attribution_engine
+    try:
+        days = min(max(int(request.args.get("days", 30)), 1), 365)
+    except ValueError:
+        return jsonify({"error": "bad days"}), 400
+    result = attribution_engine.compute(
+        days=days, start=request.args.get("start"), end=request.args.get("end"))
+    return jsonify(attribution_engine.scoreboard_view(result))
+
+
+@bp.route("/attribution/rows", methods=["GET"])
+@require_bridge_any_role
+def attribution_rows():
+    """Row-level tracker view w/ creatives + revenue states. Owner + media_buyer
+    (full row-level per Rydel's confirmation — DECISIONS #115). Filters:
+    ?creative=&tier=&q=."""
+    import attribution_engine
+    try:
+        days = min(max(int(request.args.get("days", 30)), 1), 365)
+    except ValueError:
+        return jsonify({"error": "bad days"}), 400
+    result = attribution_engine.compute(
+        days=days, start=request.args.get("start"), end=request.args.get("end"))
+    rows = result.get("rows") or []
+    creative = request.args.get("creative")
+    tier = request.args.get("tier")
+    q = (request.args.get("q") or "").strip().lower()
+    if creative:
+        rows = [r for r in rows if r["creative"]["key"] == creative]
+    if tier:
+        rows = [r for r in rows if r["creative"]["tier"] == tier]
+    if q:
+        rows = [r for r in rows if q in (r["name"] or "").lower()
+                or q in (r["business"] or "").lower()]
+    logger.info("bridge attribution rows read by %s (%s), %d rows",
+                g.actor["user"], g.actor["role"], len(rows))
+    return jsonify({"window": result.get("window"), "rows": rows, "total": len(rows),
+                    "qualified_rule": result.get("qualified_rule"),
+                    "freshness": result.get("freshness")})

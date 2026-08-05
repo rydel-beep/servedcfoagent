@@ -43,11 +43,16 @@ def row(name, email, input_date="2026-07-10", setter="set", show="Showed",
 
 def contact(cid, email, name, tier="ad", ft_ref="120000000000000001", ft_kind="id",
             lt_ref=None, lt_kind=None, medium="facebook", tags=None,
-            date_added=dt.datetime(2026, 7, 10)):
+            date_added=dt.datetime(2026, 7, 10), form_revenue="$20k-50k",
+            form_ready="I'm ready to grow my business now.", form_timeline="This Week"):
+    # form_* defaults make the lead FORM-COMPLETE + revenue-qualified under the v2 rule
+    # (qualified = finalised AND band >= floor AND form-complete). Pass None to test drops.
     return {"id": cid, "email": email, "name": name, "tier": tier,
             "ft_ad_ref": ft_ref, "ft_ref_kind": ft_kind,
             "lt_ad_ref": lt_ref or ft_ref, "lt_ref_kind": lt_kind or ft_kind,
             "medium": medium, "tags": tags or [], "source": None,
+            "form_revenue": form_revenue, "form_ready": form_ready,
+            "form_timeline": form_timeline,
             "date_added": date_added, "first_touch": {}, "last_touch": {}}
 
 

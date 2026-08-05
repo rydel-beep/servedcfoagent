@@ -67,6 +67,8 @@ def tracker_cols(header: list[str]) -> dict:
             idx["source"] = k
         elif "business name" in cl and "business" not in idx:
             idx["business"] = k
+        elif "revenue range" in cl and "revenue" not in idx:
+            idx["revenue"] = k
         elif "call outcome" in cl:
             outcome_cols.append(k)
         elif "dq reason" in cl and "dq_reason" not in idx:
@@ -144,7 +146,11 @@ def parse_tracker(rows: list[list[str]]) -> tuple[list[dict], dict]:
             "business": g("business"), "lead_source": g("source"),
             "input_date": input_date,
             "setter_outcome": setter_out,
-            "qualified": setter_out != "dq",           # Rydel: deterministic core
+            # FINALISED = the setter's post-call authority (outcome ≠ DQ). QUALIFIED is
+            # computed later in the join (finalised AND revenue band ≥ floor AND
+            # form-complete — Rydel's v2 definition, LTC_SCOREBOARD_REPORT §2).
+            "finalised": setter_out != "dq",
+            "revenue_raw": g("revenue"),
             "dq_reason": g("dq_reason"),
             "set": setter_out == "set",
             "set_date": _date(g("set_date")),
@@ -208,6 +214,7 @@ def compute_from_inputs(
     closer_comm: float = 0.0,
     setter_comm: float = 0.0,
     canonical: dict | None = None,
+    qualified_floor: float = 20_000.0,
 ) -> dict:
     """contacts: attr_contacts rows. spend_by_ad: {ad_id: {name, spend, impressions,
     clicks}} for the window. resolve_fn(ref, kind) → resolution dict (attribution_join).
@@ -283,12 +290,45 @@ def compute_from_inputs(
     dupes_in_window = [l for l in leads if l.get("_dup_removed") and l["close_date"]
                        and w0 <= l["close_date"] <= w1]
 
+    import revenue_bands
+    novel_flagged: set = set()
+    view_rows: list[dict] = []
+    q_impact = {"finalised": 0, "qualified": 0,
+                "excluded": {"under_floor": 0, "revenue_unknown": 0, "form_incomplete": 0}}
+
     for lead in window_leads:
         key, contact = lead_bucket_key(lead)
         label = (lead.get("_res", {}).get("ad_name") or key) if key not in (_IG_KEY, _UNATTR_KEY) \
             else ("IG DM (channel)" if key == _IG_KEY else "Unattributed")
         b = bucket(key, label)
         b["leads"] += 1
+        # QUALIFIED v2 (Rydel): finalised (≠DQ) AND revenue band ≥ floor (tracker cell
+        # wins, GHL form fills) AND form-complete. Unknown revenue excluded, never 0.
+        c = contact or {}
+        rv = revenue_bands.parse_band(lead.get("revenue_raw"), c.get("form_revenue"))
+        if rv.get("flag") and rv["flag"] not in novel_flagged:
+            novel_flagged.add(rv["flag"])
+            flags.append({"kind": "novel_revenue_value", "name": lead["name"],
+                          "detail": rv["flag"]})
+        form_complete = bool(c.get("form_revenue") and c.get("form_ready")
+                             and c.get("form_timeline"))
+        meets = revenue_bands.meets_floor(rv, qualified_floor)
+        lead["qualified"] = bool(lead["finalised"] and meets is True and form_complete)
+        lead["_revenue"] = rv
+        lead["_form_complete"] = form_complete
+        if lead["finalised"]:
+            q_impact["finalised"] += 1
+            if lead["qualified"]:
+                q_impact["qualified"] += 1
+            else:
+                if rv["state"] == "unknown":
+                    q_impact["excluded"]["revenue_unknown"] += 1
+                elif meets is False:
+                    q_impact["excluded"]["under_floor"] += 1
+                if not form_complete:
+                    q_impact["excluded"]["form_incomplete"] += 1
+        if rv["state"] == "unknown":
+            b["revenue_unknown"] = b.get("revenue_unknown", 0) + 1
         if lead["qualified"]:
             b["qualified"] += 1
         if lead["set"]:
@@ -297,6 +337,25 @@ def compute_from_inputs(
             b["shows"] += 1
         if lead["won"]:
             b["closes_cohort"] += 1
+        view_rows.append({
+            "name": lead["name"], "business": lead["business"],
+            "input_date": str(lead["input_date"]), "lead_source": lead["lead_source"],
+            "setter_outcome": lead["setter_outcome"] or None,
+            "set_date": str(lead["set_date"]) if lead["set_date"] else None,
+            "show": lead["show"], "closer_outcome": lead["closer_outcome"] or None,
+            "close_date": str(lead["close_date"]) if lead["close_date"] else None,
+            "contract": lead["contract"], "cash": lead["cash"],
+            "revenue": {"band": rv["band"], "state": rv["state"], "source": rv["source"]},
+            "finalised": lead["finalised"], "form_complete": form_complete,
+            "qualified": lead["qualified"],
+            "creative": {"key": key, "label": label,
+                         "tier": ("ig_dm" if key == _IG_KEY else
+                                  "unattributed" if key == _UNATTR_KEY else "ad"),
+                         "ad_ids": (lead.get("_res") or {}).get("ad_ids") or []},
+            "highlights": {"threshold_met": meets, "revenue_unknown": rv["state"] == "unknown",
+                           "close": lead["won"]},
+            "joined_via": lead.get("_joined_via"),
+        })
         res = lead.get("_res")
         if res:
             b["ad_ids"].update(res.get("ad_ids") or [])
@@ -313,11 +372,11 @@ def compute_from_inputs(
         blob = " ".join([lead.get("setter_notes") or "", lead.get("dq_reason") or "",
                          lead.get("lead_source") or "",
                          " ".join((c or {}).get("tags") or []) if isinstance((c or {}).get("tags"), list) else ""])
-        if lead["qualified"] and _INQUIRY_RE.search(blob):
+        if lead["finalised"] and _INQUIRY_RE.search(blob):
             flags.append({"kind": "qualified_but_inquiry_signals", "name": lead["name"],
-                          "detail": f"counted qualified (outcome ≠ DQ) but notes/tags read "
+                          "detail": f"setter-finalised (outcome ≠ DQ) but notes/tags read "
                                     f"like a non-lead inquiry: '{_INQUIRY_RE.search(blob).group(0)}' — review"})
-        if not lead["qualified"] and (lead["set"] or lead["set_date"] or lead["won"]):
+        if not lead["finalised"] and (lead["set"] or lead["set_date"] or lead["won"]):
             flags.append({"kind": "dq_but_progressed", "name": lead["name"],
                           "detail": "DQ'd by setter outcome but has a set/close — review"})
 
@@ -358,7 +417,8 @@ def compute_from_inputs(
             "creative_key": key, "label": b["label"], "tier":
                 ("ig_dm" if key == _IG_KEY else "unattributed" if key == _UNATTR_KEY else "ad"),
             "ad_ids": sorted(b["ad_ids"]), "campaigns": sorted(b["campaigns"]),
-            "leads": b["leads"], "qualified": b["qualified"], "sets": b["sets"],
+            "leads": b["leads"], "qualified": b["qualified"],
+            "revenue_unknown": b.get("revenue_unknown", 0), "sets": b["sets"],
             "shows": b["shows"], "closes_cohort": b["closes_cohort"],
             "closes": b["closes"], "contract": round(b["contract"], 2),
             "cash": round(b["cash"], 2), "deals": b["deals"],
@@ -431,6 +491,15 @@ def compute_from_inputs(
         "window": {"start": str(w0), "end": str(w1), "days": (w1 - w0).days + 1},
         "attribution_model": "first-touch (default; last-touch stored + labelled, never blended)",
         "creatives": rows_out,
+        "rows": view_rows,
+        "qualified_rule": {
+            "version": 2, "floor_monthly": qualified_floor,
+            "definition": "setter outcome ≠ DQ AND revenue band lower bound ≥ floor "
+                          "(tracker cell wins, GHL form fills) AND form-complete "
+                          "(revenue+readiness+timeline answered); unknown revenue is a "
+                          "visible excluded state, never 0",
+            "window_impact": q_impact,
+        },
         "totals": {"leads": sum_leads, "attributed_leads": attributed_leads,
                    "attribution_rate_pct": round(100 * attributed_leads / sum_leads, 1) if sum_leads else None,
                    "closes": sum_closes, "contract": sum_contract, "cash": sum_cash,
@@ -439,6 +508,59 @@ def compute_from_inputs(
         "flags": flags,
         "min_n": {"kill_requires_leads": MIN_N_LEADS_KILL,
                   "scale_requires_closes": MIN_N_CLOSES_SCALE},
+    }
+
+
+# ── The scoreboard projection (a RESHAPE of the engine result — zero new math) ─
+
+SCOREBOARD_COLUMNS = [
+    "creative", "verdict", "leads", "qualified", "sets", "shows", "closes", "cash",
+    "spend", "cost_per_lead", "cost_per_qualified", "cost_per_set", "cost_per_close",
+    "cost_per_close_loaded", "ltgp_cac", "n",
+]  # Rydel-confirmed set (LTC_SCOREBOARD_REPORT §4)
+
+
+def scoreboard_view(result: dict) -> dict:
+    """The per-creative tally table straight off a compute() result. Every number is a
+    field the engine already emitted — if this ever disagrees with /cfo/attribution,
+    a reconciliation test fails. The three honest rows ride along, always."""
+    rows = []
+    for c in result.get("creatives") or []:
+        rows.append({
+            "creative": c["label"], "creative_key": c["creative_key"], "tier": c["tier"],
+            "verdict": c.get("verdict"), "verdict_driver": c.get("verdict_driver"),
+            "gate": (c.get("gates") or {}).get("gate"),
+            "leads": c["leads"], "qualified": c["qualified"],
+            "revenue_unknown": c.get("revenue_unknown", 0),
+            "sets": c["sets"], "shows": c["shows"], "closes": c["closes"],
+            "cash": c["cash"], "spend": c["spend"],
+            "cost_per_lead": c.get("cost_per_lead"),
+            "cost_per_qualified": c.get("cost_per_qualified"),
+            "cost_per_set": c.get("cost_per_set"),
+            "cost_per_close": c.get("cost_per_close"),
+            "cost_per_close_loaded": c.get("cost_per_close_loaded"),
+            "cost_basis": c.get("cost_basis"), "loaded_basis": c.get("loaded_basis"),
+            "ltgp_cac": c.get("ltgp_cac"),
+            "n": {"leads": (c.get("gates") or {}).get("n_leads", 0),
+                  "closes": (c.get("gates") or {}).get("n_closes", 0)},
+        })
+    t = result.get("totals") or {}
+    vl = result.get("verdict_layer") or {}
+    return {
+        "columns": SCOREBOARD_COLUMNS,
+        "rows": rows,
+        "window": result.get("window"),
+        "attribution_model": result.get("attribution_model"),
+        "banner": {"attribution_rate_pct": t.get("attribution_rate_pct"),
+                   "leads": t.get("leads"), "attributed_leads": t.get("attributed_leads"),
+                   "freshness": result.get("freshness")},
+        "qualified_rule": result.get("qualified_rule"),
+        "constraint_line": (vl.get("constraint_check") or {}).get("read"),
+        "verdict_floor": vl.get("floor"),
+        "reconciliation": result.get("reconciliation"),
+        "totals": t,
+        "basis_note": "reads the Lead-to-Cash mirror + the attribution engine; "
+                      "figures reconcile to the dashboard",
     }
 
 
@@ -559,9 +681,16 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
     except Exception as e:
         logger.warning("canonical spend unavailable: %s", e)
 
+    try:
+        import manual_targets
+        q_floor = float((manual_targets.get_resolved() or {}).get("qualified_revenue_floor")
+                        or 20_000.0)
+    except Exception:
+        q_floor = 20_000.0
     result = compute_from_inputs(rows, contacts, spend.get("ads") or {}, resolve_fn,
                                  w0, w1, margin_pct=margin, closer_comm=closer_comm,
-                                 setter_comm=setter_comm, canonical=canonical)
+                                 setter_comm=setter_comm, canonical=canonical,
+                                 qualified_floor=q_floor)
     leads, _cm = parse_tracker(rows)
     result["ig_non_lead_inquiries"] = ig_non_lead_inquiries(contacts, leads, w0, w1)
     result["freshness"] = {

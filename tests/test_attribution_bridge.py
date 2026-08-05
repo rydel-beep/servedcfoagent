@@ -72,3 +72,24 @@ def test_unknown_user_still_invalid_even_when_role_env_set(monkeypatch):
     c = _client(monkeypatch)
     assert c.get("/bridge/attribution?days=30",
                  headers={"X-Bridge-Token": mint(user="mallory")}).status_code == 403
+
+
+def test_media_buyer_reaches_scoreboard_and_rows_when_enabled(monkeypatch):
+    # Rydel 2026-08-05: Romano's view is FULL row-level — the role (still shipped
+    # disabled) reaches all three attribution routes and nothing else.
+    monkeypatch.setenv("EDITH_BRIDGE_MEDIA_BUYERS", "romano")
+    c = _client(monkeypatch)
+    monkeypatch.setattr("attribution_engine.scoreboard_view",
+                        lambda r: {"ok": True, "rows": []}, raising=True)
+    for path in ("/bridge/attribution/scoreboard?days=30", "/bridge/attribution/rows?days=30"):
+        r = c.get(path, headers={"X-Bridge-Token": mint(user="romano")})
+        assert r.status_code == 200, path
+    assert c.get("/bridge/email/list",
+                 headers={"X-Bridge-Token": mint(user="romano")}).status_code == 403
+
+
+def test_new_routes_403_when_role_disabled(monkeypatch):
+    monkeypatch.delenv("EDITH_BRIDGE_MEDIA_BUYERS", raising=False)
+    c = _client(monkeypatch)
+    for path in ("/bridge/attribution/scoreboard?days=30", "/bridge/attribution/rows?days=30"):
+        assert c.get(path, headers={"X-Bridge-Token": mint(user="romano")}).status_code == 403

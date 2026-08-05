@@ -1254,3 +1254,28 @@
      checks (width sweep, drill-ins, EDITH's five queries, salience-once demo on screen)
      execute when Phase 4 ships. IG click-to-DM remains the largest honest gap (~43% of
      recent leads, channel-tier by design).
+
+115. **LTC SCOREBOARD PART 1 + QUALIFIED v2 (2026-08-05).** Rydel's Phase-0 confirmations:
+     (a) QUALIFIED v2 = setter Call Outcome ≠ DQ (the post-call FINAL authority) AND
+     revenue band lower bound ≥ the floor (manual_targets qualified_revenue_floor,
+     default $20,000/mo — "anything above 20k") AND FORM-COMPLETE (the GHL form's three
+     core answers present: revenue xaOeqdkAxtwj6W8hsVgV, readiness 2WLa5ylwPluInylD1l5X,
+     timeline Xu5oqFj1ulLcS83CVRBE). Revenue source precedence: the tracker "Revenue
+     Range" cell wins (setter-verified); the GHL form answer fills gaps — measured:
+     unknown collapses 64.1% → 4.1% of lead rows. Unknown is a visible excluded state
+     (never 0, never guessed); a novel picklist value parses unknown + raises a
+     data-quality flag. Setter notes stay FLAG-ONLY (the disagreement sweep keys on
+     FINALISED, not the stricter qualified). IMPACT (journaled, all-time preview):
+     qualified 968 → 604 (−364: 313 under-$20k, 42 revenue-unknown, 56 form-incomplete,
+     overlaps possible) — the QoQ-visible change is this decision, like the test-lead
+     cleaning was. (b) SCOREBOARD COLUMNS as proposed (Contracted/ROAS live in drill-in).
+     (c) ROMANO'S media_buyer VIEW = FULL ROW-LEVEL (names, businesses, revenue bands) —
+     reversing the aggregates-only default; the role itself still SHIPS DISABLED.
+     BUILD: revenue_bands.py (exact band map); attr_contacts captures the 3 form fields;
+     the engine computes qualified v2 post-join, emits per-row view rows + qualified_rule
+     impact; scoreboard_view() is a RESHAPE (test: scoreboard sums == engine totals — a
+     disagreement is a failing test); /cfo/attribution/{scoreboard,rows} (owner) +
+     /bridge/attribution/{scoreboard,rows} (owner + media_buyer); EDITH deterministic
+     queries (scoreboard / which-creative-brought-X / qualified-per-creative), entity-
+     gated, refusals on unknown names. Part 2 (Timeline section) remains gated on the
+     timeline repo (not reachable from this session).

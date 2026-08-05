@@ -69,6 +69,18 @@ CREATE INDEX IF NOT EXISTS idx_attr_contacts_tier ON attr_contacts (tier);
 
 _ID_RE = re.compile(r"^\d{10,20}$")
 
+# The GHL form's core qualifying questions (field ids verified in the Phase-0 scoreboard
+# inspection — LTC_SCOREBOARD_REPORT). "Answered the form properly" = all three present.
+FORM_FIELD_REVENUE = "xaOeqdkAxtwj6W8hsVgV"    # the 5-band revenue picklist
+FORM_FIELD_READY = "2WLa5ylwPluInylD1l5X"      # readiness ("ready to grow now" …)
+FORM_FIELD_TIMELINE = "Xu5oqFj1ulLcS83CVRBE"   # timeline ("Yesterday (Asap)" …)
+
+_FORM_DDL = """
+ALTER TABLE attr_contacts ADD COLUMN IF NOT EXISTS form_revenue TEXT;
+ALTER TABLE attr_contacts ADD COLUMN IF NOT EXISTS form_ready   TEXT;
+ALTER TABLE attr_contacts ADD COLUMN IF NOT EXISTS form_timeline TEXT;
+"""
+
 
 def migrate() -> bool:
     if not db.db_configured():
@@ -76,6 +88,7 @@ def migrate() -> bool:
     try:
         with db.get_conn() as c:
             c.execute(_DDL)
+            c.execute(_FORM_DDL)
         return True
     except Exception as e:
         logger.warning("attr_contacts migrate failed: %s", e)
@@ -138,7 +151,15 @@ def classify_contact(contact: dict) -> dict:
     lt_ref, lt_kind = ad_ref_from_touch(last)
     name = (contact.get("contactName")
             or f"{contact.get('firstName') or ''} {contact.get('lastName') or ''}").strip()
+    cf = {}
+    for f in (contact.get("customFields") or []):
+        if isinstance(f, dict) and f.get("id"):
+            v = f.get("value")
+            cf[f["id"]] = "|".join(map(str, v)) if isinstance(v, list) else str(v or "")
     return {
+        "form_revenue": (cf.get(FORM_FIELD_REVENUE) or "").strip() or None,
+        "form_ready": (cf.get(FORM_FIELD_READY) or "").strip() or None,
+        "form_timeline": (cf.get(FORM_FIELD_TIMELINE) or "").strip() or None,
         "id": contact.get("id"),
         "email": (contact.get("email") or "").strip().lower() or None,
         "name": name or None,
@@ -266,8 +287,9 @@ def sync_contacts(force: bool = False) -> dict:
                         """
                         INSERT INTO attr_contacts (id, email, name, date_added, source, tags,
                             medium, tier, first_touch, last_touch, ft_ad_ref, ft_ref_kind,
-                            lt_ad_ref, lt_ref_kind, synced_at, deleted)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,FALSE)
+                            lt_ad_ref, lt_ref_kind, form_revenue, form_ready, form_timeline,
+                            synced_at, deleted)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,FALSE)
                         ON CONFLICT (id) DO UPDATE SET
                             email=EXCLUDED.email, name=EXCLUDED.name,
                             date_added=EXCLUDED.date_added, source=EXCLUDED.source,
@@ -275,13 +297,16 @@ def sync_contacts(force: bool = False) -> dict:
                             first_touch=EXCLUDED.first_touch, last_touch=EXCLUDED.last_touch,
                             ft_ad_ref=EXCLUDED.ft_ad_ref, ft_ref_kind=EXCLUDED.ft_ref_kind,
                             lt_ad_ref=EXCLUDED.lt_ad_ref, lt_ref_kind=EXCLUDED.lt_ref_kind,
+                            form_revenue=EXCLUDED.form_revenue, form_ready=EXCLUDED.form_ready,
+                            form_timeline=EXCLUDED.form_timeline,
                             synced_at=EXCLUDED.synced_at, deleted=FALSE
                         """,
                         (row["id"], row["email"], row["name"], row["date_added"],
                          row["source"], json.dumps(row["tags"]), row["medium"], row["tier"],
                          json.dumps(row["first_touch"]), json.dumps(row["last_touch"]),
                          row["ft_ad_ref"], row["ft_ref_kind"], row["lt_ad_ref"],
-                         row["lt_ref_kind"], now_sydney()))
+                         row["lt_ref_kind"], row["form_revenue"], row["form_ready"],
+                         row["form_timeline"], now_sydney()))
                     n += 1
         except Exception as e:
             logger.error("attr_contacts upsert failed: %s", e)
@@ -302,6 +327,7 @@ def load_contacts() -> list[dict]:
             rows = conn.execute(
                 "SELECT id, email, name, date_added, source, tags, medium, tier, "
                 "first_touch, last_touch, ft_ad_ref, ft_ref_kind, lt_ad_ref, lt_ref_kind, "
+                "form_revenue, form_ready, form_timeline, "
                 "synced_at FROM attr_contacts WHERE deleted = FALSE").fetchall()
         return list(rows)
     except Exception as e:

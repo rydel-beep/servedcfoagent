@@ -311,6 +311,61 @@ def get_attribution():
     return resp
 
 
+def _attribution_compute_from_args():
+    """Shared window/force parsing for the scoreboard + rows views. Same engine call —
+    same cache — zero parallel math."""
+    import attribution_engine
+    try:
+        days = min(max(int(request.args.get("days", 30)), 1), 365)
+    except ValueError:
+        return None, (jsonify({"error": "bad days"}), 400)
+    return attribution_engine.compute(
+        days=days, start=request.args.get("start"), end=request.args.get("end"),
+        force=request.args.get("force") == "1"), None
+
+
+@app.route("/cfo/attribution/scoreboard", methods=["GET"])
+def get_attribution_scoreboard():
+    """The per-creative tally scoreboard — a reshape of the engine result (owner gate)."""
+    if not _snapshot_request_authorized():
+        return jsonify({"error": "Unauthorized"}), 401
+    import attribution_engine
+    result, err = _attribution_compute_from_args()
+    if err:
+        return err
+    resp = jsonify(attribution_engine.scoreboard_view(result))
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@app.route("/cfo/attribution/rows", methods=["GET"])
+def get_attribution_rows():
+    """The live tracker rows with each lead's creative + revenue state + highlights.
+    Filters: ?creative=<key>&tier=ad|ig_dm|unattributed&q=<name/business substring>."""
+    if not _snapshot_request_authorized():
+        return jsonify({"error": "Unauthorized"}), 401
+    result, err = _attribution_compute_from_args()
+    if err:
+        return err
+    rows = result.get("rows") or []
+    creative = request.args.get("creative")
+    tier = request.args.get("tier")
+    q = (request.args.get("q") or "").strip().lower()
+    if creative:
+        rows = [r for r in rows if r["creative"]["key"] == creative]
+    if tier:
+        rows = [r for r in rows if r["creative"]["tier"] == tier]
+    if q:
+        rows = [r for r in rows if q in (r["name"] or "").lower()
+                or q in (r["business"] or "").lower()]
+    resp = jsonify({"window": result.get("window"), "rows": rows, "total": len(rows),
+                    "qualified_rule": result.get("qualified_rule"),
+                    "freshness": result.get("freshness"),
+                    "reconciliation": result.get("reconciliation")})
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
 # Scope set must match what the Xero app has ENABLED, or consent 500s with
 # invalid_scope. This app exposes only GRANULAR report scopes — the broad
 # accounting.reports.read / accounting.transactions.read are NOT enabled

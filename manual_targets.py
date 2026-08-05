@@ -40,6 +40,8 @@ DEFAULTS: dict[str, dict] = {
     "gross_margin_target":  {"default": 50.0, "type": "target",    "unit": "pct", "label": "Gross margin healthy target"},
     "op_efficiency_target": {"default": 1.5,  "type": "target",    "unit": "x",   "label": "Operating efficiency target"},
     "speed_to_lead_target": {"default": 50.0, "type": "target",    "unit": "pct", "label": "Speed-to-lead target"},
+    "qualified_revenue_floor": {"default": 20000.0, "type": "benchmark", "unit": "aud",
+                                "label": "Qualified revenue floor (monthly, band lower bound)"},
     "set_to_show_target":   {"default": 70.0, "type": "target",    "unit": "pct", "label": "Set→Show target"},
     "show_to_close_target": {"default": 35.0, "type": "target",    "unit": "pct", "label": "Show→Close target"},
     # Goalposts that may not be consumed by a metric yet — still settable + shown.

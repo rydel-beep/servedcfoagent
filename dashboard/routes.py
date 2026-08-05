@@ -775,6 +775,9 @@ def api_chat():
             (lambda m: __import__('test_leads').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # test-lead exclusion / what's excluded / mark test|real
             (range_unit_economics.handle_unit_econ_command, False),
             (payback_reconciliation.handle_payback_command, False),
+            (lambda m: __import__('attribution_queries').handle_scoreboard_command(m), False),  # ad scoreboard (reads the engine)
+            (lambda m: __import__('attribution_queries').handle_which_creative_command(m), False),  # which creative brought X
+            (lambda m: __import__('attribution_queries').handle_qualified_for_creative_command(m), False),  # qualified per creative
             (leads_view.handle_lead_count_command, False),
             (closes_view.handle_close_count_command, False),
             (leads_view.handle_substage_count_command, False),
@@ -964,6 +967,9 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str):
             (lambda m: __import__('test_leads').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # test-lead exclusion / what's excluded / mark test|real
             (range_unit_economics.handle_unit_econ_command, False),
             (payback_reconciliation.handle_payback_command, False),
+            (lambda m: __import__('attribution_queries').handle_scoreboard_command(m), False),  # ad scoreboard (reads the engine)
+            (lambda m: __import__('attribution_queries').handle_which_creative_command(m), False),  # which creative brought X
+            (lambda m: __import__('attribution_queries').handle_qualified_for_creative_command(m), False),  # qualified per creative
             (leads_view.handle_lead_count_command, False),
             (closes_view.handle_close_count_command, False),
             (leads_view.handle_substage_count_command, False),
