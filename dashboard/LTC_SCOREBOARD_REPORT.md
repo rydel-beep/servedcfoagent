@@ -1,5 +1,33 @@
 # Lead-to-Cash Attribution Scoreboard
 
+## PART 1 — CFO-SIDE, SHIPPED + PASS 1 CLEAN (2026-08-05)
+
+Rydel's confirmations (DECISIONS #115): qualified v2 as operationalized · columns as
+proposed · **Romano = FULL row-level view** when his role is enabled (role still ships
+disabled). Suite **530 green** (16 new tests).
+
+Shipped: `revenue_bands.py` (exact 5-band map; unknown never 0; novel value → flag);
+attr_contacts captures the 3 GHL form fields; the engine computes qualified v2 post-join
+(floor from manual_targets `qualified_revenue_floor`, $20k default) and emits the per-row
+view + `qualified_rule` impact; `scoreboard_view()` reshapes — never recomputes;
+`/cfo/attribution/{scoreboard,rows}` (owner) + `/bridge/attribution/{scoreboard,rows}`
+(owner + media_buyer); EDITH: "show me the scoreboard" / "which creative brought X" /
+"how many qualified leads did [creative] bring" — deterministic, entity-gated.
+
+### PASS 1 (live, production)
+- Forced full sync: 3,534 contacts complete, form fields captured.
+- **scoreboard == engine: drift NONE, cash/spend exact — both windows.** Recon ok.
+- Qualified v2 impact: 30d **57 finalised → 41 qualified** (15 under-$20k, 2
+  form-incomplete, 0 revenue-unknown); 60d **106 → 77** (28 / 2 / 0). In recent windows
+  setters fill the tracker cell (79/80 rows) — the 64% unknown was historical; the GHL
+  fallback carries the back-catalogue.
+- Row spot-checks correct per state (tracker-parsed bands, an unknown+unattributed row).
+- EDITH live: scoreboard spoken with attribution rate; "which creative brought tesla
+  zhong" → the full chain (came in Jul 4, closed Jul 8, $8,305 cash, first-touch
+  B008_A03); nonexistent name → refused; per-creative qualified with the rule stated.
+
+Part 2 (the Timeline AD TRACKING section) remains gated on the timeline repo.
+
 ## PHASE 0 — SHEET INSPECTION + JOIN COVERAGE (2026-08-05) — AWAITING RYDEL
 
 Read-only inspection of the live mirrored tracker (clean view, 1,291 lead rows) +
