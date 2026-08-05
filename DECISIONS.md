@@ -1279,3 +1279,27 @@
      queries (scoreboard / which-creative-brought-X / qualified-per-creative), entity-
      gated, refusals on unknown names. Part 2 (Timeline section) remains gated on the
      timeline repo (not reachable from this session).
+
+116. **AD SECTION ON THE FINANCE DASHBOARD + VOICE NAVIGATION + THE SELF-MODEL FIX
+     (2026-08-05).** The incident: EDITH announced the Ad B double-down, Rydel said "show
+     me the ad dashboard", she claimed "text and voice only" — a false self-model (she IS
+     the dashboard). Fixes, all CFO-repo (timeline untouched — not even reachable):
+     (a) AD TRACKING section (#section-attribution, zone 2, nav link "Ads", g-a jump) —
+     RENDER-ONLY off /cfo/attribution/{scoreboard,rows}; zero client math; confirmed
+     columns, verdict badges w/ n, 30/60/90 selector, honest rows always, banner +
+     constraint line, drill→row-filter, search, incremental rows. (b) VOICE NAV: SSE
+     `nav` events (schema v1, nav_registry) on the deterministic path only; nav_router
+     FIRST in the chain so display asks never reach the model; entity-gated drills
+     (ambiguous asks, nonexistent refuses, both without action); thread-aware relative
+     commands via {ui} on every chat POST; typed chat switched to the SAME stream as
+     voice; timeline channel = honest cross-surface answer, zero actions (Part-2
+     adoption = one else-if + a handler). (c) SELF-MODEL: persona "WHERE YOU ARE" block;
+     the false line banned + structurally unreachable for nav intents; "what can you
+     show me" reads the registry per surface. LESSONS THE DRIVE CAUGHT: `adtrack.js` /
+     `section-ad-tracking` names were silently killed by ad-blocker filter lists —
+     renamed neutral (ltcboard.js/section-attribution/ltcb-); never name ad-UI assets
+     with "ad" substrings. Scoreboard sort comparator was inverted (caught on the first
+     screenshot). Cold-reload smooth-scroll gets eaten by late layout inflation —
+     scrollToSection re-asserts until the layout settles. Suite green; the scripted
+     8-step drive passed end-to-end on production data; Rydel's voice drive is the
+     acceptance.

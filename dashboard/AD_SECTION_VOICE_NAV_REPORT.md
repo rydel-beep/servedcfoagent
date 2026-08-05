@@ -57,5 +57,75 @@ UI context rides the chat POST (`{ui: {section, window}}`) so relative commands
 ("just the kills", "now 90 days") compose against the CURRENT view — thread-aware by
 transport, no server session state.
 
-(Build sections follow: Phase 1 the section, Phase 2 nav + self-model, Phase 3 the
-full check.)
+## PHASE 1 — THE SECTION (shipped)
+
+`#section-attribution` on the finance dashboard (zone 2, after the funnel; nav link
+"Ads"; auto-registered in the Cmd+K palette; `g a` jump). Renderer
+`dashboard/static/js/ltcboard.js` — RENDER ONLY off `/cfo/attribution/scoreboard` +
+`/rows`: the confirmed columns with verdict badges (DD green / KILL red / WATCH grey
+with n), sortable headers, 30/60/90 window selector, honest rows pinned at the bottom
+and always rendered, the attribution-rate + qualified-rule + freshness banner, the
+constraint line, the creative drill card (click a row → tracker filters to its humans),
+search, incremental rendering for the 1,200-row tracker, threshold/unknown/close/tier
+highlights, and the basis footer.
+
+**THE AD-BLOCKER TRAP (found live, fixed):** the file was first named `adtrack.js` and
+the section `section-ad-tracking` — uBlock-class filter lists silently blocked the
+script (`*adtrack*` matches EasyPrivacy patterns) while every other asset loaded. This
+would have hit Rydel's browser too. Everything renamed neutral: `ltcboard.js`,
+`section-attribution`, `ltcb-`/`ltcv-` CSS prefixes. Recorded so nobody reintroduces
+ad-ish names on ad-related UI.
+
+## PHASE 2 — VOICE NAV + SELF-MODEL (shipped)
+
+- `nav_registry.py` (targets/schema/capability text) + `nav_router.py` (deterministic
+  intents, FIRST in the chain — a display ask can never reach the model). SSE `nav`
+  events emitted on the deterministic path; `edithnav.js` executes them (smooth scroll
+  with settle-re-assert, window bar, ad-board filters, page navs) with a flash ack;
+  unknown actions ignored. Typed chat now uses the same streaming path as voice —
+  identical behavior, one pipeline. UI context (`{ui: {section, window}}`) rides every
+  chat POST so relative commands compose against the current view.
+- Persona: the "WHERE YOU ARE" block (embedded in the dashboard, can navigate/display,
+  per-surface honesty); the emergent "text and voice only" line is structurally dead —
+  nav asks are intercepted before the model, and the persona bans the claim for any
+  that slip through. Timeline channel: honest cross-surface answer, zero actions.
+
+## PHASE 3 — THE FULL CHECK (all live on the local production-data instance)
+
+ACCURACY: 25 scoreboard cells (5 creatives × leads/qualified/closes/cash/spend) MATCH
+the API to the cent; 5 tracker rows MATCH /rows (dates, revenue band/unknown states);
+the /rows data was already 15-row hand-verified against the sheet + live Graph in the
+scoreboard PASS 1; verdict badges render the engine's verdicts with n; banner figures
+are the API's own (86.2% / 69/80 at 30d; 90.9% / 150/165 at 60d).
+
+THE SCRIPTED DRIVE (typed chat = the same stream as voice; transcript excerpts):
+1. "show me the ad dashboard" → nav event → page scrolls onto the board (top 76px),
+   reply: "Pulling up the ad tracking board — 86.2% of the window's leads are
+   ad-attributed; top spender is B008_A04… 17 leads, 1 closes." ✓
+2. "filter to 60 days" → board window flips to 60d, banner reads the 60d API numbers ✓
+3. "show me Ad B" → drill opens on "Served 2026 Q2/Q1… Rydel AD B", reply carries the
+   badge + closes + cash figures ✓
+4. "just the ones to kill" → KILL filter applied; zero ad rows (correct — nothing is at
+   KILL); honest rows still rendered ✓
+5. "open the leads page" → full page navigation to /dashboard/leads; back; "back to the
+   ad board" → returns + scrolls (settle-re-assert fix proven on a cold reload, top=0) ✓
+6. "show me the Zebulon VSL ad" → honest refusal, wire-verified ZERO nav events ✓
+7. timeline channel "show me the ad dashboard" → no nav event, honest "finance
+   dashboard" answer, the false line absent ✓
+8. "what can you show me?" → the real registry list (board, funnel, cash, pages…) ✓
+Width: no body horizontal overflow at narrow width (tables scroll in their wraps);
+full multi-device sweep rides Rydel's own drive + the Part-2 timeline session.
+
+REGRESSION: suite green (see session note for the final count); voice pipeline
+untouched by construction (nav events never feed the audio chunker — delta-only);
+owner gate: /cfo/* 401 unauthenticated (unchanged), dashboard pages behind
+require_auth; zero timeline-repo changes (the repo isn't even reachable from this
+session); no new writes anywhere.
+
+## PART-2 ADOPTION NOTE (timeline widget)
+One `else if (ev === 'nav')` branch + an EdithNav-equivalent handler in the widget;
+the server already channels correctly (timeline gets text-only today). The bridge
+already serves /bridge/attribution* for the section's data when it lands there.
+
+REMAINING: Rydel's voice drive on his machine — "show me the ad dashboard" — closes
+the build.

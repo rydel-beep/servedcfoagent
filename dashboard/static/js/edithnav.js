@@ -7,7 +7,7 @@
   'use strict';
 
   var ANCHORS = {
-    ad_tracking: 'section-ad-tracking', brief: 'section-brief',
+    ad_tracking: 'section-attribution', brief: 'section-brief',
     cash: 'section-cash-position', forward: 'section-forward', mrr: 'section-trend',
     churn: 'section-churn', economics: 'section-month-perf', pnl: 'section-waterfall',
     funnel: 'section-funnel', clients: 'section-health', team: 'section-team',
@@ -23,8 +23,8 @@
 
   function flash(el) {
     if (!el) return;
-    el.classList.add('adv-flash');
-    setTimeout(function () { el.classList.remove('adv-flash'); }, 900);
+    el.classList.add('ltcv-flash');
+    setTimeout(function () { el.classList.remove('ltcv-flash'); }, 900);
   }
 
   function scrollToSection(id) {
@@ -32,6 +32,17 @@
     if (!el) return false;
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     flash(el);
+    // late-loading panels above can reflow and push the target away — re-assert
+    // until the layout SETTLES (stable for 3 consecutive checks) or 15s, whichever
+    // first. Instant re-scrolls; no animation fight.
+    var tries = 0, stable = 0;
+    var keep = setInterval(function () {
+      tries++;
+      var top = el.getBoundingClientRect().top;
+      if (Math.abs(top) > 80) { el.scrollIntoView({ block: 'start' }); stable = 0; }
+      else stable++;
+      if (stable >= 3 || tries >= 20) clearInterval(keep);
+    }, 750);
     return true;
   }
 

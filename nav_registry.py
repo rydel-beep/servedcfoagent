@@ -18,7 +18,7 @@ SCHEMA_VERSION = 1
 # CFO-surface scroll anchors: key → (dom_id, spoken name). The 13 existing nav links
 # plus the new ad-tracking section.
 ANCHORS: dict[str, tuple[str, str]] = {
-    "ad_tracking": ("section-ad-tracking", "the ad tracking board"),
+    "ad_tracking": ("section-attribution", "the ad tracking board"),
     "brief": ("section-brief", "the morning brief"),
     "cash": ("section-cash-position", "the cash position"),
     "forward": ("section-forward", "the forward view"),

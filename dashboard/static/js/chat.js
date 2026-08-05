@@ -242,7 +242,10 @@
     if (!text || isSending) return;
     input.value = '';
     input.style.height = 'auto';
-    await sendText(text, false);
+    // The STREAMING path so typed chat carries nav events too ("show me X" navigates
+    // identically from voice and typed chat); sendTextStream falls back to /api/chat
+    // itself on transport failure.
+    await sendTextStream(text, false, null);
   }
 
   // Public hook for the voice layer (voice.js): same thread, same memory.

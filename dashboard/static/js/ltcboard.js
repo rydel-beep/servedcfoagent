@@ -1,4 +1,4 @@
-/* adtrack.js — the AD TRACKING section: scoreboard + live tracker.
+/* ltcboard.js — the AD TRACKING section: scoreboard + live tracker.
    RENDER ONLY: every figure comes from /cfo/attribution/scoreboard + /rows (cookie-
    authed, the same reconciled engine the dashboard quotes). No math beyond display
    formatting. Exposes window.AdTrack for EdithNav (voice-driven navigation). */
@@ -41,10 +41,10 @@
   function badge(row) {
     var v = row.verdict;
     var n = row.n || {};
-    if (v === 'DOUBLE DOWN') return '<span class="adv-badge adv-dd" title="' + esc(row.verdict_driver || '') + '">DOUBLE DOWN</span>';
-    if (v === 'KILL') return '<span class="adv-badge adv-kill" title="' + esc(row.verdict_driver || '') + '">KILL</span>';
-    if (v === 'WATCH') return '<span class="adv-badge adv-watch" title="' + esc(row.verdict_driver || '') + '">WATCH <span class="adv-n">n=' + (n.leads || 0) + '/' + (n.closes || 0) + '</span></span>';
-    return '<span class="adv-badge adv-none">—</span>';
+    if (v === 'DOUBLE DOWN') return '<span class="ltcv-badge ltcv-dd" title="' + esc(row.verdict_driver || '') + '">DOUBLE DOWN</span>';
+    if (v === 'KILL') return '<span class="ltcv-badge ltcv-kill" title="' + esc(row.verdict_driver || '') + '">KILL</span>';
+    if (v === 'WATCH') return '<span class="ltcv-badge ltcv-watch" title="' + esc(row.verdict_driver || '') + '">WATCH <span class="ltcv-n">n=' + (n.leads || 0) + '/' + (n.closes || 0) + '</span></span>';
+    return '<span class="ltcv-badge ltcv-none">—</span>';
   }
 
   function sortRows(rows) {
@@ -57,15 +57,16 @@
       if (av == null && bv == null) return 0;
       if (av == null) return 1;
       if (bv == null) return -1;
-      return av < bv ? dir : av > bv ? -dir : 0;
+      // dir -1 = descending (bigger first), +1 = ascending
+      return av < bv ? -dir : av > bv ? dir : 0;
     });
   }
 
   function renderScoreboard() {
     var sb = state.scoreboard;
     if (!sb) return;
-    var thead = $('#adtrack-scoreboard thead');
-    var tbody = $('#adtrack-scoreboard tbody');
+    var thead = $('#ltcb-scoreboard thead');
+    var tbody = $('#ltcb-scoreboard tbody');
     thead.innerHTML = '<tr>' + COLS.map(function (c) {
       var cls = c.k === state.sort ? (state.sortDir === -1 ? 'sorted desc' : 'sorted asc') : '';
       return '<th data-sort="' + c.k + '" class="' + cls + '">' + c.label + '</th>';
@@ -81,9 +82,9 @@
     tbody.innerHTML = rows.map(function (r) {
       var name = r.tier === 'ad' ? esc(r.creative)
         : '<em>' + esc(r.creative) + '</em>';
-      var cls = 'adv-tier-' + r.tier + (state.creative === r.creative_key ? ' adv-selected' : '');
+      var cls = 'ltcv-tier-' + r.tier + (state.creative === r.creative_key ? ' ltcv-selected' : '');
       return '<tr class="' + cls + '" data-key="' + esc(r.creative_key) + '" data-tier="' + r.tier + '">' +
-        '<td class="adv-name">' + name + '</td>' +
+        '<td class="ltcv-name">' + name + '</td>' +
         '<td>' + (r.tier === 'ad' ? badge(r) : '—') + '</td>' +
         COLS.slice(2).map(function (c) {
           var v = r[c.k];
@@ -94,13 +95,13 @@
     var b = sb.banner || {};
     var fresh = (b.freshness || {});
     var qr = sb.qualified_rule || {};
-    $('#adtrack-banner').innerHTML =
+    $('#ltcb-banner').innerHTML =
       '<strong>' + (b.attribution_rate_pct != null ? b.attribution_rate_pct + '%' : '—') +
       '</strong> of window leads ad-attributed (' + (b.attributed_leads || 0) + '/' + (b.leads || 0) + ')' +
       ' · qualified = ≠DQ + revenue ≥ $' + Math.round((qr.floor_monthly || 20000) / 1000) + 'k/mo + form answered' +
       ' · contacts synced ' + esc(String(fresh.contacts_synced || '').slice(11, 16) || '—') +
       ' · spend: ' + esc(fresh.spend_source || '—');
-    var cl = $('#adtrack-constraint');
+    var cl = $('#ltcb-constraint');
     if (sb.constraint_line) { cl.textContent = sb.constraint_line; cl.style.display = ''; }
     else { cl.style.display = 'none'; }
   }
@@ -116,8 +117,8 @@
   }
 
   function renderRows(reset) {
-    var thead = $('#adtrack-rows thead');
-    var tbody = $('#adtrack-rows tbody');
+    var thead = $('#ltcb-rows thead');
+    var tbody = $('#ltcb-rows tbody');
     thead.innerHTML = '<tr><th>Lead</th><th>Business</th><th>In</th><th>Revenue</th>' +
       '<th>Setter</th><th>Set</th><th>Show</th><th>Close</th><th>Cash</th><th>Creative</th></tr>';
     var rows = state.rows.filter(rowMatches);
@@ -125,17 +126,17 @@
     state.shown = Math.min(rows.length, state.shown + PAGE);
     tbody.innerHTML = rows.slice(0, state.shown).map(function (r) {
       var h = r.highlights || {};
-      var cls = ['adv-row'];
-      if (h.close) cls.push('adv-row-close');
-      if (h.threshold_met === true) cls.push('adv-row-met');
-      if (h.revenue_unknown) cls.push('adv-row-unknown');
-      cls.push('adv-tint-' + (r.creative.tier || 'unattributed'));
+      var cls = ['ltcv-row'];
+      if (h.close) cls.push('ltcv-row-close');
+      if (h.threshold_met === true) cls.push('ltcv-row-met');
+      if (h.revenue_unknown) cls.push('ltcv-row-unknown');
+      cls.push('ltcv-tint-' + (r.creative.tier || 'unattributed'));
       var rev = r.revenue || {};
       var revCell = rev.state === 'unknown'
-        ? '<span class="adv-rev-unknown">revenue?</span>'
-        : esc(rev.band || '—') + (rev.source === 'ghl_form' ? '<span class="adv-rev-src" title="from the GHL form answer">ᵍ</span>' : '');
+        ? '<span class="ltcv-rev-unknown">revenue?</span>'
+        : esc(rev.band || '—') + (rev.source === 'ghl_form' ? '<span class="ltcv-rev-src" title="from the GHL form answer">ᵍ</span>' : '');
       return '<tr class="' + cls.join(' ') + '">' +
-        '<td class="adv-name">' + esc(r.name) + (r.qualified ? ' <span class="adv-q" title="qualified">Q</span>' : '') + '</td>' +
+        '<td class="ltcv-name">' + esc(r.name) + (r.qualified ? ' <span class="ltcv-q" title="qualified">Q</span>' : '') + '</td>' +
         '<td>' + esc(r.business || '') + '</td>' +
         '<td>' + esc(r.input_date) + '</td>' +
         '<td>' + revCell + '</td>' +
@@ -143,42 +144,42 @@
         '<td>' + esc(r.set_date || '—') + '</td>' +
         '<td>' + (r.show ? '✓' : '—') + '</td>' +
         '<td>' + (r.close_date ? esc(r.close_date) : '—') + '</td>' +
-        '<td class="adv-cash">' + (r.cash != null ? money(r.cash) : '—') + '</td>' +
-        '<td class="adv-cr">' + esc((r.creative.label || '').slice(0, 42)) + '</td>' +
+        '<td class="ltcv-cash">' + (r.cash != null ? money(r.cash) : '—') + '</td>' +
+        '<td class="ltcv-cr">' + esc((r.creative.label || '').slice(0, 42)) + '</td>' +
         '</tr>';
     }).join('');
-    var more = $('#adtrack-more');
+    var more = $('#ltcb-more');
     more.style.display = state.shown < rows.length ? '' : 'none';
     more.textContent = 'show more rows (' + (rows.length - state.shown) + ' remaining)';
-    $('#adtrack-rows-title').textContent = 'Live tracker — ' + rows.length + ' row(s)' +
+    $('#ltcb-rows-title').textContent = 'Live tracker — ' + rows.length + ' row(s)' +
       (state.creative ? ' · filtered to a creative' : '') +
       (state.q ? ' · search “' + state.q + '”' : '');
   }
 
   function renderDrill() {
-    var box = $('#adtrack-drill');
+    var box = $('#ltcb-drill');
     if (!state.creative || !state.scoreboard) { box.style.display = 'none'; return; }
     var r = null;
     state.scoreboard.rows.forEach(function (x) { if (x.creative_key === state.creative) r = x; });
     if (!r) { box.style.display = 'none'; return; }
     box.style.display = '';
     box.innerHTML =
-      '<div class="adv-drill-head"><strong>' + esc(r.creative) + '</strong> ' +
+      '<div class="ltcv-drill-head"><strong>' + esc(r.creative) + '</strong> ' +
       (r.tier === 'ad' ? badge(r) : '') +
-      '<button class="adv-drill-close" id="adtrack-drill-close">✕ clear</button></div>' +
-      '<div class="adv-drill-line">' + r.leads + ' leads → ' + r.qualified + ' qualified → ' +
+      '<button class="ltcv-drill-close" id="ltcb-drill-close">✕ clear</button></div>' +
+      '<div class="ltcv-drill-line">' + r.leads + ' leads → ' + r.qualified + ' qualified → ' +
       r.sets + ' sets → ' + r.shows + ' shows → ' + r.closes + ' closes · ' +
       money(r.cash) + ' cash on ' + money(r.spend) + ' spend' +
       (r.ltgp_cac != null ? ' · LTGP:CAC ' + r.ltgp_cac + 'x' : '') + '</div>' +
-      (r.verdict_driver ? '<div class="adv-drill-driver">' + esc(r.verdict_driver) + '</div>' : '');
-    var btn = $('#adtrack-drill-close');
+      (r.verdict_driver ? '<div class="ltcv-drill-driver">' + esc(r.verdict_driver) + '</div>' : '');
+    var btn = $('#ltcb-drill-close');
     if (btn) btn.onclick = function () { setCreative(null); };
   }
 
   function fetchAll() {
     if (state.loading) return Promise.resolve();
     state.loading = true;
-    $('#adtrack-banner').textContent = 'Loading ' + state.days + 'd window…';
+    $('#ltcb-banner').textContent = 'Loading ' + state.days + 'd window…';
     var qs = '?days=' + state.days;
     return Promise.all([
       fetch('/cfo/attribution/scoreboard' + qs, { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }),
@@ -186,7 +187,7 @@
     ]).then(function (res) {
       state.loading = false;
       if (!res[0] || !res[1]) {
-        $('#adtrack-banner').textContent = 'Attribution engine unreachable — the section stays honest and shows nothing rather than stale guesses.';
+        $('#ltcb-banner').textContent = 'Attribution engine unreachable — the section stays honest and shows nothing rather than stale guesses.';
         return;
       }
       state.scoreboard = res[0];
@@ -194,14 +195,14 @@
       renderScoreboard(); renderDrill(); renderRows(true);
     }).catch(function () {
       state.loading = false;
-      $('#adtrack-banner').textContent = 'Attribution fetch failed — retry with the window buttons.';
+      $('#ltcb-banner').textContent = 'Attribution fetch failed — retry with the window buttons.';
     });
   }
 
   function setWindow(days) {
     if ([30, 60, 90].indexOf(days) < 0) return;
     state.days = days;
-    document.querySelectorAll('.adtrack-win').forEach(function (b) {
+    document.querySelectorAll('.ltcb-win').forEach(function (b) {
       b.classList.toggle('active', +b.dataset.days === days);
     });
     fetchAll();
@@ -218,19 +219,19 @@
     renderScoreboard();
   }
   function flash() {
-    var el = $('#section-ad-tracking');
+    var el = $('#section-attribution');
     if (!el) return;
-    el.classList.add('adv-flash');
-    setTimeout(function () { el.classList.remove('adv-flash'); }, 900);
+    el.classList.add('ltcv-flash');
+    setTimeout(function () { el.classList.remove('ltcv-flash'); }, 900);
   }
 
   function init() {
-    var sec = $('#section-ad-tracking');
+    var sec = $('#section-attribution');
     if (!sec) return;
-    document.querySelectorAll('.adtrack-win').forEach(function (b) {
+    document.querySelectorAll('.ltcb-win').forEach(function (b) {
       b.addEventListener('click', function () { setWindow(+b.dataset.days); });
     });
-    $('#adtrack-scoreboard').addEventListener('click', function (e) {
+    $('#ltcb-scoreboard').addEventListener('click', function (e) {
       var th = e.target.closest('th[data-sort]');
       if (th) { setSort(th.dataset.sort); return; }
       var tr = e.target.closest('tr[data-key]');
@@ -238,13 +239,13 @@
         setCreative(state.creative === tr.dataset.key ? null : tr.dataset.key);
       }
     });
-    var search = $('#adtrack-search');
+    var search = $('#ltcb-search');
     var deb = null;
     search.addEventListener('input', function () {
       clearTimeout(deb);
       deb = setTimeout(function () { state.q = search.value.trim(); renderRows(true); }, 200);
     });
-    $('#adtrack-more').addEventListener('click', function () { renderRows(false); });
+    $('#ltcb-more').addEventListener('click', function () { renderRows(false); });
     fetchAll();
   }
 
