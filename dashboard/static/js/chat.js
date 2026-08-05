@@ -79,7 +79,8 @@
       var resp = await fetch('/dashboard/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ history: conversationHistory, voice: !!voiceFlag }),
+        body: JSON.stringify({ history: conversationHistory, voice: !!voiceFlag,
+          ui: (window.EdithNav ? window.EdithNav.state() : null) }),
       });
       var data = await resp.json();
       loading.remove();
@@ -175,7 +176,8 @@
       try {
         var fr = await fetch('/dashboard/api/chat', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ history: conversationHistory, voice: !!voiceFlag }),
+          body: JSON.stringify({ history: conversationHistory, voice: !!voiceFlag,
+          ui: (window.EdithNav ? window.EdithNav.state() : null) }),
         });
         var fd = await fr.json();
         if (fd.reply) { renderAssistant(fd.reply); return fd.reply; }
@@ -191,7 +193,8 @@
       var resp = await fetch('/dashboard/api/chat-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ history: conversationHistory, voice: !!voiceFlag }),
+        body: JSON.stringify({ history: conversationHistory, voice: !!voiceFlag,
+          ui: (window.EdithNav ? window.EdithNav.state() : null) }),
       });
       if (!resp.ok || !resp.body) throw new Error('stream unavailable');
 
@@ -213,6 +216,7 @@
           if (ev === 'delta' && payload.text) { full += payload.text; buffer += payload.text; drain(false); }
           else if (ev === 'done') { full = payload.reply || full; }
           else if (ev === 'error') { errored = payload.error || 'stream error'; }
+          else if (ev === 'nav') { try { if (window.EdithNav) window.EdithNav.handle(payload); } catch (e) {} }
         }
       }
       drain(true);                               // flush any trailing partial sentence

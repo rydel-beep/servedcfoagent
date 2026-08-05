@@ -1,0 +1,88 @@
+/* edithnav.js — the navigation ACTION handler (schema v1, nav_registry.py).
+   EDITH's replies can carry `nav` SSE events; this executes them: smooth-scroll a
+   section, open a page, set the global window, drive the ad board. Unknown/malformed
+   actions are ignored gracefully — never a broken page. A subtle flash acknowledges
+   every executed action. The Timeline widget adopts this same handler in Part 2. */
+(function () {
+  'use strict';
+
+  var ANCHORS = {
+    ad_tracking: 'section-ad-tracking', brief: 'section-brief',
+    cash: 'section-cash-position', forward: 'section-forward', mrr: 'section-trend',
+    churn: 'section-churn', economics: 'section-month-perf', pnl: 'section-waterfall',
+    funnel: 'section-funnel', clients: 'section-health', team: 'section-team',
+    pipeline: 'section-pipeline', reps: 'section-reps', dq: 'section-quality',
+    action_feed: 'section-action-feed', capital: 'section-capital',
+  };
+  var PAGES = {
+    leads_page: '/dashboard/leads', targets_page: '/dashboard/targets',
+    data_sources: '/dashboard/data-sources',
+  };
+
+  var lastSection = null;
+
+  function flash(el) {
+    if (!el) return;
+    el.classList.add('adv-flash');
+    setTimeout(function () { el.classList.remove('adv-flash'); }, 900);
+  }
+
+  function scrollToSection(id) {
+    var el = document.getElementById(id);
+    if (!el) return false;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    flash(el);
+    return true;
+  }
+
+  function handle(action) {
+    try {
+      if (!action || action.v !== 1 || !action.type) return;
+      var p = action.params || {};
+      if (action.type === 'set_window') {
+        var btn = document.querySelector('.global-window-btn[data-window="' + (+p.days) + '"]');
+        if (btn) { btn.click(); flash(document.getElementById('global-window-bar')); }
+        return;
+      }
+      if (action.type === 'navigate') {
+        if (PAGES[action.target]) { window.location.href = PAGES[action.target]; return; }
+        var id = ANCHORS[action.target];
+        if (!id) return;                          // unknown target — ignore, never break
+        if (scrollToSection(id)) lastSection = action.target;
+        if (action.target === 'ad_tracking' && window.AdTrack) {
+          if (p.window) window.AdTrack.setWindow(+String(p.window).replace(/\D/g, ''));
+          if (p.creative && p.drill) window.AdTrack.setCreative(p.creative);
+          if (p.verdict) window.AdTrack.setVerdict(p.verdict);
+        }
+        return;
+      }
+      if (action.type === 'filter' && action.target === 'ad_tracking' && window.AdTrack) {
+        if (lastSection !== 'ad_tracking') scrollToSection(ANCHORS.ad_tracking);
+        lastSection = 'ad_tracking';
+        if (p.window) window.AdTrack.setWindow(+p.window);
+        if (p.verdict) window.AdTrack.setVerdict(p.verdict);
+        if (p.sort) window.AdTrack.setSort(p.sort);
+        return;
+      }
+    } catch (e) { /* an action must never break the page */ }
+  }
+
+  function state() {
+    // the CURRENT view, sent with each chat turn so relative commands compose
+    var s = { section: lastSection };
+    try {
+      var active = document.querySelector('.nav-link.active');
+      if (!s.section && active) {
+        var href = (active.getAttribute('href') || '').slice(1);
+        Object.keys(ANCHORS).forEach(function (k) { if (ANCHORS[k] === href) s.section = k; });
+      }
+      if (window.AdTrack) {
+        var a = window.AdTrack.state();
+        if (s.section === 'ad_tracking') { s.window = a.days + 'd'; s.creative = a.creative; }
+      }
+    } catch (e) {}
+    return s;
+  }
+
+  window.EdithNav = { handle: handle, state: state };
+})();

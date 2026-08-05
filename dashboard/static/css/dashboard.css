@@ -2744,3 +2744,63 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .cap-hrow { font-size: 12px; color: var(--text-secondary, #A8BBD0); padding: 4px 0; border-bottom: 1px solid var(--border, #1E2E45); }
 .cap-hdate { color: var(--text-muted, #6E86A3); margin-right: 6px; }
 .cap-run { padding: 6px 0; }
+
+/* ── AD TRACKING section (adtrack.js; reads /cfo/attribution/*) ────────────── */
+#section-ad-tracking { grid-column: 1 / -1; }
+.adtrack-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.adtrack-sub { font-size: 12px; color: var(--muted, #8b93a7); font-weight: 400; margin-left: 8px; }
+.adtrack-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.adtrack-windows { display: flex; gap: 4px; }
+.adtrack-win { background: transparent; border: 1px solid var(--line, #26304a); color: var(--muted, #8b93a7);
+  border-radius: 6px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+.adtrack-win.active { color: var(--fg, #e7ecf5); border-color: var(--accent, #4f8cff); background: rgba(79,140,255,.12); }
+#adtrack-search { background: rgba(255,255,255,.04); border: 1px solid var(--line, #26304a); color: var(--fg, #e7ecf5);
+  border-radius: 6px; padding: 4px 10px; font-size: 12px; min-width: 190px; }
+.adtrack-banner { font-size: 12.5px; color: var(--muted, #8b93a7); margin: 8px 0 2px; }
+.adtrack-banner strong { color: var(--fg, #e7ecf5); }
+.adtrack-constraint { font-size: 12.5px; color: #7fd7a8; margin: 4px 0; }
+.adtrack-table-wrap { overflow-x: auto; margin-top: 8px; }
+.adtrack-table { width: 100%; border-collapse: collapse; font-size: 12.5px; white-space: nowrap; }
+.adtrack-table th { text-align: right; padding: 6px 8px; color: var(--muted, #8b93a7); font-weight: 600;
+  border-bottom: 1px solid var(--line, #26304a); cursor: pointer; position: sticky; top: 0; background: var(--panel, #10182b); }
+.adtrack-table th:first-child, .adtrack-table td:first-child { text-align: left; }
+.adtrack-table th.sorted.desc::after { content: ' ▾'; } .adtrack-table th.sorted.asc::after { content: ' ▴'; }
+.adtrack-table td { padding: 5px 8px; text-align: right; border-bottom: 1px solid rgba(255,255,255,.05); }
+.adtrack-table td.adv-name { text-align: left; max-width: 330px; overflow: hidden; text-overflow: ellipsis; }
+#adtrack-scoreboard tr[data-tier="ad"] { cursor: pointer; }
+#adtrack-scoreboard tr[data-tier="ad"]:hover { background: rgba(79,140,255,.07); }
+.adv-selected { background: rgba(79,140,255,.14) !important; }
+.adv-badge { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 9px; letter-spacing: .3px; }
+.adv-dd { background: rgba(52,199,123,.18); color: #4fdb95; border: 1px solid rgba(52,199,123,.5); }
+.adv-kill { background: rgba(255,92,92,.16); color: #ff7d7d; border: 1px solid rgba(255,92,92,.5); }
+.adv-watch { background: rgba(255,255,255,.07); color: var(--muted, #9aa3b8); border: 1px solid rgba(255,255,255,.16); }
+.adv-none { color: var(--muted, #6c7488); }
+.adv-n { font-weight: 400; opacity: .8; }
+.adv-tier-ig_dm td, .adv-tier-unattributed td { color: var(--muted, #9aa3b8); font-style: italic; }
+.adtrack-drill { border: 1px solid var(--line, #26304a); border-left: 3px solid var(--accent, #4f8cff);
+  border-radius: 8px; padding: 10px 12px; margin: 10px 0; font-size: 13px; }
+.adv-drill-head { display: flex; align-items: center; gap: 10px; }
+.adv-drill-close { margin-left: auto; background: none; border: 1px solid var(--line, #26304a);
+  color: var(--muted, #8b93a7); border-radius: 6px; font-size: 11px; padding: 2px 8px; cursor: pointer; }
+.adv-drill-line { margin-top: 6px; } .adv-drill-driver { margin-top: 4px; color: var(--muted, #9aa3b8); font-size: 12px; }
+.adtrack-rows-title { margin: 14px 0 2px; font-size: 13px; color: var(--muted, #8b93a7); }
+.adtrack-rows-wrap { max-height: 460px; overflow-y: auto; }
+.adv-row-close td { font-weight: 600; }
+.adv-row-close .adv-cash { color: #4fdb95; }
+.adv-row-met .adv-name::before { content: ''; display: inline-block; width: 6px; height: 6px;
+  border-radius: 50%; background: #34c77b; margin-right: 6px; vertical-align: middle; }
+.adv-rev-unknown { color: #f0b45c; font-style: italic; }
+.adv-rev-src { color: var(--muted, #8b93a7); margin-left: 2px; font-size: 10px; }
+.adv-q { font-size: 10px; font-weight: 700; color: #4fdb95; border: 1px solid rgba(52,199,123,.5);
+  border-radius: 4px; padding: 0 4px; margin-left: 4px; }
+.adv-tint-ig_dm .adv-cr { color: #b39bdb; } .adv-tint-unattributed .adv-cr { color: var(--muted, #7c8499); }
+.adtrack-more { margin: 8px auto; display: block; background: none; border: 1px solid var(--line, #26304a);
+  color: var(--muted, #8b93a7); border-radius: 6px; padding: 4px 14px; font-size: 12px; cursor: pointer; }
+.adtrack-footer { margin-top: 8px; font-size: 11px; color: var(--muted, #6c7488); font-style: italic; }
+.adv-flash { animation: advFlash .9s ease-out; }
+@keyframes advFlash { 0% { box-shadow: 0 0 0 2px rgba(79,140,255,.65); } 100% { box-shadow: 0 0 0 2px rgba(79,140,255,0); } }
+@media (max-width: 760px) {
+  .adtrack-head { flex-direction: column; align-items: stretch; }
+  #adtrack-search { width: 100%; }
+  .adtrack-table { font-size: 11.5px; }
+}

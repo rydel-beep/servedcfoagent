@@ -864,10 +864,11 @@ def api_chat_stream():
     from dashboard.auth import current_actor
     token = current_actor().get("user") or request.cookies.get(COOKIE_NAME, "anon")
     return chat_stream_response(history, voice,
-                                channel=("voice" if voice else "text"), token=token)
+                                channel=("voice" if voice else "text"), token=token,
+                                ui=data.get("ui") or {})
 
 
-def chat_stream_response(history: list, voice: bool, channel: str, token: str):
+def chat_stream_response(history: list, voice: bool, channel: str, token: str, ui: dict | None = None):
     """The ONE streaming chat core — shared by the dashboard route above and the
     owner-gated Timeline bridge (dashboard/bridge.py). channel scopes the thread
     (db.get_or_create_active_conversation); token scopes rate-limit + pending-state
@@ -937,6 +938,19 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str):
     # ── TIER 2 (voice path): GATED — a conversational ramble skips the data handlers → model.
     # This is the surface the Romano misfire happened on. Default-to-conversation when unsure.
     import intent_router
+    # ── VOICE-DRIVEN NAVIGATION (deterministic, FIRST): "show me X" is a navigation
+    # command — it must NEVER fall through to the model, whose emergent "text and
+    # voice only" line caused the 2026-08-05 incident. Timeline channel gets the
+    # honest cross-surface answer (no actions) until Part 2 adopts the handler.
+    _cmd_actions: list = []
+    if _cmd_reply is None:
+        try:
+            import nav_router
+            _nr, _na, _nh = nav_router.handle(user_msg, ui=ui, channel=channel)
+            if _nh:
+                _cmd_reply, _cmd_actions = _nr, (_na or [])
+        except Exception as _e:
+            logger.warning("nav router failed (falling through): %s", _e)
     if _cmd_reply is None and not intent_router.is_conversational_ramble(user_msg):
         import range_unit_economics, payback_reconciliation, leads_view, closes_view, liabilities_view, salary_view
         import tracker_read, capacity_engine, forecasting_engine
@@ -996,6 +1010,8 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str):
             memory.record_turn(conv_id, "assistant", _cmd_reply, channel=channel, intent="command")
         def gen_cmd():
             yield sse("meta", {"intent": "command", "context_tokens": 0})
+            for _a in (_cmd_actions or []):
+                yield sse("nav", _a)          # schema v1 — unknown events are ignored
             yield sse("done", {"reply": _cmd_reply})
         return Response(gen_cmd(), mimetype="text/event-stream",
                         headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
