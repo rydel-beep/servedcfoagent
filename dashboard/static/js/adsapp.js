@@ -115,7 +115,18 @@
       return '<div class="adx-hyg-item adx-sev' + d.severity + '"><span>' + esc(d.detail) + '</span>' +
         '<span class="adx-hyg-fix">fix: ' + esc(d.fix) + ' · ' + esc(d.owner || '') + '</span></div>';
     }).join('');
-    $('#adx-hygiene-body').innerHTML = '<div class="adx-hyg-line">' + line + '</div>' +
+    var ident = state.board.identity;
+    var identLine = '';
+    if (ident) {
+      identLine = '<div class="adx-hyg-line">Identity: <strong>' +
+        (ident.exact_id_rate_pct != null ? ident.exact_id_rate_pct + '%' : '—') +
+        '</strong> exact-id resolution · ' + (ident.ambiguous_leads || 0) +
+        ' ambiguous (quarantined) · ' + (ident.unattributed_leads || 0) + ' unattributed · ' +
+        'contact→tracker ' + (((ident.hops || {}).hop2_contact_to_tracker || {}).match_rate_pct || '—') + '%' +
+        (ident.trailing_exact_id_rate_pct != null ? ' · trailing 90d exact-id ' + ident.trailing_exact_id_rate_pct + '%' : '') +
+        '</div>';
+    }
+    $('#adx-hygiene-body').innerHTML = identLine + '<div class="adx-hyg-line">' + line + '</div>' +
       (ds.length ? items + (ds.length > 8 ? '<div class="adx-hyg-more">+' + (ds.length - 8) + ' more in the action feed</div>' : '')
                  : '<div class="adx-hyg-clean">No open disagreements — systems agree.</div>');
   }
@@ -226,7 +237,8 @@
       b.classList.toggle('active', b.dataset.level === state.level);
     });
     $('#adx-table-title').childNodes[0].textContent =
-      { creative: 'Creatives ', batch: 'Batches ', campaign: 'Campaigns ', account: 'Account ' }[state.level];
+      { creative: 'Ads ', name: 'Creative names (all campaigns) ', batch: 'Batches ',
+        campaign: 'Campaigns ', account: 'Account ' }[state.level];
     var thead = $('#adx-scoreboard thead'), tbody = $('#adx-scoreboard tbody');
     thead.innerHTML = '<tr>' + COLS.map(function (c) {
       var cls = c.k === state.sort ? (state.sortDir === -1 ? 'sorted desc' : 'sorted asc') : '';
@@ -302,6 +314,14 @@
   }
   function closeDrill() { $('#adx-drill-scrim').style.display = 'none'; }
 
+  function candidatesNote(p) {
+    var cands = (p.creative && p.creative.candidates) || p.candidates;
+    if (!cands || !cands.length) return '';
+    return '<div class="adx-cands">name matches ' + cands.length + ' ads — candidates: ' +
+      cands.map(function (c) { return esc(c.ad_id) + ' [' + esc(c.campaign || '?') + ']'; }).join(' · ') +
+      ' — QUARANTINED, not assigned</div>';
+  }
+
   function personCard(p) {
     var rev = p.revenue || {};
     var revLine = rev.state === 'unknown' ? '<span class="adx-rev-unknown">revenue not captured</span>'
@@ -310,7 +330,7 @@
       return '<div class="adx-note"><span class="adx-note-body">' + esc(n.body) + '</span>' +
         '<span class="adx-note-src">' + esc(n.source) + (n.date ? ' · ' + esc(n.date) : '') + '</span></div>';
     }).join('') || '<div class="adx-note adx-note-empty">no notes recorded</div>';
-    return '<div class="adx-person">' +
+    return '<div class="adx-person">' + candidatesNote(p) +
       '<div class="adx-person-head"><strong>' + esc(p.name) + '</strong>' +
       (p.business && p.business !== p.name ? ' · ' + esc(p.business) : '') +
       (p.ghl_link ? ' <a class="adx-ghl" href="' + esc(p.ghl_link) + '" target="_blank" rel="noopener">GHL ↗</a>' : '') + '</div>' +

@@ -177,47 +177,69 @@ def classify_contact(contact: dict) -> dict:
 
 # ── Creative resolution (id-first; reuses meta_entities; never guesses) ──────
 
+def _label_for(ad_id: str, hit: dict | None, entity_store: dict | None) -> tuple[str, str | None, bool]:
+    """(label, name_norm, is_history). HYBRID KEYING (DECISIONS #119): the AD ID is the
+    base key; the LABEL disambiguates duplicated names by campaign — "Name [Campaign]" —
+    and marks archived/deleted members (their spend and leads are real history)."""
+    import meta_entities
+    if not hit:
+        return f"ad {ad_id} (deleted — name unknown)", None, True
+    name = hit.get("name") or f"ad {ad_id}"
+    label = name
+    dup = len(meta_entities.candidates_by_name(name, store=entity_store)) > 1
+    if dup and hit.get("campaign_name"):
+        label = f"{name} [{hit['campaign_name']}]"
+    status = (hit.get("effective_status") or "").upper()
+    history = status in ("ARCHIVED", "DELETED")
+    if history:
+        label += f" ({status.lower()})"
+    return label, hit.get("name_norm"), history
+
+
 def resolve_ref(ref: str | None, kind: str | None, entity_store: dict | None = None,
                 allow_recovery: bool = False) -> dict:
-    """Resolve one ad reference to a creative identity. Returns:
-      {basis: 'id'|'name_unique'|'name_ambiguous'|'alias'|'unresolved',
-       creative_key, ad_ids: [...], ad_name, adset_id, campaign_id, campaign_name}
-    creative_key = the per-creative grouping key: normalized ad NAME when known (creative
-    identity — DECISIONS #111), else 'id:<ad_id>' when a name can't be learned."""
+    """Resolve one ad reference. IDS ARE TRUTH; NAMES ARE LABELS (the identity doctrine,
+    DECISIONS #119): the creative_key is the AD ID whenever one is known. A NON-UNIQUE
+    name match is AMBIGUOUS — quarantined (basis='name_ambiguous', creative_key=None,
+    candidates listed), never assigned to one candidate, never merged into a row that
+    implies certainty."""
     import meta_entities
     if not ref:
         return {"basis": "unresolved", "creative_key": None, "ad_ids": []}
     if kind == "id":
         hit = meta_entities.lookup_ad_id(ref, store=entity_store)
-        if hit:
-            key = hit.get("name_norm") or f"id:{ref}"
-            return {"basis": "id", "creative_key": key, "ad_ids": [ref],
-                    "ad_name": hit.get("name"), "adset_id": hit.get("adset_id"),
-                    "campaign_id": hit.get("campaign_id"),
-                    "campaign_name": hit.get("campaign_name")}
-        # an exact id we can't dereference is still an exact identity — keep it
-        return {"basis": "id", "creative_key": f"id:{ref}", "ad_ids": [ref],
-                "ad_name": None, "adset_id": None, "campaign_id": None,
-                "campaign_name": None}
+        label, name_norm, history = _label_for(ref, hit, entity_store)
+        return {"basis": "id", "creative_key": ref, "ad_ids": [ref],
+                "ad_name": (hit or {}).get("name"), "label": label,
+                "name_norm": name_norm, "history": history,
+                "adset_id": (hit or {}).get("adset_id"),
+                "campaign_id": (hit or {}).get("campaign_id"),
+                "campaign_name": (hit or {}).get("campaign_name")}
     cands = meta_entities.candidates_by_name(ref, store=entity_store)
     if len(cands) == 1:
         c = cands[0]
-        return {"basis": "name_unique", "creative_key": c.get("name_norm"),
-                "ad_ids": [c["ad_id"]], "ad_name": c.get("name"),
+        label, name_norm, history = _label_for(c["ad_id"], c, entity_store)
+        return {"basis": "name_unique", "creative_key": c["ad_id"],
+                "ad_ids": [c["ad_id"]], "ad_name": c.get("name"), "label": label,
+                "name_norm": name_norm, "history": history,
                 "adset_id": c.get("adset_id"), "campaign_id": c.get("campaign_id"),
                 "campaign_name": c.get("campaign_name")}
     if len(cands) > 1:
-        # SAME creative re-launched across campaigns: creative-level identity is the name;
-        # adset/campaign stay None (ambiguous — never guessed).
-        return {"basis": "name_ambiguous", "creative_key": meta_entities.norm_name(ref),
+        # QUARANTINE: the same name on several ads — displayed, never resolved by guessing
+        return {"basis": "name_ambiguous", "creative_key": None,
                 "ad_ids": sorted(c["ad_id"] for c in cands),
-                "ad_name": cands[0].get("name"), "adset_id": None,
-                "campaign_id": None, "campaign_name": "ambiguous"}
+                "ad_name": cands[0].get("name"), "label": None,
+                "name_norm": meta_entities.norm_name(ref), "history": False,
+                "adset_id": None, "campaign_id": None, "campaign_name": None,
+                "candidates": [{"ad_id": c["ad_id"], "campaign": c.get("campaign_name"),
+                                "status": c.get("effective_status")} for c in cands]}
     if allow_recovery:
         rec = meta_entities.recover_by_name(ref)
         if rec:
-            return {"basis": "alias", "creative_key": rec.get("name_norm") or meta_entities.norm_name(ref),
+            label, name_norm, history = _label_for(rec["ad_id"], rec, entity_store)
+            return {"basis": "alias", "creative_key": rec["ad_id"],
                     "ad_ids": [rec["ad_id"]], "ad_name": rec.get("name") or ref,
+                    "label": label, "name_norm": name_norm, "history": history,
                     "adset_id": rec.get("adset_id"), "campaign_id": rec.get("campaign_id"),
                     "campaign_name": rec.get("campaign_name")}
     return {"basis": "unresolved", "creative_key": None, "ad_ids": [],

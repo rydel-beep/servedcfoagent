@@ -185,3 +185,56 @@ def record_flag_salience(fl: list[dict]) -> None:
         kv_store.put("attr:flag_pending", pending[-30:])
     except Exception as e:
         logger.info("flag salience record failed: %s", e)
+
+
+def identity_health(result: dict, trailing_result: dict | None = None) -> dict:
+    """THE IDENTITY HEALTH read (CREATIVE_IDENTITY_REPORT Phase 3): the resolution-path
+    census, each join hop's measured rate, and degradation vs trailing. Everything from
+    fields the engine already emitted — the join quality is a WATCHED number."""
+    census: dict = {}
+    for c in (result.get("creatives") or []):
+        for basis, n in (c.get("first_touch_basis") or {}).items():
+            census[basis] = census.get(basis, 0) + n
+    t = result.get("totals") or {}
+    attributed = t.get("attributed_leads") or 0
+    exact = census.get("id", 0)
+    exact_rate = round(100.0 * exact / attributed, 1) if attributed else None
+    rows = result.get("rows") or []
+    hop2_join = sum(1 for r in rows if r.get("joined_via"))
+    hop2_email = sum(1 for r in rows if r.get("joined_via") == "email")
+    out = {
+        "census": census,
+        "attribution_rate_pct": t.get("attribution_rate_pct"),
+        "exact_id_rate_pct": exact_rate,
+        "ambiguous_leads": t.get("ambiguous_leads", 0),
+        "unattributed_leads": (t.get("leads") or 0) - attributed
+                              - (t.get("ambiguous_leads") or 0),
+        "hops": {
+            "hop1_ad_to_contact": {"primary": "utmAdId (exact id)",
+                                   "exact_id_rate_pct": exact_rate,
+                                   "ambiguous": t.get("ambiguous_leads", 0)},
+            "hop2_contact_to_tracker": {
+                "primary": "email (normalized)",
+                "match_rate_pct": round(100.0 * hop2_join / len(rows), 1) if rows else None,
+                "email_share_pct": round(100.0 * hop2_email / max(1, hop2_join), 1) if hop2_join else None},
+            "hop3_tracker_to_stripe": "the existing payment matcher — rates in the hygiene panel",
+            "hop4_tracker_funnel": "the tracker's own dated fields (the close-integrity authority)",
+        },
+    }
+    if trailing_result is not None:
+        tc: dict = {}
+        for c in (trailing_result.get("creatives") or []):
+            for basis, n in (c.get("first_touch_basis") or {}).items():
+                tc[basis] = tc.get(basis, 0) + n
+        t_attr = (trailing_result.get("totals") or {}).get("attributed_leads") or 0
+        t_exact = round(100.0 * tc.get("id", 0) / t_attr, 1) if t_attr else None
+        out["trailing_exact_id_rate_pct"] = t_exact
+        if exact_rate is not None and t_exact is not None and exact_rate < t_exact - 15:
+            out["degradation_flag"] = {
+                "severity": 1, "kind": "exact_id_rate_drop",
+                "id": f"adflag:exact_id_drop:{(result.get('window') or {}).get('days')}d",
+                "creative": None,
+                "headline": f"exact-id resolution {exact_rate}% this window vs "
+                            f"{t_exact}% trailing",
+                "question": "capture regression — check the lead-form integration/UTMs"}
+    return out

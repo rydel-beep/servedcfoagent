@@ -71,7 +71,7 @@ def board():
     import attribution_engine
     import attribution_flags
     result = _compute(days, start, end, force=request.args.get("force") == "1")
-    trailing = None
+    trailing, r90 = None, None
     try:
         if not (start or end):
             r90 = result if days == 90 else _compute(90, None, None)
@@ -79,6 +79,14 @@ def board():
     except Exception as e:
         logger.info("trailing rate unavailable: %s", e)
     sc = attribution_flags.scorecard(result, trailing_attr_rate=trailing)
+    identity = None
+    try:
+        identity = attribution_flags.identity_health(
+            result, trailing_result=(r90 if (not (start or end) and days != 90) else None))
+        if identity.get("degradation_flag"):
+            sc["flags"].insert(0, identity["degradation_flag"])
+    except Exception as e:
+        logger.info("identity health unavailable: %s", e)
     attribution_flags.record_flag_salience(sc["flags"])
     hygiene = None
     try:
@@ -97,6 +105,7 @@ def board():
         logger.info("ladder unavailable: %s", e)
     resp = jsonify({
         "hygiene": hygiene,
+        "identity": identity,
         "ladder": ladder,
         "window": result.get("window"),
         "scoreboard": attribution_engine.scoreboard_view(result),

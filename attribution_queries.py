@@ -148,3 +148,54 @@ def handle_flags_command(text: str) -> tuple[str | None, bool]:
     if len(fl) > 5:
         msg += f"; plus {len(fl) - 5} more on the dashboard."
     return msg, True
+
+
+_TRACKING_ACC_RE = re.compile(
+    r"how (accurate|good) is (our|the) (ad )?track|tracking (accuracy|health|quality)|"
+    r"how('s| is) (our|the) tracking", re.I)
+_SHARED_NAME_RE = re.compile(
+    r"which ads? share the name\s+[\"“']?(?P<nm>[\w .·&()\[\]/-]{3,60}?)[\"”']?\s*\??$", re.I)
+
+
+def handle_tracking_accuracy_command(text: str) -> tuple[str | None, bool]:
+    """'how accurate is our ad tracking?' → the identity-health numbers, verbatim."""
+    if not text or not _TRACKING_ACC_RE.search(text):
+        return None, False
+    import attribution_flags
+    r = _engine(30)
+    ih = attribution_flags.identity_health(r)
+    t = r.get("totals") or {}
+    msg = (f"Tracking health, last 30 days: {t.get('attribution_rate_pct')}% of leads "
+           f"ad-attributed ({t.get('attributed_leads')}/{t.get('leads')}); of those, "
+           f"{ih.get('exact_id_rate_pct')}% resolved by EXACT ad id — ids are truth, "
+           f"names are labels. {ih.get('ambiguous_leads', 0)} lead(s) quarantined as "
+           f"ambiguous-name (never guessed), {ih.get('unattributed_leads', 0)} "
+           f"unattributed. Contact→tracker join: "
+           f"{(ih.get('hops') or {}).get('hop2_contact_to_tracker', {}).get('match_rate_pct')}% "
+           f"matched (email-first).")
+    return msg, True
+
+
+def handle_shared_name_command(text: str) -> tuple[str | None, bool]:
+    """'which ads share the name X?' → the register entry, verbatim. Fabricated names
+    are refused, never invented."""
+    if not text:
+        return None, False
+    m = _SHARED_NAME_RE.search(text.strip())
+    if not m:
+        return None, False
+    nm = m.group("nm").strip()
+    import meta_entities
+    cands = meta_entities.candidates_by_name(nm)
+    if not cands:
+        return (f"No ad in the account carries the name “{nm}” — I won't invent one. "
+                f"Ask for the scoreboard to hear the live names."), True
+    if len(cands) == 1:
+        c = cands[0]
+        return (f"“{nm}” is unique: ad {c['ad_id']} in {c.get('campaign_name') or '?'} "
+                f"({(c.get('effective_status') or '?').lower()})."), True
+    lines = [f"{c['ad_id']} in {c.get('campaign_name') or '?'} "
+             f"({(c.get('effective_status') or '?').lower()})" for c in cands]
+    return (f"“{nm}” is shared by {len(cands)} ads: " + "; ".join(lines) +
+            ". On the board each is its own row, campaign-labelled; name-level view "
+            "groups them deliberately."), True

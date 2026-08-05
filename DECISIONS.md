@@ -1358,3 +1358,27 @@
      level); always-valid account reads; honest empty state; 30d window guidance ("closes
      trail leads — 60/90d is the honest read"); the DEFINITIONS panel (every number's
      basis one click away).
+
+119. **CREATIVE IDENTITY — THE HYBRID RE-KEY + JOIN CONTRACT (2026-08-05).** Phase-0
+     forensics: 199 duplicated ad names across 504 member ads (full entity map incl.
+     archived); SEVEN current 30d rows were silent cross-campaign merges (worst:
+     B001_A05 with 7 members across 4 campaigns; 'vid 5' hiding 63 contacts + 1 close in
+     one of three members); the census showed 94% of window leads already resolve by
+     EXACT ad id — the distortion was the GROUPING (name-keyed rows merging exact-id
+     attributions across campaigns), plus 379 all-time name-resolved contacts silently
+     merged on duplicated names. RYDEL'S RULINGS: HYBRID keying (AD ID = the base key
+     and the truth; name/batch/campaign = deliberate ladder levels); labels
+     "Name [Campaign]"; archived/deleted members SHOWN, marked. THE IDENTITY DOCTRINE
+     encoded: ids are truth, names are labels; a non-unique name match is QUARANTINED in
+     the first-class __ambiguous__ row (candidates listed in the drill) — never assigned,
+     never merged into certainty. BUILT: resolve_ref re-keyed (id-first keys, campaign-
+     disambiguated labels, history marks); the quarantine bucket + candidates in view
+     rows; the ladder gains the NAME level (the deliberate cross-campaign view; split↔
+     group reconciles exactly — live-proven on B008_A04: TOF 15 leads/$1,505/1 close
+     TRENDING STRONG vs Retargeting 2/$234 EARLY, name level 17/$1,739); identity_health
+     (census, per-hop measured rates, exact-id degradation flag → salience) on the /ads
+     hygiene strip; JOIN_CONTRACT.md (the four hops, keys, fallbacks, ambiguity rules,
+     measured rates); EDITH: "how accurate is our ad tracking?" / "which ads share the
+     name X?" (fabricated names refused). JOURNALED RE-STATEMENT: attributed now means
+     CERTAIN — 30d attributed 69→67 with 2 moved to the ambiguous quarantine (attribution
+     rate reads 83.8% vs 86.2%; the difference is honesty, not loss). Suite 579 green.

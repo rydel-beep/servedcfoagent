@@ -138,8 +138,8 @@ def test_roster_length_equals_the_cell(monkeypatch, stage, field):
     monkeypatch.setattr("attribution_engine.compute", lambda **kw: result, raising=True)
     monkeypatch.setattr("attribution_join.load_contacts", lambda: [], raising=True)
     monkeypatch.setattr("dashboard.ads._ghl_notes_for", lambda ids: {}, raising=True)
-    cell = next(x for x in result["creatives"] if x["creative_key"] == "creative a")[field]
-    d = c.get(f"/ads/api/roster?days=30&creative=creative%20a&stage={stage}").get_json()
+    cell = next(x for x in result["creatives"] if x["creative_key"] == "120000000000000001")[field]
+    d = c.get(f"/ads/api/roster?days=30&creative=120000000000000001&stage={stage}").get_json()
     assert d["count"] == cell == len(d["people"])
 
 
@@ -150,7 +150,7 @@ def test_roster_person_fields_and_no_padding(monkeypatch):
     monkeypatch.setattr("attribution_engine.compute", lambda **kw: result, raising=True)
     monkeypatch.setattr("attribution_join.load_contacts", lambda: [], raising=True)
     monkeypatch.setattr("dashboard.ads._ghl_notes_for", lambda ids: {}, raising=True)
-    d = c.get("/ads/api/roster?days=30&creative=creative%20a&stage=leads").get_json()
+    d = c.get("/ads/api/roster?days=30&creative=120000000000000001&stage=leads").get_json()
     p = next(x for x in d["people"] if x["name"] == "A Three")
     assert p["revenue"]["state"] in ("parsed", "unknown")
     assert p["notes"] == []            # NO GHL match, no tracker notes → empty, not filler

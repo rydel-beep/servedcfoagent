@@ -54,3 +54,30 @@ campaign are LADDER LEVELS (see the same creative across campaigns deliberately,
 it deliberately — neither view lies). Ambiguous-name contacts quarantined in every mode.
 Plus: label format, and archived/deleted member display (recommend shown, marked — their
 spend and leads are real history).
+
+## RYDEL'S RULINGS + THE BUILD (2026-08-05)
+HYBRID keying · "Name [Campaign]" labels · archived/deleted shown marked. Implemented:
+resolve_ref re-keyed (ad-id truth, campaign-disambiguated labels, history marks); the
+__ambiguous__ quarantine row (candidates in the drill — never assigned); the ladder's
+NAME level (deliberate cross-campaign grouping); identity_health (census + per-hop
+measured rates + exact-id degradation flag → salience) on the /ads hygiene strip;
+JOIN_CONTRACT.md; EDITH: tracking-accuracy + shared-name answers (fabricated refused).
+
+## LIVE PROOF (production data)
+- B008_A04: ONE merged row → TWO rows: [TOF] 15 leads/$1,505/1 close TRENDING STRONG vs
+  [Retargeting] 2 leads/$234 EARLY. Name level regroups: 17 leads/$1,739/2 members —
+  split↔group reconciles exactly.
+- Ambiguous quarantine: 2 leads (the census's 2 non-unique-name leads — no longer merged
+  into certain-looking rows). History members render marked ("Kin May Testimonial - Copy
+  (archived)").
+- Identity strip live: 97% exact-id · hop2 97.5% (email 96.2%) · trailing 90d 98.3%.
+- JOURNALED RE-STATEMENT: 30d attributed 69 → 67 (2 → quarantine); attribution rate
+  86.2% → 83.8% — the delta is honesty (attributed now means CERTAIN), not lost data.
+- EDITH: accuracy answer verbatim; "which ads share the name B008_A04…" lists both
+  members with campaigns/status; "Zebulon Mega VSL" → refused.
+- Suite 579 green (identity tests: quarantine-never-assigned, name-level sums, census +
+  degradation). Screenshot: claude-chrome-screenshots-UO7oRw/…-4.jpg (the board with
+  the identity strip + hygiene items).
+
+FORWARD TRAJECTORY: lead-form utmAdId keeps exact-id ≈ 94-98%; ambiguity is confined to
+the pre-id era (379 all-time contacts) and shrinks to zero for new leads.

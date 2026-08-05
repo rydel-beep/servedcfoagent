@@ -54,7 +54,7 @@ def _one(rows, contacts, **kw):
 
 def test_qualified_all_legs_pass():
     out = _one([HDR, row("Q Lead", "q@x.com")], [contact("c1", "q@x.com", "Q Lead")])
-    r = next(x for x in out["creatives"] if x["creative_key"] == "creative a")
+    r = next(x for x in out["creatives"] if x["creative_key"] == "120000000000000001")
     assert r["qualified"] == 1
     assert out["qualified_rule"]["window_impact"] == {
         "finalised": 1, "qualified": 1,
@@ -64,7 +64,7 @@ def test_qualified_all_legs_pass():
 def test_under_floor_band_drops_and_is_counted():
     out = _one([HDR, row("Small Venue", "s@x.com")],
                [contact("c1", "s@x.com", "Small Venue", form_revenue="Under $20k")])
-    r = next(x for x in out["creatives"] if x["creative_key"] == "creative a")
+    r = next(x for x in out["creatives"] if x["creative_key"] == "120000000000000001")
     assert r["qualified"] == 0
     assert out["qualified_rule"]["window_impact"]["excluded"]["under_floor"] == 1
 
@@ -72,7 +72,7 @@ def test_under_floor_band_drops_and_is_counted():
 def test_revenue_unknown_excluded_visible_never_zeroed():
     out = _one([HDR, row("No Rev", "n@x.com")],
                [contact("c1", "n@x.com", "No Rev", form_revenue=None)])
-    r = next(x for x in out["creatives"] if x["creative_key"] == "creative a")
+    r = next(x for x in out["creatives"] if x["creative_key"] == "120000000000000001")
     assert r["qualified"] == 0 and r["revenue_unknown"] == 1
     assert out["qualified_rule"]["window_impact"]["excluded"]["revenue_unknown"] == 1
 
@@ -88,7 +88,7 @@ def test_tracker_cell_qualifies_even_without_ghl_revenue():
     r_[8] = "$100k- $200k"          # the tracker's own Revenue Range cell
     out = _one([HDR, r_], [contact("c1", "sr@x.com", "Sheet Rev", form_revenue=None)])
     row_out = next(x for x in out["rows"] if x["name"] == "Sheet Rev")
-    assert row_out["revenue"] == {"band": "$100k- $200k".lower().replace("  ", " "),
+    assert row_out["revenue"] == {"band": "$100k- $200k".lower(),
                                   "state": "parsed", "source": "tracker"} or \
            (row_out["revenue"]["state"] == "parsed" and row_out["revenue"]["source"] == "tracker")
     # form still incomplete (revenue answer missing in GHL) → not qualified; band is fine
@@ -105,7 +105,7 @@ def test_floor_is_configurable():
     out = _one([HDR, row("Mid Venue", "m@x.com")],
                [contact("c1", "m@x.com", "Mid Venue", form_revenue="$20k-50k")],
                qualified_floor=50000.0)
-    r = next(x for x in out["creatives"] if x["creative_key"] == "creative a")
+    r = next(x for x in out["creatives"] if x["creative_key"] == "120000000000000001")
     assert r["qualified"] == 0     # 20k band lower bound < 50k floor
     assert out["qualified_rule"]["floor_monthly"] == 50000.0
 

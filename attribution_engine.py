@@ -41,6 +41,7 @@ MIN_N_CLOSES_SCALE = 3     # scale verdicts may fire on this many closes (Rydel)
 
 _IG_KEY = "__ig_dm__"
 _UNATTR_KEY = "__unattributed__"
+_AMB_KEY = "__ambiguous__"     # non-unique name matches — quarantined, never assigned
 
 _INQUIRY_RE = re.compile(
     r"influencer|photographer|videographer|vendor|collab|supplier|partnership|"
@@ -221,6 +222,7 @@ def compute_from_inputs(
     setter_comm: float = 0.0,
     canonical: dict | None = None,
     qualified_floor: float = 20_000.0,
+    ad_label_fn=None,
 ) -> dict:
     """contacts: attr_contacts rows. spend_by_ad: {ad_id: {name, spend, impressions,
     clicks}} for the window. resolve_fn(ref, kind) → resolution dict (attribution_join).
@@ -265,6 +267,13 @@ def compute_from_inputs(
             "last_touch_differs": 0, "basis_counts": {},
         })
 
+    def _bucket_label(lead, key):
+        if key == _IG_KEY: return "IG DM (channel)"
+        if key == _UNATTR_KEY: return "Unattributed"
+        if key == _AMB_KEY: return "Ambiguous name match (quarantined)"
+        res = lead.get("_res") or {}
+        return res.get("label") or res.get("ad_name") or key
+
     def lead_bucket_key(lead: dict) -> tuple[str, dict | None]:
         if "_bucket_key" in lead:                 # memoized — a lead that both enters and
             return lead["_bucket_key"], lead.get("_contact")   # closes in-window joins once
@@ -277,7 +286,10 @@ def compute_from_inputs(
                           "detail": "no GHL contact by email or name — lands in Unattributed"})
         elif contact.get("tier") == "ad":
             res = resolve(contact.get("ft_ad_ref"), contact.get("ft_ref_kind"))
-            if res["basis"] != "unresolved" and res.get("creative_key"):
+            if res["basis"] == "name_ambiguous":
+                lead["_res"] = res            # candidates ride to the drill
+                key = _AMB_KEY                # QUARANTINED — never assigned to one ad
+            elif res["basis"] != "unresolved" and res.get("creative_key"):
                 lead["_res"] = res
                 key = res["creative_key"]
             # else: an ad ref that can't be resolved stays Unattributed — honest
@@ -289,6 +301,7 @@ def compute_from_inputs(
     # the channel rows are ALWAYS visible, even at zero — the coverage is never hidden
     bucket(_IG_KEY, "IG DM (channel)")
     bucket(_UNATTR_KEY, "Unattributed")
+    bucket(_AMB_KEY, "Ambiguous name match (quarantined)")
 
     window_leads = [l for l in leads if l["input_date"] and w0 <= l["input_date"] <= w1]
     window_closes = [l for l in leads if l["won"] and l["close_date"]
@@ -304,9 +317,7 @@ def compute_from_inputs(
 
     for lead in window_leads:
         key, contact = lead_bucket_key(lead)
-        label = (lead.get("_res", {}).get("ad_name") or key) if key not in (_IG_KEY, _UNATTR_KEY) \
-            else ("IG DM (channel)" if key == _IG_KEY else "Unattributed")
-        b = bucket(key, label)
+        b = bucket(key, _bucket_label(lead, key))
         b["leads"] += 1
         # QUALIFIED v2 (Rydel): finalised (≠DQ) AND revenue band ≥ floor (tracker cell
         # wins, GHL form fills) AND form-complete. Unknown revenue excluded, never 0.
@@ -357,10 +368,12 @@ def compute_from_inputs(
             "revenue": {"band": rv["band"], "state": rv["state"], "source": rv["source"]},
             "finalised": lead["finalised"], "form_complete": form_complete,
             "qualified": lead["qualified"],
-            "creative": {"key": key, "label": label,
+            "creative": {"key": key, "label": _bucket_label(lead, key),
                          "tier": ("ig_dm" if key == _IG_KEY else
-                                  "unattributed" if key == _UNATTR_KEY else "ad"),
-                         "ad_ids": (lead.get("_res") or {}).get("ad_ids") or []},
+                                  "unattributed" if key == _UNATTR_KEY else
+                                  "ambiguous" if key == _AMB_KEY else "ad"),
+                         "ad_ids": (lead.get("_res") or {}).get("ad_ids") or [],
+                         "candidates": (lead.get("_res") or {}).get("candidates")},
             "highlights": {"threshold_met": meets, "revenue_unknown": rv["state"] == "unknown",
                            "close": lead["won"]},
             "joined_via": lead.get("_joined_via"),
@@ -368,6 +381,10 @@ def compute_from_inputs(
         res = lead.get("_res")
         if res:
             b["ad_ids"].update(res.get("ad_ids") or [])
+            if res.get("name_norm"):
+                b["name_norm"] = res["name_norm"]
+            if res.get("history"):
+                b["history"] = True
             if res.get("campaign_name") and res["campaign_name"] != "ambiguous":
                 b["campaigns"].add(res["campaign_name"])
             if res.get("adset_id"):
@@ -392,9 +409,7 @@ def compute_from_inputs(
     # closes on the CLOSE-DATE basis (money metrics; unit_economics parity)
     for lead in window_closes:
         key, _contact = lead_bucket_key(lead)
-        label = (lead.get("_res", {}).get("ad_name") or key) if key not in (_IG_KEY, _UNATTR_KEY) \
-            else ("IG DM (channel)" if key == _IG_KEY else "Unattributed")
-        b = bucket(key, label)
+        b = bucket(key, _bucket_label(lead, key))
         b["closes"] += 1
         b["contract"] += lead["contract"] or 0.0
         b["cash"] += lead["cash"] or 0.0
@@ -405,11 +420,20 @@ def compute_from_inputs(
         b["deals"].append(deal)
 
     # ── spend joins the table (ads with spend but no leads MUST appear) ──────
+    # HYBRID KEYING: spend is id-keyed at source, so each ad id is its own row.
     for ad_id, srow in (spend_by_ad or {}).items():
-        import meta_entities
-        key = meta_entities.norm_name(srow.get("name")) or f"id:{ad_id}"
-        b = bucket(key, srow.get("name") or key)
+        if ad_label_fn is not None:
+            label, name_norm, history = ad_label_fn(ad_id, srow.get("name"))
+        else:
+            import meta_entities
+            label, name_norm, history = (srow.get("name") or f"ad {ad_id}",
+                                         meta_entities.norm_name(srow.get("name")), False)
+        b = bucket(ad_id, label)
         b["ad_ids"].add(ad_id)
+        if name_norm:
+            b["name_norm"] = name_norm
+        if history:
+            b["history"] = True
         b["spend"] += float(srow.get("spend") or 0)
         b["impressions"] += int(srow.get("impressions") or 0)
         b["clicks"] += int(srow.get("clicks") or 0)
@@ -420,11 +444,13 @@ def compute_from_inputs(
 
     rows_out = []
     for key, b in creatives.items():
-        is_channel = key in (_IG_KEY, _UNATTR_KEY)
+        is_channel = key in (_IG_KEY, _UNATTR_KEY, _AMB_KEY)
         spend = round(b["spend"], 2)
         row = {
             "creative_key": key, "label": b["label"], "tier":
-                ("ig_dm" if key == _IG_KEY else "unattributed" if key == _UNATTR_KEY else "ad"),
+                ("ig_dm" if key == _IG_KEY else "unattributed" if key == _UNATTR_KEY
+                 else "ambiguous" if key == _AMB_KEY else "ad"),
+            "name_norm": b.get("name_norm"), "history": b.get("history", False),
             "ad_ids": sorted(b["ad_ids"]), "campaigns": sorted(b["campaigns"]),
             "leads": b["leads"], "qualified": b["qualified"],
             "revenue_unknown": b.get("revenue_unknown", 0), "sets": b["sets"],
@@ -496,6 +522,7 @@ def compute_from_inputs(
     recon_ok = all(c["ok"] for c in checks.values()) if checks else False
 
     attributed_leads = sum(r["leads"] for r in rows_out if r["tier"] == "ad")
+    ambiguous_leads = sum(r["leads"] for r in rows_out if r["tier"] == "ambiguous")
     return {
         "window": {"start": str(w0), "end": str(w1), "days": (w1 - w0).days + 1},
         "attribution_model": "first-touch (default; last-touch stored + labelled, never blended)",
@@ -510,6 +537,7 @@ def compute_from_inputs(
             "window_impact": q_impact,
         },
         "totals": {"leads": sum_leads, "attributed_leads": attributed_leads,
+                   "ambiguous_leads": ambiguous_leads,
                    "attribution_rate_pct": round(100 * attributed_leads / sum_leads, 1) if sum_leads else None,
                    "closes": sum_closes, "contract": sum_contract, "cash": sum_cash,
                    "spend": sum_spend},
@@ -537,6 +565,7 @@ def scoreboard_view(result: dict) -> dict:
     for c in result.get("creatives") or []:
         rows.append({
             "creative": c["label"], "creative_key": c["creative_key"], "tier": c["tier"],
+            "name_norm": c.get("name_norm"), "history": c.get("history", False),
             "verdict": c.get("verdict"), "verdict_driver": c.get("verdict_driver"),
             "provisional": c.get("provisional"),
             "gate": (c.get("gates") or {}).get("gate"),
@@ -657,6 +686,16 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
         return attribution_join.resolve_ref(ref, kind, entity_store=entity_store,
                                             allow_recovery=True)
 
+    def ad_label_fn(ad_id, spend_name):
+        hit = ((entity_store.get("ads") or {}).get(ad_id)
+               or (entity_store.get("extras") or {}).get(ad_id))
+        if hit:
+            hit = {"ad_id": ad_id, **hit}
+        elif spend_name:
+            hit = {"ad_id": ad_id, "name": spend_name,
+                   "name_norm": meta_entities.norm_name(spend_name)}
+        return attribution_join._label_for(ad_id, hit, entity_store)
+
     rows = _tracker_rows_clean()
     # canonical anchors — the same engines the dashboard quotes
     canonical: dict = {}
@@ -700,7 +739,7 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
     result = compute_from_inputs(rows, contacts, spend.get("ads") or {}, resolve_fn,
                                  w0, w1, margin_pct=margin, closer_comm=closer_comm,
                                  setter_comm=setter_comm, canonical=canonical,
-                                 qualified_floor=q_floor)
+                                 qualified_floor=q_floor, ad_label_fn=ad_label_fn)
     leads, _cm = parse_tracker(rows)
     result["ig_non_lead_inquiries"] = ig_non_lead_inquiries(contacts, leads, w0, w1)
     result["freshness"] = {

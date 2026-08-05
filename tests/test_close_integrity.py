@@ -213,3 +213,33 @@ def test_ladder_account_row_is_labelled_attributed_only():
     lad = AV.ladder(_ladder_fixture(), 3.0)
     assert "Attributed ads" in lad["account"]["label"]
     assert "WHOLE account" in lad["account"]["note"]
+
+
+# ── the identity re-key (DECISIONS #119) ─────────────────────────────────────
+
+def test_ladder_name_level_groups_across_campaigns():
+    rows = [
+        _v_row(creative_key="111", label="B008_A04_Brash [TOF]", name_norm="b008_a04_brash",
+               leads=17, closes=1, spend=1505.0, cash=5170.0),
+        _v_row(creative_key="222", label="B008_A04_Brash [Retargeting]",
+               name_norm="b008_a04_brash", leads=2, closes=0, spend=234.0),
+    ]
+    lad = AV.ladder({"creatives": rows, "window": {"days": 30}}, 3.0)
+    nm = next(a for a in lad["name"] if a["creative_key"] == "b008_a04_brash")
+    assert nm["leads"] == 19 and nm["spend"] == 1739.0 and nm["members"] == 2
+    assert "all campaigns, 2 ads" in nm["label"]
+
+
+def test_identity_health_census_and_degradation():
+    import attribution_flags as AF
+    def res(exact, amb):
+        return {"creatives": [{"tier": "ad", "first_touch_basis": {"id": exact},
+                               "label": "x", "creative_key": "1"}],
+                "totals": {"leads": exact + amb + 2, "attributed_leads": exact,
+                           "ambiguous_leads": amb, "attribution_rate_pct": 80.0},
+                "rows": [{"joined_via": "email"}], "window": {"days": 30}}
+    ih = AF.identity_health(res(60, 3), trailing_result=res(90, 0))
+    assert ih["exact_id_rate_pct"] == 100.0 and ih["ambiguous_leads"] == 3
+    assert "degradation_flag" not in ih          # 100% vs 100% trailing — no drop
+    ih2 = AF.identity_health(res(60, 3), trailing_result=None)
+    assert "degradation_flag" not in ih2

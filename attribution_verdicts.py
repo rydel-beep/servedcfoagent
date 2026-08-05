@@ -356,6 +356,17 @@ def ladder(result: dict, floor: float) -> dict:
         rows_agg.sort(key=lambda a: (-(a.get("spend") or 0)))
         return rows_agg
 
+    # NAME level — the DELIBERATE cross-campaign view of one creative (hybrid keying:
+    # the base rows are ad ids; grouping by name here is a choice, not an accident)
+    names: dict = {}
+    for r in ads:
+        key = r.get("name_norm") or "UNNAMED"
+        names.setdefault(key, []).append(r)
+    name_rows = verd([_aggregate(v, k if k != "UNNAMED" else "MIXED/AMBIGUOUS",
+                                 (v[0].get("label") or k).split(" [")[0] +
+                                 (f" (all campaigns, {len(v)} ads)" if len(v) > 1 else ""))
+                      for k, v in names.items()])
+
     batches: dict = {}
     for r in ads:
         m = _BATCH_RE.match(r.get("label") or "")
@@ -382,9 +393,10 @@ def ladder(result: dict, floor: float) -> dict:
                    (a.get("verdict") and (a.get("gates") or {}).get("gate") == "ok")
                    for a in rows_)
     default_level = ("creative" if has_confirmed(result.get("creatives") or []) else
+                     "name" if has_confirmed(name_rows) else
                      "batch" if has_confirmed(batch_rows) else
                      "campaign" if has_confirmed(camp_rows) else "account")
-    return {"batch": batch_rows, "campaign": camp_rows, "account": account,
+    return {"name": name_rows, "batch": batch_rows, "campaign": camp_rows, "account": account,
             "default_level": default_level,
             "note": "same engine, same thresholds — a level earns a verdict only when "
                     "ITS n clears the bars"}

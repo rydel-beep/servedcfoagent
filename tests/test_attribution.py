@@ -64,13 +64,19 @@ def resolver(mapping):
     return fn
 
 
-RES_A = {"basis": "id", "creative_key": "creative a", "ad_ids": ["120000000000000001"],
-         "ad_name": "Creative A", "adset_id": "as1", "campaign_id": "c1",
-         "campaign_name": "TOF"}
-RES_B = {"basis": "name_ambiguous", "creative_key": "creative b",
+# HYBRID KEYING (DECISIONS #119): ids are truth — creative_key IS the ad id; names are
+# labels. Ambiguous = quarantined (creative_key None, candidates listed).
+RES_A = {"basis": "id", "creative_key": "120000000000000001",
+         "ad_ids": ["120000000000000001"], "ad_name": "Creative A",
+         "label": "Creative A", "name_norm": "creative a", "history": False,
+         "adset_id": "as1", "campaign_id": "c1", "campaign_name": "TOF"}
+RES_B = {"basis": "name_ambiguous", "creative_key": None,
          "ad_ids": ["120000000000000002", "120000000000000003"],
-         "ad_name": "Creative B", "adset_id": None, "campaign_id": None,
-         "campaign_name": "ambiguous"}
+         "ad_name": "Creative B", "label": None, "name_norm": "creative b",
+         "history": False, "adset_id": None, "campaign_id": None,
+         "campaign_name": None,
+         "candidates": [{"ad_id": "120000000000000002", "campaign": "TOF", "status": "PAUSED"},
+                        {"ad_id": "120000000000000003", "campaign": "RT", "status": "PAUSED"}]}
 
 
 # ── join-layer pure classification ───────────────────────────────────────────
@@ -196,7 +202,7 @@ def test_min_n_gates_kill_needs_30_leads_scale_fires_on_3_closes():
     contacts = [contact(f"c{i}", f"l{i}@x.com", f"L{i}") for i in range(5)]
     out = eng.compute_from_inputs(rows, contacts, {}, resolver({"120000000000000001": RES_A}),
                                   W0, W1)
-    r = next(x for x in out["creatives"] if x["creative_key"] == "creative a")
+    r = next(x for x in out["creatives"] if x["creative_key"] == "120000000000000001")
     assert r["gates"]["sufficient_for_scale"] is True      # 3 closes
     assert r["gates"]["sufficient_for_kill"] is False      # only 5 leads < 30
     assert r["gates"]["gate"] == "ok"
@@ -206,7 +212,7 @@ def test_watch_gate_below_both_thresholds():
     rows = [HDR, row("Only Lead", "o@x.com")]
     out = eng.compute_from_inputs(rows, [contact("c1", "o@x.com", "Only Lead")], {},
                                   resolver({"120000000000000001": RES_A}), W0, W1)
-    r = next(x for x in out["creatives"] if x["creative_key"] == "creative a")
+    r = next(x for x in out["creatives"] if x["creative_key"] == "120000000000000001")
     assert r["gates"]["gate"].startswith("watch — insufficient data")
 
 
@@ -223,7 +229,7 @@ def test_qualified_inquiry_disagreement_flags_but_never_reclassifies():
     out = eng.compute_from_inputs(rows, [contact("c1", "f@x.com", "Flagged Lead")], {},
                                   resolver({"120000000000000001": RES_A}), W0, W1)
     assert any(f["kind"] == "qualified_but_inquiry_signals" for f in out["flags"])
-    r = next(x for x in out["creatives"] if x["creative_key"] == "creative a")
+    r = next(x for x in out["creatives"] if x["creative_key"] == "120000000000000001")
     assert r["qualified"] == 1        # still counted — flags never silently reclassify
 
 
@@ -259,7 +265,7 @@ def test_money_metrics_close_date_basis_and_ltgp_cac():
     out = eng.compute_from_inputs(rows, [contact("c1", "old@x.com", "Old Lead")], spend,
                                   resolver({"120000000000000001": RES_A}), W0, W1,
                                   margin_pct=80.0, closer_comm=500.0, setter_comm=100.0)
-    r = next(x for x in out["creatives"] if x["creative_key"] == "creative a")
+    r = next(x for x in out["creatives"] if x["creative_key"] == "120000000000000001")
     assert r["leads"] == 0 and r["closes"] == 1    # entered before window, closed inside
     assert r["roas_contracted"] == 15.0 and r["roas_cash"] == 5.0
     assert r["cost_per_close"] == 1000.0
@@ -268,13 +274,20 @@ def test_money_metrics_close_date_basis_and_ltgp_cac():
     assert "labelled" in out["attribution_model"] or "last-touch" in out["attribution_model"]
 
 
-def test_ambiguous_name_groups_at_creative_level_with_member_ids():
+def test_ambiguous_name_is_quarantined_never_assigned():
+    # DECISIONS #119: a non-unique name lands in the __ambiguous__ bucket with its
+    # candidates listed — never assigned to one ad, never merged into a certain-looking row
     rows = [HDR, row("Amb Lead", "amb@x.com")]
     c = contact("c1", "amb@x.com", "Amb Lead", ft_ref="Creative B", ft_kind="name")
     out = eng.compute_from_inputs(rows, [c], {}, resolver({"Creative B": RES_B}), W0, W1)
-    r = next(x for x in out["creatives"] if x["creative_key"] == "creative b")
-    assert len(r["ad_ids"]) == 2 and r["leads"] == 1
-    assert r["first_touch_basis"] == {"name_ambiguous": 1}
+    amb = next(x for x in out["creatives"] if x["tier"] == "ambiguous")
+    assert amb["leads"] == 1 and len(amb["ad_ids"]) == 2
+    assert out["totals"]["ambiguous_leads"] == 1
+    assert not any(x["leads"] for x in out["creatives"]
+                   if x["tier"] == "ad" and "120000000000000002" in x["creative_key"])
+    view = next(r for r in out["rows"] if r["name"] == "Amb Lead")
+    assert view["creative"]["tier"] == "ambiguous"
+    assert len(view["creative"]["candidates"]) == 2
 
 
 # ── structural safety: ads_read only ─────────────────────────────────────────
