@@ -570,6 +570,34 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
         "spend_source": spend.get("source"),
         "entity_ads": len(entity_store.get("ads") or {}),
     }
+    # ── Phase 3: the verdict layer (floor from the registry; capacity for the
+    # constraint check; crossings → salience; dupe flags → the action feed/Piolo queue)
+    try:
+        import attribution_verdicts
+        try:
+            import manual_targets
+            floor = float((manual_targets.get_resolved() or {}).get("ltgp_cac_target") or 3.0)
+        except Exception:
+            floor = 3.0
+        capacity_note = None
+        try:
+            from snapshot import load_persisted
+            cap = (load_persisted() or {}).get("capacity") or {}
+            dl = (cap.get("department_load") or {})
+            worst = max((d for d in (dl.get("departments") or []) if d.get("load_pct")),
+                        key=lambda d: d["load_pct"], default=None)
+            if worst:
+                capacity_note = f"{worst.get('name')} at {worst.get('load_pct')}% load"
+        except Exception:
+            pass
+        attribution_verdicts.apply(result, floor, capacity_note)
+        _record_verdict_crossings(result)
+    except Exception as e:
+        logger.warning("verdict layer failed: %s", e)
+        result.setdefault("degraded", []).append(
+            {"metric": "attribution_verdicts", "reason": f"verdict layer failed ({type(e).__name__})"})
+    _publish_data_quality_flags(result)
+
     degraded = list(spend.get("degraded") or []) + input_degraded
     if not contacts:
         degraded.append({"metric": "attribution", "reason": "attr_contacts empty — sync pending"})
@@ -577,6 +605,52 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
     result["ok"] = result["reconciliation"]["ok"] and not degraded
     _cache[ck] = (time.time(), result)
     return result
+
+
+# ── Phase 3 plumbing: crossings → salience; dupe flags → Piolo's queue ───────
+
+def _record_verdict_crossings(result: dict) -> None:
+    """A creative NEWLY becoming DOUBLE DOWN or KILL at sufficient n is greeting-worthy.
+    State + pending events live in kv; salience reads the pending list and watermarks via
+    its own told-set. Watch/insufficient states never announce."""
+    try:
+        import kv_store
+        prev = kv_store.get("attr:verdict_state") or {}
+        pending = kv_store.get("attr:verdict_crossings") or []
+        cur = {}
+        for r in (result.get("creatives") or []):
+            if r.get("tier") != "ad" or not r.get("verdict"):
+                continue
+            cur[r["creative_key"]] = r["verdict"]
+            if r["verdict"] in ("DOUBLE DOWN", "KILL") and prev.get(r["creative_key"]) != r["verdict"]:
+                pending.append({
+                    "id": f"attr-verdict:{r['creative_key']}:{r['verdict']}",
+                    "creative": r.get("label"), "verdict": r["verdict"],
+                    "driver": r.get("verdict_driver"),
+                    "window": result.get("window", {}).get("end"),
+                })
+        kv_store.put("attr:verdict_state", cur)
+        kv_store.put("attr:verdict_crossings", pending[-20:])
+    except Exception as e:
+        logger.info("verdict crossing record failed: %s", e)
+
+
+def _publish_data_quality_flags(result: dict) -> None:
+    """Persist the engine's data-quality flags (duplicate won rows, unmatched leads) to kv
+    so the action feed — and therefore PIOLO'S QUEUE — carries them with zero network.
+    Self-retiring: each compute overwrites; a clean tracker leaves the list empty."""
+    try:
+        import kv_store
+        dupes = [f for f in (result.get("flags") or []) if f.get("kind") == "duplicate_won_row"]
+        kv_store.put("attr:data_quality_flags", [
+            {"metric": "attribution_duplicate_won_row",
+             "reason": f"Duplicate won row in the Lead-to-Cash tracker: {f.get('name')} "
+                       f"(contract ${f.get('contract') or 0:,.0f}) — engine counts it once; "
+                       f"fix at source and the explicit-duplicates term retires",
+             "name": f.get("name")}
+            for f in dupes])
+    except Exception as e:
+        logger.info("data-quality flag publish failed: %s", e)
 
 
 # ── Background recompute (keeps the contact sync + spend store warm) ─────────

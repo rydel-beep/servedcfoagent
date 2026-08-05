@@ -257,6 +257,19 @@ def collect(snap: dict | None = None) -> list[dict]:
     except Exception:
         pass
 
+    # 12) Ad attribution verdict crossings (Phase 3): a creative NEWLY hitting DOUBLE DOWN
+    #     or falling to KILL at sufficient n is greeting-worthy — once, watermarked.
+    try:
+        import kv_store
+        for c in (kv_store.get("attr:verdict_crossings") or []):
+            if c.get("id") and c["id"] not in told:
+                events.append({"id": c["id"], "type": "attr_verdict", "salience": 74,
+                               "ago": 0,
+                               "spoken": f"Ad verdict: {c.get('creative')} crossed to "
+                                         f"{c.get('verdict')} — {c.get('driver')}"})
+    except Exception:
+        pass
+
     events.sort(key=lambda e: (e["salience"], -e["ago"]), reverse=True)
     return events
 

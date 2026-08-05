@@ -1,5 +1,43 @@
 # EDITH — Ad Creative Attribution Engine
 
+## PHASE 3 — THE HORMOZI VERDICT LAYER (2026-08-05) — LIVE (Phase 4 held by Rydel)
+
+`attribution_verdicts.py` (pure, DECISIONS #113), applied inside the engine so every
+surface reads the same verdicts:
+
+- **Ranking metric:** LTGP:CAC vs the registry floor (`manual_targets.ltgp_cac_target`,
+  3.0x). Bands: DOUBLE DOWN at ≥ floor×1.1 with ≥3 closes; borderline ×0.9–×1.1 holds;
+  KILL below ×0.9 **only at ≥30 attributed leads** — closes alone never kill (Rydel's
+  rule). Every verdict driver carries the actual figures.
+- **Zero-close discipline:** a 30-lead zero-close creative KILLs only when its leads also
+  SET below the account rate (lead quality is the creative's output); if its leads set
+  fine, the verdict names the **sales handoff** instead — the stage, not the creative.
+- **Stage diagnostics:** per-creative cohort rates (lead→qualified→set→show→close) vs
+  account baselines; denominators <3 are shown, never judged; the worst stage is named in
+  the verdict so Romano fixes the right thing.
+- **Constraint check:** if ALL sufficient-n creatives clear the floor, the layer says
+  plainly "creative selection isn't the constraint; volume/capacity is" with the capacity
+  engine's worst-department load attached; with no sufficient-n creatives it says that
+  honestly too. Nothing auto-pauses; no Meta write exists (test-enforced).
+- **Salience:** a creative newly crossing to DOUBLE DOWN or KILL at sufficient n
+  announces once in the greeting (kv crossings → salience, watermarked).
+
+### Phase 4 prep shipped CFO-side (section itself HELD until the timeline repo frees)
+
+- `GET /bridge/attribution?days=` — the endpoint the Timeline AD TRACKING section will
+  proxy; owner tokens work today.
+- **media_buyer role — designed, SHIPS DISABLED:** `EDITH_BRIDGE_MEDIA_BUYERS` env
+  (default empty). A media_buyer token reaches exactly ONE route (`/bridge/attribution`);
+  ping, email, send — every owner surface — 403s it server-side (the sales-role pattern,
+  test-enforced). Flip-on for Romano = set the env var; nothing else changes.
+- **Piolo's queue wired:** the engine publishes duplicate-won-row flags to kv → the
+  action feed (data_quality) → `collab.queue()`. The Nirosha item appears there with
+  "fix the row at source" and SELF-RETIRES once the tracker is clean (the engine
+  overwrites the list each compute; the explicit-duplicates reconciliation term then
+  reads 0).
+
+Suite: **513 tests green** (14 verdict tests + 4 role-scoping tests added).
+
 ## PHASES 1-2 — THE JOIN + THE PER-CREATIVE ENGINE (2026-08-04) — LIVE
 
 Rydel's Phase-0 confirmations are encoded in DECISIONS #111. Modules (all read-only against

@@ -49,6 +49,14 @@ def _owners() -> set[str]:
     return {u.strip() for u in raw.split(",") if u.strip()}
 
 
+def _media_buyers() -> set[str]:
+    """MEDIA_BUYER role (attribution Phase 4 design — SHIPS DISABLED). Empty until Rydel
+    sets EDITH_BRIDGE_MEDIA_BUYERS (e.g. "romano"). A media_buyer token is valid ONLY on
+    routes that opt in via require_bridge_any_role — every owner route 403s it."""
+    raw = os.environ.get("EDITH_BRIDGE_MEDIA_BUYERS", "")
+    return {u.strip() for u in raw.split(",") if u.strip()}
+
+
 def validate_bridge_token(raw: str) -> str | None:
     """Return the authenticated owner username, or None. Never raises."""
     secret = _secret()
@@ -71,7 +79,7 @@ def validate_bridge_token(raw: str) -> str | None:
     now = time.time()
     if now >= expiry or expiry - now > _MAX_SKEW_TTL:
         return None
-    if purpose != _PURPOSE or user not in _owners():
+    if purpose != _PURPOSE or (user not in _owners() and user not in _media_buyers()):
         return None
     # best-effort single-use (per worker): a replayed signature is refused
     for s, exp in list(_seen_sigs.items()):
@@ -84,14 +92,41 @@ def validate_bridge_token(raw: str) -> str | None:
     return user
 
 
+def _resolve_role(user: str) -> str | None:
+    if user in _owners():
+        return "owner"
+    if user in _media_buyers():
+        return "media_buyer"
+    return None
+
+
 def require_bridge(f):
+    """OWNER-ONLY gate — every pre-existing route keeps exactly this bar. A media_buyer
+    token validates cryptographically but is refused here (server-side 403, the
+    sales-role pattern): the role reaches ONLY routes wearing require_bridge_any_role."""
     @wraps(f)
     def wrapper(*args, **kwargs):
         user = validate_bridge_token(request.headers.get("X-Bridge-Token", ""))
-        if not user:
+        if not user or _resolve_role(user) != "owner":
             return jsonify({"error": "forbidden"}), 403
         # downstream tier handlers attribute via dashboard.auth.current_actor()
         g.actor = {"user": user, "role": "owner", "display": "Rydel"}
+        return f(*args, **kwargs)
+    return wrapper
+
+
+def require_bridge_any_role(f):
+    """Owner OR media_buyer (attribution surface only). g.actor carries the real role so
+    handlers can scope further. media_buyer stays inert until EDITH_BRIDGE_MEDIA_BUYERS
+    is set — shipping disabled by default."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        user = validate_bridge_token(request.headers.get("X-Bridge-Token", ""))
+        role = _resolve_role(user) if user else None
+        if not role:
+            return jsonify({"error": "forbidden"}), 403
+        g.actor = {"user": user, "role": role,
+                   "display": "Rydel" if role == "owner" else user.title()}
         return f(*args, **kwargs)
     return wrapper
 
@@ -231,3 +266,21 @@ def bridge_email_send():
                         "count": rec["count"], "definition": rec["definition"]})
     return jsonify(_json_safe(EP.send_draft(draft_id, count, d.get("chain_token") or "",
                                             actor=g.actor["user"])))
+
+
+@bp.route("/attribution", methods=["GET"])
+@require_bridge_any_role
+def attribution():
+    """Per-creative attribution + verdicts for the Timeline AD TRACKING section (Phase 4).
+    The ONLY bridge route a media_buyer role can reach (require_bridge_any_role); owners
+    see it too. Read-only analysis — no Meta write capability exists anywhere in v1."""
+    import attribution_engine
+    try:
+        days = min(max(int(request.args.get("days", 30)), 1), 365)
+    except ValueError:
+        return jsonify({"error": "bad days"}), 400
+    result = attribution_engine.compute(
+        days=days, start=request.args.get("start"), end=request.args.get("end"),
+        force=request.args.get("force") == "1")
+    logger.info("bridge attribution read by %s (%s)", g.actor["user"], g.actor["role"])
+    return jsonify(result)

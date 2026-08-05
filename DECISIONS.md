@@ -1213,3 +1213,29 @@
      compileall clean + import smoke + full suite green — the build enforces the first
      two; the suite is the agent's non-negotiable pre-push step, INCLUDING mid-build
      increments. Incremental deploys are still deploys.
+
+113. **ATTRIBUTION PHASE 3 (verdict layer) + PHASE 4 CFO-SIDE PREP (2026-08-05).** Phase 4
+     (Timeline AD TRACKING section) HELD by Rydel until the timeline repo is released.
+     VERDICTS (attribution_verdicts.py, pure + test-enforced): ranking metric = LTGP:CAC vs
+     the registry floor (manual_targets ltgp_cac_target, default 3.0x). DOUBLE DOWN = ≥
+     floor×1.1 at ≥3 closes ("every $1 here returns $X LTGP", figures in every driver).
+     KILL = < floor×0.9 at ≥30 attributed leads — closes alone NEVER kill (Rydel's rule);
+     zero-close sufficient-lead creatives kill only when their leads also SET below the
+     account rate (lead quality IS the creative's output); if they set fine, the verdict
+     names the SALES HANDOFF instead. Borderline (×0.9–×1.1) holds. Stage diagnostics per
+     creative vs account baselines (denominators <3 shown, never judged) name where it
+     wins/loses. CONSTRAINT CHECK: all sufficient-n creatives clear the floor → "creative
+     selection isn't the constraint; volume/capacity is" + the capacity engine's worst-dept
+     load; no sufficient rows → says so honestly. Nothing auto-pauses; ads_read only.
+     SALIENCE: a creative NEWLY crossing to DOUBLE DOWN/KILL at sufficient n announces once
+     (kv attr:verdict_crossings → salience #12, watermarked).
+     PIOLO'S QUEUE (Rydel's ask): the engine publishes duplicate-won-row flags to kv
+     (attr:data_quality_flags) → action_feed data_quality items → collab.queue — the
+     Nirosha item appears there and SELF-RETIRES when the tracker row is fixed at source
+     (each compute overwrites the list; clean source = empty; the explicit-duplicates
+     reconciliation term then reads 0).
+     MEDIA_BUYER ROLE (ships DISABLED): EDITH_BRIDGE_MEDIA_BUYERS env (default empty).
+     A media_buyer token validates only for routes wearing require_bridge_any_role —
+     today exactly ONE: GET /bridge/attribution. Every owner route 403s the role
+     server-side (test-enforced: ping/email list/send all 403 romano even when enabled).
+     Flip-on = setting the env var; nothing else changes.

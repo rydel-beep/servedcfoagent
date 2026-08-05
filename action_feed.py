@@ -54,6 +54,18 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
             items.append({"severity": _DQ_SEVERITY.get(metric, "S3"), "category": "data_quality",
                           "title": (d.get("reason") or metric)[:140], "action": _DQ_ACTIONS[metric]})
 
+    # 2b) Attribution engine data-quality flags (kv-published, zero network here) —
+    # e.g. duplicate won rows in the tracker. Category data_quality → PIOLO'S QUEUE.
+    # Self-retiring: the engine overwrites the list each compute; clean source = empty.
+    try:
+        import kv_store
+        for f in (kv_store.get("attr:data_quality_flags") or []):
+            items.append({"severity": "S3", "category": "data_quality",
+                          "title": (f.get("reason") or f.get("metric") or "")[:140],
+                          "action": "Fix the row at source in the Lead-to-Cash tracker."})
+    except Exception as e:
+        logger.info("action_feed attribution flags failed: %s", e)
+
     # 3) UNRECOGNISED Stripe payments — only genuine anomalies after multi-signal matching
     # (existing-client repeats + payer≠business auto-resolve and are NOT surfaced here).
     sr = snap.get("stripe_reconciliation") or {}
