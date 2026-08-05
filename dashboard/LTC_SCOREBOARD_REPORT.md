@@ -27,7 +27,32 @@ messy-format problem the brief anticipated does not exist; parsing is an exact b
   future novel value → "unknown", surfaced in a data-quality flag, never guessed).
 - A setter fixing a cell updates within the mirror's 90s sync — re-banded on read.
 
-### 2 · The threshold — proposal
+### 2 · REVISED after Rydel's clarification (2026-08-05) — the qualified definition
+
+Rydel: qualified = answered the form properly + revenue above $20k + finalised by the
+setter's call and notes. Operationalized (deterministic, per row):
+
+**QUALIFIED = (setter Call Outcome ≠ DQ — the post-call FINAL authority)
+AND (revenue band lower bound ≥ $20k/mo — i.e. any band except "Under $20k")
+AND (FORM-COMPLETE — the GHL contact carries the three core form answers:
+revenue band `xaOeqdkAxtwj6W8hsVgV`, readiness `2WLa5ylwPluInylD1l5X`,
+timeline `Xu5oqFj1ulLcS83CVRBE`).**
+Setter notes stay in the FLAG-ONLY validation sweep (disagreements surface for review —
+notes/DQ-reason/goal-text analysis — never silently reclassify), per the standing rule.
+
+**Revenue source precedence — the big Phase-0 win:** the GHL form holds the SAME 5-band
+answer for 1,179 contacts (vs 464 tracker cells). Rule: tracker "Revenue Range" wins when
+filled (setter-verified), else the GHL form answer. Measured on the 1,109 clean lead rows:
+tracker 464 (41.8%) + GHL form 600 (54.1%) = **95.9% known; UNKNOWN drops to 45 rows
+(4.1%)** (was 64.1% on the tracker column alone). Unknown stays a visible, excluded,
+counted state.
+
+**Impact preview (all-time): qualified 968 → 604 (−364)** — drops: 313 "Under $20k"
+venues, 42 revenue-unknown, 56 form-incomplete (overlaps possible). The change is
+journaled and the before/after table publishes with Part 1 (QoQ-visible, like the
+test-lead cleaning).
+
+### 2b · The original threshold proposal (superseded by "above $20k")
 
 $1M+/yr ≈ $83.3k/mo lands INSIDE the "$50k-100k" band. Band-aligned thresholds avoid
 any straddle ambiguity:
