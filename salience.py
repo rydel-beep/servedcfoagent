@@ -270,6 +270,20 @@ def collect(snap: dict | None = None) -> list[dict]:
     except Exception:
         pass
 
+    # 13) Ad-dashboard flags (the intelligence scorecard): a NEW severity-1/2 flag is
+    #     greeting-worthy once, watermarked (ids stable per kind+creative+window).
+    try:
+        import kv_store
+        for c in (kv_store.get("attr:flag_pending") or []):
+            if c.get("id") and c["id"] not in told:
+                events.append({"id": c["id"], "type": "attr_flag", "salience": 70,
+                               "ago": 0,
+                               "spoken": f"Ad board flag: "
+                                         f"{(c.get('creative') or 'account')} — "
+                                         f"{c.get('headline')} ({c.get('question')})"})
+    except Exception:
+        pass
+
     events.sort(key=lambda e: (e["salience"], -e["ago"]), reverse=True)
     return events
 

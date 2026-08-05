@@ -42,6 +42,14 @@ DEFAULTS: dict[str, dict] = {
     "speed_to_lead_target": {"default": 50.0, "type": "target",    "unit": "pct", "label": "Speed-to-lead target"},
     "qualified_revenue_floor": {"default": 20000.0, "type": "benchmark", "unit": "aud",
                                 "label": "Qualified revenue floor (monthly, band lower bound)"},
+    # Ad-dashboard flag thresholds (AD_DASHBOARD_REPORT Phase 0) — adjustable by voice.
+    "ad_flag_spend_no_leads":  {"default": 150.0, "type": "benchmark", "unit": "aud", "label": "Ad flag: spend with zero leads"},
+    "ad_flag_leads_no_sets":   {"default": 8,     "type": "benchmark", "unit": "x",   "label": "Ad flag: leads with zero sets"},
+    "ad_flag_show_floor_pct":  {"default": 40.0,  "type": "benchmark", "unit": "pct", "label": "Ad flag: show-rate floor"},
+    "ad_flag_qual_dev_pts":    {"default": 25.0,  "type": "benchmark", "unit": "pct", "label": "Ad flag: qualified%% deviation"},
+    "ad_flag_cpl_mult":        {"default": 2.0,   "type": "benchmark", "unit": "x",   "label": "Ad flag: CPL outlier multiple"},
+    "ad_flag_attr_drop_pts":   {"default": 10.0,  "type": "benchmark", "unit": "pct", "label": "Ad flag: attribution-rate drop"},
+    "ad_flag_unknown_rev_pct": {"default": 20.0,  "type": "benchmark", "unit": "pct", "label": "Ad flag: revenue-unknown share"},
     "set_to_show_target":   {"default": 70.0, "type": "target",    "unit": "pct", "label": "Set→Show target"},
     "show_to_close_target": {"default": 35.0, "type": "target",    "unit": "pct", "label": "Show→Close target"},
     # Goalposts that may not be consumed by a metric yet — still settable + shown.

@@ -18,7 +18,6 @@ SCHEMA_VERSION = 1
 # CFO-surface scroll anchors: key → (dom_id, spoken name). The 13 existing nav links
 # plus the new ad-tracking section.
 ANCHORS: dict[str, tuple[str, str]] = {
-    "ad_tracking": ("section-attribution", "the ad tracking board"),
     "brief": ("section-brief", "the morning brief"),
     "cash": ("section-cash-position", "the cash position"),
     "forward": ("section-forward", "the forward view"),
@@ -38,6 +37,7 @@ ANCHORS: dict[str, tuple[str, str]] = {
 
 # Separate pages (full navigation, not a scroll).
 PAGES: dict[str, tuple[str, str]] = {
+    "ad_tracking": ("/ads", "the ad tracking dashboard"),
     "leads_page": ("/dashboard/leads", "the leads page"),
     "targets_page": ("/dashboard/targets", "the targets page"),
     "data_sources": ("/dashboard/data-sources", "the data-sources page"),
@@ -73,9 +73,7 @@ def capability_text(surface: str) -> str:
                 "drills, all by voice.")
     names = [label for _id, label in ANCHORS.values()]
     pages = [label for _url, label in PAGES.values()]
-    return ("On this dashboard I can pull up: " + ", ".join(names[:9]) + ", "
-            + ", ".join(names[9:]) + " — plus " + ", ".join(pages) + ". "
-            "On the ad board I can switch the window (30, 60, 90 days), drill into a "
-            "specific creative, filter to the kills or double-downs, and sort the "
-            "scoreboard. Just say it — 'show me the ad board', 'filter to 60 days', "
-            "'open Ad B'.")
+    return ("On this dashboard I can pull up: " + ", ".join(names) + " — plus "
+            + ", ".join(pages) + ". The ad tracking dashboard is its own surface now: "
+            "say 'show me the ad dashboard' and it opens in a new tab — windowed, "
+            "filtered ('just the kills') or drilled to a creative ('open Ad B').")

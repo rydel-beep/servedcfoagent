@@ -56,6 +56,12 @@ def _accounts() -> dict:
     # Scoped sales-team login (Kalin + setters): leads/reactivation ONLY, never financials.
     if sp:
         accts["sales"] = {"role": "sales", "pw": sp, "display": "Sales Team"}
+    # media_buyer (Romano) — SHIPS DISABLED: no MEDIA_BUYER_PASSWORD env, no account.
+    # Enabling = setting the env var (the one-flip design, DECISIONS #113/#117). His
+    # session is fail-closed allowlisted to the AD DASHBOARD only (below).
+    mbp = os.environ.get("MEDIA_BUYER_PASSWORD", "")
+    if mbp:
+        accts["romano"] = {"role": "media_buyer", "pw": mbp, "display": "Romano"}
     return accts
 
 
@@ -67,6 +73,21 @@ _SALES_ALLOWED_FRAGMENTS = (
     "/api/lead-lookup",    # "where did we leave off with X" (grounded, scoped)
     "/api/whoami",
 )
+
+
+# media_buyer is SCOPED the same fail-closed way: the ad dashboard and nothing else.
+# Every finance surface (snapshot, cash, payroll, quarterly, email, leads) is denied
+# BY DEFAULT — a new endpoint cannot leak to the role by omission.
+_MEDIA_BUYER_ALLOWED_FRAGMENTS = (
+    "/ads",                # the dedicated ad dashboard (pages + its /ads/api/*)
+    "/api/whoami",
+    "/logout",
+)
+
+
+def media_buyer_permitted(path: str) -> bool:
+    p = path or ""
+    return any(frag in p for frag in _MEDIA_BUYER_ALLOWED_FRAGMENTS)
 
 
 def is_sales() -> bool:
@@ -141,6 +162,11 @@ def require_auth(f):
                     return jsonify({"error": "This view is limited to lead reactivation.",
                                     "scope": "sales"}), 403
                 return redirect(url_for("dashboard.sales_page"))
+            if act.get("role") == "media_buyer" and not media_buyer_permitted(request.path):
+                if "/api/" in (request.path or ""):
+                    return jsonify({"error": "This view is limited to the ad dashboard.",
+                                    "scope": "media_buyer"}), 403
+                return redirect("/ads")
             return f(*args, **kwargs)
 
         # Legacy shared-token path — disabled once per-user auth is enabled.

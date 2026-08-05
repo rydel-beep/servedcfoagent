@@ -57,6 +57,13 @@ from dashboard.bridge import bp as bridge_bp
 app.register_blueprint(bridge_bp, url_prefix="/bridge")
 boot_banner.module_ok("dashboard.bridge")
 
+# SERVED AD TRACKING — the dedicated ad dashboard (owner/coo + media_buyer-when-enabled;
+# isolation by construction: ad-domain data only, auth.py fail-closed scoping).
+boot_banner.pre_import("dashboard.ads")
+from dashboard.ads import bp as ads_bp
+app.register_blueprint(ads_bp, url_prefix="/ads")
+boot_banner.module_ok("dashboard.ads")
+
 boot_banner.emit()
 
 

@@ -112,3 +112,39 @@ def handle_qualified_for_creative_command(text: str) -> tuple[str | None, bool]:
             f"30 days ({c.get('revenue_unknown', 0)} revenue-unknown excluded, shown). "
             f"Qualified = setter-finalised, revenue band at or above "
             f"${qr.get('floor_monthly', 20000):,.0f}/month, form answered."), True
+
+
+_FLAGS_RE = re.compile(
+    r"what'?s?\s+flagged(?:\s+on)?(?:\s+the)?(?:\s+ad)?(?:\s+(?:board|dashboard))?|"
+    r"any\s+(?:ad\s+)?flags\b|ad\s+flags|flags\s+on\s+the\s+ad", re.I)
+
+
+def handle_flags_command(text: str) -> tuple[str | None, bool]:
+    """'what's flagged on the ad board?' → the scorecard flags, verbatim. Deterministic;
+    reads the SAME flags module the /ads dashboard renders — never a second opinion."""
+    if not text or not _FLAGS_RE.search(text):
+        return None, False
+    import attribution_flags
+    r = _engine(30)
+    trailing = None
+    try:
+        import nav_router
+        r90 = nav_router._cached_result(90)
+        trailing = (r90.get("totals") or {}).get("attribution_rate_pct") if r90 else None
+    except Exception:
+        pass
+    sc = attribution_flags.scorecard(r, trailing_attr_rate=trailing)
+    fl = sc["flags"]
+    if not fl:
+        msg = "No flags on the ad board this window — every threshold is clear."
+        if sc.get("constraint_line"):
+            msg += " " + sc["constraint_line"]
+        return msg, True
+    lines = []
+    for f in fl[:5]:
+        who = f.get("creative") or "account-level"
+        lines.append(f"{who}: {f['headline']} — {f['question']}")
+    msg = f"{len(fl)} flag(s) on the ad board (30 days): " + "; ".join(lines)
+    if len(fl) > 5:
+        msg += f"; plus {len(fl) - 5} more on the dashboard."
+    return msg, True

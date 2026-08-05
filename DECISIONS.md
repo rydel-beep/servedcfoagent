@@ -1303,3 +1303,30 @@
      scrollToSection re-asserts until the layout settles. Suite green; the scripted
      8-step drive passed end-to-end on production data; Rydel's voice drive is the
      acceptance.
+
+117. **SERVED AD TRACKING — THE DEDICATED DASHBOARD at /ads (2026-08-05).** Four upgrades
+     (AD_DASHBOARD_REPORT): (1) the ad section moved OUT of the finance dashboard to its
+     own role-gated surface (/ads, own identity, link card left behind; voice-nav
+     "show me the ad dashboard" now opens /ads in a NEW TAB with URL params carrying
+     window/verdict/creative). ARCHITECTURAL SIMPLIFICATION RECORDED: the planned
+     timeline copy of the section is CANCELLED — Romano uses /ads directly; the
+     timeline's only remaining debt is its railway.json build gate. (2) THE TOGGLE BUG
+     root-caused (fetchAll dropped re-queries while loading; untagged responses; no
+     window stamps) and fixed structurally: ONE atomic /ads/api/board call per window,
+     latest-wins token, response echoes its window, client guard discards mismatches
+     (test-enforced), URL-persisted ?window=. Proven per window live (30d 86.2% 69/80 ·
+     60d 90.9% 150/165 · 90d 272 leads — board==direct engine API on all totals + top
+     rows). (3) DRILL-DOWNS: every count opens its humans — roster == count structurally
+     (same engine cohort) AND live-proven 15/15 cells; person cards carry revenue band
+     (unknown amber), setter outcome, pipeline stage (ghl mirror), notes LABELLED by
+     source (tracker Setter Notes 91% fill / DQ Reason; GHL contact notes fetched LIVE —
+     probe: 25/25 HTTP 200 — with fetch stamps), GHL contact links; "no notes recorded",
+     never filler. (4) INTELLIGENCE SCORECARD: leaders row + deterministic flags
+     (attribution_flags.py; 7 manual_targets thresholds, voice-adjustable; min-n inside
+     each rule; severity-sorted cards with rule+numbers+question; new sev1/2 flags feed
+     salience once, watermarked; EDITH: "what's flagged on the ad board?" verbatim).
+     ISOLATION: media_buyer account exists ONLY when MEDIA_BUYER_PASSWORD is set (ships
+     disabled); auth.py fail-closed allowlist scopes the role to /ads — the printed
+     sweep 403s/bounces chat, snapshot, greeting, collab, targets, data-sources, leads;
+     /cfo/* never honors sessions (401). Sales cannot reach /ads. Suite 563 green
+     (17 new tests). Five-pass evidence in the report; Rydel's minute is the gate.

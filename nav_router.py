@@ -91,7 +91,7 @@ def _engine(days: int = 30):
 def _ad_board_line() -> str:
     r = _cached_result(30)
     if not r:
-        return "Pulling up the ad tracking board."
+        return "Opening the ad tracking dashboard in a new tab."
     t = r.get("totals") or {}
     top = next((c for c in r.get("creatives") or [] if c["tier"] == "ad"
                 and (c["spend"] or c["leads"])), None)
@@ -128,12 +128,12 @@ def handle(text: str, ui: dict | None = None, channel: str = "text"):
     if _CAPABILITY_RE.search(t):
         return R.capability_text("timeline" if on_timeline else "dashboard"), [], True
 
-    # ── the ad board itself ──────────────────────────────────────────────────
+    # ── the ad dashboard (its own surface at /ads — opens in a new tab) ──────
     if _AD_BOARD_RE.search(t) or _SCOREBOARD_RE.search(t):
         if on_timeline:
-            return ("The ad tracking board lives on the finance dashboard — I can't "
-                    "render it here, but I can drive it there, or speak the numbers "
-                    "now: want the scoreboard read out?"), [], True
+            return ("Ad tracking has its own dashboard now — /ads on the finance "
+                    "service. I can't open it from here, but I can speak the "
+                    "scoreboard: want it read out?"), [], True
         return _ad_board_line(), [R.navigate("ad_tracking")], True
 
     # ── window changes (thread-aware: the ad board's own selector when active) ─
@@ -161,14 +161,10 @@ def handle(text: str, ui: dict | None = None, channel: str = "text"):
                    "DOUBLE DOWN" if "double" in raw else "WATCH")
         if on_timeline:
             return None, [], False
-        actions = [R.filter_action("ad_tracking", verdict=verdict)]
-        lead_in = ""
-        if not on_ad_board:
-            actions.insert(0, R.navigate("ad_tracking"))
-            lead_in = "Opening the ad board — "
         label = {"KILL": "the kill candidates", "DOUBLE DOWN": "the double-downs",
                  "WATCH": "the watch list"}[verdict]
-        return f"{lead_in}filtering to {label}.", actions, True
+        return (f"Opening the ad dashboard filtered to {label}.",
+                [R.navigate("ad_tracking", verdict=verdict)], True)
 
     m = _SORT_RE.search(t)
     if m and on_ad_board:
@@ -221,7 +217,7 @@ def handle(text: str, ui: dict | None = None, channel: str = "text"):
                         + f"; {c['closes']} close(s), ${c['cash']:,.0f} cash on "
                           f"${c['spend']:,.0f} spend.")
                 return line, [R.navigate("ad_tracking", creative=c["creative_key"],
-                                         drill=True)], True
+                                          drill=True)], True  # /ads?creative=… new tab
             if len(hits) > 1:
                 names = "; ".join(h["label"][:40] for h in hits[:3])
                 return (f"{len(hits)} creatives match “{cr}”: {names} — "

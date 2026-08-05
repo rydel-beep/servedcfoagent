@@ -50,7 +50,7 @@ def test_timeline_channel_gets_honest_cross_surface_answer(monkeypatch):
     _no_engine(monkeypatch)
     reply, actions, handled = N.handle("show me the ad dashboard", channel="timeline")
     assert handled and actions == []
-    assert "finance dashboard" in reply
+    assert "/ads" in reply and "can't open it from here" in reply
     assert "text and voice" not in reply.lower() and "can't display" not in reply.lower()
 
 
@@ -74,13 +74,14 @@ def test_invalid_window_asks_no_action(monkeypatch):
     assert handled and actions == [] and "30, 60 or 90" in reply
 
 
-def test_just_the_kills_thread_aware(monkeypatch):
+def test_just_the_kills_opens_the_ads_page_filtered(monkeypatch):
+    # the ad dashboard is its own surface now — the verdict rides the URL params
     _no_engine(monkeypatch)
-    r1, a1, h1 = N.handle("just the ones to kill", ui={"section": "ad_tracking"})
-    assert h1 and a1 == [R.filter_action("ad_tracking", verdict="KILL")]
-    r2, a2, h2 = N.handle("show me just the kills", ui={"section": "cash"})
-    assert h2 and a2[0] == R.navigate("ad_tracking") \
-        and a2[1] == R.filter_action("ad_tracking", verdict="KILL")
+    for ui in ({"section": "ad_tracking"}, {"section": "cash"}):
+        r1, a1, h1 = N.handle("just the ones to kill" if ui["section"] == "ad_tracking"
+                              else "show me just the kills", ui=ui)
+        assert h1 and a1 == [R.navigate("ad_tracking", verdict="KILL")]
+        assert "kill candidates" in r1
 
 
 def test_sort_by_cash_on_board(monkeypatch):
@@ -142,7 +143,7 @@ def test_drill_nonexistent_refuses_no_action(monkeypatch):
 def test_what_can_you_show_me_lists_real_targets(monkeypatch):
     _no_engine(monkeypatch)
     reply, actions, handled = N.handle("what can you show me?")
-    assert handled and "ad tracking board" in reply and "funnel" in reply
+    assert handled and "ad tracking dashboard" in reply and "funnel" in reply
     reply_t, a_t, h_t = N.handle("what can you show me?", channel="timeline")
     assert h_t and "finance dashboard" in reply_t
 

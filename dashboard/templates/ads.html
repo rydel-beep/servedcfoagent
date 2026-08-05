@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SERVED AD TRACKING</title>
+<link rel="stylesheet" href="/dashboard/static/css/adsapp.css?v={{ asset_v }}">
+</head>
+<body>
+<header class="adx-top">
+  <div class="adx-brand">
+    <span class="adx-logo">SERVED</span> <span class="adx-name">AD TRACKING</span>
+    <span class="adx-tag">creative → lead → qualified → close → cash</span>
+  </div>
+  <div class="adx-top-right">
+    <div class="adx-windows" id="adx-windows">
+      <button class="adx-win" data-days="30">30d</button>
+      <button class="adx-win" data-days="60">60d</button>
+      <button class="adx-win" data-days="90">90d</button>
+    </div>
+    <span class="adx-who" id="adx-who"></span>
+    <a class="adx-logout" href="/dashboard/logout">log out</a>
+  </div>
+</header>
+
+<main class="adx-main">
+  <div class="adx-banner" id="adx-banner"><span class="adx-skel">Loading the attribution engine…</span></div>
+
+  <!-- THE INTELLIGENCE SCORECARD -->
+  <section class="adx-scorecard">
+    <div class="adx-leaders" id="adx-leaders"></div>
+    <div class="adx-constraint" id="adx-constraint" style="display:none"></div>
+    <div class="adx-flags" id="adx-flags"></div>
+  </section>
+
+  <!-- THE CREATIVE TABLE -->
+  <section class="adx-panel">
+    <h2>Creatives <span class="adx-h2-sub" id="adx-table-window"></span></h2>
+    <div class="adx-table-wrap">
+      <table class="adx-table" id="adx-scoreboard"><thead></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <!-- THE LIVE TRACKER -->
+  <section class="adx-panel">
+    <div class="adx-tracker-head">
+      <h2 id="adx-rows-title">Live tracker</h2>
+      <input type="search" id="adx-search" placeholder="search lead / business…" autocomplete="off">
+    </div>
+    <div class="adx-table-wrap adx-rows-wrap" id="adx-rows-wrap">
+      <table class="adx-table adx-rows" id="adx-rows"><thead></thead><tbody></tbody></table>
+      <button id="adx-more" class="adx-more" style="display:none">show more rows</button>
+    </div>
+  </section>
+
+  <footer class="adx-footer">reads the Lead-to-Cash mirror + the attribution engine · figures reconcile to the dashboard · read-only</footer>
+</main>
+
+<!-- THE DRILL (overlay panel — never loses your place) -->
+<div class="adx-drill-scrim" id="adx-drill-scrim" style="display:none">
+  <aside class="adx-drill" id="adx-drill">
+    <div class="adx-drill-head">
+      <div id="adx-drill-title"></div>
+      <button id="adx-drill-close">✕</button>
+    </div>
+    <div class="adx-drill-body" id="adx-drill-body"></div>
+  </aside>
+</div>
+
+<script src="/dashboard/static/js/adsapp.js?v={{ asset_v }}"></script>
+</body>
+</html>

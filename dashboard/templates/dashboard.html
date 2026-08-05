@@ -58,7 +58,6 @@
   <a href="#section-month-perf" class="nav-link">Economics</a>
   <a href="#section-waterfall" class="nav-link">P&L</a>
   <a href="#section-funnel" class="nav-link">Funnel</a>
-  <a href="#section-attribution" class="nav-link">Ads</a>
   <a href="#section-health" class="nav-link">Clients</a>
   <a href="#section-team" class="nav-link">Team</a>
   <a href="#section-pipeline" class="nav-link">Pipeline</a>
@@ -577,32 +576,11 @@
   </section>
 
 
-<!-- AD TRACKING — the attribution scoreboard + live tracker (reads /cfo/attribution/*;
-     zero math in the client — render only; reconciles to the dashboard by test) -->
-<section class="panel" id="section-attribution">
-  <div class="ltcb-head">
-    <h2>Ad Tracking <span class="ltcb-sub">creative → lead → qualified → close → cash</span></h2>
-    <div class="ltcb-controls">
-      <div class="ltcb-windows" id="ltcb-windows">
-        <button class="ltcb-win active" data-days="30">30d</button>
-        <button class="ltcb-win" data-days="60">60d</button>
-        <button class="ltcb-win" data-days="90">90d</button>
-      </div>
-      <input type="search" id="ltcb-search" placeholder="search lead / business…" autocomplete="off">
-    </div>
-  </div>
-  <div class="ltcb-banner" id="ltcb-banner">Loading the attribution engine…</div>
-  <div class="ltcb-constraint" id="ltcb-constraint" style="display:none"></div>
-  <div class="ltcb-table-wrap">
-    <table class="ltcb-table" id="ltcb-scoreboard"><thead></thead><tbody></tbody></table>
-  </div>
-  <div class="ltcb-drill" id="ltcb-drill" style="display:none"></div>
-  <h3 class="ltcb-rows-title" id="ltcb-rows-title">Live tracker</h3>
-  <div class="ltcb-table-wrap ltcb-rows-wrap" id="ltcb-rows-wrap">
-    <table class="ltcb-table ltcb-rows" id="ltcb-rows"><thead></thead><tbody></tbody></table>
-    <button id="ltcb-more" class="ltcb-more" style="display:none">show more rows</button>
-  </div>
-  <div class="ltcb-footer">reads the Lead-to-Cash mirror + the attribution engine; figures reconcile to the dashboard</div>
+<!-- AD TRACKING moved to its own dashboard (/ads) — AD_DASHBOARD_REPORT -->
+<section class="panel" id="section-adlink">
+  <h2>Ad Tracking</h2>
+  <p class="adlink-line">The creative scoreboard, drill-downs and flags now live on their own dashboard.</p>
+  <a class="adlink-btn" href="/ads" target="_blank" rel="noopener">Open SERVED AD TRACKING →</a>
 </section>
 
 </main>
@@ -692,7 +670,6 @@ window.__EDITH_CFG__ = {{ edith_cfg | default('{}') | safe }};</script>
 <script src="/dashboard/static/js/chat.js?v={{ asset_v }}"></script>
 <script src="/dashboard/static/js/export.js?v={{ asset_v }}"></script>
 <script src="/dashboard/static/js/edithnav.js?v={{ asset_v }}"></script>
-<script src="/dashboard/static/js/ltcboard.js?v={{ asset_v }}"></script>
 <script src="/dashboard/static/js/edith.js?v={{ asset_v }}"></script>
 <script src="/dashboard/static/js/hud.js?v={{ asset_v }}"></script>
 </body>

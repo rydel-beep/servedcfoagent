@@ -7,7 +7,7 @@
   'use strict';
 
   var ANCHORS = {
-    ad_tracking: 'section-attribution', brief: 'section-brief',
+    adlink: 'section-adlink', brief: 'section-brief',
     cash: 'section-cash-position', forward: 'section-forward', mrr: 'section-trend',
     churn: 'section-churn', economics: 'section-month-perf', pnl: 'section-waterfall',
     funnel: 'section-funnel', clients: 'section-health', team: 'section-team',
@@ -18,6 +18,14 @@
     leads_page: '/dashboard/leads', targets_page: '/dashboard/targets',
     data_sources: '/dashboard/data-sources',
   };
+  // the dedicated ad dashboard: NEW TAB, params ride the URL (?window=&verdict=&creative=)
+  function openAds(p) {
+    var qs = [];
+    if (p.window) qs.push('window=' + String(p.window).replace(/\D/g, ''));
+    if (p.verdict) qs.push('verdict=' + encodeURIComponent(p.verdict));
+    if (p.creative) qs.push('creative=' + encodeURIComponent(p.creative));
+    window.open('/ads' + (qs.length ? '?' + qs.join('&') : ''), '_blank', 'noopener');
+  }
 
   var lastSection = null;
 
@@ -56,23 +64,15 @@
         return;
       }
       if (action.type === 'navigate') {
+        if (action.target === 'ad_tracking') { openAds(p); return; }   // its own dashboard
         if (PAGES[action.target]) { window.location.href = PAGES[action.target]; return; }
         var id = ANCHORS[action.target];
         if (!id) return;                          // unknown target — ignore, never break
         if (scrollToSection(id)) lastSection = action.target;
-        if (action.target === 'ad_tracking' && window.AdTrack) {
-          if (p.window) window.AdTrack.setWindow(+String(p.window).replace(/\D/g, ''));
-          if (p.creative && p.drill) window.AdTrack.setCreative(p.creative);
-          if (p.verdict) window.AdTrack.setVerdict(p.verdict);
-        }
         return;
       }
-      if (action.type === 'filter' && action.target === 'ad_tracking' && window.AdTrack) {
-        if (lastSection !== 'ad_tracking') scrollToSection(ANCHORS.ad_tracking);
-        lastSection = 'ad_tracking';
-        if (p.window) window.AdTrack.setWindow(+p.window);
-        if (p.verdict) window.AdTrack.setVerdict(p.verdict);
-        if (p.sort) window.AdTrack.setSort(p.sort);
+      if (action.type === 'filter' && action.target === 'ad_tracking') {
+        openAds(p);                               // filters travel as URL params
         return;
       }
     } catch (e) { /* an action must never break the page */ }

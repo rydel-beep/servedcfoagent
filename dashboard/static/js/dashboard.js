@@ -321,7 +321,7 @@
       }
       if (gPending) {
         gPending = false;
-        var map = { c: 'section-cash-position', f: 'section-funnel', a: 'section-attribution', b: 'section-brief', t: 'section-team', m: 'section-trend' };
+        var map = { c: 'section-cash-position', f: 'section-funnel', a: 'section-adlink', b: 'section-brief', t: 'section-team', m: 'section-trend' };
         var target = map[e.key.toLowerCase()];
         if (target) {
           var el = document.getElementById(target);
@@ -4253,7 +4253,7 @@
             'section-stripe-health', 'section-reconciliation', 'section-quality'] },
     { n: 2, title: 'Is the machine working', sub: 'MRR, unit economics, funnel, capacity',
       ids: ['section-kpis', 'section-revenue', 'section-month-perf', 'section-metrics',
-            'section-funnel', 'section-attribution', 'section-speed-to-lead', 'section-perf-analysis', 'section-setter-deep',
+            'section-funnel', 'section-adlink', 'section-speed-to-lead', 'section-perf-analysis', 'section-setter-deep',
             'section-commissions', 'section-waterfall', 'section-trend', 'section-health',
             'section-team', 'section-cohort', 'section-offers', 'section-lead-roi', 'section-reps',
             'section-pipeline'] },
