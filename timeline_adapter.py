@@ -349,3 +349,12 @@ def conversation_context() -> str:
     parts.append("[END TIMELINE CONTEXT]")
     out = "\n".join(parts)
     return out[:2200]
+
+
+def gate_a_pending() -> list | None:
+    """Pending Gate-A PDF reviews (the relay's single pending-state source,
+    /bridge/data/gate-a-pending). None = unreachable (say so, never guess)."""
+    d = _get("/bridge/data/gate-a-pending")
+    if d is None:
+        return None
+    return d.get("pending") or []

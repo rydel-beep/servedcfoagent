@@ -518,6 +518,17 @@ def handle_pipeline_query(msg: str) -> tuple[str | None, bool]:
         subj = (r["subject_options"] or ["(no subject)"])[0]
         bits.append("#%s %s — %s (%s)" % (r["id"], r["type"], subj[:60], r["status"].replace("_", " ").lower()))
     head = d["line"] or "Nothing waiting on you right now."
+    # Gate A PDF reviews ride the same "what's pending" answer (one state source:
+    # the timeline's pending_gate_a_reviews via the bridge; EDITH reads, never owns).
+    try:
+        import timeline_adapter
+        ga = timeline_adapter.gate_a_pending()
+        if ga:
+            head += " Also %d Gate A PDF review%s waiting: %s." % (
+                len(ga), "s" if len(ga) != 1 else "",
+                "; ".join("%s (%s)" % (g.get("title", "?")[:50], g.get("gate_a_state")) for g in ga[:3]))
+    except Exception:  # noqa: BLE001
+        pass
     return head + " Pipeline: " + " · ".join(bits), True
 
 
