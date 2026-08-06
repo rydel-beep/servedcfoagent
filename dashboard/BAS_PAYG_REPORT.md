@@ -147,5 +147,25 @@ account at **$100,183** — covered, ~$27k buffer.
   (no POST/PUT/DELETE in bas_engine); one-engine grepped (routes + forecast read
   bas_engine, no second BAS math); salience watermark ids stable.
 
-## LIVE VERIFICATION
-(filled below after deploy)
+## LIVE VERIFICATION (production, 2026-08-06, commit b485893)
+- **The estimate (real books):** Jul–Sep 2026, day 37/92, cash-basis GST · QTD
+  $8,818.10 net GST (ledger) inside the P&L band $7,289–$9,169 (two-way agreement
+  GREEN, no drift flag) · projected $21,926 GST + $7,033 PAYGW → **~$28,959 due
+  25 Nov (agent date)** · instalment renders amount-pending, excluded from totals.
+- **The prior obligation:** Apr–Jun 2026 BAS **$41,138 due 25 Aug** — "with the
+  agent — not yet paid per the ledger". Salience correctly silent today (19 days
+  out); T-14 fires ~11 Aug, T-3 ~22 Aug, with the covered/not-covered tail.
+- **THE SET-ASIDE:** spoken for **$72,999.86** (GST $49,956.18 + PAYGW $2,132.00 +
+  income tax $20,911.68) vs the BAS #2353 account **$100,182.62** → covered,
+  buffer $27,182.76. free_cash_view splits to the cent.
+- **Forecast:** the $41,138 obligation lands in week 3 and the curve drops exactly
+  ($193,393 + $10,772 net − $41,138 = $163,027 ✓); labelled with confidence.
+- **EDITH (spoken, live kv):** full picture / due dates (both obligations, agent
+  dates) / set-aside / why-moved (decomposition + the EOFY caveat + the scope
+  limit named) — the disclaimer in every answer.
+- Cold walkthrough verified via the API payloads + live handlers (dashboard-auth
+  screenshots not capturable from this sandbox — stated, not skipped silently).
+
+**RYDEL'S CHECK:** the ~$29k Jul–Sep projection + the $41.1k Apr–Jun bill against
+your accountant's expectation — close, or the gap explained by the decomposition
+(and remember the EOFY-journal caveat on the $41k figure).
