@@ -142,11 +142,32 @@ def cash_flow_13wk(snap: dict | None = None) -> dict:
     weekly_outflow = b["burn"] / (52 / 12) + b["weekly_tax_setaside"]
     net_weekly = weekly_inflow + weekly_new - weekly_outflow
 
+    # BAS/PAYG obligations land in their DUE WEEKS (the one bas_engine — estimates,
+    # labelled). Skipped automatically if the user set a manual weekly_tax_setaside
+    # (their smoothing wins; no double-count).
+    obligations, ob_hits = [], {}
+    if not b["weekly_tax_setaside"]:
+        try:
+            import bas_engine
+            obligations = bas_engine.scheduled_obligations()
+        except Exception:
+            obligations = []
+
     today = today_sydney()
     curve, cash = [], start
     for w in range(1, weeks + 1):
         cash += net_weekly
-        curve.append({"week": w, "week_ending": str(today + dt.timedelta(weeks=w)),
+        we = today + dt.timedelta(weeks=w)
+        for ob in obligations:
+            try:
+                d = dt.date.fromisoformat(ob["due"])
+            except (ValueError, TypeError):
+                continue
+            if we - dt.timedelta(days=6) <= d <= we and (ob["amount"] or 0):
+                cash -= ob["amount"]
+                ob_hits[str(d)] = {"week": w, "label": ob["label"],
+                                   "amount": ob["amount"], "confidence": ob["confidence"]}
+        curve.append({"week": w, "week_ending": str(we),
                       "projected_cash": round(cash, 2)})
     lo = min(curve, key=lambda x: x["projected_cash"])
     return {
@@ -157,6 +178,7 @@ def cash_flow_13wk(snap: dict | None = None) -> dict:
         "weekly_outflow": round(weekly_outflow, 2),
         "net_weekly": round(net_weekly, 2),
         "cash_positive": net_weekly >= 0,
+        "tax_obligations_in_horizon": ob_hits or None,
         "curve": curve,
         "minimum_week": {"week": lo["week"], "week_ending": lo["week_ending"],
                          "projected_cash": lo["projected_cash"]},

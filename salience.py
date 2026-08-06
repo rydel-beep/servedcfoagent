@@ -296,6 +296,16 @@ def collect(snap: dict | None = None) -> list[dict]:
     except Exception:
         pass
 
+    # 15) BAS/PAYG obligations (the one bas_engine): due-date approach (T-14/T-3) +
+    #     estimate anomalies — kv-only reads, watermarked like everything else.
+    try:
+        import bas_engine
+        for a in (bas_engine.salience_events() or []):
+            if a["id"] not in told:
+                events.append(a)
+    except Exception:
+        pass
+
     events.sort(key=lambda e: (e["salience"], -e["ago"]), reverse=True)
     return events
 

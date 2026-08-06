@@ -1453,3 +1453,31 @@
      refresh; EDITH: "any proposed fixes?" / "what did you auto-fix?". LIVE: 15 of 19
      blank Close Dates got derived candidates with named sources; 1 P2 link (Fausto
      Falchi); 4 genuinely human-only. Suite 597.
+
+123. **BAS & PAYG PREDICTION — THE QUARTERLY TAX BILL, SEEN COMING (2026-08-06).**
+     Phase-0 probe (read-only, via the deployed service — Xero refresh tokens are
+     SINGLE-USE; local refreshes are forbidden, they'd break production's chain):
+     Activity Statement has NO public API endpoint under any scope — the LEDGER path
+     is the path; line-level tax needs accounting.transactions.read (not granted,
+     named as the optional addition, never assumed). Readable today: P&L, BankSummary,
+     BalanceSheet (GST / PAYG Withholdings / Income Tax Payable / the physical
+     BAS #2353 set-aside account), Organisation settings (GST basis CASH, period
+     QUARTERLY — read from Xero, not assumed), TaxRates. Two-way QTD agreement:
+     ledger +$8,818 net GST inside the P&L 10%-band $7.6–9.0k. EOFY anomaly NAMED
+     (GST 6k→41k, PAYGW→0, income-tax provision 5.3k→20.9k at 30 Jun = accountant
+     journals; the caveat rides every Jul-quarter decomposition). RYDEL RULED: agent
+     lodgement (extended dates); ON instalments (amount pending his notice — rendered
+     amount-pending, excluded from totals until "set PAYG instalment to $X", provenance
+     stamped); PAYGW = his wage only ($541/wk); framing confirmed (ESTIMATES FOR
+     PLANNING — the accountant lodges; never tax advice); Apr–Jun BAS (~$41.1k) is
+     with the agent, due ~25 Aug. BUILT: bas_engine.py — the ONE engine (kv
+     bas:estimate; daily + staggered boot tick; request paths never touch Xero);
+     payment-drop assumption applied openly (adjusted+flagged+announced); zero-balance
+     lines read 0 on present reports (probe-verified Xero omission), unknown on absent
+     reports; drift beyond tolerance flags, never absorbs; the SET-ASIDE (spoken-for =
+     GST+PAYGW+income-tax balances vs the BAS #2353 account + the cash split on the
+     cash card); forecast books obligations in their DUE WEEKS (no double-count with
+     manual weekly set-aside); salience T-14/T-3 (tightest band wins) + anomalies,
+     watermarked, bas_due → S1 + triage-PROMOTED; EDITH full-picture/due/set-aside/
+     why-moved/set-instalment/refresh at both dispatch sites, disclaimer test-enforced
+     in every answer. Suite 609 (12 new).

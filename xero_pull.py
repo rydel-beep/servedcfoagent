@@ -422,6 +422,89 @@ def _parse_pnl(data: dict) -> dict:
     }
 
 
+def _fetch_balance_sheet(access_token: str, tenant_id: str, date: str) -> dict | None:
+    """Balance Sheet at a point-in-time date (accounting.reports.balancesheet.read)."""
+    try:
+        resp = requests.get(
+            f"{XERO_API_BASE}/api.xro/2.0/Reports/BalanceSheet",
+            headers={"Authorization": f"Bearer {access_token}",
+                     "Xero-Tenant-Id": tenant_id, "Accept": "application/json"},
+            params={"date": str(date)}, timeout=(5, HTTP_TIMEOUT))
+        if resp.status_code != 200:
+            logger.error("Xero BalanceSheet API %d: %s", resp.status_code, resp.text[:300])
+            return None
+        return resp.json()
+    except requests.RequestException as e:
+        logger.error("Xero BalanceSheet request failed: %s", e)
+        return None
+
+
+def extract_tax_lines(report: dict) -> dict:
+    """The tax-relevant Balance Sheet lines by account name → balance. The BAS layer's
+    ledger source: 'GST', 'PAYG Withholdings Payable', 'Income Tax Payable', and the
+    physical 'BAS / Tax #2353' set-aside bank account."""
+    rep = (report.get("Reports") or [{}])[0]
+    out = {}
+
+    def walk(rows):
+        for r in rows or []:
+            if r.get("Rows"):
+                walk(r["Rows"])
+            cells = r.get("Cells") or []
+            if len(cells) >= 2:
+                name = (cells[0].get("Value") or "").strip()
+                low = name.lower()
+                if any(k in low for k in ("gst", "payg", "bas", "income tax")):
+                    try:
+                        out[name] = float(str(cells[1].get("Value")).replace(",", ""))
+                    except (TypeError, ValueError):
+                        pass
+
+    walk(rep.get("Rows", []))
+    return out
+
+
+def pull_bas_inputs(bs_dates: list[str], pnl_windows: list[tuple[str, str]]) -> dict:
+    """READ-ONLY bundle for the BAS estimation engine: ONE token refresh (single-use
+    refresh tokens — never refresh twice), then Balance Sheet tax lines at each date,
+    P&L for each window, and the Bank Summary (the BAS #2353 set-aside balance).
+    Failure of any piece → that piece None + reason; never fabricates."""
+    if not XERO_CLIENT_ID or not XERO_CLIENT_SECRET:
+        return {"ok": False, "reason": "XERO_CLIENT_ID/SECRET not set"}
+    stored = _load_tokens()
+    if not stored or not stored.get("refresh_token") or not stored.get("tenant_id"):
+        return {"ok": False, "reason": "No Xero tokens — re-authorize via /xero/connect"}
+    tokens = _refresh_access_token(stored)
+    if not tokens or not tokens.get("access_token"):
+        return {"ok": False, "reason": "Xero token refresh failed"}
+    at, tid = tokens["access_token"], tokens["tenant_id"]
+
+    tax_lines, missing = {}, []
+    for d in bs_dates:
+        bs = _fetch_balance_sheet(at, tid, d)
+        if bs:
+            tax_lines[str(d)] = extract_tax_lines(bs)
+        else:
+            missing.append(str(d))
+
+    pnl = {}
+    for (s, e) in pnl_windows:
+        raw = _fetch_pnl_range(at, tid, str(s), str(e))
+        pnl[f"{s}..{e}"] = _parse_pnl(raw) if raw else None
+
+    bas_account = None
+    bs_now = _fetch_bank_summary(at, tid)
+    if bs_now:
+        from config import CASH_ACCOUNT_MARKERS
+        cash = _extract_cash_on_hand(bs_now, CASH_ACCOUNT_MARKERS)
+        for b in cash.get("breakdown") or []:
+            if "2353" in (b.get("marker") or "") or "bas" in (b.get("name") or "").lower():
+                bas_account = b.get("balance")
+
+    return {"ok": True, "tax_lines": tax_lines, "bs_missing": missing,
+            "pnl": pnl, "bas_account_balance": bas_account}
+
+
 def pull_xero() -> dict:
     """
     Pull Xero P&L data. Returns dict ready to merge into snapshot.

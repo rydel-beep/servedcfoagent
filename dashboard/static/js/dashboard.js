@@ -1014,7 +1014,17 @@
         <div class="cash-card-label">Cash on hand <span class="info-icon" data-metric="cash_in_bank">&#9432;</span></div>
         <div class="cash-card-value" style="color:var(--green)">${fmt$(cashPos.cash_in_bank)}</div>
         <div class="cash-card-sub" ${live ? '' : 'style="color:var(--amber)"'}>${sub}</div>
+        <div class="cash-card-sub bas-split" id="cash-setaside-split"></div>
       </div>`;
+      // the SET-ASIDE split (bas_engine estimate): unset-aside tax money must never
+      // masquerade as free cash — filled async, absent when no estimate (never invented)
+      fetch('/dashboard/api/bas').then(r => r.ok ? r.json() : null).then(function (d) {
+        var el = $('#cash-setaside-split');
+        if (el && d && d.free_cash) {
+          el.innerHTML = 'spoken for (ATO est.): <strong>' + fmt$(d.free_cash.spoken_for) +
+            '</strong> → yours: <strong>' + fmt$(d.free_cash.free) + '</strong>';
+        }
+      }).catch(function () {});
     }
 
     // Amex owing — a LIABILITY, shown separately from cash (cash correctly excludes it).
@@ -4246,7 +4256,7 @@
   // action / forecast) without moving HTML blocks — safe DOM relocation on load.
   var ZONES = [
     { n: 1, title: 'Am I safe', sub: 'Cash, runway, burn',
-      ids: ['section-cash-position', 'section-forecast-cash', 'section-forward'] },
+      ids: ['section-cash-position', 'section-bas', 'section-forecast-cash', 'section-forward'] },
     { n: 3, title: 'What needs action', sub: 'Alerts, data quality, follow-ups',
       ids: ['section-action-feed', 'section-collab-queue', 'section-collab-log', 'section-actions',
             'section-verdicts', 'section-deficiency', 'section-dq-loss', 'section-churn',
@@ -4341,6 +4351,67 @@
         });
       });
     } catch (e) { /* silent — feed is additive */ }
+  }
+
+  // BAS & TAX SET-ASIDE (the one bas_engine; ESTIMATES — disclaimer always rendered)
+  async function renderBas() {
+    try {
+      var r = await fetch('/dashboard/api/bas'); if (!r.ok) return;
+      var d = await r.json();
+      var body = $('#bas-body'), badge = $('#bas-badge');
+      if (!body) return;
+      if (!d.available || !d.estimate) {
+        body.innerHTML = '<div class="af-empty">No BAS estimate yet — builds on the daily Xero read.</div>';
+        return;
+      }
+      var e = d.estimate, q = e.quarter || {}, gst = e.gst || {}, pw = e.paygw || {};
+      var sa = e.set_aside || {}, inst = e.instalment || {};
+      var due = (d.obligations && d.obligations.length) ? d.obligations[0] : null;
+      var daysLeft = null;
+      if (due) {
+        daysLeft = Math.round((new Date(due.due) - new Date()) / 86400000);
+        if (badge) badge.textContent = due.label.replace(' BAS', '') + ' due in ' + daysLeft + 'd';
+      }
+      var html = '<div class="bas-quarter">' + esc(q.label || '') + ' · day ' + q.days_elapsed + '/' + q.days_total +
+        ' · cash-basis GST · agent lodgement</div>';
+      if (gst.available) {
+        html += '<div class="bas-row"><span class="bas-k">Accrued so far</span><span class="bas-v">' +
+          fmt$(gst.qtd_net) + ' GST' + (pw.qtd != null ? ' + ' + fmt$(pw.qtd) + ' PAYGW' : '') + '</span></div>';
+        html += '<div class="bas-row"><span class="bas-k">Projected at quarter end</span><span class="bas-v">' +
+          fmt$(gst.projected_full_quarter + (pw.projected_full_quarter || 0)) +
+          ' <em class="bas-tag">MODELLED</em></span></div>';
+      }
+      if (inst.active) {
+        html += '<div class="bas-row"><span class="bas-k">PAYG instalment</span><span class="bas-v">' +
+          (inst.amount != null ? fmt$(inst.amount) + '/qtr' : '<em>amount pending — “set PAYG instalment to $X”</em>') + '</span></div>';
+      }
+      (d.obligations || []).forEach(function (ob) {
+        var dl = Math.round((new Date(ob.due) - new Date()) / 86400000);
+        html += '<div class="bas-row bas-due"><span class="bas-k">' + esc(ob.label) + '</span><span class="bas-v">' +
+          (ob.amount != null ? fmt$(ob.amount) : '—') + ' · due ' + esc(ob.due) + ' (' + dl + 'd)</span></div>';
+      });
+      if (sa.spoken_for != null) {
+        html += '<div class="bas-setaside">Spoken for (ATO): <strong>' + fmt$(sa.spoken_for) + '</strong>' +
+          (sa.bas_account_balance != null
+            ? ' · BAS account holds ' + fmt$(sa.bas_account_balance) +
+              (sa.covered ? ' <span class="bas-ok">covered (+' + fmt$(sa.buffer) + ')</span>'
+                          : ' <span class="bas-warn">SHORT ' + fmt$(-sa.buffer) + '</span>')
+            : '') + '</div>';
+      }
+      if (d.free_cash) {
+        html += '<div class="bas-free">Cash ' + fmt$(d.free_cash.cash) + ' · spoken for ' +
+          fmt$(d.free_cash.spoken_for) + ' → <strong>yours ' + fmt$(d.free_cash.free) + '</strong></div>';
+      }
+      var hist = e.history || [];
+      if (hist.length > 1) {
+        html += '<div class="bas-hist">GST at quarter closes: ' + hist.map(function (h) {
+          return esc((h.date || '').slice(0, 7)) + ' ' + (h.gst != null ? fmt$(h.gst) : '—');
+        }).join(' · ') + '</div>';
+      }
+      if (e.drift_flag) html += '<div class="bas-warnline">⚠ ' + esc(e.drift_flag) + '</div>';
+      html += '<div class="bas-disclaimer">' + esc(d.disclaimer || (e.disclaimer || '')) + '</div>';
+      body.innerHTML = html;
+    } catch (err) { /* silent — additive */ }
   }
 
   async function renderForecast() {
@@ -4642,6 +4713,7 @@
     }
     applyZones();            // relocate sections into decision zones (once)
     renderActionFeed();      // Zone 3 — the consolidated action feed
+    renderBas();             // Zone 1 — BAS & tax set-aside (estimates, labelled)
     renderForecast();        // Zone 1 cash + Zone 4 MRR projections
     loadActor();             // who's signed in (Rydel / Piolo)
     renderCollabQueue();     // Zone 3 — bookkeeping queue with the verification loop

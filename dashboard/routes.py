@@ -462,6 +462,23 @@ def api_triage():
     return jsonify({"ok": True, "key": key, "state": st})
 
 
+@bp.route("/api/bas", methods=["GET"])
+@require_auth
+def api_bas():
+    """The BAS/PAYG card (the one bas_engine, kv-read — no Xero on this path):
+    estimate + schedule + the set-aside split vs current cash. ESTIMATES FOR
+    PLANNING — the disclaimer rides the payload and every render."""
+    import bas_engine
+    from snapshot import load_persisted
+    est = bas_engine.estimate()
+    snap = load_persisted() or {}
+    cash = (snap.get("cash_position") or {}).get("cash_in_bank")
+    return jsonify({"available": est is not None, "estimate": est,
+                    "obligations": bas_engine.scheduled_obligations(),
+                    "free_cash": bas_engine.free_cash_view(cash),
+                    "disclaimer": bas_engine.DISCLAIMER})
+
+
 @bp.route("/api/forecast", methods=["GET"])
 @require_auth
 def api_forecast():
@@ -781,6 +798,9 @@ def api_chat():
             (__import__('email_pipeline').handle_pipeline_query, False),     # Email engine: what's pending my review / pipeline state
             (capacity_engine.handle_capacity_command, False),  # hiring/capacity/raise/afford questions
             (forecasting_engine.handle_forecast_command, False),  # cash-flow / MRR / runway forecasts
+            (__import__('bas_engine').handle_set_instalment, False),     # 'set PAYG instalment to $X'
+            (__import__('bas_engine').handle_refresh_command, False),    # 'refresh the BAS estimate'
+            (__import__('bas_engine').handle_bas_command, False),        # BAS/GST/set-aside/due-date answers
             (__import__('triage').handle_triage_action_command, False),   # dismiss/snooze/delegate/restore <item>
             (__import__('triage').handle_suppressed_command, False),      # 'show me what you suppressed'
             (__import__('triage').handle_why_here_command, False),        # 'why is this here'
@@ -998,6 +1018,9 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             (__import__('email_pipeline').handle_pipeline_query, False),     # Email engine: what's pending my review / pipeline state
             (capacity_engine.handle_capacity_command, False),
             (forecasting_engine.handle_forecast_command, False),
+            (__import__('bas_engine').handle_set_instalment, False),     # 'set PAYG instalment to $X'
+            (__import__('bas_engine').handle_refresh_command, False),    # 'refresh the BAS estimate'
+            (__import__('bas_engine').handle_bas_command, False),        # BAS/GST/set-aside/due-date answers
             (__import__('triage').handle_triage_action_command, False),   # dismiss/snooze/delegate/restore <item>
             (__import__('triage').handle_suppressed_command, False),      # 'show me what you suppressed'
             (__import__('triage').handle_why_here_command, False),        # 'why is this here'

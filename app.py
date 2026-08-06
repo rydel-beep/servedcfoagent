@@ -637,6 +637,19 @@ def debug_xero_banksummary():
     })
 
 
+@app.route("/debug/bas-refresh", methods=["GET"])
+def debug_bas_refresh():
+    """Force a bas_engine refresh (read-only Xero) and return the estimate.
+    X-CFO-KEY gated; the same computation the daily tick runs."""
+    key = request.headers.get("X-CFO-KEY", "")
+    if not CFO_REFRESH_KEY or key != CFO_REFRESH_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    import bas_engine
+    est = bas_engine.refresh()
+    return jsonify({"ok": est is not None, "estimate": est,
+                    "obligations": bas_engine.scheduled_obligations()})
+
+
 @app.route("/debug/xero-probe", methods=["GET"])
 def debug_xero_probe():
     """BAS/PAYG Phase-0 CAPABILITY PROBE (read-only, X-CFO-KEY gated). ONE token
@@ -821,6 +834,26 @@ def _deferred_startup():
             attribution_engine.start_loop()
         except Exception as _e:
             logger.error("Attribution boot skipped: %s", _e)
+        # BAS/PAYG estimate: kv-stamped once-a-day tick at boot (read-only Xero),
+        # so the card has an estimate without waiting for the loop interval.
+        # Staggered by worker pid — two workers must not race the single-use
+        # Xero refresh token at the same instant (the kv stamp then stops #2).
+        try:
+            import os as _os
+            import time as _time
+
+            def _bas_boot_tick():
+                _time.sleep(20 + (_os.getpid() % 2) * 60)
+                try:
+                    import bas_engine
+                    bas_engine.daily_tick()
+                except Exception as _e2:
+                    logger.error("BAS boot tick failed: %s", _e2)
+
+            threading.Thread(target=_bas_boot_tick, daemon=True,
+                             name="bas-boot-tick").start()
+        except Exception as _e:
+            logger.error("BAS boot tick skipped: %s", _e)
         _startup_refresh()
         _start_scheduled_refresh()
     _start_email_cadence()

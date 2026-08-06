@@ -41,7 +41,8 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
         import salience
         for e in salience.collect(snap):
             sev = {"failed": "S1", "past_due": "S1", "hire_trigger": "S2", "unlogged": "S2",
-                   "threshold": "S2", "close": "S3", "payout": "S3", "lead": "S3"}.get(e["type"], "S3")
+                   "threshold": "S2", "close": "S3", "payout": "S3", "lead": "S3",
+                   "bas_due": "S1", "bas_anomaly": "S2"}.get(e["type"], "S3")
             items.append({"severity": sev, "category": e["type"], "title": e["spoken"],
                           "action": "Review." if sev in ("S1", "S2") else None})
     except Exception as e:

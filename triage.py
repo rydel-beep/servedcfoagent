@@ -35,7 +35,8 @@ _KV_LOG = "triage:log"       # latest routing table for every non-ACTION item
 ACTION_CAP = 7               # ranked by dollars-at-stake; overflow stays visible under "more"
 DOLLAR_FLOOR = 500           # below → WATCH unless the category is promoted
 # categories promoted to ACTION regardless of the floor (trend/risk beats size)
-_PROMOTED = {"anomaly", "failed", "past_due", "attr_verdict", "hire_trigger", "threshold"}
+_PROMOTED = {"anomaly", "failed", "past_due", "attr_verdict", "hire_trigger", "threshold",
+             "bas_due", "bas_anomaly"}
 # Rydel's own asks — ACTION by definition (the why-line is the ask itself)
 _OWN_ASKS = {"loop", "capital", "collab"}
 # informational events — never decisions (suppressed with reason, auditable)

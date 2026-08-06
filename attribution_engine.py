@@ -968,5 +968,10 @@ def start_loop(interval_s: int = 6 * 3600) -> None:
                 close_integrity.daily_tick()      # kv-stamped: once a day
             except Exception as e:
                 logger.warning("integrity tick failed: %s", e)
+            try:
+                import bas_engine
+                bas_engine.daily_tick()           # kv-stamped: once a day (read-only Xero)
+            except Exception as e:
+                logger.warning("bas tick failed: %s", e)
 
     threading.Thread(target=_loop, daemon=True, name="attribution-recompute").start()
