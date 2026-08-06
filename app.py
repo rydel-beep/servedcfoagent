@@ -649,6 +649,7 @@ def debug_xero_probe():
         return jsonify({"error": "Unauthorized"}), 401
 
     from xero_pull import _load_tokens, _refresh_access_token, XERO_API_BASE
+    from helpers import today_sydney
 
     stored = _load_tokens()
     if not stored or not stored.get("refresh_token"):
