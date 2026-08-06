@@ -4278,19 +4278,68 @@
     main.dataset.zoned = '1';
   }
 
+  // FIVE-LANE TRIAGE (ACTION_TRIAGE_REPORT): the zone shows DECISIONS. Action items
+  // ranked + capped, delegated/watch as rollup lines, hygiene stays on its panel,
+  // noise suppressed with a stated reason (EDITH: "show me what you suppressed").
+  async function triageOp(op, key, days) {
+    try {
+      await fetch('/dashboard/api/triage', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ op: op, key: key, days: days }) });
+      renderActionFeed();
+    } catch (e) { /* silent */ }
+  }
   async function renderActionFeed() {
     try {
       var r = await fetch('/dashboard/api/action-feed'); if (!r.ok) return;
       var f = await r.json();
+      var lanes = f.lanes || {};
+      var acts = lanes.action || [], dels = lanes.delegated || [], watch = lanes.watch || [];
       var badge = $('#action-feed-badge');
-      if (badge) badge.textContent = (f.counts && (f.counts.S1 + f.counts.S2)) ? ((f.counts.S1 + f.counts.S2) + ' open') : 'clear';
+      if (badge) badge.textContent = acts.length ? (acts.length + ' decision' + (acts.length > 1 ? 's' : '')) : 'clear';
       var body = $('#action-feed-body'); if (!body) return;
-      if (!f.items || !f.items.length) { body.innerHTML = '<div class="af-empty">All clear — nothing needs action.</div>'; return; }
-      body.innerHTML = '<div class="af-headline">' + esc(f.headline) + '</div>' + f.items.map(function (it) {
-        return '<div class="af-item af-' + it.severity + '"><span class="af-sev">' + it.severity + '</span>' +
+      var html = '<div class="af-headline">' + esc(f.headline || '') + '</div>';
+      if (!acts.length && !dels.length && !watch.length) {
+        body.innerHTML = html + '<div class="af-empty">All clear — nothing needs action.</div>'; return;
+      }
+      var cap = f.cap || 7;
+      acts.slice(0, cap).forEach(function (it) {
+        html += '<div class="af-item af-' + (it.severity || 'S2') + '"><span class="af-sev">' + esc(it.severity || '') + '</span>' +
           '<div class="af-text"><div class="af-title">' + esc(it.title) + '</div>' +
-          (it.action ? '<div class="af-action">' + esc(it.action) + '</div>' : '') + '</div></div>';
-      }).join('');
+          (it.why && it.why !== it.title ? '<div class="af-action">' + esc(it.why) + '</div>' : '') +
+          (it.action ? '<div class="af-action">' + esc(it.action) + '</div>' : '') + '</div>' +
+          '<span class="af-ops"><button class="af-op" data-op="snoozed" data-key="' + esc(it.key || '') + '" title="Snooze 7 days">zz</button>' +
+          '<button class="af-op" data-op="dismissed" data-key="' + esc(it.key || '') + '" title="Dismiss (logged, recoverable)">×</button></span></div>';
+      });
+      if (acts.length > cap) {
+        html += '<details class="af-more"><summary>' + (acts.length - cap) + ' more (over the cap of ' + cap + ')</summary>' +
+          acts.slice(cap).map(function (it) { return '<div class="af-sub">' + esc(it.title) + '</div>'; }).join('') + '</details>';
+      }
+      dels.forEach(function (d) {
+        if (d.rollup && d.detail) {
+          html += '<details class="af-lane af-del"><summary>◦ ' + esc(d.title) + '</summary>' +
+            d.detail.map(function (t) { return '<div class="af-sub">' + esc(t) + '</div>'; }).join('') + '</details>';
+        } else {
+          html += '<div class="af-lane af-del">◦ ' + esc(d.title) + (d.owner ? ' — with ' + esc(d.owner) : '') + '</div>';
+        }
+      });
+      watch.forEach(function (w) {
+        if (w.rollup && w.detail) {
+          html += '<details class="af-lane af-watch"><summary>▫ ' + esc(w.title) +
+            (w.link ? ' <a href="' + esc(w.link) + '" target="_blank" rel="noopener">open the board</a>' : '') + '</summary>' +
+            w.detail.map(function (t) { return '<div class="af-sub">' + esc(t) + '</div>'; }).join('') + '</details>';
+        } else {
+          html += '<div class="af-lane af-watch">▫ ' + esc(w.title) + '</div>';
+        }
+      });
+      if (f.routed_count) {
+        html += '<div class="af-foot">' + f.routed_count + ' item(s) routed off this list — ask EDITH “show me what you suppressed”.</div>';
+      }
+      body.innerHTML = html;
+      body.querySelectorAll('.af-op').forEach(function (b) {
+        b.addEventListener('click', function () {
+          triageOp(b.dataset.op, b.dataset.key, b.dataset.op === 'snoozed' ? 7 : undefined);
+        });
+      });
     } catch (e) { /* silent — feed is additive */ }
   }
 

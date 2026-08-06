@@ -1412,3 +1412,44 @@
      deterministic, sourced; corrections remain confirmation-gated through existing
      mechanisms only. LIVE: I5 green on all four (basis × window) checks; the three
      phantom rows cured on both clocks; suite 584.
+
+121. **ACTION ZONE TRIAGE — FIVE LANES, DECISIONS NOT FACTS (2026-08-06).** Phase-0
+     audit: 72 items in the zone, ZERO genuine Rydel decisions among them. The flood's
+     causes NAMED: (1) the same 19 blank-Close-Date facts emitted TWICE (data_quality +
+     "Data integrity:"-prefixed data_integrity — the title-prefix defeated the old
+     title[:60] dedup); (2) hygiene facts sitting on the decision surface; (3) 22
+     per-creative ad flags each holding a line. RYDEL CONFIRMED all four rulings: the
+     five-lane routing (ACTION = his decisions, ranked by dollars-at-stake, every item
+     carrying a number-bearing why-line; DELEGATED = collapsed team rollups — the Piolo
+     date-fix line; HYGIENE = artifacts to the hygiene panel; WATCH = quiet, ad flags
+     collapse to ONE line linking the /ads scorecard; NOISE = informational events
+     suppressed WITH a stated reason, auditable); cap 7 with visible overflow; $500
+     auto-ACTION floor (trend anomalies promote regardless); 90d event window; ACTION
+     NEVER ages out — leaves only by decision, delegation, or explicit dismiss/snooze.
+     BUILT: triage.py (fact_key strips prefixes — one fact = one line; route() lanes +
+     rollups + the $-ranked cap; kv triage:state for dismiss/snooze/delegate/restore —
+     explicit, logged, reversible; kv triage:log = the full routing audit), the zone UI
+     renders lanes with hover dismiss/snooze + expandable rollups, POST /api/triage
+     (owner-only), EDITH: "show me what you suppressed" / "why is this here" /
+     "dismiss|snooze|delegate|restore <item>" wired at both dispatch sites. LIVE: 72 →
+     4 ACTION + 1 DELEGATED + 1 WATCH rollup; 60 routings logged, nothing deleted.
+
+122. **FULL-STACK INTEGRITY — THE RESOLUTION DOCTRINE (2026-08-06).** Deployed-state
+     check FIRST (the don't-fix-twice gate): every recent fix (#118/#119/#120) code-
+     present AND live (commit cfd1822) — the brief's symptoms described the pre-refix
+     board, named as already-fixed. Phantom census: ZERO on both clocks × 30/60/90d;
+     the join-asymmetry suspected in the brief DOES NOT EXIST (leads and closes
+     attribute through the same lead_bucket_key join; I2 makes closes ⊆ cohort
+     structural). RYDEL CONFIRMED the doctrine: AUTO-FIX derives never invents (A1
+     normalization · A2 exact-id re-key · A3 confirmed-alias reuse, new aliases still
+     ask · A4 ↤N clock annotations · A5 self-retiring flags) with EVERY application
+     logged (kv integrity:autofix_log — alias learns + reuses now log themselves);
+     PROPOSED-FIX cards show evidence and wait for a human (P1 blank Close Date with a
+     GHL stage-move/Stripe first-payment candidate; P2 exact-unique name link where the
+     email join failed); HUMAN-FIX routed (H1 no-candidate blanks → Piolo; H2 ambiguous
+     identities stay quarantined). THE HARD LINE: nothing here ever WRITES to the
+     tracker, GHL, or Stripe — cards only propose what a human types; the tracker stays
+     the single write-point. BUILT: resolution.py riding close_integrity's daily
+     refresh; EDITH: "any proposed fixes?" / "what did you auto-fix?". LIVE: 15 of 19
+     blank Close Dates got derived candidates with named sources; 1 P2 link (Fausto
+     Falchi); 4 genuinely human-only. Suite 597.

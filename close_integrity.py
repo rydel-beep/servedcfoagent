@@ -169,6 +169,13 @@ def refresh(days: int = 30) -> dict:
         if d["severity"] <= 2 and d["id"] not in known:
             pending.append({"id": d["id"], "detail": d["detail"], "fix": d["fix"]})
     kv_store.put(_KV_PENDING, pending[-40:])
+    # the resolution engine's P1/P2 cards ride the same daily refresh (read-only;
+    # a blank filled at source stops generating its card — A5 self-retire)
+    try:
+        import resolution
+        resolution.propose_fixes()
+    except Exception as e:
+        logger.info("proposed-fix refresh failed: %s", e)
     return m
 
 

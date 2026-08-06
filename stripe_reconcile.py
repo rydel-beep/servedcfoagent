@@ -169,6 +169,14 @@ def learn_alias(payer_name: str, business: str) -> bool:
         d = kv_store.get("stripe:payer_aliases") or {}
         d[_norm(payer_name)] = business
         kv_store.put("stripe:payer_aliases", d)
+        # self-improvement loop: a confirmed fix becomes a standing rule (A3) — logged
+        try:
+            import resolution
+            resolution.log_autofix("A3 alias learned",
+                                   f"'{payer_name}' → {business} (Rydel-confirmed; "
+                                   f"auto-applies on recurrence)")
+        except Exception:
+            pass
         return True
     except Exception:
         return False
@@ -390,6 +398,19 @@ def reconcile_stripe_tracker() -> dict:
             review.append({**base, "suggested": m.get("suggested", [])})
         else:
             unrecognised.append(base)
+
+    # A3 (resolution doctrine): confirmed aliases auto-applied — logged once per run,
+    # only when any applied (the log is the trust surface, not a firehose)
+    alias_hits = [r for r in recognised if r.get("basis") == "confirmed alias"]
+    if alias_hits:
+        try:
+            import resolution
+            resolution.log_autofix(
+                "A3 confirmed-alias reuse",
+                f"{len(alias_hits)} payment(s) matched via aliases Rydel confirmed earlier: "
+                + ", ".join(sorted({a['customer'] for a in alias_hits})[:5]))
+        except Exception:
+            pass
 
     result = {
         "status": "ok",

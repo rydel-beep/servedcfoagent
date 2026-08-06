@@ -29,8 +29,27 @@ def test_handler(monkeypatch):
     import salience
     monkeypatch.setattr(salience, "collect", lambda s=None: [])
     monkeypatch.setattr(action_feed, "build_action_feed", lambda snap=None, include_owner=True: {
-        "items": [{"severity": "S2", "category": "x", "title": "do a thing", "action": "fix it"}],
-        "headline": "1 item to sort out.", "counts": {"S1":0,"S2":1,"S3":0}})
+        "items": [], "counts": {"S1": 0, "S2": 1, "S3": 0}, "cap": 7,
+        "lanes": {"action": [{"severity": "S2", "category": "threshold",
+                              "title": "do a thing — $900", "why": "money at stake"}],
+                  "delegated": [{"rollup": True, "owner": "Piolo",
+                                 "title": "3 tracker date fixes with Piolo"}],
+                  "hygiene": [], "watch": [], "noise": []},
+        "suppressed_count": 1, "routed_count": 4,
+        "headline": "1 decision for you · 1 with the team."})
     r, h = action_feed.handle_action_feed_command("what needs my attention?")
-    assert h and "do a thing" in r and "fix it" in r
+    assert h and "do a thing" in r and "money at stake" in r
+    assert "Piolo" in r and "suppressed" in r          # the delegated line + audit hint
     assert action_feed.handle_action_feed_command("hello")[1] is False
+
+def test_lanes_in_payload(monkeypatch):
+    import salience
+    monkeypatch.setattr(salience, "collect", lambda s=None: [
+        {"id": "c", "type": "close", "salience": 80, "ago": 0, "spoken": "X closed — $9,000"}])
+    fe = action_feed.build_action_feed(_snap())
+    assert "lanes" in fe and fe["cap"] == 7
+    # the close event is noise (suppressed with reason), never an action
+    assert any("X closed" in (n.get("title") or "") for n in fe["lanes"]["noise"])
+    assert not any("X closed" in (a.get("title") or "") for a in fe["lanes"]["action"])
+    # every item carries its stable fact key (the dismiss/snooze handle)
+    assert all(it.get("key") for it in fe["items"])

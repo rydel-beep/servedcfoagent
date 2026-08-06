@@ -104,29 +104,42 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
                                 f"{n.get('tracker_logged')} (gap ${(n.get('gap') or 0):,.0f})"),
                       "action": "Verify in Stripe and update the deal's Cash Collected cell."})
 
-    # rank S1 > S2 > S3, dedupe by title
+    # rank S1 > S2 > S3, dedupe by FACT KEY (prefix-stripped — kills the
+    # data_quality/data_integrity double-emit that flooded the zone to 72 lines)
+    import triage
     order = {"S1": 0, "S2": 1, "S3": 2}
     seen, ranked = set(), []
     for it in sorted(items, key=lambda x: order.get(x["severity"], 3)):
-        key = it["title"][:60]
+        key = triage.fact_key(it["title"])
         if key not in seen:
             seen.add(key)
+            it["key"] = key
             ranked.append(it)
 
     counts = {"S1": 0, "S2": 0, "S3": 0}
     for it in ranked:
         counts[it["severity"]] = counts.get(it["severity"], 0) + 1
+
+    # THE FIVE LANES (ACTION_TRIAGE_REPORT, Rydel-confirmed): the zone renders
+    # lanes; `items` stays the full raw ranked list (compat + the audit trail).
+    routed = triage.route(ranked)
+    lanes = routed["lanes"]
     return {"available": True, "items": ranked, "counts": counts,
-            "headline": _headline(counts), "generated_from": "salience + degraded + reconciliation"}
+            "lanes": lanes, "cap": routed["cap"], "floor": routed["floor"],
+            "suppressed_count": routed["suppressed_count"],
+            "routed_count": routed["routed_count"],
+            "headline": _headline_lanes(lanes),
+            "generated_from": "salience + degraded + reconciliation → five-lane triage"}
 
 
-def _headline(counts: dict) -> str:
-    if counts.get("S1"):
-        return f"{counts['S1']} thing{'s' if counts['S1'] != 1 else ''} need attention now."
-    if counts.get("S2"):
-        return f"{counts['S2']} item{'s' if counts['S2'] != 1 else ''} to sort out."
-    if counts.get("S3"):
-        return "Nothing urgent — a few things to keep an eye on."
+def _headline_lanes(lanes: dict) -> str:
+    n = len(lanes.get("action") or [])
+    d = len(lanes.get("delegated") or [])
+    if n:
+        return (f"{n} decision{'s' if n != 1 else ''} for you"
+                + (f" · {d} with the team" if d else "") + ".")
+    if d:
+        return f"Nothing for you to decide — {d} item{'s' if d != 1 else ''} with the team."
     return "All clear — nothing needs action."
 
 
@@ -139,10 +152,18 @@ def handle_action_feed_command(text: str) -> tuple[str | None, bool]:
             r"\banything (urgent|on fire|to action)\b", text, re.I):
         return None, False
     feed = build_action_feed()
-    items = feed["items"]
-    if not items:
-        return "All clear — nothing needs action right now.", True
-    top = [it for it in items if it["severity"] in ("S1", "S2")][:5] or items[:3]
-    lines = [f"• [{it['severity']}] {it['title']}" + (f" → {it['action']}" if it.get("action") else "")
-             for it in top]
-    return feed["headline"] + "\n" + "\n".join(lines), True
+    lanes = feed.get("lanes") or {}
+    acts = lanes.get("action") or []
+    dels = lanes.get("delegated") or []
+    if not acts and not dels:
+        return "All clear — nothing needs your decision right now.", True
+    lines = [feed["headline"]]
+    for it in acts[:feed.get("cap", 7)]:
+        why = it.get("why")
+        lines.append(f"• {it['title']}" + (f" — {why}" if why and why != it["title"] else ""))
+    for r in dels[:3]:
+        lines.append(f"◦ [with {r.get('owner', 'team')}] {r['title']}")
+    if feed.get("suppressed_count") or feed.get("routed_count"):
+        lines.append(f"({feed.get('routed_count', 0)} item(s) routed off this list — "
+                     f"ask me to show you what I suppressed.)")
+    return "\n".join(lines), True

@@ -443,6 +443,25 @@ def api_action_feed():
     return jsonify(action_feed.build_action_feed(load_persisted() or {}))
 
 
+@bp.route("/api/triage", methods=["POST"])
+@require_owner
+def api_triage():
+    """Dismiss / snooze / delegate / restore an action item (owner-only). The ONLY
+    ways an ACTION item leaves besides deciding it — explicit, logged, reversible."""
+    import triage
+    from dashboard.auth import current_actor
+    body = request.get_json(silent=True) or {}
+    op = (body.get("op") or "").strip().lower()
+    key = (body.get("key") or "").strip()
+    if op not in ("dismissed", "snoozed", "delegated", "restore") or not key:
+        return jsonify({"error": "op must be dismissed|snoozed|delegated|restore with a key"}), 400
+    actor = current_actor()
+    st = triage.set_state(key, op, who=(body.get("who") or actor.get("display") or "owner"),
+                          reason=(body.get("reason") or "")[:140],
+                          days=body.get("days"))
+    return jsonify({"ok": True, "key": key, "state": st})
+
+
 @bp.route("/api/forecast", methods=["GET"])
 @require_auth
 def api_forecast():
@@ -762,6 +781,11 @@ def api_chat():
             (__import__('email_pipeline').handle_pipeline_query, False),     # Email engine: what's pending my review / pipeline state
             (capacity_engine.handle_capacity_command, False),  # hiring/capacity/raise/afford questions
             (forecasting_engine.handle_forecast_command, False),  # cash-flow / MRR / runway forecasts
+            (__import__('triage').handle_triage_action_command, False),   # dismiss/snooze/delegate/restore <item>
+            (__import__('triage').handle_suppressed_command, False),      # 'show me what you suppressed'
+            (__import__('triage').handle_why_here_command, False),        # 'why is this here'
+            (__import__('resolution').handle_proposed_fixes_command, False),  # P1/P2 fix cards
+            (__import__('resolution').handle_autofix_log_command, False),     # 'what did you auto-fix'
             (__import__('action_feed').handle_action_feed_command, False),  # 'what needs my attention'
             (lambda m: __import__('collab').handle_collab_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # work log / queue / digest
             (__import__('stripe_reconcile').handle_reconciliation_query, False),  # unmatched payments
@@ -974,6 +998,11 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             (__import__('email_pipeline').handle_pipeline_query, False),     # Email engine: what's pending my review / pipeline state
             (capacity_engine.handle_capacity_command, False),
             (forecasting_engine.handle_forecast_command, False),
+            (__import__('triage').handle_triage_action_command, False),   # dismiss/snooze/delegate/restore <item>
+            (__import__('triage').handle_suppressed_command, False),      # 'show me what you suppressed'
+            (__import__('triage').handle_why_here_command, False),        # 'why is this here'
+            (__import__('resolution').handle_proposed_fixes_command, False),  # P1/P2 fix cards
+            (__import__('resolution').handle_autofix_log_command, False),     # 'what did you auto-fix'
             (__import__('action_feed').handle_action_feed_command, False),
             (lambda m: __import__('collab').handle_collab_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),
             (__import__('stripe_reconcile').handle_reconciliation_query, False),
