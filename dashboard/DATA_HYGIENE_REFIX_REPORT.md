@@ -49,3 +49,37 @@ adjacent-window prefetch, cached==live test-enforced.
     carries an inline explanation.
 (c) BOTH as an explicit labelled toggle — one basis at a time, never mixed.
 Plus: headline = TOTAL closes with tier breakdown (recommended).
+
+## RYDEL'S RULINGS + THE BUILD (2026-08-06)
+BOTH bases as a labelled toggle (LEAD-COHORT default) · headline = TOTAL closes with the
+tier breakdown. Implemented per DECISIONS #120:
+- ONE CLOCK PER VIEW: basis threaded as a required engine parameter (invalid → raises;
+  cache keyed by basis; canonical checks follow the active clock). Cohort = the entry
+  window's cohort and everything that later happened to it; Activity = events on their
+  own dates with earlier-lead closes annotated inline (↤N on the cell). The #118
+  no-input-date closes live on the activity clock; cohort keeps them visible via hygiene.
+- THE HONEST HEADLINE: total closes/leads/cash/spend tiles with tier breakdowns
+  (attributed · ambiguous · IG-DM · unattributed); "Top Closing Creative" renamed so a
+  per-creative max can never masquerade as the window total.
+- INVARIANTS AS CODE: I1/I2 runtime per row (violation → the row renders the honest
+  error state, never the number, + salience once); I3 tier sums; I5/I6 in the
+  reconciliation block; I7 basis stamped on every row/payload. Property-style seeded
+  tests prove ordinary variation can't violate.
+- SPEED: persisted rollups keyed (basis, window); stale rollups served LABELLED
+  ("showing the last rollup — refreshing…") with background refresh + client poll;
+  adjacent windows prefetched after any fresh build; roster GHL notes capped to 8
+  inline. Cold-path cost isolated to background threads.
+- EDITH CUSTODIAN: "what basis am I looking at?" (the two clocks + worked example),
+  "are the invariants green?" (live status + reconciliation), the existing integrity/
+  accuracy answers; corrections stay confirmation-gated via existing mechanisms only.
+
+## LIVE VERIFICATION (production data)
+| basis × window | headline closes | == canonical (I5) | tiers sum (I3) | integrity errors | invariant violations |
+|---|---|---|---|---|---|
+| cohort 30d | 1 | ✓ (1) | ✓ | 0 | 0 |
+| cohort 60d | 8 | ✓ (8) | ✓ | 0 | 0 |
+| activity 30d | 5 | ✓ (5) | ✓ | 0 | 0 |
+| activity 60d | 10 | ✓ (10) | ✓ | 0 | 0 |
+The Phase-0 phantoms cured: B008_A03 / B006_A03 / B005_A07 read 0 leads/0 closes under
+cohort (their closes belong to June's cohorts) and 1 close with the ↤1 earlier-lead
+annotation under activity. Warm compute 0ms; suite 584 green.
