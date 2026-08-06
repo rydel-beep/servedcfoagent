@@ -100,5 +100,25 @@ discipline: the suite grows by demonstrated failures.
   state, internal-only loop boundary untouched.
 - LIVE (production, post-deploy): filled below.
 
-## LIVE FIRST-RUN
-(filled after deploy)
+## LIVE FIRST-RUN (production, 2026-08-06, commit 9eb374f)
+- **THE PILOT LOOP IS DEAD:** the real pre-ask matcher found fact #169 at sim 0.44;
+  loop #5 resolved with the answer attached — {via: "pre-ask recall (fact #169,
+  sim 0.44)", answer: "The pilot venue for the reservations platform is Chiangmai
+  Thai, starting mid-September."} Resolved loops never re-fire; the class is
+  regression-tested. The question cannot be asked again.
+- **MAINTENANCE FIRST RUN (journaled):** hot block 7,034 → **5,926 chars** (the
+  budget invariant restored with recall headroom); 51 hot facts · 125 archived ·
+  **176 total — NOTHING DELETED**; fact #169 stayed hot; a demoted fact proven
+  retrievable via the archive search; every demotion journaled with its reason.
+  **7 confirmation cards** await Rydel (incl. the real Chloie-salary contradiction
+  pair) — "memory conflicts" lists them, "memory card N: keep A/B/both" rules them.
+- **VOICE:** canary ran → registry row "EDITH voice (ElevenLabs)" = **FAILING
+  (ElevenLabs returned 400)**; salience event live ("I'm on the fallback voice
+  until it's fixed"); "is your voice okay?" answers truthfully with the reason and
+  that the fix is Rydel's account action. After the sk_ key lands, the next canary
+  flips it RUNNING and quota-watch activates.
+- **QUALITY:** metrics live — 1 incident (the pilot near-miss the pre-ask check
+  caught), asked-answered **0 (the target)**, 0.6 incidents/100 turns; "how's your
+  conversation quality been?" answers with the numbers + the honest worst moment.
+- Greeting salience (CPL-class), watermarks, thread state, the internal-only loop
+  boundary: untouched, suite-proven (626 green).
