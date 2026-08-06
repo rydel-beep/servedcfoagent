@@ -2608,8 +2608,10 @@ body.focus-mode .stark-bigring, body.focus-mode .stark-header-stream { display: 
   border-top: 1px dashed var(--border); }
 
 /* BAS & tax set-aside (Zone 1) — ESTIMATES, the disclaimer always rendered */
+.bas-position { font-size: 15px; color: var(--text); margin-bottom: 10px; }
+.bas-position strong { font-size: 19px; color: var(--red); }
 .bas-quarter { font-size: 12px; color: var(--text-muted); text-transform: uppercase;
-  letter-spacing: .04em; margin-bottom: 10px; }
+  letter-spacing: .04em; margin-bottom: 10px; margin-top: 6px; }
 .bas-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0;
   border-top: 1px solid var(--border); font-size: 13px; }
 .bas-k { color: var(--text-secondary); }

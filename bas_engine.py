@@ -116,6 +116,83 @@ def prev_quarter_start(qstart: dt.date) -> dt.date:
     return quarter_bounds(qstart - dt.timedelta(days=1))[0]
 
 
+# ── Lodged periods: the official record (ground truth over every estimate) ───
+
+def lodged_records() -> dict:
+    import kv_store
+    return kv_store.get(_KV_LODGED) or {}
+
+
+def ingest_lodged(qstart_iso: str, lines: dict, source: str, set_by: str = "Rydel") -> dict:
+    """Record a LODGED activity statement's official figures for a quarter. `lines`
+    carries what the lodgement proved (missing keys stay absent, never invented):
+    {g1, one_a, one_b, net_gst, w1, paygw, instalment, total, due}. Recomputes the
+    honesty score for that quarter against whatever the estimator had."""
+    import kv_store
+    from helpers import today_sydney
+    rec = {k: lines[k] for k in ("g1", "one_a", "one_b", "net_gst", "w1", "paygw",
+                                 "instalment", "total", "due") if lines.get(k) is not None}
+    rec["source"] = source
+    rec["ingested"] = {"by": set_by, "date": str(today_sydney())}
+    all_rec = kv_store.get(_KV_LODGED) or {}
+    all_rec[qstart_iso] = {**(all_rec.get(qstart_iso) or {}), **rec}
+    kv_store.put(_KV_LODGED, all_rec)
+    _score_lodged_quarter(qstart_iso, all_rec[qstart_iso])
+    return all_rec[qstart_iso]
+
+
+def mark_lodged_paid(qstart_iso: str, evidence: str, paid_date: str | None = None) -> dict | None:
+    """Payment evidence for a lodged quarter (auto-detected from the ledger drop, or
+    told by Rydel). The outstanding leg of the ATO position drops; salience resolves."""
+    import kv_store
+    from helpers import today_sydney
+    all_rec = kv_store.get(_KV_LODGED) or {}
+    rec = all_rec.get(qstart_iso)
+    if not rec:
+        return None
+    rec["paid"] = {"date": paid_date or str(today_sydney()), "evidence": evidence}
+    kv_store.put(_KV_LODGED, all_rec)
+    return rec
+
+
+def _score_lodged_quarter(qstart_iso: str, rec: dict) -> None:
+    """The honesty score: estimator vs official, per component, kept forever."""
+    import kv_store
+    qstart = dt.date.fromisoformat(qstart_iso)
+    label = quarter_label(qstart)
+    cal = kv_store.get(_KV_CALIBRATION) or {}
+    entry = cal.get(label) or {}
+    hist = kv_store.get(_KV_HISTORY) or {}
+    qend_lines = hist.get(str(quarter_bounds(qstart)[1])) or {}
+    ledger_close = qend_lines.get("GST")
+    comp = {}
+    if rec.get("total") is not None and ledger_close is not None:
+        comp["total"] = {"official": rec["total"], "estimator_ledger_close": ledger_close,
+                         "error_pct": round((ledger_close - rec["total"]) / rec["total"] * 100, 2)}
+    if rec.get("paygw") is not None:
+        modelled = round(config()["paygw_weekly"] * 13, 2)
+        comp["paygw"] = {"official": rec["paygw"], "modelled": modelled,
+                         "error_pct": round((modelled - rec["paygw"]) / rec["paygw"] * 100, 2),
+                         "note": "the $541/wk model sees recurring pay only — one-off "
+                                 "payroll runs (e.g. Apr 2026's $13,789 withholding) are "
+                                 "invisible to it until the ledger shows them"}
+    entry["official"] = {k: rec.get(k) for k in ("g1", "one_a", "one_b", "net_gst",
+                                                 "w1", "paygw", "instalment", "total")}
+    entry["vs_official"] = comp
+    entry["source"] = rec.get("source")
+    cal[label] = entry
+    kv_store.put(_KV_CALIBRATION, cal)
+
+
+def honesty_score() -> dict:
+    """Per-quarter estimator accuracy against REAL lodged figures — public, verbatim."""
+    import kv_store
+    cal = kv_store.get(_KV_CALIBRATION) or {}
+    return {q: {"vs_official": e.get("vs_official"), "official": e.get("official"),
+                "source": e.get("source")}
+            for q, e in cal.items() if e.get("vs_official")}
+
+
 # ── The credits band (the honest 1B without line-level tax) ──────────────────
 
 def credits_band(lines: list[dict], gst_rate: float = 0.10) -> dict:
@@ -225,14 +302,57 @@ def _compute(inputs: dict, today: dt.date) -> dict:
                            "amount pending — say “set PAYG instalment to $X” from your "
                            "ATO notice; excluded from totals until set")}
 
-    # The prior-quarter obligation still on the books (with the agent)
+    # The prior-quarter obligation: LODGED figures when we have them (the official
+    # record wins over any ledger proxy — calibrated 2026-08-06: the ledger's clearing
+    # balance sat $381 off the lodged total via offsetting composition errors), else
+    # the ledger-derived fallback, labelled as such.
     prior = None
-    if gst.get("available") and gst["opening_balance"] > 0 and not gst["payment_adjustment"]:
-        pq = prev_quarter_start(qstart)
+    pq = prev_quarter_start(qstart)
+    lodged = lodged_records().get(str(pq))
+    if lodged and lodged.get("total") is not None:
+        paid = lodged.get("paid")
+        # payment auto-detection: the GST clearing dropping ≥50% below its opening
+        # balance this quarter is the prior BAS being paid (same signal, now evidenced)
+        if not paid and gst.get("payment_adjustment"):
+            paid = mark_lodged_paid(str(pq),
+                                    evidence=(f"GST clearing account dropped by "
+                                              f"~${gst['payment_adjustment']:,.0f} — read as "
+                                              f"the BAS payment leaving the books"))
+            paid = paid.get("paid") if paid else None
+        residual = (round(gst["opening_balance"] - lodged["total"], 2)
+                    if gst.get("available") else None)
+        prior = {"label": f"{quarter_label(pq)} BAS (lodged)",
+                 "amount": lodged["total"],
+                 "due": lodged.get("due") or str(due_date(pq)),
+                 "status": (f"PAID {paid['date']} — {paid['evidence']}" if paid
+                            else "OUTSTANDING — no payment in the ledger yet"),
+                 "paid": bool(paid),
+                 "basis": f"official lodged figures ({lodged.get('source', 'lodged BAS')})",
+                 "components": {k: lodged.get(k) for k in
+                                ("net_gst", "paygw", "instalment") if lodged.get(k) is not None},
+                 "ledger_residual": residual,
+                 "ledger_residual_note": (
+                     None if residual is None else
+                     f"the ledger clearing balance at quarter close was "
+                     f"${gst['opening_balance']:,.2f} — ${abs(residual):,.2f} "
+                     f"{'above' if residual > 0 else 'below'} the lodged total; splitting "
+                     f"that residual line-by-line needs accounting.transactions.read "
+                     f"(not granted) or the accountant's journal — official figure shown")}
+    elif gst.get("available") and gst["opening_balance"] > 0 and not gst["payment_adjustment"]:
         prior = {"label": f"{quarter_label(pq)} BAS (with the agent)",
                  "amount": round(gst["opening_balance"] + paygw_open, 2),
                  "due": str(due_date(pq)), "status": "with the agent — not yet paid per the ledger",
-                 "basis": "GST + PAYGW account balances at quarter close"}
+                 "paid": False,
+                 "basis": "GST + PAYGW account balances at quarter close (ledger estimate — "
+                          "drop the lodged statement in to replace with official figures)"}
+    # PAYGW projection band: the model vs the last LODGED actual (evidence that one-off
+    # payroll runs can ~3× the recurring model — shown, never silently absorbed)
+    if lodged and lodged.get("paygw") is not None:
+        paygw["last_lodged_actual"] = lodged["paygw"]
+        paygw["band_note"] = (f"last lodged quarter's actual PAYGW was "
+                              f"${lodged['paygw']:,.0f} vs ${paygw['projected_full_quarter']:,.0f} "
+                              f"modelled — one-off payroll runs land above the model; the "
+                              f"ledger QTD picks them up as they post")
 
     # THE SET-ASIDE: spoken-for = the ATO-related book balances TODAY (they already
     # include prior unpaid + QTD accrual); vs the physical BAS #2353 account.
@@ -260,6 +380,45 @@ def _compute(inputs: dict, today: dt.date) -> dict:
         "accrued_so_far": (round(gst.get("qtd_net", 0) + paygw["qtd"], 2)
                            if gst.get("available") else None)}
 
+    # THE ATO POSITION — the sharpened "what we owe": (a) lodged-but-unpaid +
+    # (b) accrued this quarter + (c) projected remainder (labelled projection).
+    a_amt = prior["amount"] if (prior and not prior.get("paid")) else 0.0
+    b_amt = (round(gst.get("qtd_net", 0) + paygw["qtd"], 2)
+             if gst.get("available") else None)
+    c_amt = None
+    if cur_amount is not None and b_amt is not None:
+        c_amt = round(max(cur_amount - b_amt, 0.0), 2)
+    position = {
+        "owed_now": (round(a_amt + b_amt, 2) if b_amt is not None else
+                     (a_amt if a_amt else None)),
+        "a_outstanding_lodged": ({"amount": a_amt, "label": prior["label"],
+                                  "due": prior["due"], "basis": prior["basis"]}
+                                 if a_amt else None),
+        "b_current_accrued": ({"amount": b_amt,
+                               "label": f"{quarter_label(qstart)} accrued to {today}"}
+                              if b_amt is not None else None),
+        "c_projected_remainder": ({"amount": c_amt,
+                                   "label": f"projected further by {qend} (PROJECTION)",
+                                   "due": str(due_date(qstart))}
+                                  if c_amt is not None else None),
+        "note": "owed now = lodged-but-unpaid + accrued this quarter; the projection "
+                "rides separately · " + DISCLAIMER}
+
+    # Set-aside carries the position: spoken-for = (a) official outstanding + (b) accrued
+    # (+ the income-tax provision on the books — separate ATO money, labelled). Falls back
+    # to raw book balances when the position can't be built (never invented).
+    if position["owed_now"] is not None:
+        sf = round(position["owed_now"] + (income_tax_now or 0.0), 2)
+        set_aside.update({
+            "spoken_for": sf,
+            "components": {"outstanding_lodged": a_amt or None,
+                           "current_accrued": b_amt,
+                           "income_tax_payable": income_tax_now,
+                           "gst_balance": gst_now, "paygw_balance": paygw_now},
+            "basis": "ATO position (a)+(b) + income-tax provision",
+            "covered": (bas_bank is not None and bas_bank >= sf),
+            "buffer": (round(bas_bank - sf, 2) if bas_bank is not None else None)})
+
     return {"as_of": str(today), "disclaimer": DISCLAIMER,
             "quarter": {"label": quarter_label(qstart), "start": str(qstart),
                         "end": str(qend), "due": str(due_date(qstart)),
@@ -270,7 +429,7 @@ def _compute(inputs: dict, today: dt.date) -> dict:
             "gst": gst, "cross_estimate": cross, "drift_flag": drift_flag,
             "paygw": paygw, "instalment": instalment,
             "prior_obligation": prior, "current_obligation": current_obligation,
-            "set_aside": set_aside}
+            "position": position, "set_aside": set_aside}
 
 
 def refresh() -> dict | None:
@@ -298,9 +457,31 @@ def refresh() -> dict | None:
                        "paygw": next((x for n, x in v.items() if "PAYG" in n), None)}
                       for k, v in sorted(hist.items())]
     est["decomposition"] = _decompose(est)
+    est["calibration_flags"] = _calibration_flags()
     kv_store.put(_KV_ESTIMATE, est)
     _record_calibration(est)
     return est
+
+
+def _calibration_flags() -> list[str]:
+    """Official-vs-estimate divergence beyond the observed-error tolerance, component
+    named — the hygiene surface. Tolerance = 2× the median observed |total error|,
+    floor 5% (set FROM the calibration record, not assumed)."""
+    hs = honesty_score()
+    if not hs:
+        return []
+    total_errs = [abs((e["vs_official"].get("total") or {}).get("error_pct", 0))
+                  for e in hs.values() if (e.get("vs_official") or {}).get("total")]
+    tol = max(5.0, 2 * (sorted(total_errs)[len(total_errs) // 2] if total_errs else 0))
+    flags = []
+    for q, e in sorted(hs.items()):
+        for comp, v in (e.get("vs_official") or {}).items():
+            err = v.get("error_pct")
+            if err is not None and abs(err) > tol:
+                flags.append(f"{q} {comp}: estimator {err:+.0f}% vs official "
+                             f"(tolerance ±{tol:.0f}%) — "
+                             + (v.get("note") or "check the model input with the accountant"))
+    return flags
 
 
 def _decompose(est: dict) -> dict | None:
@@ -386,10 +567,11 @@ def scheduled_obligations() -> list[dict]:
     if not est:
         return []
     out = []
-    if est.get("prior_obligation"):
-        p = est["prior_obligation"]
+    p = est.get("prior_obligation")
+    if p and not p.get("paid"):
         out.append({"label": p["label"], "due": p["due"], "amount": p["amount"],
-                    "confidence": "ledger balance (high)", "kind": "bas_prior"})
+                    "confidence": ("lodged figure (official)" if "lodged" in p.get("basis", "")
+                                   else "ledger balance (high)"), "kind": "bas_prior"})
     c = est.get("current_obligation") or {}
     if c.get("amount") is not None:
         out.append({"label": c["label"], "due": c["due"], "amount": c["amount"],
@@ -438,6 +620,27 @@ def salience_events() -> list[dict]:
                                "spoken": (f"{ob['label']} due in {left} day(s) — "
                                           f"~${ob['amount']:,.0f} (estimate) · {tail}")})
                 break
+    # An OUTSTANDING lodged amount is a STANDING high-materiality item — it never ages
+    # out silently; it resolves only when payment evidence lands (then says so once).
+    p = est.get("prior_obligation")
+    if p and "lodged" in (p.get("basis") or ""):
+        if not p.get("paid"):
+            overdue = None
+            try:
+                overdue = (today - dt.date.fromisoformat(p["due"])).days
+            except ValueError:
+                pass
+            events.append({"id": f"bas_outstanding:{p['label']}", "type": "bas_outstanding",
+                           "salience": 92, "ago": 0,
+                           "spoken": (f"{p['label']}: ${p['amount']:,.0f} OUTSTANDING — "
+                                      + (f"{overdue} day(s) OVERDUE"
+                                         if overdue is not None and overdue > 0 else
+                                         f"due {p['due']}")
+                                      + " · lodged figure, unpaid per the ledger")})
+        else:
+            events.append({"id": f"bas_paid_resolved:{p['label']}", "type": "bas_outstanding",
+                           "salience": 55, "ago": 0,
+                           "spoken": f"{p['label']} is PAID — {p['status']}"})
     gst = est.get("gst") or {}
     if est.get("drift_flag"):
         events.append({"id": f"bas_drift:{est['quarter']['label']}", "type": "bas_anomaly",
@@ -482,6 +685,59 @@ def handle_bas_command(text: str) -> tuple[str | None, bool]:
     q, gst, paygw = est["quarter"], est.get("gst") or {}, est.get("paygw") or {}
     sa = est.get("set_aside") or {}
     parts = []
+
+    # "how accurate are your BAS estimates?" — the honesty score, verbatim, per quarter
+    if re.search(r"how (accurate|good|close)|accuracy|honesty score", text, re.I):
+        hs = honesty_score()
+        if not hs:
+            return ("No lodged statement has been recorded yet to score against — drop a "
+                    f"BAS export in and I calibrate. {DISCLAIMER}"), True
+        for qlabel, e in sorted(hs.items()):
+            off, vs = e.get("official") or {}, e.get("vs_official") or {}
+            t = vs.get("total") or {}
+            if t:
+                parts.append(f"{qlabel}: official ${off.get('total', 0):,.0f} vs my "
+                             f"ledger-derived ${t.get('estimator_ledger_close', 0):,.2f} — "
+                             f"{t.get('error_pct', 0):+.1f}% off.")
+            pw = vs.get("paygw") or {}
+            if pw:
+                parts.append(f"PAYGW: official ${pw['official']:,.0f} vs ${pw['modelled']:,.0f} "
+                             f"modelled ({pw['error_pct']:+.0f}% — {pw['note']}).")
+            parts.append(f"Source: {e.get('source')}.")
+        parts.append(DISCLAIMER)
+        return " ".join(parts), True
+
+    # "is the April–June BAS paid?" — the payment evidence, never a guess
+    if re.search(r"\bpaid\b|payment (state|status)", text, re.I):
+        p = est.get("prior_obligation")
+        if not p:
+            return (f"No prior-quarter BAS is on the books to check. {DISCLAIMER}"), True
+        parts.append(f"{p['label']} — ${p['amount']:,.0f}: {p['status']}.")
+        if not p.get("paid"):
+            parts.append(f"Due {p['due']}. The set-aside "
+                         + ("covers it." if (sa.get('covered')) else "does NOT cover it."))
+        parts.append(DISCLAIMER)
+        return " ".join(parts), True
+
+    # "how much do we owe the ATO right now?" — the decomposed position
+    if re.search(r"(owe|owing).{0,25}(right now|now|today|ato)|ato position", text, re.I):
+        pos = est.get("position") or {}
+        if pos.get("owed_now") is None:
+            return (f"I can't build the ATO position — the ledger read is incomplete. "
+                    f"{DISCLAIMER}"), True
+        parts.append(f"You owe the ATO ${pos['owed_now']:,.0f} right now —")
+        a = pos.get("a_outstanding_lodged")
+        if a:
+            parts.append(f"${a['amount']:,.0f} from {a['label']} (due {a['due']}, unpaid),")
+        b = pos.get("b_current_accrued")
+        if b:
+            parts.append(f"plus ${b['amount']:,.0f} accrued this quarter;")
+        cpr = pos.get("c_projected_remainder")
+        if cpr:
+            parts.append(f"projected ${cpr['amount']:,.0f} more by quarter end "
+                         f"(PROJECTION), due {cpr['due']}.")
+        parts.append(DISCLAIMER)
+        return " ".join(parts), True
 
     if re.search(r"when.{0,20}due|due date", text, re.I):
         for ob in scheduled_obligations():
@@ -549,6 +805,32 @@ def handle_bas_command(text: str) -> tuple[str | None, bool]:
         parts.append(f"⚠ {est['drift_flag']}")
     parts.append(DISCLAIMER)
     return "\n".join(parts), True
+
+
+_MARK_PAID_RE = re.compile(
+    r"mark (the )?([a-z–\-]+[–\-][a-z]+ )?bas (as )?paid", re.I)
+
+
+def handle_mark_paid(text: str) -> tuple[str | None, bool]:
+    """'mark the Apr–Jun BAS as paid' — records Rydel's word as the payment evidence
+    for the outstanding lodged quarter (the ledger detector also does this on its own
+    when the clearing account drops)."""
+    if not text or not _MARK_PAID_RE.search(text):
+        return None, False
+    est = estimate()
+    p = (est or {}).get("prior_obligation")
+    if not p or "lodged" not in (p.get("basis") or ""):
+        return ("There's no lodged outstanding BAS on record to mark paid. "
+                f"{DISCLAIMER}"), True
+    if p.get("paid"):
+        return (f"{p['label']} is already recorded paid: {p['status']}."), True
+    from helpers import today_sydney
+    qstart = prev_quarter_start(quarter_bounds(dt.date.fromisoformat(est["as_of"]))[0])
+    mark_lodged_paid(str(qstart), evidence="Rydel confirmed the payment",
+                     paid_date=str(today_sydney()))
+    refresh()
+    return (f"{p['label']} recorded PAID (your word — the next ledger read will show the "
+            f"clearing drop as corroboration). The ATO position and set-aside updated."), True
 
 
 _REFRESH_RE = re.compile(r"refresh (the )?bas( estimate)?|rebuild (the )?bas", re.I)

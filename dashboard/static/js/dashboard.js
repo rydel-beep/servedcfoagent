@@ -4372,20 +4372,62 @@
         daysLeft = Math.round((new Date(due.due) - new Date()) / 86400000);
         if (badge) badge.textContent = due.label.replace(' BAS', '') + ' due in ' + daysLeft + 'd';
       }
-      var html = '<div class="bas-quarter">' + esc(q.label || '') + ' · day ' + q.days_elapsed + '/' + q.days_total +
-        ' · cash-basis GST · agent lodgement</div>';
+      // THE ATO POSITION leads — "what we owe" is (a) lodged-unpaid + (b) accrued,
+      // decomposed; the projection rides separately. Nobody misreads the quarter again.
+      var pos = e.position || {};
+      var html_pos = '';
+      if (pos.owed_now != null) {
+        html_pos = '<div class="bas-position">Owed to the ATO right now: <strong>' +
+          fmt$(pos.owed_now) + '</strong> <em class="bas-tag">ESTIMATE</em></div>';
+        if (pos.a_outstanding_lodged) {
+          var a = pos.a_outstanding_lodged;
+          html_pos += '<div class="bas-row bas-due"><span class="bas-k">' + esc(a.label) +
+            '</span><span class="bas-v">' + fmt$(a.amount) + ' · <strong>UNPAID</strong> · due ' +
+            esc(a.due) + '</span></div>';
+        }
+        if (pos.b_current_accrued) {
+          html_pos += '<div class="bas-row"><span class="bas-k">' + esc(pos.b_current_accrued.label) +
+            '</span><span class="bas-v">' + fmt$(pos.b_current_accrued.amount) + '</span></div>';
+        }
+        if (pos.c_projected_remainder) {
+          html_pos += '<div class="bas-row"><span class="bas-k">' + esc(pos.c_projected_remainder.label) +
+            '</span><span class="bas-v">+' + fmt$(pos.c_projected_remainder.amount) +
+            ' <em class="bas-tag">PROJECTION</em></span></div>';
+        }
+      }
+      var html = html_pos;
+      html += '<div class="bas-quarter">' + esc(q.label || '') + ' QTD + projection · day ' +
+        q.days_elapsed + '/' + q.days_total + ' · cash-basis GST · agent lodgement</div>';
+      // last quarter, official + payment state, one line beneath the headline quarter
+      var prior = e.prior_obligation;
+      if (prior) {
+        html += '<div class="bas-row"><span class="bas-k">' + esc(prior.label) +
+          '</span><span class="bas-v">' + fmt$(prior.amount) + ' — ' +
+          (prior.paid ? '<span class="bas-ok">' : '<span class="bas-warn">') +
+          esc((prior.status || '').split(' — ')[0]) + '</span></span></div>';
+        if (prior.ledger_residual != null && Math.abs(prior.ledger_residual) > 0.5) {
+          html += '<div class="bas-hist">' + esc(prior.ledger_residual_note || '') + '</div>';
+        }
+      }
       if (gst.available) {
         html += '<div class="bas-row"><span class="bas-k">Accrued so far</span><span class="bas-v">' +
           fmt$(gst.qtd_net) + ' GST' + (pw.qtd != null ? ' + ' + fmt$(pw.qtd) + ' PAYGW' : '') + '</span></div>';
         html += '<div class="bas-row"><span class="bas-k">Projected at quarter end</span><span class="bas-v">' +
-          fmt$(gst.projected_full_quarter + (pw.projected_full_quarter || 0)) +
+          fmt$(gst.projected_full_quarter + (pw.projected_full_quarter || 0) + (inst.amount || 0)) +
           ' <em class="bas-tag">MODELLED</em></span></div>';
+        if (pw.band_note) {
+          html += '<div class="bas-hist">' + esc(pw.band_note) + '</div>';
+        }
       }
+      (e.calibration_flags || []).forEach(function (f) {
+        html += '<div class="bas-hist bas-warn">⚠ ' + esc(f) + '</div>';
+      });
       if (inst.active) {
         html += '<div class="bas-row"><span class="bas-k">PAYG instalment</span><span class="bas-v">' +
           (inst.amount != null ? fmt$(inst.amount) + '/qtr' : '<em>amount pending — “set PAYG instalment to $X”</em>') + '</span></div>';
       }
       (d.obligations || []).forEach(function (ob) {
+        if (ob.kind === 'bas_prior') return;   // already the position's (a) line above
         var dl = Math.round((new Date(ob.due) - new Date()) / 86400000);
         html += '<div class="bas-row bas-due"><span class="bas-k">' + esc(ob.label) + '</span><span class="bas-v">' +
           (ob.amount != null ? fmt$(ob.amount) : '—') + ' · due ' + esc(ob.due) + ' (' + dl + 'd)</span></div>';

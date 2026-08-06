@@ -828,6 +828,7 @@ def api_chat():
             (__import__('memory_maintenance').handle_memory_maintenance_command, False),  # cards/journal/restore
             (__import__('convo_quality').handle_quality_command, False),  # quality metrics/proposals/apply
             (__import__('bas_engine').handle_set_instalment, False),     # 'set PAYG instalment to $X'
+            (__import__('bas_engine').handle_mark_paid, False),          # 'mark the Apr–Jun BAS as paid'
             (__import__('bas_engine').handle_refresh_command, False),    # 'refresh the BAS estimate'
             (__import__('bas_engine').handle_bas_command, False),        # BAS/GST/set-aside/due-date answers
             (__import__('triage').handle_triage_action_command, False),   # dismiss/snooze/delegate/restore <item>
@@ -1058,6 +1059,7 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             (__import__('memory_maintenance').handle_memory_maintenance_command, False),  # cards/journal/restore
             (__import__('convo_quality').handle_quality_command, False),  # quality metrics/proposals/apply
             (__import__('bas_engine').handle_set_instalment, False),     # 'set PAYG instalment to $X'
+            (__import__('bas_engine').handle_mark_paid, False),          # 'mark the Apr–Jun BAS as paid'
             (__import__('bas_engine').handle_refresh_command, False),    # 'refresh the BAS estimate'
             (__import__('bas_engine').handle_bas_command, False),        # BAS/GST/set-aside/due-date answers
             (__import__('triage').handle_triage_action_command, False),   # dismiss/snooze/delegate/restore <item>

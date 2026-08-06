@@ -1507,3 +1507,26 @@
      avoid-list is the only behaviour change and only on "apply proposal N"), metrics
      (incidents/100 turns; asked-answered target ZERO), EDITH honest about her own
      track record. Suite 626 (17 new).
+
+125. BAS CALIBRATION AGAINST THE OFFICIAL EXPORT (2026-08-06). The lodged Activity
+     Statement (THE 97 GROUP, Apr–Jun 2026, cash basis) is GROUND TRUTH: total $41,519 =
+     net GST $19,788 + PAYGW $20,281 + PAYG instalment $1,450 — proving "amount owed" is
+     the FULL obligation, never net GST alone. New kv `bas:lodged` stores official lines
+     per lodged quarter (provenance journaled); lodged figures DISPLAY over any ledger
+     proxy; the ledger's quarter-close figure ($41,138.08, −0.92%) is kept only as the
+     calibration comparison, its $380.92 residual ITEMISED on-screen (splitting further
+     needs accounting.transactions.read — not granted — or the accountant's journal;
+     multi-date BS trace proved the clearing balance is a composite: EOFY sweep moved
+     $29,950 PAYGW incl. $11,833 pre-April carry into GST clearing). Config updated from
+     EVIDENCE: instalment_amount=$1,450 "per lodged BAS Apr–Jun 2026 (T7)"; the $541/wk
+     PAYGW model is kept for recurring (ledger QTD confirms) with the lodged actual
+     ($20,281, −65% model error: April's one-off $13,789 run) shown as the band. "WHAT WE
+     OWE THE ATO" = THE POSITION: (a) lodged-but-unpaid (Apr–Jun UNPAID per ledger — GST
+     clearing ROSE 41,138→49,956, no payment drop; due 25 Aug agent) + (b) QTD accrued +
+     (c) projected remainder (labelled). Card leads with it; set-aside spoken-for =
+     (a)+(b)+income-tax provision; outstanding lodged = STANDING salience 92 that never
+     ages out, auto-resolves on the clearing-drop payment signal (or "mark the BAS as
+     paid"). Honesty score public per quarter (estimator vs official, per component);
+     divergence beyond 2× median observed error (floor 5%) flags with the component
+     named. Ingest flow: scripts/ingest_bas_export.py (--seed = this export) — drop a
+     new export → ingest → recalibrate. Suite 612 green (8 new BAS tests).
