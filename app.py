@@ -723,10 +723,54 @@ def debug_xero_probe():
         except Exception as e:
             tax_lines[d] = {"error": str(e)[:160]}
 
+    # Organisation tax settings + tax-rate table (turned out readable) — the
+    # cash/accrual GST basis and cadence read from Xero itself, never assumed.
+    org_settings = None
+    try:
+        r = http_requests.get(f"{XERO_API_BASE}/api.xro/2.0/Organisation",
+                              headers=hdrs, timeout=(5, 20))
+        if r.status_code == 200:
+            o = (r.json().get("Organisations") or [{}])[0]
+            org_settings = {k: o.get(k) for k in
+                            ("Name", "SalesTaxBasis", "SalesTaxPeriod", "PaysTax",
+                             "FinancialYearEndDay", "FinancialYearEndMonth",
+                             "DefaultSalesTax", "DefaultPurchasesTax", "BaseCurrency")}
+    except Exception as e:
+        org_settings = {"error": str(e)[:120]}
+    tax_rates = None
+    try:
+        r = http_requests.get(f"{XERO_API_BASE}/api.xro/2.0/TaxRates",
+                              headers=hdrs, timeout=(5, 20))
+        if r.status_code == 200:
+            tax_rates = [{"name": t.get("Name"), "rate": t.get("EffectiveRate"),
+                          "type": t.get("TaxType"), "status": t.get("Status")}
+                         for t in (r.json().get("TaxRates") or [])][:25]
+    except Exception as e:
+        tax_rates = [{"error": str(e)[:120]}]
+
+    # QTD P&L (BAS quarter) — the cross-estimate input (revenue/opex, parsed server-side)
+    pnl_qtd = None
+    try:
+        from xero_pull import _fetch_pnl_range, _parse_pnl
+        qstart = today.replace(month=((today.month - 1) // 3) * 3 + 1, day=1)
+        raw_p = _fetch_pnl_range(tokens["access_token"], tokens["tenant_id"],
+                                 str(qstart), str(today))
+        if raw_p:
+            p = _parse_pnl(raw_p)
+            pnl_qtd = {"window": {"start": str(qstart), "end": str(today)},
+                       "revenue": p.get("revenue"), "cogs": p.get("cogs"),
+                       "operating_expenses": p.get("operating_expenses"),
+                       "opex_line_items": p.get("opex_line_items"),
+                       "cogs_line_items": p.get("cogs_line_items")}
+    except Exception as e:
+        pnl_qtd = {"error": str(e)[:160]}
+
     return jsonify({"as_of": str(today), "org": "via connected tenant",
                     "granted_scopes_requested_at_consent": XERO_SCOPES,
                     "probes": probes, "balance_sheet_tax_lines": tax_lines,
-                    "note": "read-only capability probe; 403 = scope not granted"})
+                    "organisation_settings": org_settings, "tax_rates": tax_rates,
+                    "pnl_qtd": pnl_qtd,
+                    "note": "read-only capability probe; 401/403 = scope not granted"})
 
 
 # ── Startup auto-refresh (runs once per worker, non-blocking) ──────────
