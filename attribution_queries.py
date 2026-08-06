@@ -199,3 +199,45 @@ def handle_shared_name_command(text: str) -> tuple[str | None, bool]:
     return (f"“{nm}” is shared by {len(cands)} ads: " + "; ".join(lines) +
             ". On the board each is its own row, campaign-labelled; name-level view "
             "groups them deliberately."), True
+
+
+_BASIS_RE = re.compile(
+    r"what basis|which (clock|basis)|cohort or activity|basis am i looking at|"
+    r"how are (these|the) (windows|numbers) counted", re.I)
+
+
+def handle_basis_command(text: str) -> tuple[str | None, bool]:
+    """'what basis am I looking at?' — the two clocks, plainly, with the worked example."""
+    if not text or not _BASIS_RE.search(text):
+        return None, False
+    return ("The ad board runs ONE clock per view, never mixed. LEAD-COHORT (the "
+            "default): leads that entered the window plus everything that later happened "
+            "to them — true conversion rates; recent windows show fewer closes because "
+            "closes lag. ACTIVITY: events dated in the window — a close from an earlier "
+            "lead counts here and its row is annotated. Worked example: a lead enters in "
+            "June and closes in August — cohort counts that close in JUNE's window, "
+            "activity counts it in AUGUST's. The active clock is labelled in the board's "
+            "banner and on every payload."), True
+
+
+_INVARIANT_RE = re.compile(
+    r"(are|is) the (invariants?|integrity checks?)|invariants? (green|status|ok)|"
+    r"is this number right|numbers? (check out|coherent)", re.I)
+
+
+def handle_invariants_command(text: str) -> tuple[str | None, bool]:
+    """'are the invariants green?' → the runtime checks from the live result, verbatim."""
+    if not text or not _INVARIANT_RE.search(text):
+        return None, False
+    r = _engine(30)
+    inv = r.get("invariants") or []
+    bad = [i for i in inv if not i["ok"]]
+    rec = r.get("reconciliation") or {}
+    msg = (f"Invariants, 30d {r.get('basis', 'cohort')} clock: "
+           + ("ALL GREEN — every row coherent, " if not bad else
+              f"{len(bad)} VIOLATION(S): " + "; ".join(
+                  f"{b.get('row')}: {b['detail']}" for b in bad[:3]) + ". ")
+           + f"Cross-checks: reconciliation {'OK' if rec.get('ok') else 'FAILING'} "
+           f"(leads/closes/cash/spend vs the one-engine totals). "
+           f"Headline closes always equal the tracker authority on the active clock.")
+    return msg, True

@@ -109,21 +109,24 @@ def test_anon_sees_nothing(monkeypatch):
 
 # ── the window echo (the stale-mix guard's contract) ─────────────────────────
 
-def test_board_echoes_its_window(monkeypatch):
+def test_board_echoes_its_window_and_basis(monkeypatch):
     c = _client(monkeypatch)
     c.post("/dashboard/login", data={"token": "test-dash-token"})
-    seen = {}
+    seen = set()
 
     def fake_compute(**kw):
-        seen["days"] = kw.get("days")
+        seen.add((kw.get("days"), kw.get("basis", "cohort")))
         r = _fake_result()
         r["window"] = {"start": "s", "end": "e", "days": kw.get("days")}
+        r["basis"] = kw.get("basis", "cohort")
         return r
     monkeypatch.setattr("attribution_engine.compute", fake_compute, raising=True)
-    d = c.get("/ads/api/board?days=60").get_json()
-    assert seen["days"] in (60, 90)     # 60 requested (+ a 90d trailing probe is allowed)
-    assert d["window"]["days"] == 60
-    assert "scoreboard" in d and "scorecard" in d and "rows" in d   # atomic payload
+    monkeypatch.setattr("dashboard.ads._prefetch_adjacent", lambda d, b: None, raising=True)
+    d = c.get("/ads/api/board?days=60&basis=activity").get_json()
+    assert (60, "activity") in seen
+    assert d["window"]["days"] == 60 and d["basis"] == "activity"
+    assert d["stale"] is False          # a cold direct build is fresh, never mislabelled
+    assert "headline" in d["scoreboard"] and "scorecard" in d and "rows" in d
 
 
 # ── roster == count ──────────────────────────────────────────────────────────

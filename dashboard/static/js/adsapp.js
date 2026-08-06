@@ -12,7 +12,7 @@
   'use strict';
 
   var state = { days: 30, sort: 'spend', sortDir: -1, verdict: null, creative: null,
-                q: '', board: null, shown: 0, reqToken: 0, level: 'creative' };
+                q: '', board: null, shown: 0, reqToken: 0, level: 'creative', basis: 'cohort' };
   var PAGE = 150;
 
   function $(s) { return document.querySelector(s); }
@@ -57,28 +57,38 @@
   var DRILLABLE = { leads: 1, qualified: 1, sets: 1, shows: 1, closes: 1 };
 
   // ── the atomic window fetch (latest-wins + echo guard) ─────────────────────
-  function loadBoard(days) {
+  var stalePoll = null;
+  function loadBoard(days, basis) {
     state.days = days;
+    if (basis) state.basis = basis;
     var token = ++state.reqToken;
     document.querySelectorAll('.adx-win').forEach(function (b) {
       b.classList.toggle('active', +b.dataset.days === days);
     });
-    try { history.replaceState(null, '', '?window=' + days); } catch (e) {}
-    $('#adx-banner').innerHTML = '<span class="adx-skel">Loading ' + days + 'd window…</span>';
+    document.querySelectorAll('.adx-basis').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.basis === state.basis);
+    });
+    try { history.replaceState(null, '', '?window=' + days + '&basis=' + state.basis); } catch (e) {}
+    $('#adx-banner').innerHTML = '<span class="adx-skel">Loading ' + days + 'd · ' + state.basis + '…</span>';
     document.body.classList.add('adx-loading');
-    fetch('/ads/api/board?days=' + days, { credentials: 'same-origin' })
+    clearTimeout(stalePoll);
+    fetch('/ads/api/board?days=' + days + '&basis=' + state.basis, { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
         if (token !== state.reqToken) return;              // latest wins — stale dropped
         document.body.classList.remove('adx-loading');
         if (!data) { $('#adx-banner').textContent = 'Engine unreachable — nothing rendered rather than stale numbers.'; return; }
-        if (!data.window || data.window.days !== state.days) {
-          console.error('STALE-MIX GUARD: response window', data.window,
-                        'does not match state', state.days, '— discarded');
+        if (!data.window || data.window.days !== state.days ||
+            (data.basis && data.basis !== state.basis)) {
+          console.error('STALE-MIX GUARD: response (window/basis)', data.window, data.basis,
+                        'does not match state', state.days, state.basis, '— discarded');
           return;
         }
         state.board = data;
         renderAll();
+        if (data.stale) {           // a labelled rollup — poll for the fresh build
+          stalePoll = setTimeout(function () { loadBoard(state.days); }, 8000);
+        }
       })
       .catch(function () {
         if (token !== state.reqToken) return;
@@ -94,7 +104,7 @@
     if (!levelChosen && state.board.ladder && state.board.ladder.default_level) {
       state.level = state.board.ladder.default_level;
     }
-    renderBanner(); renderScorecard(); renderHygiene(); renderScoreboard(); renderRows(true);
+    renderBanner(); renderHeadline(); renderScorecard(); renderHygiene(); renderScoreboard(); renderRows(true);
     $('#adx-table-window').textContent = '· ' + windowStamp() + ' window';
   }
 
@@ -148,6 +158,29 @@
     }).join('');
   }
 
+  function renderHeadline() {
+    var h = (state.board.scoreboard || {}).headline;
+    var el = $('#adx-headline');
+    if (!h) { el.innerHTML = ''; return; }
+    function tiers(t) {
+      var names = { ad: 'attributed', ambiguous: 'ambiguous', ig_dm: 'IG-DM', unattributed: 'unattributed' };
+      return Object.keys(t || {}).filter(function (k) { return t[k]; })
+        .map(function (k) { return (names[k] || k) + ' ' + t[k]; }).join(' · ') || '—';
+    }
+    el.innerHTML =
+      '<div class="adx-head-tile"><div class="adx-head-num">' + num(h.closes_total) + '</div>' +
+      '<div class="adx-head-label">CLOSES · ' + windowStamp() + ' · ' + esc(h.basis) + ' clock</div>' +
+      '<div class="adx-head-tiers">' + tiers(h.closes_tiers) + '</div></div>' +
+      '<div class="adx-head-tile"><div class="adx-head-num">' + num(h.leads_total) + '</div>' +
+      '<div class="adx-head-label">LEADS</div>' +
+      '<div class="adx-head-tiers">' + tiers(h.leads_tiers) + '</div></div>' +
+      '<div class="adx-head-tile"><div class="adx-head-num">' + money(h.cash_total) + '</div>' +
+      '<div class="adx-head-label">CASH COLLECTED</div>' +
+      '<div class="adx-head-tiers">' + tiers(h.cash_tiers) + '</div></div>' +
+      '<div class="adx-head-tile"><div class="adx-head-num">' + money(h.spend_total) + '</div>' +
+      '<div class="adx-head-label">SPEND</div><div class="adx-head-tiers">Meta engine, reconciled</div></div>';
+  }
+
   function renderBanner() {
     var b = state.board.scoreboard.banner || {};
     var fr = b.freshness || {};
@@ -159,7 +192,10 @@
       ' · qualified = ≠DQ + revenue ≥ $' + Math.round((qr.floor_monthly || 20000) / 1000) + 'k/mo + form answered' +
       ' · contacts synced ' + esc(String(fr.contacts_synced || '').slice(11, 16) || '—') +
       ' · sheet mirror ~90s' +
-      (state.days === 30 ? ' · <span class="adx-guide">closes trail leads — 60/90d is the honest read for LTGP:CAC verdicts</span>' : '');
+      ' · <span class="adx-basis-label">' + esc(state.board.basis_label || state.basis) + '</span>' +
+      (state.board.stale ? ' · <span class="adx-stale">showing the last rollup (' +
+        Math.round((state.board.stale_age_s || 0) / 60) + 'm old) — refreshing…</span>' : '') +
+      (state.days === 30 && state.basis === 'cohort' ? ' · <span class="adx-guide">30d cohort: closes still landing — 60/90d is the honest read for close-based verdicts</span>' : '');
     if (!(b.leads)) {
       $('#adx-banner').innerHTML = 'No leads in this ' + windowStamp() + ' window. ' +
         '<button class="adx-win-inline" onclick="AdsApp.setWindow(90)">view 90d instead</button>';
@@ -252,6 +288,12 @@
     if (state.level !== 'creative') rows = rows.filter(function (r) { return r.tier === 'ad'; });
     tbody.innerHTML = sortRows(rows).map(function (r) {
       var cls = 'adx-tier-' + r.tier + (state.creative === r.creative_key ? ' adx-selected' : '');
+      if (r.integrity_error) {
+        return '<tr class="adx-integrity-error" data-window="' + windowStamp() + '">' +
+          '<td class="adx-name">' + esc(r.creative) + '</td>' +
+          '<td colspan="' + (COLS.length - 1) + '">⚠ this row failed an integrity check — ' +
+          esc(r.integrity_error) + ' — see the hygiene panel</td></tr>';
+      }
       return '<tr class="' + cls + '" data-key="' + esc(r.creative_key) + '" data-tier="' + r.tier + '" data-window="' + windowStamp() + '">' +
         '<td class="adx-name">' + (r.tier === 'ad' ? esc(r.creative) : '<em>' + esc(r.creative) + '</em>') + '</td>' +
         '<td>' + (r.tier === 'ad' ? badge(r) : '—') + '</td>' +
@@ -259,7 +301,9 @@
           var v = r[c.k];
           var drill = DRILLABLE[c.k] && r.tier === 'ad' && v && state.level === 'creative' ?
             ' class="adx-cell-drill" data-stage="' + c.k + '"' : '';
-          return '<td' + drill + '>' + (c.money ? money(v) : num(v)) + '</td>';
+          var extra = (c.k === 'closes' && r.earlier_closes) ?
+            ' <span class="adx-earlier" title="' + r.earlier_closes + ' close(s) from leads that entered before this window (activity clock)">↤' + r.earlier_closes + '</span>' : '';
+          return '<td' + drill + '>' + (c.money ? money(v) : num(v)) + extra + '</td>';
         }).join('') + '</tr>';
     }).join('');
   }
@@ -366,6 +410,11 @@
   function init() {
     var m = (location.search.match(/[?&]window=(\d{1,3})/) || [])[1];
     var days = [30, 60, 90].indexOf(+m) >= 0 ? +m : 30;
+    var bParam = (location.search.match(/[?&]basis=(cohort|activity)/) || [])[1];
+    if (bParam) state.basis = bParam;
+    document.querySelectorAll('.adx-basis').forEach(function (b) {
+      b.addEventListener('click', function () { loadBoard(state.days, b.dataset.basis); });
+    });
     var vParam = (location.search.match(/[?&]verdict=([^&]+)/) || [])[1];
     if (vParam) state.verdict = decodeURIComponent(vParam);
     var cParam = (location.search.match(/[?&]creative=([^&]+)/) || [])[1];

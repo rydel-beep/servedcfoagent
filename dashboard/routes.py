@@ -775,6 +775,8 @@ def api_chat():
             (lambda m: __import__('test_leads').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # test-lead exclusion / what's excluded / mark test|real
             (range_unit_economics.handle_unit_econ_command, False),
             (payback_reconciliation.handle_payback_command, False),
+            (lambda m: __import__('attribution_queries').handle_basis_command(m), False),  # what basis / which clock
+            (lambda m: __import__('attribution_queries').handle_invariants_command(m), False),  # are the invariants green
             (lambda m: __import__('attribution_queries').handle_tracking_accuracy_command(m), False),  # how accurate is our tracking
             (lambda m: __import__('attribution_queries').handle_shared_name_command(m), False),  # which ads share the name X
             (lambda m: __import__('close_integrity').handle_integrity_command(m), False),  # do the systems agree on closes
@@ -985,6 +987,8 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             (lambda m: __import__('test_leads').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # test-lead exclusion / what's excluded / mark test|real
             (range_unit_economics.handle_unit_econ_command, False),
             (payback_reconciliation.handle_payback_command, False),
+            (lambda m: __import__('attribution_queries').handle_basis_command(m), False),  # what basis / which clock
+            (lambda m: __import__('attribution_queries').handle_invariants_command(m), False),  # are the invariants green
             (lambda m: __import__('attribution_queries').handle_tracking_accuracy_command(m), False),  # how accurate is our tracking
             (lambda m: __import__('attribution_queries').handle_shared_name_command(m), False),  # which ads share the name X
             (lambda m: __import__('close_integrity').handle_integrity_command(m), False),  # do the systems agree on closes

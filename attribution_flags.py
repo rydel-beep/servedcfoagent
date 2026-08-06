@@ -61,8 +61,9 @@ def leaders(result: dict) -> list[dict]:
              f"leads, {by_q['sets']} sets behind it")
     by_c = max(ads, key=lambda c: c["closes"], default=None)
     if by_c and by_c["closes"]:
-        card("Most Closes", by_c, str(by_c["closes"]),
-             f"{by_c['label'][:38]} — {by_c['closes']} close(s), ${by_c['cash']:,.0f} cash")
+        card("Top Closing Creative", by_c, str(by_c["closes"]),
+             f"{by_c['label'][:38]} — {by_c['closes']} of the window's closes, "
+             f"${by_c['cash']:,.0f} cash (the WINDOW TOTAL is the headline tile)")
     eligible = [c for c in ads if c.get("ltgp_cac") is not None
                 and ((c.get("gates") or {}).get("sufficient_for_scale")
                      or (c.get("gates") or {}).get("sufficient_for_kill"))]

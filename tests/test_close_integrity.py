@@ -22,15 +22,22 @@ W0, W1 = dt.date(2026, 7, 1), dt.date(2026, 7, 31)
 
 # ── Phase 1: the counting fix ────────────────────────────────────────────────
 
-def test_won_row_without_input_date_still_counts_as_close():
+def test_won_row_without_input_date_counts_on_the_activity_clock():
+    # DECISIONS #118 ruled on the close-date convention → the ACTIVITY clock counts it;
+    # a cohort needs an entry date, so under COHORT it is outside every cohort and stays
+    # visible via the hygiene item (tracker_blank_input_date), never silently rendered.
     r_ = row("John Tamayo", "jt@x.com", input_date="", closer="won",
              close_date="2026-07-20", contract="24000", cash="4000")
-    out = eng.compute_from_inputs([HDR, r_], [contact("c1", "jt@x.com", "John Tamayo")],
+    act = eng.compute_from_inputs([HDR, r_], [contact("c1", "jt@x.com", "John Tamayo")],
                                   {}, resolver({"120000000000000001": RES_A}), W0, W1,
-                                  canonical={"closes": 1, "cash": 4000.0})
-    assert out["totals"]["closes"] == 1                      # was parser-invisible before
-    assert out["reconciliation"]["checks"]["closes"]["ok"]
-    assert out["totals"]["leads"] == 0                        # no input date → not a cohort lead
+                                  basis="activity", canonical={"closes": 1, "cash": 4000.0})
+    assert act["totals"]["closes"] == 1                      # was parser-invisible before
+    assert act["reconciliation"]["checks"]["closes"]["ok"]
+    assert act["totals"]["leads"] == 0
+    coh = eng.compute_from_inputs([HDR, r_], [contact("c1", "jt@x.com", "John Tamayo")],
+                                  {}, resolver({"120000000000000001": RES_A}), W0, W1,
+                                  basis="cohort")
+    assert coh["totals"]["closes"] == 0    # no entry date = no cohort; hygiene carries it
 
 
 def test_non_won_row_without_input_date_still_dropped():
@@ -243,3 +250,67 @@ def test_identity_health_census_and_degradation():
     assert "degradation_flag" not in ih          # 100% vs 100% trailing — no drop
     ih2 = AF.identity_health(res(60, 3), trailing_result=None)
     assert "degradation_flag" not in ih2
+
+
+# ── the refix (DECISIONS #120): headline truth + invariants ──────────────────
+
+def test_headline_total_equals_canonical_and_tiers_sum(monkeypatch):
+    # I5 + I3: the headline is TOTAL closes (== the authority) and the tier
+    # breakdown sums exactly to it
+    from tests.test_attribution import HDR, row, contact, resolver, RES_A
+    rows = [HDR,
+            row("Attr Close", "a@x.com", closer="won", close_date="2026-07-20",
+                contract="15000", cash="6000"),
+            row("Ghost Close", "ghost@x.com", closer="won", close_date="2026-07-21",
+                contract="9000", cash="2000")]   # no GHL contact → unattributed tier
+    out = eng.compute_from_inputs(rows, [contact("c1", "a@x.com", "Attr Close")], {},
+                                  resolver({"120000000000000001": RES_A}), W0, W1,
+                                  basis="cohort", canonical={"closes": 2, "cash": 8000.0})
+    sb = eng.scoreboard_view(out)
+    h = sb["headline"]
+    assert h["closes_total"] == 2 == out["totals"]["closes"]
+    assert sum(h["closes_tiers"].values()) == h["closes_total"]
+    assert h["closes_tiers"].get("unattributed") == 1     # the ghost is visible, not gone
+    assert out["reconciliation"]["checks"]["closes"]["ok"]  # == the authority (I5)
+
+
+def test_runtime_invariant_blocks_contradictory_row():
+    # force a contradictory row through the ACTIVITY path without annotation coverage:
+    # a close whose lead has NO input date (annotation impossible) → closes>leads must
+    # flag integrity_error rather than render as a clean number
+    from tests.test_attribution import HDR, row, contact, resolver, RES_A
+    r_ = row("No Input Close", "n@x.com", input_date="", closer="won",
+             close_date="2026-07-20", contract="9000", cash="1000")
+    out = eng.compute_from_inputs([HDR, r_], [contact("c1", "n@x.com", "No Input Close")],
+                                  {}, resolver({"120000000000000001": RES_A}), W0, W1,
+                                  basis="activity")
+    bad = [i for i in out["invariants"] if not i["ok"]]
+    row_flagged = any(c.get("integrity_error") for c in out["creatives"])
+    assert bad and row_flagged        # never rendered as a clean contradictory number
+
+
+def test_invariants_green_on_ordinary_variation():
+    # property-style: seeded random windows/cohorts never violate on the cohort clock
+    import random
+    from tests.test_attribution import HDR, row, contact, resolver, RES_A
+    rng = random.Random(20260806)
+    rows, contacts = [HDR], []
+    for i in range(40):
+        day = rng.randint(1, 28)
+        won = rng.random() < 0.2
+        setter = rng.choice(["set", "dq", "no pick up"])
+        rows.append(row(f"L{i}", f"l{i}@x.com", input_date=f"2026-07-{day:02d}",
+                        setter=setter,
+                        show="Showed" if setter == "set" and rng.random() < 0.7 else "",
+                        closer="won" if won and setter == "set" else "",
+                        close_date=f"2026-08-{rng.randint(1, 28):02d}" if won and setter == "set" else "",
+                        contract="10000" if won and setter == "set" else "",
+                        cash="2000" if won and setter == "set" else ""))
+        contacts.append(contact(f"c{i}", f"l{i}@x.com", f"L{i}"))
+    out = eng.compute_from_inputs(rows, contacts, {},
+                                  resolver({"120000000000000001": RES_A}), W0, W1,
+                                  basis="cohort")
+    assert all(i["ok"] for i in out["invariants"])
+    for c in out["creatives"]:
+        if c["tier"] == "ad":
+            assert c["closes"] <= c["leads"] and c["shows"] <= c["sets"] + c["shows"]

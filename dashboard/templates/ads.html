@@ -18,6 +18,10 @@
       <button class="adx-win" data-days="60">60d</button>
       <button class="adx-win" data-days="90">90d</button>
     </div>
+    <div class="adx-bases" id="adx-bases" title="One clock per view — never mixed">
+      <button class="adx-basis" data-basis="cohort" title="Leads that entered this window + everything that later happened to them (true conversion rates; closes lag)">Cohort</button>
+      <button class="adx-basis" data-basis="activity" title="Events that occurred in this window; closes from earlier leads are annotated">Activity</button>
+    </div>
     <button class="adx-defs-btn" id="adx-defs-btn" title="How these numbers are counted">ⓘ definitions</button>
     <span class="adx-who" id="adx-who"></span>
     <a class="adx-logout" href="/dashboard/logout">log out</a>
@@ -29,6 +33,7 @@
 
   <!-- THE INTELLIGENCE SCORECARD -->
   <section class="adx-scorecard">
+    <div class="adx-headline" id="adx-headline"></div>
     <div class="adx-leaders" id="adx-leaders"></div>
     <div class="adx-constraint" id="adx-constraint" style="display:none"></div>
     <div class="adx-flags" id="adx-flags"></div>

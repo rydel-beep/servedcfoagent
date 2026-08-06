@@ -45,6 +45,133 @@ def _window_args():
     return days, request.args.get("start"), request.args.get("end")
 
 
+def _basis_arg():
+    b = request.args.get("basis", "cohort")
+    return b if b in ("cohort", "activity") else "cohort"
+
+
+def _build_board(days, start, end, basis, force=False):
+    """The full board payload — ONE atomic build (window + basis echoed for the
+    stale-mix guard). Persisted as a rollup keyed (basis, days) for instant serves."""
+    import attribution_engine
+    import attribution_flags
+    result = attribution_engine.compute(days=days, start=start, end=end,
+                                        force=force, basis=basis)
+    trailing, r90 = None, None
+    try:
+        if not (start or end):
+            r90 = result if days == 90 else attribution_engine.compute(90, basis=basis)
+            trailing = (r90.get("totals") or {}).get("attribution_rate_pct")
+    except Exception as e:
+        logger.info("trailing rate unavailable: %s", e)
+    sc = attribution_flags.scorecard(result, trailing_attr_rate=trailing)
+    identity = None
+    try:
+        identity = attribution_flags.identity_health(
+            result, trailing_result=(r90 if (not (start or end) and days != 90) else None))
+        if identity.get("degradation_flag"):
+            sc["flags"].insert(0, identity["degradation_flag"])
+    except Exception as e:
+        logger.info("identity health unavailable: %s", e)
+    attribution_flags.record_flag_salience(sc["flags"])
+    hygiene = None
+    try:
+        import close_integrity
+        hygiene = close_integrity.latest()
+        if hygiene is None or force:
+            hygiene = close_integrity.refresh(30)
+    except Exception as e:
+        logger.info("hygiene block unavailable: %s", e)
+    ladder = None
+    try:
+        import attribution_verdicts
+        floor = (result.get("verdict_layer") or {}).get("floor") or 3.0
+        ladder = attribution_verdicts.ladder(result, floor)
+    except Exception as e:
+        logger.info("ladder unavailable: %s", e)
+    import attribution_engine as AE
+    return {
+        "hygiene": hygiene, "identity": identity, "ladder": ladder,
+        "window": result.get("window"), "basis": result.get("basis"),
+        "basis_label": result.get("basis_label"),
+        "invariants": result.get("invariants"),
+        "scoreboard": AE.scoreboard_view(result),
+        "scorecard": sc, "rows": result.get("rows"),
+        "qualified_rule": result.get("qualified_rule"),
+        "reconciliation": result.get("reconciliation"),
+        "freshness": result.get("freshness"),
+        "ig_non_lead_inquiries": result.get("ig_non_lead_inquiries"),
+    }
+
+
+def _rollup_key(basis, days):
+    return f"attr:rollup:{basis}:{days}"
+
+
+def _serve_board(days, start, end, basis, force):
+    """Rollup-backed serve: fresh when the engine is warm; a persisted rollup served
+    STALE-LABELLED (never as fresh) while a background refresh runs; prefetch of the
+    adjacent windows after any fresh build."""
+    import attribution_engine as AE
+    import kv_store, threading, time as _t
+    custom = bool(start or end)
+    w_cached = False
+    if not custom:
+        import datetime as dt
+        from helpers import today_sydney
+        w1 = today_sydney(); w0 = w1 - dt.timedelta(days=days - 1)
+        hit = AE._cache.get((str(w0), str(w1), basis))
+        w_cached = bool(hit and _t.time() - hit[0] < AE._CACHE_TTL_S)
+    if custom or w_cached or force:
+        payload = _build_board(days, start, end, basis, force=force)
+        payload["stale"] = False
+        if not custom:
+            kv_store.put(_rollup_key(basis, days), {"at": _t.time(), "board": payload})
+            _prefetch_adjacent(days, basis)
+        return payload
+    stored = kv_store.get(_rollup_key(basis, days))
+    if stored and stored.get("board"):
+        board = stored["board"]
+        board["stale"] = True
+        board["stale_age_s"] = int(_t.time() - (stored.get("at") or 0))
+        _refresh_async(days, basis)
+        return board
+    payload = _build_board(days, start, end, basis)     # cold, no rollup — build now
+    payload["stale"] = False
+    kv_store.put(_rollup_key(basis, days), {"at": _t.time(), "board": payload})
+    _prefetch_adjacent(days, basis)
+    return payload
+
+
+_refreshing: set = set()
+
+
+def _refresh_async(days, basis):
+    key = (days, basis)
+    if key in _refreshing:
+        return
+    _refreshing.add(key)
+
+    def _run():
+        import kv_store, time as _t
+        try:
+            payload = _build_board(days, None, None, basis, force=True)
+            payload["stale"] = False
+            kv_store.put(_rollup_key(basis, days), {"at": _t.time(), "board": payload})
+        except Exception as e:
+            logger.warning("rollup refresh failed (%s,%s): %s", basis, days, e)
+        finally:
+            _refreshing.discard(key)
+    import threading
+    threading.Thread(target=_run, daemon=True, name=f"rollup-{basis}-{days}").start()
+
+
+def _prefetch_adjacent(days, basis):
+    for d in (30, 60, 90):
+        if d != days:
+            _refresh_async(d, basis)
+
+
 def _compute(days, start, end, force=False):
     import attribution_engine
     return attribution_engine.compute(days=days, start=start, end=end, force=force)
@@ -63,59 +190,14 @@ def page():
 @bp.route("/api/board", methods=["GET"])
 @require_auth
 def board():
-    """ONE atomic payload per window: scoreboard + scorecard (leaders/flags) + tracker
-    rows + the window echo. The client renders all-or-nothing off this — no stale mix."""
+    """ONE atomic payload per (window, basis) — served from the rollup layer: fresh when
+    warm, stale-LABELLED with a background refresh when not (never silently stale)."""
     days, start, end = _window_args()
     if days is None:
         return jsonify({"error": "bad days"}), 400
-    import attribution_engine
-    import attribution_flags
-    result = _compute(days, start, end, force=request.args.get("force") == "1")
-    trailing, r90 = None, None
-    try:
-        if not (start or end):
-            r90 = result if days == 90 else _compute(90, None, None)
-            trailing = (r90.get("totals") or {}).get("attribution_rate_pct")
-    except Exception as e:
-        logger.info("trailing rate unavailable: %s", e)
-    sc = attribution_flags.scorecard(result, trailing_attr_rate=trailing)
-    identity = None
-    try:
-        identity = attribution_flags.identity_health(
-            result, trailing_result=(r90 if (not (start or end) and days != 90) else None))
-        if identity.get("degradation_flag"):
-            sc["flags"].insert(0, identity["degradation_flag"])
-    except Exception as e:
-        logger.info("identity health unavailable: %s", e)
-    attribution_flags.record_flag_salience(sc["flags"])
-    hygiene = None
-    try:
-        import close_integrity
-        hygiene = close_integrity.latest()
-        if hygiene is None or request.args.get("force") == "1":
-            hygiene = close_integrity.refresh(30)
-    except Exception as e:
-        logger.info("hygiene block unavailable: %s", e)
-    ladder = None
-    try:
-        import attribution_verdicts
-        floor = (result.get("verdict_layer") or {}).get("floor") or 3.0
-        ladder = attribution_verdicts.ladder(result, floor)
-    except Exception as e:
-        logger.info("ladder unavailable: %s", e)
-    resp = jsonify({
-        "hygiene": hygiene,
-        "identity": identity,
-        "ladder": ladder,
-        "window": result.get("window"),
-        "scoreboard": attribution_engine.scoreboard_view(result),
-        "scorecard": sc,
-        "rows": result.get("rows"),
-        "qualified_rule": result.get("qualified_rule"),
-        "reconciliation": result.get("reconciliation"),
-        "freshness": result.get("freshness"),
-        "ig_non_lead_inquiries": result.get("ig_non_lead_inquiries"),
-    })
+    basis = _basis_arg()
+    payload = _serve_board(days, start, end, basis, force=request.args.get("force") == "1")
+    resp = jsonify(payload)
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     return resp
 
@@ -132,7 +214,7 @@ def _ghl_notes_for(contact_ids: list[str]) -> dict:
     from helpers import now_sydney
     out: dict = {}
     stamp = now_sydney().strftime("%Y-%m-%d %H:%M")
-    for cid in contact_ids[:30]:
+    for cid in contact_ids[:8]:   # speed: inline notes for the first 8; the rest stay tracker-only
         try:
             r = rq.get(f"{GHL_BASE}/contacts/{cid}/notes",
                        headers={"Authorization": f"Bearer {GHL_API_KEY}",

@@ -256,22 +256,54 @@ def test_ig_non_lead_inquiries_bucket_excludes_tracker_entrants():
 
 # ── money metrics ────────────────────────────────────────────────────────────
 
-def test_money_metrics_close_date_basis_and_ltgp_cac():
+def test_one_clock_per_view_activity_vs_cohort():
+    # DECISIONS #120: the two clocks, explicit and never mixed. An earlier-entered lead
+    # closing in-window counts under ACTIVITY (annotated) and NOT under COHORT.
     rows = [HDR,
             row("Old Lead", "old@x.com", input_date="2026-05-01", closer="won",
                 close_date="2026-07-15", contract="15000", cash="5000")]
     spend = {"120000000000000001": {"name": "Creative A", "spend": 1000.0,
                                     "impressions": 0, "clicks": 0}}
-    out = eng.compute_from_inputs(rows, [contact("c1", "old@x.com", "Old Lead")], spend,
+    kw = dict(margin_pct=80.0, closer_comm=500.0, setter_comm=100.0)
+    act = eng.compute_from_inputs(rows, [contact("c1", "old@x.com", "Old Lead")], spend,
                                   resolver({"120000000000000001": RES_A}), W0, W1,
-                                  margin_pct=80.0, closer_comm=500.0, setter_comm=100.0)
-    r = next(x for x in out["creatives"] if x["creative_key"] == "120000000000000001")
-    assert r["leads"] == 0 and r["closes"] == 1    # entered before window, closed inside
-    assert r["roas_contracted"] == 15.0 and r["roas_cash"] == 5.0
-    assert r["cost_per_close"] == 1000.0
-    assert r["cost_per_close_loaded"] == 1600.0    # 1000 + all comms (only close)
-    assert r["ltgp"] == 12000.0 and r["ltgp_cac"] == 7.5
-    assert "labelled" in out["attribution_model"] or "last-touch" in out["attribution_model"]
+                                  basis="activity", **kw)
+    r = next(x for x in act["creatives"] if x["creative_key"] == "120000000000000001")
+    assert r["leads"] == 0 and r["closes"] == 1
+    assert r["earlier_closes"] == 1                # the inline explanation, never phantom
+    assert not r.get("integrity_error")            # I1(activity) satisfied via annotation
+    assert r["roas_contracted"] == 15.0 and r["cost_per_close"] == 1000.0
+    assert r["cost_per_close_loaded"] == 1600.0 and r["ltgp_cac"] == 7.5
+    assert act["basis"] == "activity" and "Activity" in act["basis_label"]
+
+    coh = eng.compute_from_inputs(rows, [contact("c1", "old@x.com", "Old Lead")], spend,
+                                  resolver({"120000000000000001": RES_A}), W0, W1,
+                                  basis="cohort", **kw)
+    rc = next(x for x in coh["creatives"] if x["creative_key"] == "120000000000000001")
+    assert rc["leads"] == 0 and rc["closes"] == 0  # the close belongs to MAY's cohort
+    assert coh["basis"] == "cohort"
+
+
+def test_cohort_counts_future_close_of_window_lead():
+    # a lead entering IN the window whose close lands AFTER it → cohort counts the close
+    rows = [HDR, row("July Lead", "j@x.com", input_date="2026-07-10", closer="won",
+                     close_date="2026-09-02", contract="12000", cash="3000")]
+    coh = eng.compute_from_inputs(rows, [contact("c1", "j@x.com", "July Lead")], {},
+                                  resolver({"120000000000000001": RES_A}), W0, W1,
+                                  basis="cohort")
+    r = next(x for x in coh["creatives"] if x["creative_key"] == "120000000000000001")
+    assert r["leads"] == 1 and r["closes"] == 1 and r["cash"] == 3000.0
+    act = eng.compute_from_inputs(rows, [contact("c1", "j@x.com", "July Lead")], {},
+                                  resolver({"120000000000000001": RES_A}), W0, W1,
+                                  basis="activity")
+    ra = next(x for x in act["creatives"] if x["creative_key"] == "120000000000000001")
+    assert ra["leads"] == 1 and ra["closes"] == 0  # the close is September activity
+
+
+def test_mixed_basis_is_structurally_unrepresentable():
+    import pytest as _pt
+    with _pt.raises(ValueError):
+        eng.compute_from_inputs([HDR], [], {}, resolver({}), W0, W1, basis="blended")
 
 
 def test_ambiguous_name_is_quarantined_never_assigned():

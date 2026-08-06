@@ -1382,3 +1382,33 @@
      name X?" (fabricated names refused). JOURNALED RE-STATEMENT: attributed now means
      CERTAIN — 30d attributed 69→67 with 2 moved to the ambiguous quarantine (attribution
      rate reads 83.8% vs 86.2%; the difference is honesty, not loss). Suite 579 green.
+
+120. **DATA HYGIENE REFIX — ONE CLOCK PER VIEW + THE HONEST HEADLINE + INVARIANTS + SPEED
+     (2026-08-06).** Phase-0 forensics NAMED both defects: (1) mixed bases — leads/sets on
+     the Input-Date clock, closes/cash on the Close-Date clock IN THE SAME ROW → 3 creative
+     + 4 ladder rows at 30d showed closes with zero leads (Tesla Zhong, Glen Fitzgerald,
+     Tony Thai; Lucas Reid at 60d) — close-lag crossing window edges, inherited by every
+     ladder level; (2) the "board says 1" headline was the LEADERS CARD (a single
+     creative's max positioned like a window total) + the attributed-only account row —
+     the engine's totals were honest all along. RYDEL RULED: BOTH bases as an explicit
+     labelled toggle (LEAD-COHORT default — a lead's whole future belongs to its entry
+     window; ACTIVITY — events on their own dates, earlier-lead closes annotated inline);
+     headline = TOTAL closes with the tier breakdown. BUILT: basis threaded as a required
+     parameter through the engine (invalid basis raises; cache keyed by basis; canonical
+     cross-checks follow the active clock — activity vs the close-date authority, cohort
+     vs entry-dated won rows of the same authority); the #118 no-input-date rule lives on
+     the ACTIVITY clock (a cohort needs an entry date; such rows stay visible via
+     hygiene); INVARIANTS AS CODE — I1 (closes≤leads per clock, activity scoped via the
+     earlier-closes annotation), I2 (every close traces to a deal), I3 (tier sums == the
+     headline), I5/I6 (authority + spend reconciliation), I7 (basis stamped everywhere) —
+     violations mark the row integrity_error (the UI renders the honest error state,
+     NEVER the contradictory number) and feed salience once; property-style seeded tests.
+     HEADLINE tiles (closes/leads/cash/spend with tier breakdowns) + "Top Closing
+     Creative" renamed so a per-creative max can never read as the window total. SPEED:
+     the ~64s cold-window cost solved by persisted rollups keyed (basis, window) —
+     stale rollups served LABELLED with a background refresh + client poll (never
+     silently fresh), adjacent windows prefetched, roster GHL-notes capped to 8 inline.
+     EDITH the custodian: "what basis am I looking at?" / "are the invariants green?" —
+     deterministic, sourced; corrections remain confirmation-gated through existing
+     mechanisms only. LIVE: I5 green on all four (basis × window) checks; the three
+     phantom rows cured on both clocks; suite 584.
