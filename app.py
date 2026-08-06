@@ -637,6 +637,97 @@ def debug_xero_banksummary():
     })
 
 
+@app.route("/debug/xero-probe", methods=["GET"])
+def debug_xero_probe():
+    """BAS/PAYG Phase-0 CAPABILITY PROBE (read-only, X-CFO-KEY gated). ONE token
+    refresh (single-use refresh tokens — persist-first on this volume), then a
+    status-code sweep of the endpoints the BAS layer could use, plus the tax-relevant
+    Balance Sheet lines (GST / PAYG / BAS accounts) at the requested dates. Never
+    writes to Xero; never returns credentials."""
+    key = request.headers.get("X-CFO-KEY", "")
+    if not CFO_REFRESH_KEY or key != CFO_REFRESH_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    from xero_pull import _load_tokens, _refresh_access_token, XERO_API_BASE
+
+    stored = _load_tokens()
+    if not stored or not stored.get("refresh_token"):
+        return jsonify({"error": "No Xero tokens found"}), 404
+    tokens = _refresh_access_token(stored)
+    if not tokens:
+        return jsonify({"error": "Token refresh failed"}), 502
+    hdrs = {"Authorization": f"Bearer {tokens['access_token']}",
+            "Xero-Tenant-Id": tokens["tenant_id"], "Accept": "application/json"}
+
+    def _try(path, params=None):
+        try:
+            r = http_requests.get(f"{XERO_API_BASE}{path}", headers=hdrs,
+                                  params=params or {}, timeout=(5, 20))
+            body = None
+            if r.status_code != 200:
+                body = r.text[:160]
+            return {"status": r.status_code, "detail": body}
+        except Exception as e:
+            return {"status": None, "detail": str(e)[:160]}
+
+    today = today_sydney()
+    probes = {
+        "reports_pnl": _try("/api.xro/2.0/Reports/ProfitAndLoss",
+                            {"fromDate": str(today.replace(day=1)), "toDate": str(today)}),
+        "reports_banksummary": _try("/api.xro/2.0/Reports/BankSummary",
+                                    {"fromDate": str(today.replace(day=1)), "toDate": str(today)}),
+        "reports_balancesheet": _try("/api.xro/2.0/Reports/BalanceSheet", {"date": str(today)}),
+        "reports_trialbalance": _try("/api.xro/2.0/Reports/TrialBalance", {"date": str(today)}),
+        "reports_list": _try("/api.xro/2.0/Reports"),
+        "invoices_linelevel": _try("/api.xro/2.0/Invoices", {"page": 1, "pageSize": 1}),
+        "banktransactions_linelevel": _try("/api.xro/2.0/BankTransactions", {"page": 1}),
+        "taxrates_settings": _try("/api.xro/2.0/TaxRates"),
+        "organisation_settings": _try("/api.xro/2.0/Organisation"),
+        "payroll_au_employees": _try("/payroll.xro/1.0/Employees"),
+        "payroll_au_activitystatement": _try("/payroll.xro/1.0/Settings"),
+    }
+
+    # Tax-relevant Balance Sheet lines at each requested date (defaults: last quarter
+    # boundary + today) — the ledger-derived GST/PAYG path available with CURRENT scopes.
+    bs_dates = [d.strip() for d in
+                (request.args.get("bs_dates") or "").split(",") if d.strip()] or [str(today)]
+    tax_lines = {}
+    for d in bs_dates[:6]:
+        try:
+            r = http_requests.get(f"{XERO_API_BASE}/api.xro/2.0/Reports/BalanceSheet",
+                                  headers=hdrs, params={"date": d}, timeout=(5, 20))
+            if r.status_code != 200:
+                tax_lines[d] = {"error": f"http {r.status_code}"}
+                continue
+            rep = (r.json().get("Reports") or [{}])[0]
+            hits = []
+
+            def walk(rows):
+                for row in rows or []:
+                    if row.get("Rows"):
+                        walk(row["Rows"])
+                    cells = row.get("Cells") or []
+                    if len(cells) >= 2:
+                        name = (cells[0].get("Value") or "").strip()
+                        low = name.lower()
+                        if any(k in low for k in ("gst", "payg", "bas", "tax", "ato")):
+                            try:
+                                val = float(str(cells[1].get("Value")).replace(",", ""))
+                            except (TypeError, ValueError):
+                                val = None
+                            hits.append({"account": name, "balance": val})
+
+            walk(rep.get("Rows", []))
+            tax_lines[d] = {"lines": hits}
+        except Exception as e:
+            tax_lines[d] = {"error": str(e)[:160]}
+
+    return jsonify({"as_of": str(today), "org": "via connected tenant",
+                    "granted_scopes_requested_at_consent": XERO_SCOPES,
+                    "probes": probes, "balance_sheet_tax_lines": tax_lines,
+                    "note": "read-only capability probe; 403 = scope not granted"})
+
+
 # ── Startup auto-refresh (runs once per worker, non-blocking) ──────────
 import threading
 
