@@ -59,14 +59,68 @@ def add_reminder(what: str, follow_up: str | None = None, importance: int = 78) 
     return {"id": lid}
 
 
-def resolve(loop_id: int) -> bool:
+def resolve(loop_id: int, answer: str | None = None, via: str = "manual") -> bool:
     loops = _load()
     for l in loops:
         if l.get("id") == loop_id and l["kind"] == "reminder":
             l["resolved"] = True
+            l["resolution"] = {"answer": (answer or "")[:200], "via": via,
+                               "ts": str(today_sydney())}
             _save(loops)
+            logger.info("loop #%s resolved via %s: %s", loop_id, via, (answer or "")[:80])
             return True
     return False
+
+
+_QUESTION_RE = re.compile(r"\b(which|what|when|who|where|how)\b.*\?|\?\s*$", re.I)
+
+
+def _preask_answer(what: str) -> dict | None:
+    """THE PRE-ASK RECALL CHECK (D2, belt and braces): before a question-shaped
+    reminder is ever surfaced — do I already have the answer in memory? A strong
+    fact match = the answer exists; asking would be an asked-answered failure."""
+    if not what or not _QUESTION_RE.search(what):
+        return None
+    try:
+        import db
+        if not db.db_configured():
+            return None
+        with db.get_conn() as conn, conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, fact, similarity(fact, %s) AS s FROM memory_facts
+                WHERE active = TRUE AND similarity(fact, %s) >= 0.32
+                ORDER BY s DESC LIMIT 1""", (what, what))
+            hit = cur.fetchone()
+        if hit:
+            return {"fact_id": hit["id"], "answer": hit["fact"], "sim": float(hit["s"])}
+    except Exception as e:
+        logger.info("pre-ask recall check failed: %s", e)
+    return None
+
+
+def check_resolution(user_text: str) -> list[dict]:
+    """RESOLUTION DETECTION (D2's root fix): when a loop's question gets answered in
+    ANY conversation, the loop resolves. A user statement (not itself a question)
+    sharing the loop's distinctive words is treated as the answer. Called on every
+    recorded user turn — cheap, resolves at most a few loops, journaled on the loop."""
+    if not user_text or _QUESTION_RE.search(user_text):
+        return []
+    resolved = []
+    low = user_text.lower()
+    for l in _load():
+        if l.get("resolved") or l.get("dropped") or not _QUESTION_RE.search(l.get("what") or ""):
+            continue
+        subject = [w for w in re.findall(r"[a-z]{4,}", (l["what"] or "").lower())
+                   if w not in ("which", "what", "when", "where", "does", "did",
+                                "pick", "start", "should", "have", "this", "that",
+                                "week", "with", "from", "about")]
+        if not subject:
+            continue
+        overlap = sum(1 for w in set(subject) if w in low)
+        if overlap >= max(2, len(set(subject)) // 2):
+            resolve(l["id"], answer=user_text[:200], via="answer detected in conversation")
+            resolved.append({"loop_id": l["id"], "what": l["what"]})
+    return resolved
 
 
 def drop(loop_id: int | None = None, match: str | None = None) -> int:
@@ -148,6 +202,22 @@ def due_followups(snap: dict | None = None) -> list[dict]:
         since = _days_since(l.get("last_followed") or l.get("created_at"))
         if l.get("last_followed") and since is not None and since < FOLLOWUP_DAYS:
             continue   # nagged too recently
+        # PRE-ASK RECALL CHECK: never surface a question whose answer is already in
+        # memory — resolve it with the answer attached instead (the near-miss is
+        # still logged as a quality incident: prevention counts, silence doesn't).
+        pre = _preask_answer(l.get("what") or "")
+        if pre:
+            resolve(l["id"], answer=pre["answer"],
+                    via=f"pre-ask recall (fact #{pre['fact_id']}, sim {pre['sim']:.2f})")
+            try:
+                import convo_quality
+                convo_quality.record_incident(
+                    "asked_answered_near_miss",
+                    f"loop #{l['id']} '{(l.get('what') or '')[:80]}' answered by memory: "
+                    f"{pre['answer'][:80]}")
+            except Exception:
+                pass
+            continue
         out.append({"loop_id": l["id"], "kind": "reminder", "importance": l.get("importance", 50),
                     "spoken": l["follow_up"], "watermark": f"loop:reminder:{l['id']}:{today_sydney()}"})
     for s in system_loops(snap):

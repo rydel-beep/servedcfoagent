@@ -973,5 +973,20 @@ def start_loop(interval_s: int = 6 * 3600) -> None:
                 bas_engine.daily_tick()           # kv-stamped: once a day (read-only Xero)
             except Exception as e:
                 logger.warning("bas tick failed: %s", e)
+            try:
+                import voice_health
+                voice_health.daily_tick()         # kv-stamped: TTS canary + quota watch
+            except Exception as e:
+                logger.warning("voice canary tick failed: %s", e)
+            try:
+                import memory_maintenance
+                memory_maintenance.nightly_tick() # kv-stamped: merge/supersede/demote (never delete)
+            except Exception as e:
+                logger.warning("memory maintenance tick failed: %s", e)
+            try:
+                import convo_quality
+                convo_quality.weekly_tick()       # kv-stamped: the self-review job
+            except Exception as e:
+                logger.warning("convo quality tick failed: %s", e)
 
     threading.Thread(target=_loop, daemon=True, name="attribution-recompute").start()

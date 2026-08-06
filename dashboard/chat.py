@@ -352,6 +352,16 @@ def build_system_prompt(messages: list, snapshot_json: str, voice: bool = False,
     # context, not financial truth (the block self-labels that). Empty when memory is off.
     if memory_block:
         system += "\n" + memory_block
+    # The confirmed avoid-list (self-improvement loop): phrases Rydel approved for
+    # removal — the ONLY behaviour change the loop applies, and only on confirmation.
+    try:
+        import convo_quality
+        avoid = convo_quality.avoid_phrases()
+        if avoid:
+            system += ("\n\nNEVER use these phrases (Rydel-confirmed avoid-list): "
+                       + "; ".join(f'"{p}"' for p in avoid[:12]))
+    except Exception:
+        pass
     return system, business
 
 

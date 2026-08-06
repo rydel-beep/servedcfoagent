@@ -1481,3 +1481,29 @@
      watermarked, bas_due → S1 + triage-PROMOTED; EDITH full-picture/due/set-aside/
      why-moved/set-instalment/refresh at both dispatch sites, disclaimer test-enforced
      in every answer. Suite 609 (12 new).
+
+124. **VOICE RESTORATION + MEMORY MAINTENANCE + THE SELF-IMPROVEMENT LOOP (2026-08-06).**
+     THREE DEFECTS, THREE ROOT CAUSES, NAMED: D1 the ElevenLabs key on Railway is a
+     legacy 64-char key — the API now rejects non-'sk_' keys (400
+     invalid_api_key_prefix, traced end-to-end) → RYDEL ACCOUNT ACTION (new key into
+     ELEVENLABS_API_KEY); code side ships the LOUD FALLBACK (first fallback utterance
+     announces itself with the recorded reason; persistent badge; salience daily while
+     broken; daily canary in the automation registry; quota warns at 85%). D2 the
+     pilot-venue question was a PURE LOOP-RESOLUTION-MISS — fact #169 was stored,
+     recalled, in-budget; the reminder loop had no resolution path but "drop it", so it
+     re-fired every 3 days (same class live: the stale "reconnect Xero" loop #2). Fixed
+     twice over: the PRE-ASK RECALL CHECK (a question-shaped reminder whose answer
+     exists in memory resolves with the answer attached — never asked; the near-miss
+     logged) + RESOLUTION DETECTION on every recorded user turn (a statement sharing
+     the loop's distinctive words resolves it). The asked-answered class is a permanent
+     regression suite. D3 decay had NEVER run; the budget invariant was broken AGAIN
+     (top-60 = 7,034 chars vs 6,000) → memory_maintenance.py nightly: merge (≥0.75) /
+     supersede (transition-marked) / CONFIRMATION CARDS (uncertain — never guessed) /
+     demote stale low-weight to the archive tier / budget re-protected at every size.
+     NEVER DELETES (grep-tested), fully journaled, 'restore memory fact #N' reverses,
+     archived facts stay retrievable in recall. UPGRADE: convo_quality.py — silent
+     incident capture (corrections/asked-answered/near-misses/drift/fallbacks), weekly
+     self-review with trend + worst-exchange, proposals CONFIRMATION-GATED (the
+     avoid-list is the only behaviour change and only on "apply proposal N"), metrics
+     (incidents/100 turns; asked-answered target ZERO), EDITH honest about her own
+     track record. Suite 626 (17 new).

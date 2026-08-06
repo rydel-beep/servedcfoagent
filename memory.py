@@ -158,6 +158,19 @@ def build_recall_context(user_message: str, conversation_id: int | None = None) 
                 lines.append(f"- [{stamp}] {h['role']}: {snippet}")
                 recalled.append({"date": stamp, "snippet": snippet[:120]})
 
+        # Archived facts stay retrievable (maintenance demotes, never deletes):
+        # topical matches come back labelled, on demand only.
+        try:
+            import memory_maintenance
+            arch = memory_maintenance.search_archived(user_message, limit=3)
+            if arch:
+                lines.append("\nArchived facts matching this topic (demoted, still true "
+                             "unless superseded):")
+                for a in arch:
+                    lines.append(f"- (archived) [{a['category']}] {a['fact']}")
+        except Exception:
+            pass
+
         if not lines:
             return empty
 

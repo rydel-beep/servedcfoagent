@@ -217,9 +217,16 @@ def api_history():
 @bp.route("/api/voice-status", methods=["GET"])
 @require_auth
 def api_voice_status():
-    """Voice layer health: ElevenLabs configured? usage vs caps. No key material."""
+    """Voice layer health: ElevenLabs configured? usage vs caps + degradation state
+    (voice_health) so the client can ANNOUNCE a fallback. No key material."""
     from dashboard.voice import tts_usage
-    return jsonify(tts_usage())
+    out = tts_usage()
+    try:
+        import voice_health
+        out["health"] = voice_health.status()
+    except Exception:
+        out["health"] = None
+    return jsonify(out)
 
 
 @bp.route("/api/memory-status", methods=["GET"])
@@ -271,7 +278,19 @@ def tts_response(text: str, voice_id=None):
         first = next(gen)
     except (RuntimeError, StopIteration) as e:
         reason = str(e) or "no audio"
+        # LOUD degradation: every failure is recorded — the widget announces the
+        # fallback, salience carries it, the registry shows FAILING (voice_health).
+        try:
+            import voice_health
+            voice_health.record_failure(reason)
+        except Exception:
+            pass
         return jsonify({"fallback": True, "reason": reason}), 503
+    try:
+        import voice_health
+        voice_health.record_ok()
+    except Exception:
+        pass
 
     def stream():
         yield first
@@ -715,6 +734,13 @@ def api_chat():
     # writing the new turn — this is what makes a refresh RESUME instead of restart.
     history = memory.resume_thread(conv_id, history)
     memory.record_turn(conv_id, "user", user_msg, channel=channel)
+    # Self-improvement loop: silent incident capture + loop-resolution detection on
+    # every user turn (corrections, answers that close open loops). Never blocks.
+    try:
+        import convo_quality
+        convo_quality.scan_user_turn(user_msg)
+    except Exception:
+        pass
 
     # Data-layer commands: "resync"/"sync now" (immediate mirror sync + rebuild) and
     # "what's plugged into your system / is your data current" — handled locally (no model).
@@ -798,6 +824,9 @@ def api_chat():
             (__import__('email_pipeline').handle_pipeline_query, False),     # Email engine: what's pending my review / pipeline state
             (capacity_engine.handle_capacity_command, False),  # hiring/capacity/raise/afford questions
             (forecasting_engine.handle_forecast_command, False),  # cash-flow / MRR / runway forecasts
+            (__import__('voice_health').handle_voice_health_command, False),  # 'is your voice okay?'
+            (__import__('memory_maintenance').handle_memory_maintenance_command, False),  # cards/journal/restore
+            (__import__('convo_quality').handle_quality_command, False),  # quality metrics/proposals/apply
             (__import__('bas_engine').handle_set_instalment, False),     # 'set PAYG instalment to $X'
             (__import__('bas_engine').handle_refresh_command, False),    # 'refresh the BAS estimate'
             (__import__('bas_engine').handle_bas_command, False),        # BAS/GST/set-aside/due-date answers
@@ -934,6 +963,13 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
     # Rebuild the thread from the DB on refresh BEFORE writing the new turn (resume, not restart).
     history = memory.resume_thread(conv_id, history)
     memory.record_turn(conv_id, "user", user_msg, channel=channel)
+    # Self-improvement loop: silent incident capture + loop-resolution detection on
+    # every user turn (corrections, answers that close open loops). Never blocks.
+    try:
+        import convo_quality
+        convo_quality.scan_user_turn(user_msg)
+    except Exception:
+        pass
 
     def sse(event: str, payload) -> str:
         return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
@@ -1018,6 +1054,9 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             (__import__('email_pipeline').handle_pipeline_query, False),     # Email engine: what's pending my review / pipeline state
             (capacity_engine.handle_capacity_command, False),
             (forecasting_engine.handle_forecast_command, False),
+            (__import__('voice_health').handle_voice_health_command, False),  # 'is your voice okay?'
+            (__import__('memory_maintenance').handle_memory_maintenance_command, False),  # cards/journal/restore
+            (__import__('convo_quality').handle_quality_command, False),  # quality metrics/proposals/apply
             (__import__('bas_engine').handle_set_instalment, False),     # 'set PAYG instalment to $X'
             (__import__('bas_engine').handle_refresh_command, False),    # 'refresh the BAS estimate'
             (__import__('bas_engine').handle_bas_command, False),        # BAS/GST/set-aside/due-date answers

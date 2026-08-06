@@ -113,6 +113,13 @@ def _timeline_health() -> list[dict]:
 
 def _edith_health() -> list[dict]:
     out = []
+    # EDITH's voice (ElevenLabs) — the canary row; a dead voice is an automation
+    # failure like any other, never a silent robot fallback (voice_health, D1).
+    try:
+        import voice_health
+        out.append(voice_health.automation_row())
+    except Exception as e:  # noqa: BLE001
+        out.append(_entry("cfo:voice_tts", "EDITH voice (ElevenLabs)", "UNKNOWN", str(e)[:80]))
     # snapshot refresh loop (expected every REFRESH_INTERVAL_HOURS, default 2h)
     try:
         from snapshot import load_persisted

@@ -318,7 +318,7 @@
         }
         if (!voiceStatus.elevenlabs_configured) {
           fallbackBadge('ElevenLabs not configured');
-          browserSpeak(text, my).then(function() { done('fallback'); });
+          browserSpeak(fallbackAnnouncePrefix() + text, my).then(function() { done('fallback'); });
           return;
         }
 
@@ -360,7 +360,7 @@
           log('ElevenLabs first-byte timeout (' + FALLBACK_TIMEOUT_MS + 'ms) — confirmed failure');
           try { el.pause(); } catch (e) {}
           fallbackBadge('timeout');
-          browserSpeak(text, my).then(function() { settled = true; done('fallback'); });
+          browserSpeak(fallbackAnnouncePrefix() + text, my).then(function() { settled = true; done('fallback'); });
         }, FALLBACK_TIMEOUT_MS);
 
         el.addEventListener('playing', function() {
@@ -383,7 +383,7 @@
           if (el.currentTime > 0.4) { settled = true; done('elevenlabs'); return; }  // mostly played
           fellBack = true;
           fallbackBadge('stream error');
-          browserSpeak(text, my).then(function() { settled = true; done('fallback'); });
+          browserSpeak(fallbackAnnouncePrefix() + text, my).then(function() { settled = true; done('fallback'); });
         });
         el.play().catch(function(err) {
           if (settled || fellBack || currentUtterance !== my) return;
@@ -396,7 +396,7 @@
           }
           fellBack = true;
           fallbackBadge('play failed');
-          browserSpeak(text, my).then(function() { settled = true; done('fallback'); });
+          browserSpeak(fallbackAnnouncePrefix() + text, my).then(function() { settled = true; done('fallback'); });
         });
       });
     }
@@ -871,9 +871,19 @@
     } catch (e) { voiceStatus = null; }
   }
 
+  // LOUD FALLBACK (D1): silent degradation is impossible. The badge persists,
+  // and the FIRST fallback utterance of the session announces itself out loud
+  // with the server-recorded reason before speaking the actual line.
+  var _fallbackAnnounced = false;
   function fallbackBadge(reason) {
     note('voice fallback (' + reason + ')', 6000);
-    fxBadge('FALLBACK');
+    fxBadge('FALLBACK VOICE');
+  }
+  function fallbackAnnouncePrefix() {
+    if (_fallbackAnnounced) return '';
+    _fallbackAnnounced = true;
+    var why = (voiceStatus && voiceStatus.health && voiceStatus.health.reason) || 'the voice service is failing';
+    return 'Heads up — I’m on the fallback voice; ElevenLabs is failing with ' + why + '. ';
   }
 
   // speak wrapper: tracks transcript for the echo filter + latency metric

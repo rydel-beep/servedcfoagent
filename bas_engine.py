@@ -39,6 +39,12 @@ _KV_HISTORY = "bas:history"        # {quarter_end_iso: tax_lines} — fetched on
 _KV_PNL_HIST = "bas:pnl_history"   # {quarter_start_iso: {revenue, credits_band}} — for deltas
 _KV_TICK = "bas:daily_tick"
 _KV_CALIBRATION = "bas:calibration"
+_KV_LODGED = "bas:lodged"          # {quarter_start_iso: official lodged lines + provenance}
+                                   # THE TRUTH for lodged periods (BAS_CALIBRATION_REPORT,
+                                   # calibrated against the official Activity Statement
+                                   # export 2026-08-06). Ledger-derived figures for those
+                                   # periods are calibration comparison ONLY, never shown
+                                   # as the obligation.
 
 DISCLAIMER = ("Estimate for planning — your accountant/BAS agent lodges the official "
               "statement.")

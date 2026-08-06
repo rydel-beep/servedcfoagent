@@ -306,6 +306,16 @@ def collect(snap: dict | None = None) -> list[dict]:
     except Exception:
         pass
 
+    # 16) Voice health (D1: silent degradation impossible) — fallback-active re-fires
+    #     daily while broken; quota-approaching warns before exhaustion. Watermarked.
+    try:
+        import voice_health
+        for a in (voice_health.salience_events() or []):
+            if a["id"] not in told:
+                events.append(a)
+    except Exception:
+        pass
+
     events.sort(key=lambda e: (e["salience"], -e["ago"]), reverse=True)
     return events
 
