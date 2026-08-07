@@ -426,6 +426,14 @@ def show_verification_pass(max_contacts: int = 40) -> dict:
     for c in r_all["creatives"]:
         for dl in c.get("deals") or []:
             closed_norms.add(_norm(dl["name"]))
+    # TRACKER AUTHORITY: a row the setter explicitly marked "Showed" IS attendance —
+    # questioning it would invert the authority doctrine. Verified, no card.
+    tracker_showed = set()
+    try:
+        leads_all, _cm = AE.parse_tracker(AE._tracker_rows_clean())
+        tracker_showed = {l["name_norm"] for l in leads_all if l.get("show")}
+    except Exception:
+        pass
     proposed = kv_store.get(_KV_PROPOSED) or []
     known_prop = {p.get("id") for p in proposed}
     out = {"checked": 0, "verified_outcome": 0, "verified_call": 0,
@@ -449,6 +457,14 @@ def show_verification_pass(max_contacts: int = 40) -> dict:
             changed = True
             if cur == "unverified":
                 out["upgraded"] += 1
+            continue
+        if nm in tracker_showed:
+            e["verification"] = {"state": "verified", "via": "show:tracker-authority"}
+            out["verified_tracker"] = out.get("verified_tracker", 0) + 1
+            changed = True
+            # a stale attendance card for a tracker-Showed lead is noise — retire it
+            proposed = [p for p in proposed if p.get("id") != f"attendance:{nm}"]
+            known_prop.discard(f"attendance:{nm}")
             continue
         cid = (e.get("evidence") or {}).get("contact_id")
         calls = contact_calls(cid) if cid else []
