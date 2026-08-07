@@ -43,3 +43,46 @@ date, ID-exact — or outcome-evidenced by a downstream close) · SHOW·UNVERIFI
 (cancelled/invalid/noshow — set only, unchanged). Tracker-flagged shows stay
 AUTHORITY (an explicit human record, not absence-of-flag) and render as their own
 provenance. Unit economics consume tracker+verified; unverified is visible beside.
+
+---
+
+## THE BUILD + LIVE RUNS (2026-08-08, commits 9d9ad7b + aee6744 — DECISIONS #129)
+
+### Final live classification (all 19 derived shows — the hand-audit table)
+- **17 × show:tracker-authority** — the setter explicitly marked "Showed" on the
+  tracker row; questioning the authority's explicit record would invert the
+  doctrine. (Run 1 had carded all of these — the refinement retired the noise.)
+- **1 × show:call-evidenced** — sami amor: call `l2TRdDhyn6l1dvjxiqY3`, 319s,
+  2026-04-24 ≥ scheduled 2026-04-23.
+- **1 × unverified** — matt annenberg: appointment scheduled 2026-08-12 (the
+  FUTURE); his 1,070s call on 08-05 is the set call, shown as card context. The
+  nightly pass auto-upgrades when post-appointment evidence lands.
+- Near-miss pattern from run 1 (17 long calls of 10–58 min just before the
+  scheduled dates) resolved into the tracker-authority tier — those conversations
+  were real and the tracker had already said so.
+
+### Cells + economics
+Shows per window UNCHANGED (30d 6 · 60d 11 · 90d 20; 1 in-window unverified,
+labelled `Nv·Mu`) — the tiers reclassified evidence, they did not inflate or
+deflate honest counts. Show-rate flags now consume VERIFIED only. **Verdicts
+moved: NONE** (named check, live).
+
+### PROPOSED queue delta
+Attendance cards: 18 (run 1) → **1** (run 2, after the authority refinement) —
+matt annenberg, with his near-miss context. Close cards: unchanged (15, Xero
+corroboration pending scopes).
+
+### Xero (the gap paragraph)
+GET /api.xro/2.0/Invoices → **401** · GET /api.xro/2.0/BankTransactions → **401**
+(probed 2026-08-08 via the deployed service; report-read scopes still the only
+grants). The rung is NOT built — zero speculative code. When Rydel's re-consent
+lands, the probe (existing /debug/xero-probe) flips and the rung follows the
+standing convention (payment dates → PROPOSED, corroboration shown on cards).
+The five bank-transfer no-evidence contacts remain the honest blind spot.
+
+### Nightly (verbatim schedule)
+integrity_sweep (kv-stamped daily in the attribution loop) now runs: invariants →
+undated-set census → spine census → quad-check → reached sweep → date-resolution +
+supersession → event sweep (40/night) → **show verification (upgrades journaled,
+quiet positives in the feed)** → accuracy row with **verified_show_ratio**
+(currently 18/19 = 0.947) → self-retiring flag publish → phantom prune.
