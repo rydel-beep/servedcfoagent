@@ -146,7 +146,16 @@ def _build_board(days, start, end, basis, force=False, market=None):
                        "prior": {k: pt.get(k) for k in ("leads", "closes", "cash", "spend")}}
         except Exception as e:
             logger.info("headline compare unavailable: %s", e)
+    derived_map = None
+    try:
+        import resolution
+        dd = resolution.derived_dates() or {}
+        derived_map = {k: {f: {"date": v[f]["date"], "provenance": v[f]["provenance"]}
+                           for f in v} for k, v in list(dd.items())[:80]}
+    except Exception:
+        pass
     return {
+        "derived_dates": derived_map,
         "hygiene": hygiene, "identity": identity, "ladder": ladder,
         "window": result.get("window"), "basis": result.get("basis"),
         "basis_label": result.get("basis_label"),
@@ -356,9 +365,16 @@ def deal_panel():
                               "candidates": card.get("candidates")})
     except Exception as e:
         logger.info("deal queue state degraded: %s", e)
+    derived = {}
+    try:
+        import resolution
+        derived = (resolution.derived_dates() or {}).get(nm) or {}
+    except Exception:
+        pass
     resp = jsonify({
         "name": lead["name"], "business": lead.get("business"),
         "market": lead.get("market"),
+        "derived_dates": derived or None,
         "tracker": {k: (str(lead.get(k)) if lead.get(k) is not None else None)
                     for k in ("input_date", "setter_outcome", "set", "set_date", "show",
                               "closer_outcome", "close_date", "contract", "cash",

@@ -177,6 +177,165 @@ def latest_proposed() -> dict:
     return kv_store.get(_KV_PROPOSED) or {}
 
 
+# ── THE DATE RESOLUTION ENGINE (FUNNEL_COMPLETION, DECISIONS #128) ───────────
+# One resolver per event type, evidence ladders in strict order, first UNAMBIGUOUS
+# ID-exact hit wins. TRACKER IS THE AUTHORITY: a derived date makes an event
+# windowable NOW, labelled; the queue item persists; a later source fill
+# SUPERSEDES (journaled) and any disagreement SURFACES.
+#
+# ENCODED CONVENTIONS (defaults, veto-able — logged to DECISIONS #128):
+#   close  = the signed/verbal deal-won event → payment/stage dates are evidence
+#            NEAR the close → Stripe/GHL-stage rungs are PROPOSED, never AUTO.
+#            (The Xero invoices/payments rung is a CAPABILITY GAP: current scopes
+#            are report-reads only — reported, not built blind.)
+#   input  = the lead's arrival → GHL contact created date, ID-exact → AUTO.
+#   set    = the date the appointment was BOOKED (setter action) → AUTO on a
+#            single ID-exact appointment; multiple candidates → PROPOSED.
+#   show   = the appointment's SCHEDULED datetime, requiring show evidence
+#            (status in the kept vocabulary) → AUTO; ambiguous status → PROPOSED.
+
+_KV_DERIVED = "derived:dates"     # {name_norm: {field: {date, provenance, evidence, ts}}}
+
+_APPT_KEPT_STATUSES = {"confirmed", "showed", "completed"}
+
+
+def derived_dates() -> dict:
+    import kv_store
+    return kv_store.get(_KV_DERIVED) or {}
+
+
+def _put_derived(store: dict) -> None:
+    import kv_store
+    kv_store.put(_KV_DERIVED, store)
+
+
+def record_derived_date(name_norm: str, field: str, date_iso: str, provenance: str,
+                        evidence: dict) -> bool:
+    """Journaled, reversible, evidence-linked — the I12 contract. REJECTS a
+    derivation without evidence links (schema-enforced, adversarially tested)."""
+    if not (name_norm and field in ("input_date", "close_date", "set_date", "show_date")
+            and date_iso and provenance and isinstance(evidence, dict) and evidence):
+        logger.warning("derivation rejected — evidence/schema incomplete: %s %s", name_norm, field)
+        return False
+    from helpers import today_sydney
+    store = derived_dates()
+    cur = store.get(name_norm, {}).get(field)
+    if cur and cur.get("date") == date_iso:
+        return True   # idempotent — no re-derivation churn
+    store.setdefault(name_norm, {})[field] = {
+        "date": date_iso, "provenance": provenance, "evidence": evidence,
+        "ts": str(today_sydney())}
+    _put_derived(store)
+    log_autofix(f"date derived ({field})",
+                f"{name_norm}: {field} = {date_iso} via {provenance} "
+                f"(evidence {str(evidence)[:80]})")
+    return True
+
+
+def supersede_derived(name_norm: str, field: str, source_date_iso: str) -> dict | None:
+    """The source landed: it WINS. The derivation is retired (journaled, reversible
+    via the journal); a source≠derived disagreement SURFACES, never silently resolves."""
+    store = derived_dates()
+    cur = (store.get(name_norm) or {}).get(field)
+    if not cur:
+        return None
+    del store[name_norm][field]
+    if not store[name_norm]:
+        del store[name_norm]
+    _put_derived(store)
+    agree = cur.get("date") == source_date_iso
+    log_autofix(f"date superseded ({field})",
+                f"{name_norm}: source {source_date_iso} supersedes derived "
+                f"{cur.get('date')} ({cur.get('provenance')}) — "
+                f"{'agrees' if agree else 'DISAGREES'}")
+    if not agree:
+        try:
+            import kv_store
+            flags = kv_store.get("ads_truth:flags") or []
+            flags.append({"metric": "ads_truth",
+                          "reason": (f"date disagreement on {name_norm} {field}: source "
+                                     f"{source_date_iso} vs derived {cur.get('date')} "
+                                     f"({cur.get('provenance')}) — source now rules; verify")})
+            kv_store.put("ads_truth:flags", flags[-60:])
+        except Exception:
+            pass
+    return {"superseded": cur, "agrees": agree}
+
+
+def resolve_dates() -> dict:
+    """The dateless pass: AUTO rungs only (input ← GHL contact created; set/show are
+    the event sweep's job in ads_truth). Close dates stay PROPOSED per the encoded
+    convention (the P1 cards ARE that lane). Idempotent; supersession handled."""
+    import close_integrity as CI
+    out = {"input_auto": 0, "superseded": 0, "close_proposed_existing": 0}
+    try:
+        won = CI._tracker_won_rows()
+    except Exception as e:
+        return {"skipped": f"tracker unavailable: {e}"}
+    contacts_by_norm = {}
+    try:
+        import attribution_join
+        for c in attribution_join.load_contacts():
+            if c.get("name"):
+                contacts_by_norm.setdefault(_norm(c["name"]), c)
+    except Exception:
+        return {"skipped": "contacts unavailable"}
+
+    store = derived_dates()
+    for t in won:
+        nm = _norm(t["name"])
+        # supersession: the source filled a date we had derived
+        for field, src in (("input_date", t.get("input_date")),
+                           ("close_date", t.get("close_date"))):
+            if src and (store.get(nm) or {}).get(field):
+                supersede_derived(nm, field, str(src))
+                out["superseded"] += 1
+        # AUTO: input date ← GHL contact created (ID-exact, single, unambiguous)
+        if t.get("input_date") is None:
+            c = contacts_by_norm.get(nm)
+            da = c and c.get("date_added")
+            if c and da:
+                date_iso = str(da.date() if hasattr(da, "date") else da)[:10]
+                if record_derived_date(nm, "input_date", date_iso,
+                                       "derived:ghl-contact-created",
+                                       {"contact_id": c["id"]}):
+                    out["input_auto"] += 1
+    cards = (latest_proposed() or {}).get("cards") or []
+    out["close_proposed_existing"] = sum(1 for c in cards
+                                         if c.get("kind") == "P1_close_date_candidate")
+    return out
+
+
+_APPLY_DATE_RE = re.compile(r"apply (the )?date card (for )?(.+)", re.I)
+
+
+def handle_apply_date_card(text: str) -> tuple[str | None, bool]:
+    """Rydel confirms a PROPOSED close-date candidate → it becomes a journaled
+    DERIVATION (no tracker write — the queue item persists until the source fills)."""
+    m = _APPLY_DATE_RE.match((text or "").strip())
+    if not m:
+        return None, False
+    frag = m.group(3).strip().lower()
+    cards = (latest_proposed() or {}).get("cards") or []
+    hits = [c for c in cards if c.get("kind") == "P1_close_date_candidate"
+            and frag in (c.get("name") or "").lower()]
+    if len(hits) != 1:
+        return (f"{len(hits)} card(s) match '{frag}' — give me a fragment that matches "
+                f"exactly one ('any proposed fixes?' lists them).", True)
+    card = hits[0]
+    cand = (card.get("candidates") or [{}])[0]
+    ok = record_derived_date(_norm(card["name"]), "close_date", cand.get("date"),
+                             f"derived:{'stripe' if 'Stripe' in (cand.get('source') or '') else 'ghl-stage'}"
+                             f" (Rydel-confirmed)",
+                             {"card": card.get("id"), "source": cand.get("source")})
+    if not ok:
+        return "That card has no usable candidate — nothing derived.", True
+    return (f"Derived (on your confirmation): {card['name']} close date "
+            f"{cand.get('date')} from {cand.get('source')}. The board can window it now, "
+            f"labelled; the Piolo item stays until the tracker cell is filled — the "
+            f"source will supersede.", True)
+
+
 # ── EDITH ────────────────────────────────────────────────────────────────────
 
 _PROPOSED_RE = re.compile(

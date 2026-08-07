@@ -258,6 +258,106 @@ def reached_sweep(max_contacts: int = 30) -> dict:
     return {"checked": checked, "found": found, "remaining": max(0, len(todo) - checked)}
 
 
+# ── FULL-FUNNEL EVENT SWEEP (DECISIONS #128 — widen from the close spine) ────
+
+_KV_APPT_CACHE = "ghl:appt_cache"   # {contact_id: {ts, appts:[...]}} — 7d TTL
+_APPT_TTL_DAYS = 7
+
+
+def _cached_appointments(contact_id: str) -> list[dict]:
+    """Batched/cached GHL appointment reads — never a full-location crawl."""
+    import kv_store
+    from helpers import today_sydney
+    cache = kv_store.get(_KV_APPT_CACHE) or {}
+    hit = cache.get(contact_id)
+    today = str(today_sydney())
+    if hit and (today <= str(hit.get("expires") or "")):
+        return hit.get("appts") or []
+    appts = contact_appointments(contact_id)
+    import datetime as dt
+    cache[contact_id] = {"expires": str(today_sydney() + dt.timedelta(days=_APPT_TTL_DAYS)),
+                         "appts": [{k: a.get(k) for k in
+                                    ("id", "dateAdded", "startTime", "appointmentStatus",
+                                     "status", "calendarId")} for a in appts[:6]]}
+    # cap the cache footprint
+    if len(cache) > 800:
+        cache = dict(list(cache.items())[-600:])
+    kv_store.put(_KV_APPT_CACHE, cache)
+    return cache[contact_id]["appts"]
+
+
+def _date_of(v) -> str | None:
+    s = str(v or "")
+    return s[:10] if len(s) >= 10 and s[4:5] == "-" else None
+
+
+def event_sweep(max_contacts: int = 40) -> dict:
+    """Derive set/show DATES per the encoded conventions (#128):
+      set  = the appointment's BOOKED date (dateAdded) — setter action.
+      show = the appointment's SCHEDULED date, requiring kept-status evidence.
+    Scope: attributed leads whose tracker set has NO date (the 122-strong dateless
+    class) — single unambiguous appointment → AUTO; multiple → PROPOSED lane.
+    Batched + cached + incremental; GHL calls counted and reported."""
+    import attribution_engine as AE
+    import kv_store
+    import resolution
+    r = AE.compute(days=3650, basis="cohort")
+    contacts_by_norm = {}
+    try:
+        import attribution_join
+        for c in attribution_join.load_contacts():
+            if c.get("name"):
+                contacts_by_norm.setdefault(_norm(c["name"]), c)
+    except Exception:
+        return {"skipped": "contacts unavailable"}
+    already = resolution.derived_dates()
+    proposed = kv_store.get(_KV_PROPOSED) or []
+    known_prop = {p.get("id") for p in proposed}
+    todo = []
+    for v in (r.get("rows") or []):
+        nm = _norm(v["name"])
+        if v.get("set") and not v.get("set_date") and not (already.get(nm) or {}).get("set_date"):
+            c = contacts_by_norm.get(nm)
+            if c:
+                todo.append((nm, v["name"], c["id"]))
+    calls = derived = prop_n = 0
+    for nm, name, cid in todo[:max_contacts]:
+        appts = _cached_appointments(cid)
+        calls += 1
+        if not appts:
+            continue
+        if len(appts) == 1:
+            a = appts[0]
+            booked = _date_of(a.get("dateAdded"))
+            if booked and resolution.record_derived_date(
+                    nm, "set_date", booked, "derived:ghl-appt",
+                    {"appointment_id": a.get("id"), "contact_id": cid,
+                     "raw_status": a.get("appointmentStatus") or a.get("status")}):
+                derived += 1
+                status = str(a.get("appointmentStatus") or a.get("status") or "").lower()
+                sched = _date_of(a.get("startTime"))
+                if sched and status in _APPT_KEPT:
+                    resolution.record_derived_date(
+                        nm, "show_date", sched, "derived:ghl-appt",
+                        {"appointment_id": a.get("id"), "contact_id": cid,
+                         "raw_status": status})
+        else:
+            pid = f"setdate:multi:{nm}"
+            if pid not in known_prop:
+                proposed.append({"id": pid, "kind": "set_date_candidates",
+                                 "close": name, "contact_id": cid,
+                                 "candidates": [{"appointment_id": a.get("id"),
+                                                 "booked": _date_of(a.get("dateAdded")),
+                                                 "start": _date_of(a.get("startTime")),
+                                                 "status": a.get("appointmentStatus") or a.get("status")}
+                                                for a in appts],
+                                 "ask": "multiple appointments — pick the set call"})
+                prop_n += 1
+    kv_store.put(_KV_PROPOSED, proposed[-60:])
+    return {"ghl_calls": calls, "derived_set_dates": derived,
+            "proposed_multi": prop_n, "remaining": max(0, len(todo) - max_contacts)}
+
+
 # ── QUAD-CHECK ───────────────────────────────────────────────────────────────
 
 def quad_check(days: int = 90, sample_cells: int = 0) -> dict:
@@ -387,6 +487,17 @@ def integrity_sweep() -> dict:
         out["reached_sweep"] = reached_sweep()
     except Exception as e:
         out["reached_sweep"] = {"error": str(e)[:80]}
+    # #128 additions: (a) the date-resolution pass over new dateless events +
+    # supersession processing for source fills; (b) the incremental event sweep
+    try:
+        import resolution
+        out["date_resolution"] = resolution.resolve_dates()
+    except Exception as e:
+        out["date_resolution"] = {"error": str(e)[:80]}
+    try:
+        out["event_sweep"] = event_sweep()
+    except Exception as e:
+        out["event_sweep"] = {"error": str(e)[:80]}
 
     # NEW cause classes → auto-file a PROPOSED regression-test skeleton
     causes = kv_store.get(_KV_CAUSES) or {}

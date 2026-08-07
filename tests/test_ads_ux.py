@@ -125,7 +125,8 @@ def test_new_routes_are_auth_gated():
 
 def test_feed_items_deep_link_to_the_deal_panel():
     src = open(os.path.join(os.path.dirname(__file__), "..", "close_integrity.py")).read()
-    assert src.count('"deal_name": t["name"]') == 2   # blank close + input date items
+    # blank close + input date items + the lane-lag ageing items (#128)
+    assert src.count('"deal_name": t["name"]') >= 2
     af = open(os.path.join(os.path.dirname(__file__), "..", "action_feed.py")).read()
     assert '"/ads?deal=" ' in af or '"/ads?deal="' in af
     dj = open(os.path.join(os.path.dirname(__file__), "..", "dashboard", "static",

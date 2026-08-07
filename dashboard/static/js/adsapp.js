@@ -149,13 +149,32 @@
     var dateless = all.filter(function (d) {
       return d.kind === 'tracker_blank_close_date' || d.kind === 'tracker_blank_input_date'; });
     var ds = all.filter(function (d) { return dateless.indexOf(d) < 0; });
-    var railHtml = dateless.length
-      ? '<div class="adx-dateless"><strong>Dateless (' + dateless.length + ')</strong> — real events the clocks cannot place; each clears automatically when Piolo fills the date at source: ' +
-        dateless.map(function (d) {
-          var nm = (d.detail || '').split(':')[0];
-          return '<button class="adx-deal-open adx-door" data-deal="' + esc(nm) + '">' + esc(nm) + '</button>';
-        }).join(' ') + '</div>'
-      : '';
+    // group by CONTACT with event-type chips; entries with a derivation move to
+    // the collapsed "Derived (awaiting source)" section — visible, never vanishing
+    var dd = state.board.derived_dates || {};
+    var byName = {};
+    dateless.forEach(function (d) {
+      var nm = (d.detail || '').split(':')[0];
+      var ev = d.kind === 'tracker_blank_close_date' ? 'close' : 'input';
+      (byName[nm] = byName[nm] || []).push(ev);
+    });
+    var open = [], resolved = [];
+    Object.keys(byName).forEach(function (nm) {
+      var key = nm.toLowerCase().replace(/[^a-z0-9 @.]/g, '').trim();
+      var got = dd[key] || {};
+      var evs = byName[nm];
+      var allDerived = evs.every(function (ev) {
+        return got[ev === 'close' ? 'close_date' : 'input_date']; });
+      var chip = '<button class="adx-deal-open adx-door" data-deal="' + esc(nm) + '">' +
+        esc(nm) + (evs.length > 1 ? ' ×' + evs.length : '') + ' · ' + evs.join(' · ') + '</button>';
+      (allDerived ? resolved : open).push(chip);
+    });
+    var railHtml = (open.length
+      ? '<div class="adx-dateless"><strong>Dateless (' + open.length + ' contact(s))</strong> — real events the clocks cannot place; a filled source date clears them automatically: ' +
+        open.join(' ') + '</div>' : '') +
+      (resolved.length
+      ? '<details class="adx-dateless adx-derived-rail"><summary><strong>Derived (' + resolved.length + ')</strong> — dated from evidence, awaiting the source fix (the queue item lives until Piolo lands the date)</summary>' +
+        resolved.join(' ') + '</details>' : '');
     var items = ds.slice(0, 8).map(function (d) {
       var nm = (d.detail || '').indexOf(':') > 0 ? (d.detail || '').split(':')[0] : null;
       return '<div class="adx-hyg-item adx-sev' + d.severity + '"><span>' +
@@ -534,6 +553,8 @@
           '<div class="adx-person-meta">tracker: in ' + esc(t.input_date || '—') + ' · setter ' + esc(t.setter_outcome || '—') +
           ' · set ' + esc(t.set || '—') + ' (date ' + esc(t.set_date || 'BLANK') + ') · show ' + esc(t.show || '—') +
           ' · closer ' + esc(t.closer_outcome || '—') + ' · close date ' + esc(t.close_date || 'BLANK') +
+          (d.derived_dates ? ' · <span class="adx-prov">derived: ' + esc(Object.keys(d.derived_dates).map(function (f) {
+            return f + ' ' + d.derived_dates[f].date + ' (' + d.derived_dates[f].provenance + ')'; }).join(' · ')) + '</span>' : '') +
           ' · contract ' + esc(t.contract || '—') + ' · cash ' + esc(t.cash || '—') + '</div>' +
           (d.why_invisible ? '<div class="adx-warnline">' + d.why_invisible.map(esc).join('<br>') + '</div>' : '') +
           '<div class="adx-queue">' + (d.queue || []).map(function (q) {
@@ -571,8 +592,12 @@
             return on ? '<span class="adx-chip on" title="' + esc(prov || 'tracker') + '">' + label + '</span>'
                       : '<span class="adx-chip">' + label + '</span>';
           }
-          return chip(v.qualified, 'Q') + chip(v.reached, 'R') + chip(v.set, 'set') +
-                 chip(v.show, 'show') + chip(!!v.close_date, v.close_date ? 'closed ' + v.close_date : 'closed');
+          var dv = v.derived_dates || {};
+          return chip(v.qualified, 'Q') + chip(v.reached, 'R') +
+                 chip(v.set, 'set' + (dv.set_date ? ' ·d' : ''), dv.set_date || 'tracker') +
+                 chip(v.show, 'show') +
+                 chip(!!v.close_date, v.close_date ? 'closed ' + v.close_date + (dv.close_date ? ' ·d' : '') : 'closed',
+                      dv.close_date || 'tracker');
         };
         var ledger = (d.ledger || []).map(function (v) {
           return '<div class="adx-ledger-row"><button class="adx-deal-open adx-door" data-deal="' + esc(v.name) + '">' + esc(v.name) + '</button>' +

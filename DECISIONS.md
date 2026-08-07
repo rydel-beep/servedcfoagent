@@ -1598,3 +1598,34 @@
      object ref, structurally tested) · I15 (market partition) · I16 (view purity — no
      UI arithmetic on metrics, grep-enforced). Auth regression-checked on every new
      route/param. Suite 658 (10 new).
+
+128. **ADS FUNNEL COMPLETION + DATE RESOLUTION (2026-08-08).** DIAGNOSIS FIRST
+     (FUNNEL_COMPLETION_DIAGNOSIS.md): the hypothesis CONFIRMED with numbers — 237 set
+     events exist, only 115 dated (122/51% dateless; Set Date filling stopped ~June);
+     shows (180) have no date column; the witnessed zeros are the ACTIVITY clock
+     (cohort populates); no sweep ever touched non-closing leads. Duplicate rail names
+     = TWO GENUINE dateless events per contact (close AND input blank), not a bug.
+     Reached "—" on Names = _aggregate()'s field list omitted reached (missing group-by
+     wiring, one path). Deposit Date blank on all 19 dateless closes; Xero
+     invoices/payments = CAPABILITY GAP (report scopes only, probed — reported, not
+     built). TWO ENCODED CONVENTIONS (defaults, veto-able): close = the SIGNED/VERBAL
+     deal-won event (#118 ruled authority, not semantics) → payment/stage dates are
+     near-evidence → Stripe/GHL-stage rungs PROPOSED, never AUTO; set = the appointment
+     BOOKED date (setter action); show = the appointment SCHEDULED date requiring
+     kept-status evidence; input = GHL contact created date (ID-exact) → AUTO. BUILT
+     (extends resolution.py + ads_truth — no parallel resolver): record_derived_date
+     (journal schema REJECTS missing evidence; idempotent), supersede_derived (source
+     wins; disagreement SURFACES in hygiene, never silently resolved), resolve_dates
+     (input AUTO from contact-created; close stays the P1 PROPOSED lane — "apply the
+     date card for X" converts a card to a journaled derivation on Rydel's word, no
+     tracker write, the Piolo item persists); event_sweep (batched/cached/incremental
+     GHL appointments for the 122 dateless sets — single unambiguous appointment →
+     AUTO set+show dates; multiple → PROPOSED with candidates; calls counted); ENGINE
+     MERGE: derived dates make events windowable NOW with provenance chips (tracker
+     always wins; derived_placed terms keep the recon honest — engine == raw canonical
+     + derived term, test-enforced); ladder tab parity (reached + annotations in the
+     ONE aggregation — the "—" class is a named regression test); lane-lag ageing
+     (per-deal "closed Nd ago · GHL stage UNMOVED", drillable, self-clearing); rail
+     upgrade (grouped by contact ×N chips; "Derived (awaiting source)" collapsed
+     section — visible, excluded ≠ deleted); nightly sweep gains date-resolution +
+     event-sweep + supersession passes. Suite 671 (13 new).

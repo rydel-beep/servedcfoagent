@@ -299,8 +299,12 @@ def _aggregate(rows: list[dict], key: str, label: str) -> dict:
     test-enforced); loaded/LTGP derived from member fields the engine already computed."""
     agg = {"creative_key": key, "label": label, "tier": "ad", "members": len(rows),
            "member_keys": [r["creative_key"] for r in rows]}
-    for k in ("leads", "qualified", "sets", "shows", "closes_cohort", "closes",
-              "revenue_unknown", "impressions", "clicks"):
+    # TAB PARITY (DECISIONS #128, the Reached "—" fix): every grid metric flows
+    # through this ONE aggregation — a field missing here renders "—" on the
+    # ladder tabs while the Ads tab computes it (the D3 bug class, test-locked).
+    for k in ("leads", "qualified", "reached", "sets", "shows", "closes_cohort",
+              "closes", "revenue_unknown", "impressions", "clicks",
+              "earlier_closes", "earlier_sets", "earlier_shows", "undated_sets"):
         agg[k] = sum(r.get(k) or 0 for r in rows)
     for k in ("cash", "contract", "spend"):
         agg[k] = round(sum(r.get(k) or 0 for r in rows), 2)

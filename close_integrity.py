@@ -125,6 +125,36 @@ def run_matrix(days: int = 30) -> dict:
             "detail": f"{len(in_window)} tracker close(s) in {days}d but only {ghl_n} "
                       f"GHL opportunity(ies) moved to closed-won — the stage lane lags",
             "fix": OPS_RULE, "owner": "sales team"})
+        # LANE-LAG AGEING (#128): per-deal teeth — the nag ages daily, drillable,
+        # clears automatically when the GHL stage moves. Visibility only, no writes.
+        try:
+            import db
+            moved = set()
+            if db.db_configured():
+                with db.get_conn() as conn:
+                    for row_ in conn.execute(
+                            "SELECT contact_id FROM ghl_opportunities "
+                            "WHERE status = 'won' AND deleted = FALSE").fetchall():
+                        moved.add(row_["contact_id"])
+            import attribution_join
+            by_norm = {}
+            for c in attribution_join.load_contacts():
+                if c.get("name"):
+                    by_norm.setdefault(_norm(c["name"]), c)
+            for t in in_window:
+                c = by_norm.get(_norm(t["name"]))
+                if c and c["id"] in moved:
+                    continue
+                age = (w1 - t["close_date"]).days
+                disagreements.append({
+                    "id": f"integrity:lane_age:{_norm(t['name'])}",
+                    "deal_name": t["name"],
+                    "kind": "ghl_stage_lag_deal", "severity": 3,
+                    "detail": f"{t['name']}: closed in tracker {age} day(s) ago — "
+                              f"GHL stage UNMOVED",
+                    "fix": OPS_RULE, "owner": "sales team"})
+        except Exception as e:
+            logger.info("lane-lag ageing skipped: %s", e)
     for t in blank_dates:
         disagreements.append({
             "id": f"integrity:blank_close_date:{_norm(t['name'])}",

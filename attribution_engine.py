@@ -265,6 +265,44 @@ def compute_from_inputs(
         leads = [l for l in leads if l.get("market") == market]
         spend_by_ad = {}     # honest omission, never an absurd per-market CPL
 
+    # THE DATE RESOLUTION MERGE (DECISIONS #128): derived dates make events
+    # windowable NOW, labelled — the tracker stays the authority (a source-filled
+    # cell always wins; the resolver superseded any derivation for it already).
+    # derived_placed counts what the derivations ALONE placed, for the recon terms.
+    derived_placed = {"leads": 0, "closes": 0, "cash": 0.0}
+    try:
+        import resolution as _res
+        _dd = _res.derived_dates()
+    except Exception:
+        _dd = {}
+    if _dd:
+        for l in leads:
+            d = _dd.get(l["name_norm"])
+            if not d:
+                continue
+            l["_derived"] = {}
+            if l["input_date"] is None and d.get("input_date"):
+                l["input_date"] = dt.date.fromisoformat(d["input_date"]["date"])
+                l["_derived"]["input_date"] = d["input_date"]["provenance"]
+                if w0 <= l["input_date"] <= w1:
+                    derived_placed["leads"] += 1
+                    # a cohort close placed via a DERIVED input date is derived-
+                    # placed too (the raw canonical keys cohort closes on input)
+                    if basis == "cohort" and l.get("won") and l.get("close_date"):
+                        derived_placed["closes"] += 1
+                        derived_placed["cash"] += l["cash"] or 0.0
+            if l["close_date"] is None and d.get("close_date") and l.get("won"):
+                l["close_date"] = dt.date.fromisoformat(d["close_date"]["date"])
+                l["_derived"]["close_date"] = d["close_date"]["provenance"]
+                in_win = (w0 <= l["close_date"] <= w1) if basis == "activity" else \
+                         (l["input_date"] and w0 <= l["input_date"] <= w1)
+                if in_win:
+                    derived_placed["closes"] += 1
+                    derived_placed["cash"] += l["cash"] or 0.0
+            if l["set"] and not l["set_date"] and d.get("set_date"):
+                l["set_date"] = dt.date.fromisoformat(d["set_date"]["date"])
+                l["_derived"]["set_date"] = d["set_date"]["provenance"]
+
     by_email = {c["email"]: c for c in contacts if c.get("email")}
     by_name: dict[str, dict] = {}
     for c in contacts:
@@ -456,6 +494,7 @@ def compute_from_inputs(
             "finalised": lead["finalised"], "form_complete": form_complete,
             "qualified": lead["qualified"], "reached": lead.get("reached", False),
             "market": lead.get("market"),
+            "derived_dates": lead.get("_derived") or None,   # provenance chips
             "creative": {"key": key, "label": _bucket_label(lead, key),
                          "tier": ("ig_dm" if key == _IG_KEY else
                                   "unattributed" if key == _UNATTR_KEY else
@@ -529,7 +568,8 @@ def compute_from_inputs(
                 "contract": lead["contract"], "cash": lead["cash"],
                 "set_date": str(lead["set_date"]) if lead["set_date"] else None,
                 "show": bool(lead["show"]),
-                "input_date": str(lead["input_date"]) if lead["input_date"] else None}
+                "input_date": str(lead["input_date"]) if lead["input_date"] else None,
+                "derived": lead.get("_derived") or None}
         if lead["contract"] is None:
             deal["note"] = "closed but contract value blank in tracker — value unknown"
         b["deals"].append(deal)
@@ -627,18 +667,25 @@ def compute_from_inputs(
     sum_spend = round(sum(r["spend"] for r in rows_out), 2)
     dup_n = len(dupes_in_window)
     checks = {}
+    # derived-placed terms: the canonical is the RAW authority; derivations place
+    # events the authority cannot see yet — an explicit labelled term, never drift
     if canonical.get("leads") is not None:
         checks["leads"] = {"engine": sum_leads, "canonical": canonical["leads"],
-                           "ok": sum_leads == canonical["leads"]}
+                           "derived_placed": derived_placed["leads"],
+                           "ok": sum_leads == canonical["leads"] + derived_placed["leads"]}
     if canonical.get("closes") is not None:
         checks["closes"] = {"engine": sum_closes, "duplicates_removed": dup_n,
                             "canonical": canonical["closes"],
-                            "ok": sum_closes + dup_n == canonical["closes"]}
+                            "derived_placed": derived_placed["closes"],
+                            "ok": sum_closes + dup_n ==
+                                  canonical["closes"] + derived_placed["closes"]}
     if canonical.get("cash") is not None:
         dup_cash = round(sum(l["cash"] or 0 for l in dupes_in_window), 2)
         checks["cash"] = {"engine": sum_cash, "duplicates_removed_cash": dup_cash,
                           "canonical": canonical["cash"],
-                          "ok": abs(sum_cash + dup_cash - canonical["cash"]) < 0.01}
+                          "derived_placed_cash": round(derived_placed["cash"], 2),
+                          "ok": abs(sum_cash + dup_cash - canonical["cash"]
+                                    - derived_placed["cash"]) < 0.01}
     if canonical.get("account_spend") is not None:
         drift = abs(sum_spend - canonical["account_spend"])
         pct = (100 * drift / canonical["account_spend"]) if canonical["account_spend"] else \
