@@ -346,8 +346,11 @@ def compute_from_inputs(
     window_leads = [l for l in leads if l["input_date"] and w0 <= l["input_date"] <= w1]
     if basis == "cohort":
         window_closes = [l for l in window_leads if l["won"] and l["close_date"]]
+        # only dups that WOULD have counted on this clock belong in the recon
+        # adjustment (a date-less dup is in the hygiene queue, not the closes term —
+        # found live 2026-08-07: the Nirosha dup over-added at all-time)
         dupes_in_window = [l for l in leads if l.get("_dup_removed") and l["input_date"]
-                           and w0 <= l["input_date"] <= w1]
+                           and w0 <= l["input_date"] <= w1 and l["close_date"]]
     else:
         window_closes = [l for l in leads if l["won"] and l["close_date"]
                          and w0 <= l["close_date"] <= w1]
