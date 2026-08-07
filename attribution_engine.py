@@ -161,7 +161,11 @@ def parse_tracker(rows: list[list[str]]) -> tuple[list[dict], dict]:
         # parser-invisible before this). Non-won rows still need Input Date (cohort rows).
         if not name:
             continue
-        if input_date is None and not (closer_out == "won" and _date(g("close_date"))):
+        # A WON row is a REAL deal even with both dates blank (excluded ≠ deleted):
+        # it parses, windows nowhere until a date exists (source or derived — the
+        # #128 resolver can place it), and lives in the hygiene queue meanwhile.
+        # Non-won rows still need an Input Date (cohort rows).
+        if input_date is None and closer_out != "won":
             continue
         leads.append({
             "name": name, "name_norm": _norm(name),
