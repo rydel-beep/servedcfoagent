@@ -103,3 +103,43 @@ def test_sendable_rules():
     assert sg.sendable_check("S4", "WARM", is_convert_ask=True, click_triggered=True)["ok"]
     assert not sg.sendable_check("S4", "COLD", is_convert_ask=True, click_triggered=True)["ok"]
     assert sg.sendable_check("S4", "COLD", is_convert_ask=False)["ok"]
+
+
+# ── PD machine states (Master Spec v1.1; DECISIONS #129/#130) ─────────────────
+def test_pd_active_precedes_s2_freeze():
+    # in-pipeline (frozen) AND pd-active → PD_ACTIVE wins, by design
+    assert _cls(_c(id="c9", tags=["pd-active"]), frozen={"c9"}) == ("PD_ACTIVE", None)
+
+
+def test_pd_active_only_pd_machine_sendable():
+    assert sg.sendable_check("PD_ACTIVE", None, is_convert_ask=False)["ok"] is False
+    assert sg.sendable_check("PD_ACTIVE", None, is_convert_ask=False,
+                             campaign="newsletter")["ok"] is False
+    assert sg.sendable_check("PD_ACTIVE", None, is_convert_ask=True,
+                             campaign="pd-machine")["ok"] is True
+
+
+def test_pd_active_does_not_trump_s0_or_s1():
+    assert _cls(_c(dnd=True, tags=["pd-active"]))[0] == "S0"
+    assert _cls(_c(email="a@b.co", tags=["pd-active"]), active={"a@b.co"})[0] == "S1"
+
+
+def test_pd_quiet_window_then_s4_warm():
+    from helpers import now_sydney
+    now = now_sydney()
+    this_month = "pd-completed-%04d-%02d" % (now.year, now.month)
+    # completed this month → inside the quiet window (holds ≥ day 21 next month)
+    seg, tier = _cls(_c(tags=[this_month], lastActivity=_iso(2)))
+    assert seg == "PD_QUIET" and tier is None
+    assert not sg.sendable_check("PD_QUIET", None, is_convert_ask=False,
+                                 campaign="pd-machine")["ok"]   # quiet blocks EVERYTHING
+    # completed ~3 months ago → quiet over; recent activity would be HOT but caps WARM
+    old_y, old_m = (now.year, now.month - 3) if now.month > 3 else (now.year - 1, now.month + 9)
+    old_tag = "pd-completed-%04d-%02d" % (old_y, old_m)
+    seg, tier = _cls(_c(tags=[old_tag], lastActivity=_iso(2)))
+    assert (seg, tier) == ("S4", "WARM")
+
+
+def test_discount_lock_voucher():
+    assert not sg.discount_lock_check("claim your $1,000 voucher")["ok"]
+    assert sg.discount_lock_check("the Venue Growth Blueprint plus a bonus audit")["ok"]

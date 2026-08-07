@@ -1629,3 +1629,26 @@
      upgrade (grouped by contact ×N chips; "Derived (awaiting source)" collapsed
      section — visible, excluded ≠ deleted); nightly sweep gains date-resolution +
      event-sweep + supersession passes. Suite 671 (13 new).
+
+129. **PD CONDUCTOR AUTONOMY — AMENDMENT TO #110 (2026-08-07).** The "autonomous
+     contact structurally impossible" boundary is amended by the Master Spec v1.1
+     two-gate model: copy requires Rydel's Approved flip AND the cohort requires
+     Rydel's Launch click. Post-Launch, the pd-conductor executes the approved,
+     hash-locked sequence for up to 28 days unattended. This is SANCTIONED EXECUTION
+     of pre-approved contact, not autonomous contact. Any deviation from the approved
+     copy or schedule voids the sanction and requires re-approval. #110's owner-only
+     send chain remains binding for everything outside the PD machine.
+
+130. **LADDER AMENDMENT TO #112 — PD_ACTIVE + PD_QUIET (2026-08-07).** Per the
+     approved pd-automation-master-spec.md v1.1: contacts tagged `pd-active` (the
+     "Pitched and Drifted" stage) classify PD_ACTIVE — suppressed from ALL marketing
+     except campaigns registered in segments.PD_MACHINE_CAMPAIGNS; PD_ACTIVE takes
+     precedence over S2's blanket freeze (S2 as first encoded suppressed the PD
+     machine's own sends — the reconciliation this entry exists for). S0/S1 still
+     precede it. Cycle completion (`pd-completed-YYYY-MM`, `pd-active` removed) →
+     PD_QUIET: 14 days TOTAL email silence (quiet blocks even pd-machine sends),
+     then S4-WARM with the tier capped WARM while the completion is recent.
+     NAMED APPROXIMATION: the completed tag is month-granular, so quiet holds
+     through day 21 of the following month and the WARM cap ~90 days — replaced by
+     exact dates when the conductor's enrolment ledger lands. Discount lock now
+     also catches "voucher" (a discount instrument in costume — Rydel's ruling).
