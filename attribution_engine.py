@@ -945,8 +945,11 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
         # MARKET-SCOPED canonical (I15): the external anchors read the whole book —
         # under a filter the canonical is an independent re-read of the SAME
         # authority scoped to the same market, matching the active clock.
+        # RAW rows (no dedupe): the recon contract is engine + duplicates_removed
+        # == canonical — the canonical is the raw authority count, like the
+        # unfiltered anchors (a deduped canonical failed the check live 2026-08-07
+        # with engine==canonical==48 + dup 1).
         m_leads, _cmm = parse_tracker(rows)
-        m_leads, _dm = dedupe_won(m_leads)
         m_leads = [l for l in m_leads if l.get("market") == market]
         canonical["leads"] = sum(1 for l in m_leads if l["input_date"]
                                  and w0 <= l["input_date"] <= w1)
