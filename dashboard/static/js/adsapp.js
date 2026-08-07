@@ -320,6 +320,9 @@
           if (c.k === 'shows' && r.earlier_shows) {
             extra += ' <span class="adx-earlier" title="' + r.earlier_shows + ' show(s) before this window (activity clock)">↤' + r.earlier_shows + '</span>';
           }
+          if (c.k === 'sets' && r.undated_sets) {
+            extra += ' <span class="adx-earlier" title="' + r.undated_sets + ' closing deal(s) whose set exists in the tracker but has NO Set Date — fill it (Piolo queue)">◔' + r.undated_sets + '</span>';
+          }
           // provenance always visible when any part of a count is derived
           if (c.k === 'sets' && r.sets_src) {
             extra += ' <span class="adx-prov" title="provenance">' + r.sets_src.tracker + ' tracker · ' + r.sets_src.derived + ' derived</span>';

@@ -80,6 +80,29 @@ def test_case_b_unexplained_zero_sets_close_fails_i8():
     assert "I8(activity)" in (c.get("integrity_error") or "")
 
 
+def test_case_b_undated_set_annotated_not_red():
+    """A set with NO date can't be placed on the activity clock — the row carries
+    the ◔ annotation + a hygiene rollup, never an integrity error."""
+    r_ = row("Undated Set", "u@x.com", input_date="2026-07-10", setter="set",
+             show="Showed", closer="won", close_date="2026-07-16",
+             contract="9000", cash="3000")
+    r_[18] = ""               # set exists, Set Date blank
+    r = _compute([r_], [contact("c1", "u@x.com", "Undated Set")], basis="activity")
+    c = next(x for x in r["creatives"] if x["closes"] == 1)
+    assert c["undated_sets"] == 1
+    assert not c.get("integrity_error")
+
+
+def test_leads_index_prefers_won_row():
+    """The first live sweep's false CRITICALs: duplicate names must never read as
+    'no tracker won row' — the index prefers the won row."""
+    import ads_truth
+    leads = [{"name_norm": "lucas reid", "won": True},
+             {"name_norm": "lucas reid", "won": False}]
+    assert ads_truth._leads_index(leads)["lucas reid"]["won"] is True
+    assert ads_truth._leads_index(list(reversed(leads)))["lucas reid"]["won"] is True
+
+
 # ── GATE 2 (Case C): the reached tier ────────────────────────────────────────
 
 def test_reached_counts_qualified_with_contact_evidence_only():

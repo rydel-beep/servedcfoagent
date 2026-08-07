@@ -484,6 +484,11 @@ def compute_from_inputs(
                 b["earlier_sets"] = b.get("earlier_sets", 0) + 1
                 if lead["show"]:
                     b["earlier_shows"] = b.get("earlier_shows", 0) + 1
+            elif lead["set"] and not lead["set_date"]:
+                # the set EXISTS but its date cell is blank — the activity clock
+                # can't place it. Annotated (◔) + a hygiene item, not a red row
+                # (found live 2026-08-07: 22 close rows across windows).
+                b["undated_sets"] = b.get("undated_sets", 0) + 1
         b["contract"] += lead["contract"] or 0.0
         b["cash"] += lead["cash"] or 0.0
         deal = {"name": lead["name"], "close_date": str(lead["close_date"]),
@@ -530,6 +535,7 @@ def compute_from_inputs(
             "basis": basis, "earlier_closes": b.get("earlier_closes", 0),
             "earlier_sets": b.get("earlier_sets", 0),
             "earlier_shows": b.get("earlier_shows", 0),
+            "undated_sets": b.get("undated_sets", 0),
             "reached": b.get("reached", 0),
             "sets_src": ({"tracker": b["sets"] - b.get("sets_derived", 0),
                           "derived": b["sets_derived"]}
@@ -633,10 +639,12 @@ def compute_from_inputs(
                 problems.append(f"I1(activity): closes {r['closes']} minus earlier-lead "
                                 f"{r.get('earlier_closes', 0)} > leads {r['leads']}")
             # I8(activity): a close with zero in-window sets/shows must carry an
-            # earlier-set or earlier-lead annotation (the Case-B class rendered
-            # honestly — ↤ context — or flagged, never a bare "0 sets, 1 close")
+            # earlier-set / earlier-lead / undated-set annotation (the Case-B class
+            # rendered honestly — ↤/◔ context — or flagged, never a bare
+            # "0 sets, 1 close")
             if (r["closes"] > 0 and r["sets"] == 0 and r["shows"] == 0
-                    and not r.get("earlier_sets") and not r.get("earlier_closes")):
+                    and not r.get("earlier_sets") and not r.get("earlier_closes")
+                    and not r.get("undated_sets")):
                 problems.append(f"I8(activity): {r['closes']} close(s) with no in-window "
                                 f"set/show and no earlier-event annotation — unexplained")
         if len(r.get("deals") or []) != r["closes"]:
@@ -742,6 +750,7 @@ def scoreboard_view(result: dict) -> dict:
             "sets_src": c.get("sets_src"), "shows_src": c.get("shows_src"),
             "earlier_sets": c.get("earlier_sets", 0),
             "earlier_shows": c.get("earlier_shows", 0),
+            "undated_sets": c.get("undated_sets", 0),
             "cash": c["cash"], "spend": c["spend"],
             "cost_per_lead": c.get("cost_per_lead"),
             "cost_per_qualified": c.get("cost_per_qualified"),

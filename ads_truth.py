@@ -62,6 +62,26 @@ def _journal(action: str, detail: str) -> None:
         pass
 
 
+def _leads_index(leads_all: list[dict]) -> dict:
+    """norm → the BEST tracker row for close-matching: prefer the WON row (duplicate
+    names exist — a naive last-write-wins map produced 3 false 'no tracker won row'
+    CRITICALs + 1 false phantom on the first live sweep, 2026-08-07)."""
+    idx: dict = {}
+    for l in leads_all:
+        cur = idx.get(l["name_norm"])
+        if cur is None or (l.get("won") and not cur.get("won")):
+            idx[l["name_norm"]] = l
+    return idx
+
+
+def _publish_flags(flags: list[dict]) -> None:
+    """The sweep's OWN kv channel (attr:data_quality_flags is overwritten by every
+    engine compute — findings there would silently vanish). REBUILT each sweep:
+    a fixed cause self-retires."""
+    import kv_store
+    kv_store.put("ads_truth:flags", flags[-60:])
+
+
 # ── GHL evidence readers (read-only, existing token) ─────────────────────────
 
 def _ghl_get(path: str, params: dict | None = None):
@@ -95,7 +115,7 @@ def spine_census(days: int = 90) -> dict:
     from helpers import today_sydney
     r = AE.compute(days=days, basis="activity")
     leads_all, _cm = AE.parse_tracker(AE._tracker_rows_clean())
-    by_norm = {l["name_norm"]: l for l in leads_all}
+    by_norm = _leads_index(leads_all)
     contacts_by_norm = {}
     try:
         import attribution_join
@@ -162,15 +182,16 @@ def spine_census(days: int = 90) -> dict:
 
 def _piolo_item(name: str, contact_id: str, evidence_kind: str) -> None:
     """Tracker hygiene loop: a derivation means the tracker is missing the event —
-    fix at source, don't patch silently forever."""
+    fix at source, don't patch silently forever. Lives on the sweep's own channel
+    (rebuilt per run → self-retiring when the tracker gets fixed)."""
     try:
         import kv_store
-        flags = kv_store.get("attr:data_quality_flags") or []
+        flags = kv_store.get("ads_truth:flags") or []
         reason = (f"tracker missing set for {name} — GHL {evidence_kind} evidence "
                   f"exists (contact {contact_id}); fill the Set cell at source")
         if not any(f.get("reason") == reason for f in flags):
             flags.append({"metric": "tracker_missing_set", "reason": reason})
-            kv_store.put("attr:data_quality_flags", flags[-40:])
+            kv_store.put("ads_truth:flags", flags[-60:])
     except Exception:
         pass
 
@@ -253,9 +274,9 @@ def quad_check(days: int = 90, sample_cells: int = 0) -> dict:
                   ((stored.get("scoreboard") or {}).get("rows") or [])}
     # (2) fresh recompute
     r2 = AE.compute(days=days, basis="activity", force=True)
-    # (4) tracker
+    # (4) tracker (won-preferring index — duplicate names never read as missing)
     leads_all, _cm = AE.parse_tracker(AE._tracker_rows_clean())
-    by_norm = {l["name_norm"]: l for l in leads_all}
+    by_norm = _leads_index(leads_all)
     # (3) GHL mirror won-stage per contact
     won_contacts = set()
     try:
@@ -334,6 +355,18 @@ def integrity_sweep() -> dict:
             for b in bad:
                 out["disagreements"].append({"kind": "invariant", "cause": b["detail"],
                                              "where": f"{basis} {d}d"})
+    # undated sets (the 2026-08-07 class): tracker hygiene rollup, one line
+    try:
+        r_act90 = AE.compute(days=90, basis="activity")
+        undated = sum(c.get("undated_sets", 0) for c in r_act90["creatives"])
+        if undated:
+            out["disagreements"].append({"kind": "tracker_hygiene",
+                                         "cause": f"{undated} closing deal(s) have a set "
+                                                  f"with NO Set Date in the tracker — the "
+                                                  f"activity clock can't place them",
+                                         "where": "activity 90d"})
+    except Exception:
+        pass
     spine = spine_census(90)
     out["spine"] = spine["counts"]
     if spine["counts"]["T0"]:
@@ -371,15 +404,23 @@ def integrity_sweep() -> dict:
     kv_store.put(_KV_CAUSES, causes)
     kv_store.put(_KV_PROPOSED, proposed[-40:])
 
-    # feed lanes: close-level/≥$1k → ACTION-promoted category; else hygiene
-    flags = kv_store.get("attr:data_quality_flags") or []
+    # feed lanes: close-level/≥$1k → ACTION-promoted category; else hygiene.
+    # The channel is REBUILT each run (self-retiring); Piolo items survive the run.
+    flags = [f for f in (kv_store.get("ads_truth:flags") or [])
+             if f.get("metric") == "tracker_missing_set"]
     for dgg in out["disagreements"]:
-        big = dgg.get("cash", 0) and dgg["cash"] >= 1000 or dgg["kind"] in ("phantom_close", "quad")
-        reason = f"ads truth sweep: {dgg['kind']} — {dgg['cause'][:110]}"
-        if not any(f.get("reason") == reason for f in flags):
-            flags.append({"metric": "ads_truth_action" if big else "ads_truth",
-                          "reason": reason})
-    kv_store.put("attr:data_quality_flags", flags[-60:])
+        big = (dgg.get("cash") or 0) >= 1000 or dgg["kind"] in ("phantom_close", "quad")
+        flags.append({"metric": "ads_truth_action" if big else "ads_truth",
+                      "reason": f"ads truth sweep: {dgg['kind']} — {dgg['cause'][:110]}"})
+    _publish_flags(flags)
+    # prune stale phantom entries (a fixed join no longer haunts the feed)
+    live_phantoms = {f"integrity:phantom_close:{_norm(n)}"
+                     for n in (spine.get("lanes") or {}).get("T0", [])}
+    pending = kv_store.get("integrity:pending") or []
+    pending = [p for p in pending
+               if not str(p.get("id", "")).startswith("integrity:phantom_close:")
+               or p["id"] in live_phantoms]
+    kv_store.put("integrity:pending", pending)
 
     acc = kv_store.get(_KV_ACCURACY) or []
     acc.append({"date": out["date"], "facts_checked": out["checks"],
