@@ -230,7 +230,9 @@ def _refresh_async(days, basis):
 
 
 def _prefetch_adjacent(days, basis):
-    for d in (30, 60, 90):
+    # ALL_DAYS included so ?window=all and the dossier's all-time leg serve from
+    # rollups instead of a cold multi-minute compute (perf budget: grid <2s)
+    for d in (30, 60, 90, ALL_DAYS):
         if d != days:
             _refresh_async(d, basis)
 
