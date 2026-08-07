@@ -27,7 +27,8 @@
   // plain-language tooltips — Romano lives here (AD_DASHBOARD_REPORT Phase 5)
   var TIPS = {
     leads: 'Leads that entered the tracker in this window and trace to this creative (first touch).',
-    qualified: 'Leads that passed all three checks: setter outcome not DQ, revenue band $20k+/month, form answered.',
+    qualified: 'Leads that passed all three checks: setter outcome not DQ, revenue band $20k+/month, form answered. Fit, not contact — see Reached.',
+    reached: 'Qualified leads with real contact evidence: a tracker set/show/close, or GHL conversation evidence (sweep-backed). Qualified-but-unreached = right audience, contact problem.',
     sets: 'Leads the setter booked a call for.',
     shows: 'Booked calls where the lead actually showed.',
     closes: 'Deals won in this window (by close date).',
@@ -45,6 +46,7 @@
   var COLS = [
     { k: 'creative', label: 'Creative' }, { k: 'verdict', label: 'Verdict' },
     { k: 'leads', label: 'Leads' }, { k: 'qualified', label: 'Qualified' },
+    { k: 'reached', label: 'Reached' },
     { k: 'sets', label: 'Sets' }, { k: 'shows', label: 'Shows' },
     { k: 'closes', label: 'Closes' }, { k: 'cash', label: 'Cash', money: 1 },
     { k: 'spend', label: 'Spend', money: 1 }, { k: 'cost_per_lead', label: 'CPL', money: 1 },
@@ -54,7 +56,7 @@
     { k: 'cost_per_close_loaded', label: 'C/Close (loaded)', money: 1 },
     { k: 'ltgp_cac', label: 'LTGP:CAC' },
   ];
-  var DRILLABLE = { leads: 1, qualified: 1, sets: 1, shows: 1, closes: 1 };
+  var DRILLABLE = { leads: 1, qualified: 1, reached: 1, sets: 1, shows: 1, closes: 1 };
 
   // ── the atomic window fetch (latest-wins + echo guard) ─────────────────────
   var stalePoll = null;
@@ -179,6 +181,12 @@
       '<div class="adx-head-tiers">' + tiers(h.cash_tiers) + '</div></div>' +
       '<div class="adx-head-tile"><div class="adx-head-num">' + money(h.spend_total) + '</div>' +
       '<div class="adx-head-label">SPEND</div><div class="adx-head-tiers">Meta engine, reconciled</div></div>';
+    // THE ACTIVITY CASH STRIP (cohort view only): finance truth on its own labelled
+    // clock — one line, one engine, never mixed into grid math.
+    var strip = state.board.cash_strip;
+    el.innerHTML += strip
+      ? '<div class="adx-cash-strip">' + esc(strip.label) + ' <em>(separate clock — the grid above is lead-cohort)</em></div>'
+      : '';
   }
 
   function renderBanner() {
@@ -303,6 +311,22 @@
             ' class="adx-cell-drill" data-stage="' + c.k + '"' : '';
           var extra = (c.k === 'closes' && r.earlier_closes) ?
             ' <span class="adx-earlier" title="' + r.earlier_closes + ' close(s) from leads that entered before this window (activity clock)">↤' + r.earlier_closes + '</span>' : '';
+          // funnel-lag annotations (Case B): sets/shows that happened before this
+          // window get the same ↤ treatment closes already had — never a bare
+          // "0 sets, 1 close" row on the activity clock.
+          if (c.k === 'sets' && r.earlier_sets) {
+            extra += ' <span class="adx-earlier" title="' + r.earlier_sets + ' closing deal(s) whose set call happened before this window (activity clock)">↤' + r.earlier_sets + '</span>';
+          }
+          if (c.k === 'shows' && r.earlier_shows) {
+            extra += ' <span class="adx-earlier" title="' + r.earlier_shows + ' show(s) before this window (activity clock)">↤' + r.earlier_shows + '</span>';
+          }
+          // provenance always visible when any part of a count is derived
+          if (c.k === 'sets' && r.sets_src) {
+            extra += ' <span class="adx-prov" title="provenance">' + r.sets_src.tracker + ' tracker · ' + r.sets_src.derived + ' derived</span>';
+          }
+          if (c.k === 'shows' && r.shows_src) {
+            extra += ' <span class="adx-prov" title="provenance">' + r.shows_src.tracker + ' tracker · ' + r.shows_src.derived + ' derived</span>';
+          }
           return '<td' + drill + '>' + (c.money ? money(v) : num(v)) + extra + '</td>';
         }).join('') + '</tr>';
     }).join('');
@@ -389,18 +413,29 @@
   }
 
   function loadRoster(creativeKey, creativeLabel, stage, expected) {
-    openDrill(esc(creativeLabel.slice(0, 50)) + ' · ' + stage + ' · ' + windowStamp(),
+    // the drill INHERITS the clicked cell's clock (I11) and states it in the header
+    openDrill(esc(creativeLabel.slice(0, 50)) + ' · ' + stage + ' · ' + windowStamp() +
+              ' · ' + state.basis + ' clock',
               '<div class="adx-skel">Loading the humans…</div>');
     fetch('/ads/api/roster?days=' + state.days + '&stage=' + stage +
+          '&basis=' + encodeURIComponent(state.basis) +
           (creativeKey ? '&creative=' + encodeURIComponent(creativeKey) : ''),
           { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
         if (!d) { $('#adx-drill-body').textContent = 'Roster fetch failed.'; return; }
-        var head = '<div class="adx-roster-count">' + d.count + ' ' + stage +
-          (expected != null && +expected !== d.count
-            ? ' <span class="adx-mismatch">⚠ cell said ' + expected + ' — mismatch, report this</span>'
-            : ' <span class="adx-match">— matches the cell ✓</span>') + '</div>';
+        var head = '<div class="adx-roster-note">' + esc(d.clock_note || '') + '</div>';
+        if (expected != null && +expected !== d.count) {
+          // HUMAN-LEGIBLE integrity message — always a cause, never a bare warning.
+          var cause = (d.basis && d.basis !== state.basis)
+            ? 'cause: the drill computed the ' + esc(d.basis) + ' clock while the cell is on the ' + esc(state.basis) + ' clock — a clock-inheritance bug (I11)'
+            : 'cause unknown — engine duplication suspected (I13); queued for resolution in tonight’s truth sweep';
+          head += '<div class="adx-roster-count">' + stage + ': grid ' + expected + ' (' + esc(state.basis) +
+            ') vs detail ' + d.count + ' (' + esc(d.basis || '?') + ') — ' + cause + '</div>';
+        } else {
+          head += '<div class="adx-roster-count">' + d.count + ' ' + stage +
+            ' <span class="adx-match">— matches the cell ✓ (' + esc(d.basis || state.basis) + ' clock)</span></div>';
+        }
         $('#adx-drill-body').innerHTML = head + (d.people || []).map(personCard).join('');
       })
       .catch(function () { $('#adx-drill-body').textContent = 'Roster fetch failed.'; });

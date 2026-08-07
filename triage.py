@@ -36,7 +36,7 @@ ACTION_CAP = 7               # ranked by dollars-at-stake; overflow stays visibl
 DOLLAR_FLOOR = 500           # below → WATCH unless the category is promoted
 # categories promoted to ACTION regardless of the floor (trend/risk beats size)
 _PROMOTED = {"anomaly", "failed", "past_due", "attr_verdict", "hire_trigger", "threshold",
-             "bas_due", "bas_anomaly"}
+             "bas_due", "bas_anomaly", "ads_truth"}
 # Rydel's own asks — ACTION by definition (the why-line is the ask itself)
 _OWN_ASKS = {"loop", "capital", "collab"}
 # informational events — never decisions (suppressed with reason, auditable)

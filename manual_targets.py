@@ -50,6 +50,9 @@ DEFAULTS: dict[str, dict] = {
     "ad_flag_cpl_mult":        {"default": 2.0,   "type": "benchmark", "unit": "x",   "label": "Ad flag: CPL outlier multiple"},
     "ad_flag_attr_drop_pts":   {"default": 10.0,  "type": "benchmark", "unit": "pct", "label": "Ad flag: attribution-rate drop"},
     "ad_flag_unknown_rev_pct": {"default": 20.0,  "type": "benchmark", "unit": "pct", "label": "Ad flag: revenue-unknown share"},
+    "ad_flag_reach_floor_pct": {"default": 40.0,  "type": "benchmark", "unit": "pct", "label": "Ad flag: qualified reach-rate floor"},
+    "reached_call_seconds":    {"default": 60,    "type": "benchmark", "unit": "x",   "label": "Reached: connected-call seconds"},
+    "set_call_seconds":        {"default": 120,   "type": "benchmark", "unit": "x",   "label": "Spine T3: conversation-call seconds"},
     "set_to_show_target":   {"default": 70.0, "type": "target",    "unit": "pct", "label": "Set→Show target"},
     "show_to_close_target": {"default": 35.0, "type": "target",    "unit": "pct", "label": "Show→Close target"},
     # Goalposts that may not be consumed by a metric yet — still settable + shown.

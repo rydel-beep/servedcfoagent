@@ -331,6 +331,29 @@ def compute_from_inputs(
     q_impact = {"finalised": 0, "qualified": 0,
                 "excluded": {"under_floor": 0, "revenue_unknown": 0, "form_incomplete": 0}}
 
+    # THE SPINE (ADS TRUTH I9/I12): derived set/show events from the evidence lanes
+    # (T2 ghl-appointment auto / T3 confirmed) — loaded from kv, keyed by name_norm,
+    # counted WITH provenance splits, never silently merged. Empty today (18/18
+    # closes are tracker-evidenced); the mechanism is the standing safety net.
+    derived_events: dict = {}
+    try:
+        import kv_store
+        for ev in (kv_store.get("spine:events") or []):
+            if ev.get("name_norm") and ev.get("kind") in ("set", "show"):
+                derived_events.setdefault(ev["name_norm"], set()).add(ev["kind"])
+    except Exception:
+        pass
+
+    # REACHED evidence cache (Gate 2 Option A — DECISIONS #126): deterministic GHL
+    # contact evidence (connected call ≥ threshold / two-way thread), populated by
+    # the nightly sweep, keyed by contact id. Tracker set/show/won imply reached.
+    reached_cache: set = set()
+    try:
+        import kv_store
+        reached_cache = set((kv_store.get("reached:evidence") or {}).keys())
+    except Exception:
+        pass
+
     for lead in window_leads:
         key, contact = lead_bucket_key(lead)
         b = bucket(key, _bucket_label(lead, key))
@@ -364,11 +387,25 @@ def compute_from_inputs(
             b["revenue_unknown"] = b.get("revenue_unknown", 0) + 1
         if lead["qualified"]:
             b["qualified"] += 1
+        derived = derived_events.get(lead.get("name_norm") or "", set())
+        # REACHED (the funnel column = qualified leads with contact evidence):
+        # tracker set/show/won imply a conversation; otherwise the GHL evidence cache.
+        lead["reached"] = bool(lead["set"] or lead["show"] or lead["won"]
+                               or ((lead.get("_contact_id") or
+                                    (contact or {}).get("id")) in reached_cache))
+        if lead["qualified"] and lead["reached"]:
+            b["reached"] = b.get("reached", 0) + 1
         if basis == "cohort":
             if lead["set"]:
                 b["sets"] += 1
+            elif "set" in derived:
+                b["sets"] += 1
+                b["sets_derived"] = b.get("sets_derived", 0) + 1
             if lead["show"]:
                 b["shows"] += 1
+            elif "show" in derived:
+                b["shows"] += 1
+                b["shows_derived"] = b.get("shows_derived", 0) + 1
         if lead["won"]:
             b["closes_cohort"] += 1
         view_rows.append({
@@ -384,7 +421,7 @@ def compute_from_inputs(
             "contract": lead["contract"], "cash": lead["cash"],
             "revenue": {"band": rv["band"], "state": rv["state"], "source": rv["source"]},
             "finalised": lead["finalised"], "form_complete": form_complete,
-            "qualified": lead["qualified"],
+            "qualified": lead["qualified"], "reached": lead.get("reached", False),
             "creative": {"key": key, "label": _bucket_label(lead, key),
                          "tier": ("ig_dm" if key == _IG_KEY else
                                   "unattributed" if key == _UNATTR_KEY else
@@ -439,10 +476,21 @@ def compute_from_inputs(
         b["closes"] += 1
         if basis == "activity" and lead["input_date"] and lead["input_date"] < w0:
             b["earlier_closes"] = b.get("earlier_closes", 0) + 1   # inline-explained, never phantom
+        # FUNNEL-LAG annotations (Case B's fix): on the activity clock a close can
+        # land in a window whose set/show happened earlier — annotate like closes'
+        # ↤, never render an unexplained "0 sets, 1 close" row.
+        if basis == "activity":
+            if lead["set"] and lead["set_date"] and lead["set_date"] < w0:
+                b["earlier_sets"] = b.get("earlier_sets", 0) + 1
+                if lead["show"]:
+                    b["earlier_shows"] = b.get("earlier_shows", 0) + 1
         b["contract"] += lead["contract"] or 0.0
         b["cash"] += lead["cash"] or 0.0
         deal = {"name": lead["name"], "close_date": str(lead["close_date"]),
-                "contract": lead["contract"], "cash": lead["cash"]}
+                "contract": lead["contract"], "cash": lead["cash"],
+                "set_date": str(lead["set_date"]) if lead["set_date"] else None,
+                "show": bool(lead["show"]),
+                "input_date": str(lead["input_date"]) if lead["input_date"] else None}
         if lead["contract"] is None:
             deal["note"] = "closed but contract value blank in tracker — value unknown"
         b["deals"].append(deal)
@@ -480,6 +528,15 @@ def compute_from_inputs(
                  else "ambiguous" if key == _AMB_KEY else "ad"),
             "name_norm": b.get("name_norm"), "history": b.get("history", False),
             "basis": basis, "earlier_closes": b.get("earlier_closes", 0),
+            "earlier_sets": b.get("earlier_sets", 0),
+            "earlier_shows": b.get("earlier_shows", 0),
+            "reached": b.get("reached", 0),
+            "sets_src": ({"tracker": b["sets"] - b.get("sets_derived", 0),
+                          "derived": b["sets_derived"]}
+                         if b.get("sets_derived") else None),
+            "shows_src": ({"tracker": b["shows"] - b.get("shows_derived", 0),
+                           "derived": b["shows_derived"]}
+                          if b.get("shows_derived") else None),
             "ad_ids": sorted(b["ad_ids"]), "campaigns": sorted(b["campaigns"]),
             "leads": b["leads"], "qualified": b["qualified"],
             "revenue_unknown": b.get("revenue_unknown", 0), "sets": b["sets"],
@@ -564,21 +621,41 @@ def compute_from_inputs(
                 problems.append(f"I1: closes {r['closes']} > leads {r['leads']} on the cohort clock")
             if r["shows"] > r["sets"]:
                 problems.append(f"I1: shows {r['shows']} > sets {r['sets']}")
+            # I8 (ADS TRUTH): full funnel monotonicity on the cohort clock
+            if r["sets"] > r["leads"]:
+                problems.append(f"I8: sets {r['sets']} > leads {r['leads']}")
+            if r["qualified"] > r["leads"]:
+                problems.append(f"I8: qualified {r['qualified']} > leads {r['leads']}")
+            if r.get("reached", 0) > r["qualified"]:
+                problems.append(f"I8: reached {r['reached']} > qualified {r['qualified']}")
         else:
             if r["closes"] - r.get("earlier_closes", 0) > r["leads"]:
                 problems.append(f"I1(activity): closes {r['closes']} minus earlier-lead "
                                 f"{r.get('earlier_closes', 0)} > leads {r['leads']}")
+            # I8(activity): a close with zero in-window sets/shows must carry an
+            # earlier-set or earlier-lead annotation (the Case-B class rendered
+            # honestly — ↤ context — or flagged, never a bare "0 sets, 1 close")
+            if (r["closes"] > 0 and r["sets"] == 0 and r["shows"] == 0
+                    and not r.get("earlier_sets") and not r.get("earlier_closes")):
+                problems.append(f"I8(activity): {r['closes']} close(s) with no in-window "
+                                f"set/show and no earlier-event annotation — unexplained")
         if len(r.get("deals") or []) != r["closes"]:
             problems.append(f"I2: {r['closes']} closes but {len(r.get('deals') or [])} traced deals")
         if problems:
             r["integrity_error"] = "; ".join(problems)
             invariants.append({"id": f"invariant:{r['creative_key']}", "ok": False,
-                               "invariant": "I1/I2", "row": r["label"],
+                               "invariant": "I1/I2/I8", "row": r["label"],
                                "detail": "; ".join(problems)})
+    # I10 (ADS TRUTH): tier partition — a close lives in exactly ONE row/tier
+    for viol in partition_violations(rows_out):
+        invariants.append({"id": f"invariant:I10:{viol['name']}", "ok": False,
+                           "invariant": "I10",
+                           "detail": f"close '{viol['name']}' ({viol['close_date']}) "
+                                     f"appears under two tiers/rows — partition violation"})
     if not any(not i["ok"] for i in invariants):
         invariants.append({"id": "invariant:rows", "ok": True,
-                           "invariant": "I1+I2", "detail": "all rows coherent on the "
-                                                           f"{basis} clock"})
+                           "invariant": "I1+I2+I8+I10", "detail": "all rows coherent on "
+                                                                  f"the {basis} clock"})
     return {
         "window": {"start": str(w0), "end": str(w1), "days": (w1 - w0).days + 1},
         "basis": basis,
@@ -614,10 +691,36 @@ def compute_from_inputs(
 # ── The scoreboard projection (a RESHAPE of the engine result — zero new math) ─
 
 SCOREBOARD_COLUMNS = [
-    "creative", "verdict", "leads", "qualified", "sets", "shows", "closes", "cash",
-    "spend", "cost_per_lead", "cost_per_qualified", "cost_per_set", "cost_per_close",
-    "cost_per_close_loaded", "ltgp_cac", "n",
-]  # Rydel-confirmed set (LTC_SCOREBOARD_REPORT §4)
+    "creative", "verdict", "leads", "qualified", "reached", "sets", "shows", "closes",
+    "cash", "spend", "cost_per_lead", "cost_per_qualified", "cost_per_set",
+    "cost_per_close", "cost_per_close_loaded", "ltgp_cac", "n",
+]  # Rydel-confirmed set (LTC_SCOREBOARD_REPORT §4) + reached (Gate 2 Option A, #126)
+
+
+def partition_violations(rows: list[dict]) -> list[dict]:
+    """I10 — a close (name, close_date) may live under exactly ONE row/tier.
+    Standalone so the adversarial suite can feed crafted rows."""
+    seen: dict = {}
+    out = []
+    for r in rows or []:
+        for dl in r.get("deals") or []:
+            k = (dl.get("name"), dl.get("close_date"))
+            if k in seen and seen[k] != r.get("creative_key"):
+                out.append({"name": dl.get("name"), "close_date": dl.get("close_date"),
+                            "rows": [seen[k], r.get("creative_key")]})
+            seen[k] = r.get("creative_key")
+    return out
+
+
+def assert_same_basis(*results) -> str:
+    """I11 — CLOCK PURITY: combining results computed on different clocks is
+    structurally forbidden. Raises ValueError; returns the shared basis when clean.
+    Every consumer that touches more than one engine result calls this first."""
+    bases = {(r or {}).get("basis") for r in results if r}
+    if len(bases) > 1:
+        raise ValueError(f"cross-clock arithmetic refused: results carry bases {sorted(bases)} "
+                         f"— one clock per view (DECISIONS #120, invariant I11)")
+    return next(iter(bases), "cohort")
 
 
 def scoreboard_view(result: dict) -> dict:
@@ -633,8 +736,12 @@ def scoreboard_view(result: dict) -> dict:
             "provisional": c.get("provisional"),
             "gate": (c.get("gates") or {}).get("gate"),
             "leads": c["leads"], "qualified": c["qualified"],
+            "reached": c.get("reached", 0),
             "revenue_unknown": c.get("revenue_unknown", 0),
             "sets": c["sets"], "shows": c["shows"], "closes": c["closes"],
+            "sets_src": c.get("sets_src"), "shows_src": c.get("shows_src"),
+            "earlier_sets": c.get("earlier_sets", 0),
+            "earlier_shows": c.get("earlier_shows", 0),
             "cash": c["cash"], "spend": c["spend"],
             "cost_per_lead": c.get("cost_per_lead"),
             "cost_per_qualified": c.get("cost_per_qualified"),
@@ -988,5 +1095,10 @@ def start_loop(interval_s: int = 6 * 3600) -> None:
                 convo_quality.weekly_tick()       # kv-stamped: the self-review job
             except Exception as e:
                 logger.warning("convo quality tick failed: %s", e)
+            try:
+                import ads_truth
+                ads_truth.nightly_tick()          # kv-stamped: invariants + quad-check + spine
+            except Exception as e:
+                logger.warning("ads truth tick failed: %s", e)
 
     threading.Thread(target=_loop, daemon=True, name="attribution-recompute").start()

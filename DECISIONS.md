@@ -1530,3 +1530,40 @@
      divergence beyond 2× median observed error (floor 5%) flags with the component
      named. Ingest flow: scripts/ingest_bas_export.py (--seed = this export) — drop a
      new export → ingest → recalibrate. Suite 612 green (8 new BAS tests).
+
+126. **ADS TRUTH ENGINE — REACHED TIER + CLOCK HARDENING + THE SPINE + THE NIGHTLY
+     TRUTH LOOP (2026-08-07).** Phase-0 honesty: the brief assumed a pre-#116 world;
+     the clock (#120) and keying (#119) were ALREADY RULED → Gate 1 skipped per its own
+     rule. Diagnosis (ADS_TRUTH_DIAGNOSIS.md): CASE A's row was cured by #120 but the
+     CLASS lived on in ONE path — roster() ignored the basis param (always cohort) while
+     the board honored it → 5 live activity-cell↔drill mismatches, reproduced. CASE B was
+     NOT a phantom — 18/18 closes ≤90d carry tracker set+show; "0 sets, 1 close" was the
+     activity clock rendering cross-window lag WITHOUT the ↤ annotation closes already
+     had (13 rows at 90d; cohort clean everywhere). CASE C: Fung Kwok legitimately
+     qualified (fit ≠ contact) — counts: 619 all-time qualified, 229 (37%) terminal-
+     unreachable. CASE D: NOT a double count — $3,355 is a standard instalment on FOUR
+     distinct deals; partition clean across all six basis×window combos. RYDEL RULED:
+     Option A — KEEP qualified as fit, ADD the REACHED tier (deterministic contact
+     evidence: tracker set/show/close or GHL evidence ≥ thresholds, config-surfaced);
+     plus all four clock fixes. BUILT: basis-aware roster + drill states its clock (the
+     Case-A class killed at root, regression-locked); assert_same_basis (I11 — cross-
+     clock math RAISES); activity ↤ annotations for sets/shows + deal evidence in drills
+     (Case B); the activity cash strip on the cohort view (labelled, one engine); REACHED
+     column (qualified ∩ contact-evidence; Fung renders qualified ✓ reached ✗; reach-rate
+     flag "qualified_unreachable" at <40% config floor; sweep-backed GHL evidence cache —
+     engine reads kv only); THE SPINE (I9/I12): T1 tracker → T2 GHL-appointment auto-
+     derivation (journaled via the resolution engine, Piolo-queue item per derivation —
+     fix at source, never patch silently) → T3 PROPOSED → T0 PHANTOM (S1-loud);
+     provenance splits rendered ("2 tracker · 1 derived"), tracker never double-counts
+     with derived; I8 funnel monotonicity (cohort full-chain; activity unexplained-gap
+     rule) + I10 tier partition as runtime invariants; I13 single-computation-path as a
+     structural test; human-legible mismatch messages (cause + clock + lane — the bare
+     "report this" class deleted). THE NIGHTLY TRUTH SWEEP (ads_truth.integrity_sweep):
+     invariants both clocks × 3 windows + spine census + quad-check (board rollup ·
+     engine recompute · GHL validator [dead won-lane = KNOWN standing cause, surfaced
+     not absorbed] · tracker authority) + reached sweep (incremental, rate-capped) →
+     accuracy row (kv ads_truth:accuracy); close-level/≥$1k findings → ACTION-promoted
+     feed lane; NEW cause classes auto-file a PROPOSED regression-test skeleton; a sweep
+     failure is itself LOUD (kv flag → feed). EDITH: "how accurate is the ad data?"
+     answers from the table with real numbers, never vibes. Suite 646 (13 new,
+     case-named).

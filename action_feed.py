@@ -61,6 +61,12 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
     try:
         import kv_store
         for f in (kv_store.get("attr:data_quality_flags") or []):
+            # ads-truth sweep findings at close-level/≥$1k are DECISIONS, not hygiene
+            if f.get("metric") in ("ads_truth_action", "ads_truth_sweep_down"):
+                items.append({"severity": "S1", "category": "ads_truth",
+                              "title": (f.get("reason") or "")[:140],
+                              "action": "Review — a close-level fact failed the truth sweep."})
+                continue
             items.append({"severity": "S3", "category": "data_quality",
                           "title": (f.get("reason") or f.get("metric") or "")[:140],
                           "action": "Fix the row at source in the Lead-to-Cash tracker."})

@@ -32,6 +32,7 @@ bp = Blueprint("ads", __name__)
 _STAGES = {
     "leads": lambda r: True,
     "qualified": lambda r: r["qualified"],
+    "reached": lambda r: r["qualified"] and r.get("reached"),   # Gate 2 Option A
     "sets": lambda r: r["set"],
     "shows": lambda r: r["show"],
 }
@@ -61,7 +62,10 @@ def _build_board(days, start, end, basis, force=False):
     try:
         if not (start or end):
             r90 = result if days == 90 else attribution_engine.compute(90, basis=basis)
+            attribution_engine.assert_same_basis(result, r90)   # I11: clock purity
             trailing = (r90.get("totals") or {}).get("attribution_rate_pct")
+    except ValueError:
+        raise
     except Exception as e:
         logger.info("trailing rate unavailable: %s", e)
     sc = attribution_flags.scorecard(result, trailing_attr_rate=trailing)
@@ -90,10 +94,27 @@ def _build_board(days, start, end, basis, force=False):
     except Exception as e:
         logger.info("ladder unavailable: %s", e)
     import attribution_engine as AE
+    # THE ACTIVITY CASH STRIP (ADS TRUTH, within #120): the cohort view carries one
+    # LABELLED line of activity-clock finance truth — computed by the one engine,
+    # never mixed into grid math (it lives outside the grid payload's rows).
+    cash_strip = None
+    if basis == "cohort" and not (start or end):
+        try:
+            r_act = attribution_engine.compute(days, basis="activity")
+            sb_act = AE.scoreboard_view(r_act)
+            cash_strip = {"cash_total": sb_act["headline"]["cash_total"],
+                          "closes_total": sb_act["headline"]["closes_total"],
+                          "clock": "activity",
+                          "label": (f"cash collected this window (activity clock): "
+                                    f"${sb_act['headline']['cash_total']:,.0f} across "
+                                    f"{sb_act['headline']['closes_total']} close(s)")}
+        except Exception as e:
+            logger.info("cash strip unavailable: %s", e)
     return {
         "hygiene": hygiene, "identity": identity, "ladder": ladder,
         "window": result.get("window"), "basis": result.get("basis"),
         "basis_label": result.get("basis_label"),
+        "cash_strip": cash_strip,
         "invariants": result.get("invariants"),
         "scoreboard": AE.scoreboard_view(result),
         "scorecard": sc, "rows": result.get("rows"),
@@ -172,9 +193,10 @@ def _prefetch_adjacent(days, basis):
             _refresh_async(d, basis)
 
 
-def _compute(days, start, end, force=False):
+def _compute(days, start, end, force=False, basis="cohort"):
     import attribution_engine
-    return attribution_engine.compute(days=days, start=start, end=end, force=force)
+    return attribution_engine.compute(days=days, start=start, end=end, force=force,
+                                      basis=basis)
 
 
 @bp.route("/", methods=["GET"])
@@ -245,7 +267,13 @@ def roster():
     creative = request.args.get("creative") or None
     if stage not in _STAGES and stage != "closes":
         return jsonify({"error": "bad stage"}), 400
-    result = _compute(days, start, end)
+    # THE CASE-A CLASS FIX: the drill inherits the clicked cell's CLOCK. The old
+    # path computed cohort unconditionally — every activity-basis close cell
+    # drilled to a different count (5 live instances at diagnosis).
+    basis = _basis_arg()
+    result = _compute(days, start, end, basis=basis)
+    import attribution_engine as _AE
+    _AE.assert_same_basis(result)   # and the payload states its clock (below)
 
     people = []
     if stage == "closes":
@@ -347,6 +375,13 @@ def roster():
         logger.warning("roster enrichment degraded: %s", e)
 
     resp = jsonify({"window": result.get("window"), "stage": stage,
-                    "creative": creative, "people": people, "count": len(people)})
+                    "creative": creative, "people": people, "count": len(people),
+                    # the drill STATES its clock (I11) — the client renders it in
+                    # the panel header and compares against the clicked cell's clock
+                    "basis": result.get("basis"),
+                    "clock_note": ("lead-cohort clock: this window's leads and "
+                                   "everything that later happened to them"
+                                   if result.get("basis") == "cohort" else
+                                   "activity clock: events dated in this window")})
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     return resp

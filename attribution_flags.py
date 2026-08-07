@@ -24,6 +24,7 @@ DEFAULTS = {
     "ad_flag_cpl_mult": 2.0,
     "ad_flag_attr_drop_pts": 10.0,
     "ad_flag_unknown_rev_pct": 20.0,
+    "ad_flag_reach_floor_pct": 40.0,   # Gate 2: qualified reach-rate below this flags
 }
 
 
@@ -106,6 +107,17 @@ def flags(result: dict, trailing_attr_rate: float | None = None,
             flag(2, "leads_no_sets", c["label"],
                  f"{c['leads']} leads, 0 sets",
                  "the creative attracts, the funnel drops — check speed-to-lead")
+        # UNREACHABLE QUALIFIED (Gate 2 Option A): fit stays ruled; reach-rate is
+        # the flag signal — an ad whose qualified leads systematically can't be
+        # reached gets called out without corrupting the fit definition.
+        if c["qualified"] >= th["ad_flag_leads_no_sets"]:
+            reach_rate = 100.0 * (c.get("reached") or 0) / c["qualified"]
+            if reach_rate < th.get("ad_flag_reach_floor_pct", 40.0):
+                flag(2, "qualified_unreachable", c["label"],
+                     f"reach rate {reach_rate:.0f}% ({c.get('reached') or 0}/"
+                     f"{c['qualified']} qualified reached)",
+                     "qualified but unreachable — audience fit real, contact rate broken "
+                     "(number quality / speed-to-lead / channel)")
         # SHOW-UP PROBLEM
         if c["sets"] >= 5:
             rate = 100.0 * c["shows"] / c["sets"]
