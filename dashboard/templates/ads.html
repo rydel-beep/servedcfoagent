@@ -17,6 +17,13 @@
       <button class="adx-win" data-days="30">30d</button>
       <button class="adx-win" data-days="60">60d</button>
       <button class="adx-win" data-days="90">90d</button>
+      <button class="adx-win" data-days="all" title="Full tracker history">All</button>
+    </div>
+    <div class="adx-markets" id="adx-markets" title="Engine-level market filter — AU + US + Unknown always sum to All (I15); spend is omitted under a filter (per-creative, not market-splittable)">
+      <button class="adx-market active" data-market="all">All</button>
+      <button class="adx-market" data-market="au">AU</button>
+      <button class="adx-market" data-market="us">US</button>
+      <button class="adx-market" data-market="unknown">Unknown</button>
     </div>
     <div class="adx-bases" id="adx-bases" title="One clock per view — never mixed">
       <button class="adx-basis" data-basis="cohort" title="Leads that entered this window + everything that later happened to them (true conversion rates; closes lag)">Cohort</button>
@@ -49,6 +56,23 @@
   <section class="adx-panel">
     <div class="adx-table-head">
       <h2 id="adx-table-title">Creatives <span class="adx-h2-sub" id="adx-table-window"></span></h2>
+      <div class="adx-grid-tools">
+        <input type="search" id="adx-grid-find" class="adx-grid-find" placeholder="find creative / campaign / batch…" title="Presentation-only row filter — aggregates unchanged">
+        <select id="adx-preset" class="adx-preset" title="Preset sorts. ‘Lowest performing’ = the verdict engine’s ranking (KILL first), worst unit economics as tiebreak — no new math.">
+          <option value="">sort presets…</option>
+          <option value="leads.desc">Most leads</option>
+          <option value="qualified.desc">Most qualified</option>
+          <option value="reached.desc">Most reached</option>
+          <option value="closes.desc">Most closes</option>
+          <option value="cash.desc">Highest cash</option>
+          <option value="spend.desc">Highest spend</option>
+          <option value="cost_per_lead.desc">Highest CPL</option>
+          <option value="worst.asc">Lowest performing</option>
+        </select>
+        <details class="adx-colpick" id="adx-colpick"><summary>columns ▾</summary>
+          <div class="adx-colpick-body" id="adx-colpick-body"></div>
+        </details>
+      </div>
       <div class="adx-levels" id="adx-levels">
         <button class="adx-level" data-level="creative">Ads</button>
         <button class="adx-level" data-level="name">Names</button>

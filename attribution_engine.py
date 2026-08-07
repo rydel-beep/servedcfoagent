@@ -70,6 +70,8 @@ def tracker_cols(header: list[str]) -> dict:
             idx["business"] = k
         elif "revenue range" in cl and "revenue" not in idx:
             idx["revenue"] = k
+        elif "market" in cl and "market" not in idx:
+            idx["market"] = k
         elif "call outcome" in cl:
             outcome_cols.append(k)
         elif "dq reason" in cl and "dq_reason" not in idx:
@@ -123,6 +125,20 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9 @.]", "", str(s or "").lower()).strip()
 
 
+_MARKETS = ("au", "us", "unknown")
+
+
+def _market_norm(raw: str) -> str:
+    """Tracker Market cell → 'au' | 'us' | 'unknown'. Unrecognised values land in
+    the honest Unknown bucket — nothing silently defaults to AU (DECISIONS #127)."""
+    v = (raw or "").strip().lower()
+    if v in ("us", "usa", "united states", "america"):
+        return "us"
+    if "austral" in v or v == "au":
+        return "au"
+    return "unknown"
+
+
 def parse_tracker(rows: list[list[str]]) -> tuple[list[dict], dict]:
     """Clean tracker rows → lead dicts. Caller passes the CLEAN view (test leads gone)."""
     if not rows:
@@ -157,6 +173,10 @@ def parse_tracker(rows: list[list[str]]) -> tuple[list[dict], dict]:
             # computed later in the join (finalised AND revenue band ≥ floor AND
             # form-complete — Rydel's v2 definition, LTC_SCOREBOARD_REPORT §2).
             "finalised": setter_out != "dq",
+            # MARKET (ADS UX, DECISIONS #127): the tracker Market column is the
+            # deterministic marker (100.0% coverage at diagnosis: 1278 Australia /
+            # 13 US / 0 blank). Anything unrecognised → "unknown", never a default.
+            "market": _market_norm(g("market")),
             "revenue_raw": g("revenue"),
             "dq_reason": g("dq_reason"),
             "set": setter_out == "set",
@@ -224,16 +244,26 @@ def compute_from_inputs(
     qualified_floor: float = 20_000.0,
     ad_label_fn=None,
     basis: str = "cohort",
+    market: str | None = None,
 ) -> dict:
     """contacts: attr_contacts rows. spend_by_ad: {ad_id: {name, spend, impressions,
     clicks}} for the window. resolve_fn(ref, kind) → resolution dict (attribution_join).
-    canonical: {leads, closes, cash, contract, account_spend} for reconciliation."""
+    canonical: {leads, closes, cash, contract, account_spend} for reconciliation.
+    market: None = all; 'au'|'us'|'unknown' filters LEADS at the engine level
+    (I15 partition: au+us+unknown == all on every lead-derived metric). Spend is
+    OMITTED under a market filter — Meta spend is per-creative, not market-
+    splittable; an absurd CPL would be dishonest (the payload states this)."""
     if basis not in ("cohort", "activity"):
         raise ValueError(f"basis must be 'cohort' or 'activity', got {basis!r} — "
                          "ONE clock per view, never mixed (DECISIONS #120)")
+    if market is not None and market not in _MARKETS:
+        raise ValueError(f"market must be one of {_MARKETS} or None, got {market!r}")
     leads, _cm = parse_tracker(tracker_rows)
     leads, dupe_flags = dedupe_won(leads)
     flags: list[dict] = list(dupe_flags)
+    if market is not None:
+        leads = [l for l in leads if l.get("market") == market]
+        spend_by_ad = {}     # honest omission, never an absurd per-market CPL
 
     by_email = {c["email"]: c for c in contacts if c.get("email")}
     by_name: dict[str, dict] = {}
@@ -422,6 +452,7 @@ def compute_from_inputs(
             "revenue": {"band": rv["band"], "state": rv["state"], "source": rv["source"]},
             "finalised": lead["finalised"], "form_complete": form_complete,
             "qualified": lead["qualified"], "reached": lead.get("reached", False),
+            "market": lead.get("market"),
             "creative": {"key": key, "label": _bucket_label(lead, key),
                          "tier": ("ig_dm" if key == _IG_KEY else
                                   "unattributed" if key == _UNATTR_KEY else
@@ -667,6 +698,10 @@ def compute_from_inputs(
     return {
         "window": {"start": str(w0), "end": str(w1), "days": (w1 - w0).days + 1},
         "basis": basis,
+        "market": market or "all",
+        "market_note": ("spend and cost metrics omitted under a market filter — Meta "
+                        "spend is per-creative, not market-splittable"
+                        if market is not None else None),
         "basis_label": ("Lead-cohort: leads that entered this window plus everything "
                         "that later happened to them (closes lag — wider windows are the "
                         "honest read for close-based verdicts)" if basis == "cohort" else
@@ -858,8 +893,10 @@ def _tracker_rows_clean() -> list[list[str]]:
 
 
 def compute(days: int = 30, start: str | None = None, end: str | None = None,
-            force: bool = False, basis: str = "cohort") -> dict:
-    """The live per-creative attribution read for a window. Cached 30 min in-process."""
+            force: bool = False, basis: str = "cohort",
+            market: str | None = None) -> dict:
+    """The live per-creative attribution read for a window. Cached 30 min in-process.
+    market: None (all) | 'au' | 'us' | 'unknown' — the engine-level filter (I15)."""
     from helpers import today_sydney
     if start and end:
         try:
@@ -869,7 +906,7 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
     else:
         w1 = today_sydney()
         w0 = w1 - dt.timedelta(days=int(days) - 1)
-    ck = (str(w0), str(w1), basis)
+    ck = (str(w0), str(w1), basis, market)
     hit = _cache.get(ck)
     if hit and not force and time.time() - hit[0] < _CACHE_TTL_S:
         return hit[1]
@@ -901,46 +938,69 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
     # follows THE ACTIVE CLOCK: activity = the tracker authority by Close Date (the
     # unit-economics engine); cohort = the same clean won rows keyed by Input Date.
     canonical: dict = {}
-    try:
-        import leads_view
-        canonical["leads"] = leads_view.count_leads(w0, w1).get("count")
-    except Exception as e:
-        logger.warning("canonical lead count unavailable: %s", e)
     closer_comm = setter_comm = 0.0
     margin = None
     input_degraded: list[dict] = []
-    try:
-        import range_unit_economics as rue
-        ltc = rue._ltc_in_window(w0, w1)
+    if market is not None:
+        # MARKET-SCOPED canonical (I15): the external anchors read the whole book —
+        # under a filter the canonical is an independent re-read of the SAME
+        # authority scoped to the same market, matching the active clock.
+        m_leads, _cmm = parse_tracker(rows)
+        m_leads, _dm = dedupe_won(m_leads)
+        m_leads = [l for l in m_leads if l.get("market") == market]
+        canonical["leads"] = sum(1 for l in m_leads if l["input_date"]
+                                 and w0 <= l["input_date"] <= w1)
         if basis == "activity":
-            canonical["closes"] = ltc["closes"]
-            canonical["cash"] = ltc["cash"]
+            m_won = [l for l in m_leads if l["won"] and l["close_date"]
+                     and w0 <= l["close_date"] <= w1]
         else:
-            # cohort canonical: clean won rows whose INPUT date is in the window —
-            # independent re-read of the same authority, matching the clock
-            c_leads, _cm2 = parse_tracker(rows)
-            c_leads, _dupes2 = dedupe_won(c_leads)
-            cohort_won = [l for l in c_leads if l["won"] and l["close_date"]
-                          and l["input_date"] and w0 <= l["input_date"] <= w1]
-            canonical["closes"] = len(cohort_won)
-            canonical["cash"] = round(sum(l["cash"] or 0 for l in cohort_won), 2)
-        closer_comm = ltc["closer_comm"]
-        setter_comm = rue._setter_comm_in_window(w0, w1)
-        margin = rue._gross_margin()
-    except Exception as e:
-        logger.warning("canonical close/comm inputs unavailable: %s", e)
-        input_degraded.append({"metric": "attribution_loaded_inputs",
-                               "reason": f"comm/close inputs unavailable ({type(e).__name__}) "
-                                         "— loaded cost-per-close understated"})
+            m_won = [l for l in m_leads if l["won"] and l["close_date"]
+                     and l["input_date"] and w0 <= l["input_date"] <= w1]
+        canonical["closes"] = len(m_won)
+        canonical["cash"] = round(sum(l["cash"] or 0 for l in m_won), 2)
+        try:
+            import range_unit_economics as rue
+            margin = rue._gross_margin()
+        except Exception:
+            pass
+    else:
+        try:
+            import leads_view
+            canonical["leads"] = leads_view.count_leads(w0, w1).get("count")
+        except Exception as e:
+            logger.warning("canonical lead count unavailable: %s", e)
+        try:
+            import range_unit_economics as rue
+            ltc = rue._ltc_in_window(w0, w1)
+            if basis == "activity":
+                canonical["closes"] = ltc["closes"]
+                canonical["cash"] = ltc["cash"]
+            else:
+                # cohort canonical: clean won rows whose INPUT date is in the window —
+                # independent re-read of the same authority, matching the clock
+                c_leads, _cm2 = parse_tracker(rows)
+                c_leads, _dupes2 = dedupe_won(c_leads)
+                cohort_won = [l for l in c_leads if l["won"] and l["close_date"]
+                              and l["input_date"] and w0 <= l["input_date"] <= w1]
+                canonical["closes"] = len(cohort_won)
+                canonical["cash"] = round(sum(l["cash"] or 0 for l in cohort_won), 2)
+            closer_comm = ltc["closer_comm"]
+            setter_comm = rue._setter_comm_in_window(w0, w1)
+            margin = rue._gross_margin()
+        except Exception as e:
+            logger.warning("canonical close/comm inputs unavailable: %s", e)
+            input_degraded.append({"metric": "attribution_loaded_inputs",
+                                   "reason": f"comm/close inputs unavailable ({type(e).__name__}) "
+                                             "— loaded cost-per-close understated"})
+        try:
+            import meta_spend
+            canonical["account_spend"] = meta_spend.spend_in_range(str(w0), str(w1)).get("spend")
+        except Exception as e:
+            logger.warning("canonical spend unavailable: %s", e)
     if margin is None:
         input_degraded.append({"metric": "attribution_ltgp_cac",
                                "reason": "gross margin unavailable — LTGP/LTGP:CAC omitted, "
                                          "never guessed"})
-    try:
-        import meta_spend
-        canonical["account_spend"] = meta_spend.spend_in_range(str(w0), str(w1)).get("spend")
-    except Exception as e:
-        logger.warning("canonical spend unavailable: %s", e)
 
     try:
         import manual_targets
@@ -952,7 +1012,7 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
                                  w0, w1, margin_pct=margin, closer_comm=closer_comm,
                                  setter_comm=setter_comm, canonical=canonical,
                                  qualified_floor=q_floor, ad_label_fn=ad_label_fn,
-                                 basis=basis)
+                                 basis=basis, market=market)
     # invariant violations are salience-worthy once (the custodian pattern)
     try:
         import kv_store

@@ -38,9 +38,15 @@ _STAGES = {
 }
 
 
+ALL_DAYS = 3650   # the "All" window (the tracker's full history fits comfortably)
+
+
 def _window_args():
+    raw = request.args.get("days", 30)
+    if str(raw).lower() == "all":
+        return ALL_DAYS, request.args.get("start"), request.args.get("end")
     try:
-        days = min(max(int(request.args.get("days", 30)), 1), 365)
+        days = min(max(int(raw), 1), 365)
     except ValueError:
         return None, None, None
     return days, request.args.get("start"), request.args.get("end")
@@ -51,17 +57,25 @@ def _basis_arg():
     return b if b in ("cohort", "activity") else "cohort"
 
 
-def _build_board(days, start, end, basis, force=False):
-    """The full board payload — ONE atomic build (window + basis echoed for the
-    stale-mix guard). Persisted as a rollup keyed (basis, days) for instant serves."""
+def _market_arg():
+    """None = all markets; 'au'|'us'|'unknown' = the engine-level filter (I15)."""
+    m = (request.args.get("market") or "all").lower()
+    return m if m in ("au", "us", "unknown") else None
+
+
+def _build_board(days, start, end, basis, force=False, market=None):
+    """The full board payload — ONE atomic build (window + basis + market echoed for
+    the stale-mix guard). Persisted as a rollup keyed (basis, days) for instant
+    serves (all-markets only; market views compute directly — they are small)."""
     import attribution_engine
     import attribution_flags
     result = attribution_engine.compute(days=days, start=start, end=end,
-                                        force=force, basis=basis)
+                                        force=force, basis=basis, market=market)
     trailing, r90 = None, None
     try:
         if not (start or end):
-            r90 = result if days == 90 else attribution_engine.compute(90, basis=basis)
+            r90 = result if days == 90 else attribution_engine.compute(90, basis=basis,
+                                                                        market=market)
             attribution_engine.assert_same_basis(result, r90)   # I11: clock purity
             trailing = (r90.get("totals") or {}).get("attribution_rate_pct")
     except ValueError:
@@ -100,7 +114,7 @@ def _build_board(days, start, end, basis, force=False):
     cash_strip = None
     if basis == "cohort" and not (start or end):
         try:
-            r_act = attribution_engine.compute(days, basis="activity")
+            r_act = attribution_engine.compute(days, basis="activity", market=market)
             sb_act = AE.scoreboard_view(r_act)
             cash_strip = {"cash_total": sb_act["headline"]["cash_total"],
                           "closes_total": sb_act["headline"]["closes_total"],
@@ -110,10 +124,34 @@ def _build_board(days, start, end, basis, force=False):
                                     f"{sb_act['headline']['closes_total']} close(s)")}
         except Exception as e:
             logger.info("cash strip unavailable: %s", e)
+    # HEADLINE DELTAS: vs the preceding equal-length window — the same engine with
+    # an explicit comparison window, clearly labelled, never mixed into the grid.
+    compare = None
+    if not (start or end) and days in (30, 60, 90):
+        try:
+            import datetime as _dt
+            from helpers import today_sydney as _ts
+            _w1 = _ts(); _w0 = _w1 - _dt.timedelta(days=days - 1)
+            prev = attribution_engine.compute(
+                start=str(_w0 - _dt.timedelta(days=days)),
+                end=str(_w0 - _dt.timedelta(days=1)), basis=basis, market=market)
+            attribution_engine.assert_same_basis(result, prev)
+            pt, ct = prev.get("totals") or {}, result.get("totals") or {}
+            compare = {"label": f"vs prior {days}d",
+                       "window": prev.get("window"),
+                       "deltas": {k: (round((ct.get(k) or 0) - (pt.get(k) or 0), 2)
+                                      if ct.get(k) is not None or pt.get(k) is not None
+                                      else None)
+                                  for k in ("leads", "closes", "cash", "spend")},
+                       "prior": {k: pt.get(k) for k in ("leads", "closes", "cash", "spend")}}
+        except Exception as e:
+            logger.info("headline compare unavailable: %s", e)
     return {
         "hygiene": hygiene, "identity": identity, "ladder": ladder,
         "window": result.get("window"), "basis": result.get("basis"),
         "basis_label": result.get("basis_label"),
+        "market": result.get("market"), "market_note": result.get("market_note"),
+        "compare": compare,
         "cash_strip": cash_strip,
         "invariants": result.get("invariants"),
         "scoreboard": AE.scoreboard_view(result),
@@ -129,13 +167,17 @@ def _rollup_key(basis, days):
     return f"attr:rollup:{basis}:{days}"
 
 
-def _serve_board(days, start, end, basis, force):
+def _serve_board(days, start, end, basis, force, market=None):
     """Rollup-backed serve: fresh when the engine is warm; a persisted rollup served
     STALE-LABELLED (never as fresh) while a background refresh runs; prefetch of the
     adjacent windows after any fresh build."""
     import attribution_engine as AE
     import kv_store, threading, time as _t
     custom = bool(start or end)
+    if market is not None:
+        payload = _build_board(days, start, end, basis, force=force, market=market)
+        payload["stale"] = False
+        return payload
     w_cached = False
     if not custom:
         import datetime as dt
@@ -193,10 +235,10 @@ def _prefetch_adjacent(days, basis):
             _refresh_async(d, basis)
 
 
-def _compute(days, start, end, force=False, basis="cohort"):
+def _compute(days, start, end, force=False, basis="cohort", market=None):
     import attribution_engine
     return attribution_engine.compute(days=days, start=start, end=end, force=force,
-                                      basis=basis)
+                                      basis=basis, market=market)
 
 
 @bp.route("/", methods=["GET"])
@@ -218,7 +260,8 @@ def board():
     if days is None:
         return jsonify({"error": "bad days"}), 400
     basis = _basis_arg()
-    payload = _serve_board(days, start, end, basis, force=request.args.get("force") == "1")
+    payload = _serve_board(days, start, end, basis, force=request.args.get("force") == "1",
+                           market=_market_arg())
     resp = jsonify(payload)
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     return resp
@@ -255,6 +298,172 @@ def _ghl_notes_for(contact_ids: list[str]) -> dict:
     return out
 
 
+@bp.route("/api/deal", methods=["GET"])
+@require_auth
+def deal_panel():
+    """THE ANOMALY/DEAL PANEL (?name=): the object behind a badge or feed item —
+    tracker row (verbatim fields), why it's invisible/unwindowable in plain English,
+    GHL link, and the queue state (queued/cleared). Every number is a door."""
+    name = (request.args.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name required"}), 400
+    import attribution_engine as AE
+    nm = re.sub(r"[^a-z0-9 @.]", "", name.lower()).strip()
+    leads_all, _cm = AE.parse_tracker(AE._tracker_rows_clean())
+    matches = [l for l in leads_all if l["name_norm"] == nm]
+    if not matches:
+        return jsonify({"error": "no tracker row", "name": name}), 404
+    lead = next((l for l in matches if l.get("won")), matches[0])
+    why = []
+    if lead.get("won") and not lead.get("close_date"):
+        why.append("won but Close Date blank — invisible to every windowed close figure")
+    if lead.get("set") and not lead.get("set_date"):
+        why.append("set exists but Set Date blank — not windowable on the activity clock")
+    if not lead.get("input_date"):
+        why.append("Input Date blank — excluded from cohort funnels")
+    ghl_link = contact_id = None
+    try:
+        import attribution_join
+        from config import GHL_LOCATION_ID
+        for c in attribution_join.load_contacts():
+            if (lead.get("email") and c.get("email") == lead["email"]) or \
+               re.sub(r"[^a-z0-9 @.]", "", (c.get("name") or "").lower()).strip() == nm:
+                contact_id = c["id"]
+                ghl_link = (f"https://app.gohighlevel.com/v2/location/"
+                            f"{GHL_LOCATION_ID}/contacts/detail/{c['id']}")
+                break
+    except Exception:
+        pass
+    # queue state: is this deal in the hygiene/Piolo queue right now?
+    queue = []
+    try:
+        import kv_store
+        import close_integrity
+        mx = close_integrity.latest() or {}
+        for d in (mx.get("disagreements") or []):
+            if nm in re.sub(r"[^a-z0-9 @.]", "", (d.get("detail") or "").lower()):
+                queue.append({"detail": d["detail"], "fix": d["fix"],
+                              "owner": d.get("owner"), "state": "queued"})
+        for f in (kv_store.get("ads_truth:flags") or []):
+            if name.lower() in (f.get("reason") or "").lower():
+                queue.append({"detail": f["reason"], "state": "queued (truth sweep)"})
+        for card in ((kv_store.get("integrity:proposed_fixes") or {}).get("cards") or []):
+            if (card.get("name") or "").lower() == name.lower():
+                queue.append({"detail": f"proposed fix: {card.get('instruction')}",
+                              "state": f"PROPOSED ({card.get('kind')})",
+                              "candidates": card.get("candidates")})
+    except Exception as e:
+        logger.info("deal queue state degraded: %s", e)
+    resp = jsonify({
+        "name": lead["name"], "business": lead.get("business"),
+        "market": lead.get("market"),
+        "tracker": {k: (str(lead.get(k)) if lead.get(k) is not None else None)
+                    for k in ("input_date", "setter_outcome", "set", "set_date", "show",
+                              "closer_outcome", "close_date", "contract", "cash",
+                              "setter_notes", "dq_reason")},
+        "why_invisible": why or None,
+        "contact_id": contact_id, "ghl_link": ghl_link,
+        "queue": queue or [{"state": "cleared", "detail": "no open queue item for this deal"}],
+        "resolution_lane": ("PROPOSED" if any("PROPOSED" in q.get("state", "") for q in queue)
+                            else "HUMAN (Piolo queue)" if queue else "clear"),
+    })
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/dossier", methods=["GET"])
+@require_auth
+def dossier():
+    """THE CREATIVE DOSSIER (?creative=<key>): identity & delivery · unit economics
+    (window + all-time, one engine, min-n labels intact) · the lead ledger with
+    funnel-state chips + provenance + links. Linkable/bookmarkable via URL params."""
+    days, start, end = _window_args()
+    if days is None:
+        return jsonify({"error": "bad days"}), 400
+    key = request.args.get("creative")
+    if not key:
+        return jsonify({"error": "creative required"}), 400
+    basis, market = _basis_arg(), _market_arg()
+    result = _compute(days, start, end, basis=basis, market=market)
+    row = next((c for c in (result.get("creatives") or [])
+                if c["creative_key"] == key), None)
+    r_all = _compute(ALL_DAYS, None, None, basis=basis, market=market)
+    row_all = next((c for c in (r_all.get("creatives") or [])
+                    if c["creative_key"] == key), None)
+    if row is None and row_all is None:
+        return jsonify({"error": "unknown creative"}), 404
+
+    # identity & delivery — entity map fields are labelled for what they are
+    # (created_time is the ad's CREATED date, not first delivery — stated).
+    ident = {}
+    try:
+        import meta_entities
+        store = meta_entities.refresh_entity_map()
+        for ad_id in (row or row_all).get("ad_ids") or []:
+            a = (store.get("ads") or {}).get(ad_id)
+            if a:
+                ident = {"status": a.get("effective_status") or a.get("status"),
+                         "created_time": a.get("created_time"),
+                         "created_time_note": "ad CREATED date (Meta) — not first delivery",
+                         "adset": a.get("adset_name") or a.get("adset"),
+                         "campaign": a.get("campaign_name") or a.get("campaign")}
+                break
+    except Exception as e:
+        logger.info("dossier identity degraded: %s", e)
+
+    def econ(c):
+        if not c:
+            return None
+        return {k: c.get(k) for k in
+                ("leads", "qualified", "reached", "sets", "shows", "closes", "cash",
+                 "spend", "cost_per_lead", "cost_per_qualified", "cost_per_set",
+                 "cost_per_close", "ltgp_cac", "verdict", "provisional",
+                 "earlier_closes", "undated_sets", "sets_src", "shows_src")}
+
+    # the lead ledger: every attributed lead, window-filtered (all-time via ?days=all)
+    ledger = [v for v in (result.get("rows") or [])
+              if (v.get("creative") or {}).get("key") == key]
+    # links: contact id + GHL, same join the roster uses
+    try:
+        import attribution_join
+        from config import GHL_LOCATION_ID
+        contacts = attribution_join.load_contacts()
+        by_email = {c["email"]: c for c in contacts if c.get("email")}
+        by_cname = {}
+        for c in contacts:
+            if c.get("name"):
+                by_cname.setdefault(re.sub(r"[^a-z0-9 @.]", "", c["name"].lower()).strip(), c)
+        for v in ledger:
+            c = (by_email.get((v.get("email") or "").lower()) if v.get("email") else None) \
+                or by_cname.get(re.sub(r"[^a-z0-9 @.]", "", (v["name"] or "").lower()).strip())
+            if c:
+                v["contact_id"] = c["id"]
+                v["ghl_link"] = (f"https://app.gohighlevel.com/v2/location/"
+                                 f"{GHL_LOCATION_ID}/contacts/detail/{c['id']}")
+    except Exception as e:
+        logger.info("dossier links degraded: %s", e)
+    ledger.sort(key=lambda v: v.get("input_date") or "", reverse=True)
+
+    resp = jsonify({
+        "creative_key": key,
+        "label": (row or row_all).get("label"),
+        "tier": (row or row_all).get("tier"),
+        "campaigns": (row or row_all).get("campaigns"),
+        "ad_ids": (row or row_all).get("ad_ids"),
+        "history": (row or row_all).get("history"),
+        "identity": ident,
+        "window": result.get("window"), "basis": basis,
+        "market": result.get("market"), "market_note": result.get("market_note"),
+        "econ_window": econ(row), "econ_all_time": econ(row_all),
+        "min_n": result.get("min_n"),
+        "ledger": ledger, "ledger_count": len(ledger),
+        "deals": (row or {}).get("deals") or [],
+        "deals_all_time": (row_all or {}).get("deals") or [],
+    })
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
 @bp.route("/api/roster", methods=["GET"])
 @require_auth
 def roster():
@@ -271,7 +480,7 @@ def roster():
     # path computed cohort unconditionally — every activity-basis close cell
     # drilled to a different count (5 live instances at diagnosis).
     basis = _basis_arg()
-    result = _compute(days, start, end, basis=basis)
+    result = _compute(days, start, end, basis=basis, market=_market_arg())
     import attribution_engine as _AE
     _AE.assert_same_basis(result)   # and the payload states its clock (below)
 

@@ -183,3 +183,45 @@ body.adx-loading .adx-panel, body.adx-loading .adx-scorecard { opacity: .55; tra
 .adx-cash-strip em { font-style: italic; opacity: .8; }
 .adx-roster-note { font-size: 11.5px; color: var(--muted); margin-bottom: 6px; }
 .adx-integrity-error td { color: var(--bad); background: rgba(255,92,92,.06); font-size: 12px; }
+
+/* ── ADS UX interaction layer (DECISIONS #127) ── */
+.adx-door { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+button.adx-door { background: none; border: none; color: inherit; font: inherit; padding: 0; }
+button.adx-deal-open { color: var(--accent, #7aa2ff); }
+.adx-markets { display: inline-flex; gap: 2px; margin-left: 10px; }
+.adx-market { background: var(--panel, #14161d); border: 1px solid var(--line); color: var(--muted);
+  padding: 4px 9px; border-radius: 5px; cursor: pointer; font-size: 12px; }
+.adx-market.active { color: var(--fg, #fff); border-color: var(--accent, #7aa2ff); }
+.adx-compare { flex-basis: 100%; font-size: 12px; color: var(--muted); padding: 6px 4px 0; }
+.adx-market-note { flex-basis: 100%; font-size: 11.5px; color: var(--warn); padding: 4px; }
+.adx-grid-tools { display: flex; gap: 8px; align-items: center; }
+.adx-grid-find { background: var(--panel, #14161d); border: 1px solid var(--line); color: var(--fg);
+  border-radius: 5px; padding: 5px 8px; font-size: 12px; width: 210px; }
+.adx-preset { background: var(--panel, #14161d); border: 1px solid var(--line); color: var(--muted);
+  border-radius: 5px; padding: 5px 6px; font-size: 12px; }
+.adx-colpick { position: relative; font-size: 12px; color: var(--muted); }
+.adx-colpick summary { cursor: pointer; border: 1px solid var(--line); border-radius: 5px; padding: 5px 8px; list-style: none; }
+.adx-colpick-body { position: absolute; right: 0; top: 110%; z-index: 30; background: var(--panel, #14161d);
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; display: grid; gap: 4px; min-width: 170px; }
+.adx-colpick-item { display: flex; gap: 6px; align-items: center; cursor: pointer; white-space: nowrap; }
+/* wide-table ergonomics: sticky header + frozen creative column */
+.adx-table-wrap { max-height: 72vh; overflow: auto; }
+.adx-table thead th { position: sticky; top: 0; z-index: 5; background: var(--panel, #14161d); }
+.adx-table td.adx-name, .adx-table thead th:first-child {
+  position: sticky; left: 0; z-index: 4; background: var(--panel, #14161d); }
+.adx-table thead th:first-child { z-index: 6; }
+.adx-dateless { margin-top: 10px; padding: 8px; border: 1px dashed var(--warn); border-radius: 6px;
+  font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.adx-anom-deal { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.adx-queue { margin: 8px 0; }
+.adx-queue-item { font-size: 12px; padding: 4px 0; }
+.adx-queue-state { font: 600 10px/1.6 ui-monospace, monospace; border: 1px solid var(--line);
+  border-radius: 3px; padding: 1px 5px; color: var(--warn); margin-right: 6px; text-transform: uppercase; }
+.adx-dossier-sec { margin-bottom: 14px; }
+.adx-dossier-sec h3 { font-size: 13px; margin: 0 0 6px; }
+.adx-dossier-econ { font-size: 12.5px; color: var(--muted); padding: 4px 0; }
+.adx-ledger-row { font-size: 12.5px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.adx-chip { display: inline-block; font-size: 10px; border: 1px solid var(--line); border-radius: 3px;
+  padding: 0 4px; margin: 0 1px; color: var(--muted); }
+.adx-chip.on { color: var(--good); border-color: var(--good); }
+.adx-warnline { color: var(--warn); font-size: 12px; margin: 6px 0; }

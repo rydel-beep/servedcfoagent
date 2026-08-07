@@ -128,6 +128,7 @@ def run_matrix(days: int = 30) -> dict:
     for t in blank_dates:
         disagreements.append({
             "id": f"integrity:blank_close_date:{_norm(t['name'])}",
+            "deal_name": t["name"],
             "kind": "tracker_blank_close_date", "severity": 2,
             "detail": f"{t['name']}: won but Close Date blank (contract "
                       f"{t['contract'] or '—'}) — invisible to every windowed figure",
@@ -136,6 +137,7 @@ def run_matrix(days: int = 30) -> dict:
     for t in no_input:
         disagreements.append({
             "id": f"integrity:blank_input_date:{_norm(t['name'])}",
+            "deal_name": t["name"],
             "kind": "tracker_blank_input_date", "severity": 3,
             "detail": f"{t['name']}: won row missing Input Date — excluded from cohort "
                       f"funnels",

@@ -84,9 +84,13 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
         import kv_store
         mx = kv_store.get("integrity:matrix") or {}
         for d in (mx.get("disagreements") or [])[:20]:
-            items.append({"severity": f"S{d.get('severity', 3)}", "category": "data_quality",
-                          "title": (d.get("detail") or "")[:140],
-                          "action": (d.get("fix") or "")[:140]})
+            item = {"severity": f"S{d.get('severity', 3)}", "category": "data_quality",
+                    "title": (d.get("detail") or "")[:140],
+                    "action": (d.get("fix") or "")[:140]}
+            # FEED↔TABLE LOOP: object-referencing items deep-link to the deal panel
+            if d.get("deal_name"):
+                item["link"] = "/ads?deal=" + __import__("urllib.parse", fromlist=["quote"]).quote(d["deal_name"])
+            items.append(item)
     except Exception as e:
         logger.info("action_feed integrity items failed: %s", e)
 

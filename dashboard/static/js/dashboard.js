@@ -4314,7 +4314,7 @@
       var cap = f.cap || 7;
       acts.slice(0, cap).forEach(function (it) {
         html += '<div class="af-item af-' + (it.severity || 'S2') + '"><span class="af-sev">' + esc(it.severity || '') + '</span>' +
-          '<div class="af-text"><div class="af-title">' + esc(it.title) + '</div>' +
+          '<div class="af-text"><div class="af-title">' + (it.link ? '<a href="' + esc(it.link) + '" target="_blank" rel="noopener">' + esc(it.title) + ' ↗</a>' : esc(it.title)) + '</div>' +
           (it.why && it.why !== it.title ? '<div class="af-action">' + esc(it.why) + '</div>' : '') +
           (it.action ? '<div class="af-action">' + esc(it.action) + '</div>' : '') + '</div>' +
           '<span class="af-ops"><button class="af-op" data-op="snoozed" data-key="' + esc(it.key || '') + '" title="Snooze 7 days">zz</button>' +

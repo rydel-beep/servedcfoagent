@@ -1567,3 +1567,34 @@
      failure is itself LOUD (kv flag → feed). EDITH: "how accurate is the ad data?"
      answers from the table with real numbers, never vibes. Suite 646 (13 new,
      case-named).
+
+127. **ADS UX — THE INTERACTION LAYER: EVERY NUMBER IS A DOOR (2026-08-07).** Phase-0:
+     I1–I13 green (sweep row 2026-08-07: 0 invariant violations) → UI work allowed. The
+     clock is the RULED TOGGLE (#120) — window labels carry the ACTIVE clock, not a
+     single ruled basis. Census: 20 element classes; 10 gaps built, 6 deliberate-statics
+     with reasons (ADS_UX_CENSUS.md). THE MARKET MARKER RULED DETERMINISTIC — the
+     tracker Market column: 100.0% coverage (1,278 Australia · 13 US · 0 blank),
+     corroborated by the "Served 2026 USA Campaign" naming and phone country codes →
+     the conditional gate did NOT fire. BUILT: market as an ENGINE parameter (leads-side
+     filter; blank/unrecognised → the honest Unknown bucket, never a silent AU default;
+     SPEND OMITTED under a filter with the reason stated — Meta spend is per-creative,
+     not market-splittable; canonical re-scoped to the filtered authority; I15 partition
+     AU+US+Unknown == All, test-enforced) · window All (?window=all) + HEADLINE DELTAS
+     vs the prior equal-length window (same engine, second invocation, labelled, I11-
+     guarded) · CLICKABLE ANOMALIES (the witnessed Sets "0 ◔1" dead-end): every ↤/◔
+     badge is a door → anomaly panel (plain-English cause, the deals, tracker evidence,
+     GHL link, queue state, resolution lane); the DATELESS RAIL as a first-class bucket
+     (excluded ≠ deleted, self-clearing when Piolo fills dates); /ads/api/deal powers
+     badge panels AND the feed↔table loop (El Gringos-class feed items now deep-link
+     /ads?deal=) · THE CREATIVE DOSSIER (/ads/api/dossier, name-click + ?dossier= deep
+     link): identity & delivery (Meta status + created date, LABELLED as created-not-
+     first-delivery; sparkline omitted rather than faked) · unit economics window +
+     all-time (one engine, min-n intact) · the lead ledger (funnel chips w/ provenance,
+     GHL/tracker links, honest empty states) · SORTING: presets incl. "Lowest
+     performing" (the VERDICT ENGINE's ranking, no new math), URL ?sort=, stable
+     secondary spend-desc, tier rows pinned · grid FIND (presentation-only, "FILTERED
+     VIEW" noted) · sticky header + frozen Creative column + a persisted column picker.
+     INVARIANTS: I14 (no orphan badges — every annotation carries the door class + an
+     object ref, structurally tested) · I15 (market partition) · I16 (view purity — no
+     UI arithmetic on metrics, grep-enforced). Auth regression-checked on every new
+     route/param. Suite 658 (10 new).

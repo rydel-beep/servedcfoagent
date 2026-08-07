@@ -38,7 +38,8 @@ def test_case_a_roster_inherits_the_cell_clock():
     at diagnosis) can never come back silently."""
     src = open(os.path.join(os.path.dirname(__file__), "..", "dashboard", "ads.py")).read()
     assert "basis = _basis_arg()" in src.split("def roster()")[1][:800]
-    assert "_compute(days, start, end, basis=basis)" in src
+    # the drill inherits BOTH the clock and the market filter of the clicked cell
+    assert "_compute(days, start, end, basis=basis, market=_market_arg())" in src
     # and the payload states its clock for the panel header
     assert '"clock_note"' in src
     js = open(os.path.join(os.path.dirname(__file__), "..", "dashboard", "static",
