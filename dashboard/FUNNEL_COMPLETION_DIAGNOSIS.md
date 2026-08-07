@@ -61,3 +61,52 @@ Sam King 21d · Lucas Cristofle 22d · Glen Fitzgerald 29d · Tony Thai 18d.
   the ◔ annotation + hygiene (honest remainder, listed).
 - Cohort cells: unchanged (already correct).
 - Reached: identical on every tab (grouped through the one engine).
+
+---
+
+## THE BUILD + LIVE FIRST RUN (2026-08-08, commits 47f9c15 + 60057f4 — DECISIONS #128)
+
+### Dateless disposition: 24 → the honest remainder
+| lane | count | detail |
+|---|---|---|
+| input AUTO-derived | 4 | jenny bui (contact r7efHW52…, 2025-05-23) · john tamayo (HNoKxA5O…, 2025-10-07) · aldrin dabuan (nxQlELS4…, 2025-06-27) · julieta pablo tadiaman (t93MSMuY…, 2025-07-21) — "derived:ghl-contact-created", journaled |
+| close PROPOSED (cards standing) | 15 | 6 Stripe first-payment + 9 GHL stage-change — the encoded signed-date convention keeps payments as near-evidence; "apply the date card for X" converts one on Rydel's word (no tracker write; the Piolo item persists) |
+| no evidence anywhere | 5 | Vipin, Dj, Hiep Nguyen, John Tamayo (close) + Neri Roth Herrmann (input — no GHL contact match) — honestly dateless, reason stated |
+Both-blank won rows now PARSE (excluded ≠ deleted): the parser keeps every won row;
+it windows nowhere until a date exists (source or derived) — the recon carries an
+explicit derived_placed term (live: leads derived=4, ok=True at all-time).
+
+### Sets/Shows: before → after (activity clock, live)
+| window | sets | shows |
+|---|---|---|
+| 30d | 0 → **9** | 0 → **5** |
+| 60d | 1 → **17** | 1 → **10** |
+| 90d | 2 → **32** | 2 → **19** |
+Recon ok and 0 invariant violations at every window post-derivation. Event sweep:
+3 batches, **140 GHL calls**, 35 set dates + 19 show dates derived (appointment IDs
+journaled; live status vocabulary observed: confirmed/cancelled/invalid/noshow — a
+cancelled/invalid/noshow appointment derives the SET date only, never a show);
+17 multi-appointment contacts → PROPOSED with candidates; **24 contacts remaining**
+(the nightly sweep clears ~40/night — done in one more night).
+
+### The B008 walkthrough (live)
+Cohort 90d: 16 leads → 11 qualified → 7 reached → 5 sets → 5 shows → 1 close
+($5,170) — coherent at every stage. Activity 30d: sets=1 shows=1 closes=1 with the
+◔1 undated annotation and NO integrity error. A close with 0 bare sets is no longer
+renderable (I8 + annotations, test-locked).
+
+### Tab parity (live)
+Names-tab reached: B001_A05 9 · B008_A04 7 · B001_A01 7 — the engine's grouped
+values; the "—" class is a named regression test.
+
+### Sample audit (derived sets, appointment IDs)
+hana 2026-07-08 (53Ncwtqe…) · lynn 2026-07-24 (h2iFmM76…) · ramin 2026-07-06
+(LtKkHS8q…) · george 2026-07-16 (IK5aQzKm…) · steffan 2026-07-14 (yad99mHm…) ·
+ron ling 2026-07-17 (n5pXUSdk…) · shamsher 2026-05-21 (28RkcCr1…) · tony wai
+2026-06-17 (Q960iZKD…) · sami amor 2026-04-23 (YnUuO5Q6…) · dani zeini 2026-06-29
+(B8Q5G9YN…) — each date = the appointment's BOOKED date per the encoded convention.
+
+### Lane-lag ageing (live)
+Per-deal items generated on the matrix refresh: Sam King 21d · Lucas Cristofle 22d ·
+Glen Fitzgerald 29d · Tony Thai 18d — "closed in tracker Nd ago · GHL stage
+UNMOVED", drillable, self-clearing on stage move.
