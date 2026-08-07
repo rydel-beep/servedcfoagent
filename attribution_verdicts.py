@@ -304,7 +304,8 @@ def _aggregate(rows: list[dict], key: str, label: str) -> dict:
     # ladder tabs while the Ads tab computes it (the D3 bug class, test-locked).
     for k in ("leads", "qualified", "reached", "sets", "shows", "closes_cohort",
               "closes", "revenue_unknown", "impressions", "clicks",
-              "earlier_closes", "earlier_sets", "earlier_shows", "undated_sets"):
+              "earlier_closes", "earlier_sets", "earlier_shows", "undated_sets",
+              "shows_unverified"):
         agg[k] = sum(r.get(k) or 0 for r in rows)
     for k in ("cash", "contract", "spend"):
         agg[k] = round(sum(r.get(k) or 0 for r in rows), 2)

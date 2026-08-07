@@ -358,6 +358,178 @@ def event_sweep(max_contacts: int = 40) -> dict:
             "proposed_multi": prop_n, "remaining": max(0, len(todo) - max_contacts)}
 
 
+# ── SHOW VERIFICATION (SHOW TRUTH, DECISIONS #129) ───────────────────────────
+# Attendance requires EVIDENCE, not the absence of a noshow flag. Live GHL
+# vocabulary has NO completed/showed status — a kept-status "show" is a guess.
+# Tiers: VERIFIED (call ≥ set_call_seconds on/after the scheduled date, ID-exact
+# contact — or a downstream CLOSE: nobody closes without the conversation) ·
+# UNVERIFIED (status only — counted separately, PROPOSED card each) ·
+# NOT-A-SHOW (cancelled/invalid/noshow — set only, unchanged).
+# D1 baseline 2026-08-08: 18/19 derived shows were status-only (the inflation
+# bound); D2: call records cover 86% of known-real conversations.
+
+_KV_CONV_CACHE = "ghl:call_cache"   # {contact_id: {expires, calls:[{id,duration,date}]}}
+
+
+def contact_calls(contact_id: str) -> list[dict]:
+    """Call-type messages (type 1, meta.call) for a contact — batched, cached 7d."""
+    import kv_store
+    from helpers import today_sydney
+    import datetime as dt
+    cache = kv_store.get(_KV_CONV_CACHE) or {}
+    hit = cache.get(contact_id)
+    if hit and str(today_sydney()) <= str(hit.get("expires") or ""):
+        return hit.get("calls") or []
+    calls = []
+    try:
+        r = _ghl_get("/conversations/search",
+                     {"locationId": __import__("config").GHL_LOCATION_ID,
+                      "contactId": contact_id})
+        if r.status_code == 200:
+            for conv in (r.json() or {}).get("conversations", [])[:3]:
+                r2 = _ghl_get(f"/conversations/{conv['id']}/messages", {"limit": 100})
+                if r2.status_code != 200:
+                    continue
+                msgs = ((r2.json() or {}).get("messages") or {}).get("messages") or []
+                for m in msgs:
+                    if m.get("type") == 1 or "call" in str(m.get("messageType", "")).lower():
+                        meta = (m.get("meta") or {}).get("call") or {}
+                        calls.append({"id": m.get("id"),
+                                      "duration": meta.get("duration"),
+                                      "status": meta.get("status"),
+                                      "date": str(m.get("dateAdded") or "")[:10]})
+    except Exception as e:
+        logger.info("contact_calls failed: %s", e)
+    cache[contact_id] = {"expires": str(today_sydney() + dt.timedelta(days=7)),
+                         "calls": calls[:20]}
+    if len(cache) > 800:
+        cache = dict(list(cache.items())[-600:])
+    kv_store.put(_KV_CONV_CACHE, cache)
+    return calls
+
+
+def show_verification_pass(max_contacts: int = 40) -> dict:
+    """Classify every derived show: outcome-evidenced → call-evidenced → unverified
+    (PROPOSED card, near-miss call shown as context). Later call records upgrade
+    UNVERIFIED → VERIFIED automatically (journaled, a quiet positive). Idempotent."""
+    import attribution_engine as AE
+    import kv_store
+    import resolution
+    try:
+        import manual_targets
+        min_s = float((manual_targets.get_resolved() or {}).get("set_call_seconds") or 120)
+    except Exception:
+        min_s = 120.0
+    store = resolution.derived_dates()
+    r_all = AE.compute(days=3650, basis="cohort")
+    closed_norms = set()
+    for c in r_all["creatives"]:
+        for dl in c.get("deals") or []:
+            closed_norms.add(_norm(dl["name"]))
+    proposed = kv_store.get(_KV_PROPOSED) or []
+    known_prop = {p.get("id") for p in proposed}
+    out = {"checked": 0, "verified_outcome": 0, "verified_call": 0,
+           "unverified": 0, "upgraded": 0, "ghl_calls": 0}
+    changed = False
+    for nm, v in list(store.items()):
+        e = v.get("show_date")
+        if not e:
+            continue
+        cur = (e.get("verification") or {}).get("state")
+        if cur == "verified":
+            continue
+        if out["checked"] >= max_contacts:
+            break
+        out["checked"] += 1
+        if nm in closed_norms:
+            e["verification"] = {"state": "verified", "via": "show:outcome-evidenced"}
+            _journal("show verified (outcome)",
+                     f"{nm}: closed downstream of the appointment — attendance proven")
+            out["verified_outcome"] += 1
+            changed = True
+            if cur == "unverified":
+                out["upgraded"] += 1
+            continue
+        cid = (e.get("evidence") or {}).get("contact_id")
+        calls = contact_calls(cid) if cid else []
+        out["ghl_calls"] += 1
+        hit = next((c for c in calls
+                    if isinstance(c.get("duration"), (int, float))
+                    and c["duration"] >= min_s
+                    and c.get("date") and c["date"] >= e["date"]), None)
+        if hit:
+            e["verification"] = {"state": "verified", "via": "show:call-evidenced",
+                                 "call": hit}
+            _journal("show verified (call)",
+                     f"{nm}: call {hit['id']} {hit['duration']}s on {hit['date']} "
+                     f"≥ scheduled {e['date']}")
+            out["verified_call"] += 1
+            if cur == "unverified":
+                out["upgraded"] += 1
+                _quiet_positive(f"show upgraded to VERIFIED: {nm} — call evidence landed")
+            changed = True
+        else:
+            near = max((c for c in calls if isinstance(c.get("duration"), (int, float))),
+                       key=lambda c: c["duration"], default=None)
+            e["verification"] = {"state": "unverified", "via": "status-only",
+                                 "near_miss": near}
+            out["unverified"] += 1
+            changed = True
+            pid = f"attendance:{nm}"
+            if pid not in known_prop:
+                ctx = (f" (context: a {near['duration']}s call on {near['date']} — "
+                       f"before the scheduled date)" if near else " (no call record found)")
+                proposed.append({"id": pid, "kind": "attendance",
+                                 "close": nm, "contact_id": cid,
+                                 "ask": f"confirm attendance for {nm}{ctx}"})
+                known_prop.add(pid)
+    if changed:
+        import kv_store as _kv
+        _kv.put("derived:dates", store)
+    kv_store.put(_KV_PROPOSED, proposed[-80:])
+    return out
+
+
+def _quiet_positive(msg: str) -> None:
+    try:
+        import kv_store
+        flags = kv_store.get("ads_truth:flags") or []
+        flags.append({"metric": "ads_truth_positive", "reason": msg})
+        kv_store.put("ads_truth:flags", flags[-60:])
+    except Exception:
+        pass
+
+
+_CONFIRM_ATT_RE = re.compile(r"confirm attendance for (.+)", re.I)
+
+
+def handle_confirm_attendance(text: str) -> tuple[str | None, bool]:
+    """Rydel converts an UNVERIFIED show on his word — journaled, provenance
+    'show:rydel-confirmed'."""
+    m = _CONFIRM_ATT_RE.match((text or "").strip())
+    if not m:
+        return None, False
+    frag = m.group(1).strip().lower()
+    import resolution
+    import kv_store
+    store = resolution.derived_dates()
+    hits = [nm for nm, v in store.items()
+            if "show_date" in v and frag in nm
+            and (v["show_date"].get("verification") or {}).get("state") != "verified"]
+    if len(hits) != 1:
+        return (f"{len(hits)} unverified show(s) match '{frag}' — give me a fragment "
+                f"matching exactly one.", True)
+    nm = hits[0]
+    store[nm]["show_date"]["verification"] = {"state": "verified",
+                                              "via": "show:rydel-confirmed"}
+    kv_store.put("derived:dates", store)
+    _journal("show verified (Rydel)", f"{nm}: attendance confirmed by Rydel")
+    proposed = [p for p in (kv_store.get(_KV_PROPOSED) or [])
+                if p.get("id") != f"attendance:{nm}"]
+    kv_store.put(_KV_PROPOSED, proposed)
+    return f"Attendance confirmed for {nm} — the show now counts as VERIFIED (journaled).", True
+
+
 # ── QUAD-CHECK ───────────────────────────────────────────────────────────────
 
 def quad_check(days: int = 90, sample_cells: int = 0) -> dict:
@@ -498,6 +670,12 @@ def integrity_sweep() -> dict:
         out["event_sweep"] = event_sweep()
     except Exception as e:
         out["event_sweep"] = {"error": str(e)[:80]}
+    # #129: attendance verification (later call records upgrade UNVERIFIED →
+    # VERIFIED automatically — journaled, surfaced as a quiet positive)
+    try:
+        out["show_verification"] = show_verification_pass()
+    except Exception as e:
+        out["show_verification"] = {"error": str(e)[:80]}
 
     # NEW cause classes → auto-file a PROPOSED regression-test skeleton
     causes = kv_store.get(_KV_CAUSES) or {}
@@ -533,11 +711,24 @@ def integrity_sweep() -> dict:
                or p["id"] in live_phantoms]
     kv_store.put("integrity:pending", pending)
 
+    # verified-show ratio — the honesty metric for attendance itself
+    vsr = None
+    try:
+        import resolution
+        shows = [v["show_date"] for v in resolution.derived_dates().values()
+                 if "show_date" in v]
+        if shows:
+            v_n = sum(1 for s in shows
+                      if (s.get("verification") or {}).get("state") == "verified")
+            vsr = round(v_n / len(shows), 3)
+    except Exception:
+        pass
     acc = kv_store.get(_KV_ACCURACY) or []
     acc.append({"date": out["date"], "facts_checked": out["checks"],
                 "agreements": out["agreements"],
                 "disagreements": len(out["disagreements"]),
                 "invariant_violations": out["invariant_violations"],
+                "verified_show_ratio": vsr,
                 "spine": out.get("spine")})
     kv_store.put(_KV_ACCURACY, acc[-90:])
     kv_store.delete(_KV_SWEEP_ERROR)

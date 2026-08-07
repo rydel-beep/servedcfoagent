@@ -118,9 +118,11 @@ def flags(result: dict, trailing_attr_rate: float | None = None,
                      f"{c['qualified']} qualified reached)",
                      "qualified but unreachable — audience fit real, contact rate broken "
                      "(number quality / speed-to-lead / channel)")
-        # SHOW-UP PROBLEM
+        # SHOW-UP PROBLEM — rate computed on VERIFIED shows (#129: unverified
+        # attendance never launders a show-rate; the unverified count rides beside)
         if c["sets"] >= 5:
-            rate = 100.0 * c["shows"] / c["sets"]
+            shows_v = c["shows"] - (c.get("shows_unverified") or 0)
+            rate = 100.0 * shows_v / c["sets"]
             if rate < th["ad_flag_show_floor_pct"]:
                 flag(2, "sets_no_shows", c["label"],
                      f"show rate {rate:.0f}% ({c['shows']}/{c['sets']} sets)",

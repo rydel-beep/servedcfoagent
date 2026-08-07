@@ -146,15 +146,23 @@ def _build_board(days, start, end, basis, force=False, market=None):
                        "prior": {k: pt.get(k) for k in ("leads", "closes", "cash", "spend")}}
         except Exception as e:
             logger.info("headline compare unavailable: %s", e)
+    unverified_shows = None
     derived_map = None
     try:
         import resolution
         dd = resolution.derived_dates() or {}
+        unverified_shows = [
+            {"name": k, "date": v["show_date"]["date"],
+             "near_miss": (v["show_date"].get("verification") or {}).get("near_miss")}
+            for k, v in dd.items()
+            if "show_date" in v
+            and (v["show_date"].get("verification") or {}).get("state") != "verified"][:40]
         derived_map = {k: {f: {"date": v[f]["date"], "provenance": v[f]["provenance"]}
                            for f in v} for k, v in list(dd.items())[:80]}
     except Exception:
         pass
     return {
+        "unverified_shows": unverified_shows,
         "derived_dates": derived_map,
         "hygiene": hygiene, "identity": identity, "ladder": ladder,
         "window": result.get("window"), "basis": result.get("basis"),

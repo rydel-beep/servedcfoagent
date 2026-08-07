@@ -306,6 +306,13 @@ def compute_from_inputs(
             if l["set"] and not l["set_date"] and d.get("set_date"):
                 l["set_date"] = dt.date.fromisoformat(d["set_date"]["date"])
                 l["_derived"]["set_date"] = d["set_date"]["provenance"]
+            # SHOW TRUTH (#129): a derived show carries its verification tier —
+            # verified (call/outcome/Rydel) or unverified (status-only). Counted
+            # SEPARATELY, never merged silently. Tracker "Showed" stays authority.
+            if not l["show"] and d.get("show_date"):
+                l["_derived_show"] = ((d["show_date"].get("verification") or {})
+                                      .get("state") or "unverified")
+                l["_derived"]["show_date"] = d["show_date"]["provenance"]
 
     by_email = {c["email"]: c for c in contacts if c.get("email")}
     by_name: dict[str, dict] = {}
@@ -481,6 +488,11 @@ def compute_from_inputs(
             elif "show" in derived:
                 b["shows"] += 1
                 b["shows_derived"] = b.get("shows_derived", 0) + 1
+            elif lead.get("_derived_show"):
+                b["shows"] += 1
+                b["shows_derived"] = b.get("shows_derived", 0) + 1
+                if lead["_derived_show"] != "verified":
+                    b["shows_unverified"] = b.get("shows_unverified", 0) + 1
         if lead["won"]:
             b["closes_cohort"] += 1
         view_rows.append({
@@ -544,6 +556,11 @@ def compute_from_inputs(
             b["sets"] += 1
             if lead["show"]:
                 b["shows"] += 1     # a show belongs to its set call (no own date column)
+            elif lead.get("_derived_show"):
+                b["shows"] += 1
+                b["shows_derived"] = b.get("shows_derived", 0) + 1
+                if lead["_derived_show"] != "verified":
+                    b["shows_unverified"] = b.get("shows_unverified", 0) + 1
 
     # closes on the ACTIVE basis clock (cohort: the cohort's closes whenever they land;
     # activity: close-dated in window)
@@ -614,6 +631,7 @@ def compute_from_inputs(
             "earlier_sets": b.get("earlier_sets", 0),
             "earlier_shows": b.get("earlier_shows", 0),
             "undated_sets": b.get("undated_sets", 0),
+            "shows_unverified": b.get("shows_unverified", 0),
             "reached": b.get("reached", 0),
             "sets_src": ({"tracker": b["sets"] - b.get("sets_derived", 0),
                           "derived": b["sets_derived"]}
@@ -840,6 +858,7 @@ def scoreboard_view(result: dict) -> dict:
             "earlier_sets": c.get("earlier_sets", 0),
             "earlier_shows": c.get("earlier_shows", 0),
             "undated_sets": c.get("undated_sets", 0),
+            "shows_unverified": c.get("shows_unverified", 0),
             "cash": c["cash"], "spend": c["spend"],
             "cost_per_lead": c.get("cost_per_lead"),
             "cost_per_qualified": c.get("cost_per_qualified"),

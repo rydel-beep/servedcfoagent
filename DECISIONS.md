@@ -1652,3 +1652,27 @@
      through day 21 of the following month and the WARM cap ~90 days — replaced by
      exact dates when the conductor's enrolment ledger lands. Discount lock now
      also catches "voucher" (a discount instrument in costume — Rydel's ruling).
+
+129. **SHOW TRUTH — ATTENDANCE REQUIRES EVIDENCE (2026-08-08).** DIAGNOSIS
+     (SHOW_TRUTH_DIAGNOSIS.md): live GHL vocabulary has NO completed/showed status
+     (confirmed/cancelled/invalid/noshow only) — a kept-status "show" is the absence of
+     a noshow flag, and setter flagging died ~June. D1 INFLATION BOUND: 18/19 derived
+     shows (94.7%) rested on status alone; 1 call-evidenced; 0 outcome. D2: call
+     records READABLE under current scopes (conversations/search + messages; type=1,
+     meta.call.duration — sometimes null) and cover 86% of known-real conversations →
+     evidence-required shows won't structurally undercount. BUILT: three tiers —
+     SHOW·VERIFIED (call ≥ set_call_seconds ON/AFTER the scheduled date, ID-exact; or
+     OUTCOME-EVIDENCED by a downstream close; or Rydel's word via "confirm attendance
+     for <name>") · SHOW·UNVERIFIED (status-only — counted SEPARATELY everywhere:
+     row/scoreboard/ladder carry shows_unverified; the show-rate flag consumes VERIFIED
+     only; a PROPOSED card per unverified with the near-miss call as context — long
+     calls BEFORE the scheduled date NEVER silently verify) · NOT-A-SHOW
+     (cancelled/invalid/noshow → set only, unchanged). Tracker "Showed" stays AUTHORITY
+     (an explicit human record). Nightly: show_verification_pass in integrity_sweep
+     (later call records upgrade UNVERIFIED→VERIFIED automatically — journaled, a quiet
+     positive in the feed); accuracy row gains verified_show_ratio; the hygiene rail
+     gains the "Unverified shows (N)" chip (every-number-is-a-door). Call reads batched
+     + cached 7d, never a location crawl. XERO RUNG: the re-consent has NOT landed
+     (Invoices/BankTransactions 401 at probe) — the gap is reported, zero speculative
+     code; the five bank-transfer no-evidence contacts remain the honest blind spot
+     until the scopes land. Suite 683 (7 new).

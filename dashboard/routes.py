@@ -834,6 +834,7 @@ def api_chat():
             (__import__('triage').handle_triage_action_command, False),   # dismiss/snooze/delegate/restore <item>
             (__import__('triage').handle_suppressed_command, False),      # 'show me what you suppressed'
             (__import__('triage').handle_why_here_command, False),        # 'why is this here'
+            (__import__('ads_truth').handle_confirm_attendance, False),  # 'confirm attendance for X'
             (__import__('resolution').handle_apply_date_card, False),    # 'apply the date card for X'
             (__import__('resolution').handle_proposed_fixes_command, False),  # P1/P2 fix cards
             (__import__('resolution').handle_autofix_log_command, False),     # 'what did you auto-fix'
@@ -1067,6 +1068,7 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             (__import__('triage').handle_triage_action_command, False),   # dismiss/snooze/delegate/restore <item>
             (__import__('triage').handle_suppressed_command, False),      # 'show me what you suppressed'
             (__import__('triage').handle_why_here_command, False),        # 'why is this here'
+            (__import__('ads_truth').handle_confirm_attendance, False),  # 'confirm attendance for X'
             (__import__('resolution').handle_apply_date_card, False),    # 'apply the date card for X'
             (__import__('resolution').handle_proposed_fixes_command, False),  # P1/P2 fix cards
             (__import__('resolution').handle_autofix_log_command, False),     # 'what did you auto-fix'

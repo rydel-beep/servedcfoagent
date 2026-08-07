@@ -169,7 +169,14 @@
         esc(nm) + (evs.length > 1 ? ' ×' + evs.length : '') + ' · ' + evs.join(' · ') + '</button>';
       (allDerived ? resolved : open).push(chip);
     });
-    var railHtml = (open.length
+    var ushows = state.board.unverified_shows || [];
+    var ushowHtml = ushows.length
+      ? '<details class="adx-dateless"><summary><strong>Unverified shows (' + ushows.length + ')</strong> — status-only attendance; a call record or your word verifies (\u201cconfirm attendance for <name>\u201d)</summary>' +
+        ushows.map(function (u) {
+          return '<button class="adx-deal-open adx-door" data-deal="' + esc(u.name) + '">' + esc(u.name) + '</button>' +
+            (u.near_miss ? ' <span class="adx-prov">' + esc(String(u.near_miss.duration)) + 's call ' + esc(u.near_miss.date || '') + '</span>' : '');
+        }).join(' ') + '</details>' : '';
+    var railHtml = ushowHtml + (open.length
       ? '<div class="adx-dateless"><strong>Dateless (' + open.length + ' contact(s))</strong> — real events the clocks cannot place; a filled source date clears them automatically: ' +
         open.join(' ') + '</div>' : '') +
       (resolved.length
@@ -408,6 +415,10 @@
           if (c.k === 'shows' && r.earlier_shows) {
             extra += ' <span class="adx-earlier adx-door" data-anom="earlier_shows" data-key="' + esc(r.creative_key) + '" title="' + r.earlier_shows + ' show(s) before this window (activity clock) — click for the deals">↤' + r.earlier_shows + '</span>';
           }
+          if (c.k === 'shows' && r.shows_unverified) {
+            var sv = (r.shows || 0) - r.shows_unverified;
+            extra += ' <span class="adx-earlier adx-door" data-anom="shows_unverified" data-key="' + esc(r.creative_key) + '" title="Shows ' + r.shows + ' = ' + sv + ' verified · ' + r.shows_unverified + ' unverified (status-only — attendance unproven; click for the cards)">' + sv + 'v·' + r.shows_unverified + 'u</span>';
+          }
           if (c.k === 'sets' && r.undated_sets) {
             extra += ' <span class="adx-earlier adx-door" data-anom="undated_sets" data-key="' + esc(r.creative_key) + '" title="' + r.undated_sets + ' closing deal(s) whose set exists in the tracker but has NO Set Date — click for the deal, the evidence, and the queue item">◔' + r.undated_sets + '</span>';
           }
@@ -508,6 +519,7 @@
     earlier_closes: 'close(s) from leads that entered before this window — true on the activity clock, annotated never phantom',
     earlier_sets: 'set call(s) that happened before this window — the close landed here, the conversation earlier',
     earlier_shows: 'show(s) before this window',
+    shows_unverified: 'show rests on appointment status alone (no completed/showed status exists in GHL) — attendance needs a call record or a downstream close; confirm with \u201cconfirm attendance for <name>\u201d',
     undated_sets: 'set exists in the tracker but its Set Date cell is BLANK — the activity clock cannot place it (Piolo queue: fill at source)'
   };
   function anomalyPanel(creativeKey, kind) {
