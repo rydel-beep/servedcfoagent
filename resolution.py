@@ -355,10 +355,25 @@ def apply_payment_class_ruling() -> dict:
     blanks = [t for t in won if t["close_date"] is None]
     if not blanks:
         return out
+    # a blank whose identity ALSO has a DATED won row is a DUPLICATE row, not a
+    # dateless close — dedupe's domain (the deal already counts once; deriving a
+    # date here would double-place it). Found live 2026-08-08: Nirosha. BOTH
+    # identity keys go into the set — her dated and blank rows differ on which
+    # of email/name they carry.
+    dated_idents: set = set()
+    for t in won:
+        if t["close_date"] is not None:
+            for ident in (_norm(t.get("email")), _norm(t["name"])):
+                if ident:
+                    dated_idents.add(ident)
+    out["skipped_duplicate_dated"] = []
     stripe_dates = _stripe_first_payment_dates()
     store = derived_dates()
     for t in blanks:
         nm, email_n = _norm(t["name"]), _norm(t.get("email"))
+        if (email_n and email_n in dated_idents) or nm in dated_idents:
+            out["skipped_duplicate_dated"].append(t["name"])
+            continue
         if (store.get(nm) or {}).get("close_date"):
             out["already_derived"] += 1          # convert-twice = structural no-op
             continue

@@ -304,13 +304,15 @@ def test_ruling_duplicate_dated_row_never_converts(monkeypatch):
     a date would double-place the deal (the live Nirosha class)."""
     _reset_kv()
     import close_integrity as CI
+    # the LIVE failure shape: the blank row carries NO email — only the name
+    # links it to the dated row (guard must key on BOTH identities)
     rows = _won_rows() + [
-        {"name": "Dana Dated", "email": "dana@x.com", "close_date": None,
+        {"name": "Dana Dated", "email": "", "close_date": None,
          "close_raw": "", "input_date": dt.date(2026, 5, 1), "contract": 900.0,
          "cash": 900.0}]
     monkeypatch.setattr(CI, "_tracker_won_rows", lambda: rows)
     monkeypatch.setattr(RES, "_stripe_first_payment_dates", lambda days=365: {
-        RES._norm("dana@x.com"): {"date": dt.date(2026, 5, 2),
+        RES._norm("dana dated"): {"date": dt.date(2026, 5, 2),
                                   "charge_id": "ch_dana", "via": "email"}})
     out = RES.apply_payment_class_ruling()
     assert out["converted"] == []
