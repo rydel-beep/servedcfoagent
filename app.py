@@ -473,7 +473,11 @@ def xero_callback():
 
 @app.route("/debug/stripe-ping", methods=["GET"])
 def debug_stripe_ping():
-    """Test single Stripe MCP call with timing. Remove after debugging."""
+    """Stripe MCP connectivity probe. X-CFO-KEY gated (AUDIT 2026-08-08: this
+    returned the live MRR figure to ANONYMOUS callers — register F4)."""
+    key = request.headers.get("X-CFO-KEY", "")
+    if not CFO_REFRESH_KEY or key != CFO_REFRESH_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
     t0 = time.time()
     try:
         resp = http_requests.get(f"{STRIPE_MCP_BASE}/health", timeout=(5, 10))
@@ -505,7 +509,12 @@ def debug_stripe_ping():
 
 @app.route("/debug/sources", methods=["GET"])
 def debug_sources():
-    """Test each source individually with timing. Remove after debugging."""
+    """Per-source pull probe. X-CFO-KEY gated (AUDIT 2026-08-08: an ANONYMOUS
+    GET here triggered four full upstream pulls incl. the single-use Xero
+    refresh chain — an anon-triggerable quota/credential burner; register F4)."""
+    key = request.headers.get("X-CFO-KEY", "")
+    if not CFO_REFRESH_KEY or key != CFO_REFRESH_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
     results = {}
 
     t0 = time.time()
