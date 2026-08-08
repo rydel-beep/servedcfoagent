@@ -77,14 +77,22 @@ def _ghl_won_dates() -> dict:
 
 
 def _stripe_first_payment_dates(days: int = 365) -> dict:
-    """payer/email norm → earliest charge date (read-only key; degrades to empty)."""
+    """payer/email norm → {date, charge_id, via} for the EARLIEST charge (read-only
+    key; degrades to empty). `via` records WHICH identity matched — 'email' is
+    ID-exact (payment-class AUTO under DECISIONS #131); 'name' is a label match
+    and stays PROPOSED."""
     out = {}
     try:
         from cash_truth import _recent_charges
         for c in (_recent_charges(days) or []):
-            for k in (_norm(c.get("name")), _norm(c.get("_email"))):
-                if k and (k not in out or c["date"] < out[k]):
-                    out[k] = c["date"]
+            for k, via in ((_norm(c.get("customer_name") or c.get("name")), "name"),
+                           (_norm(c.get("_email")), "email")):
+                if not k:
+                    continue
+                cur = out.get(k)
+                if cur is None or c["date"] < cur["date"] or \
+                        (c["date"] == cur["date"] and via == "email" and cur["via"] != "email"):
+                    out[k] = {"date": c["date"], "charge_id": c.get("id"), "via": via}
     except Exception as e:
         logger.info("stripe first-payment read failed: %s", e)
     return out
@@ -106,10 +114,17 @@ def propose_fixes() -> list[dict]:
 
     ghl_dates = _ghl_won_dates()
     stripe_dates = _stripe_first_payment_dates()
+    derived = derived_dates()
 
     for t in blanks:
         # A1: normalize before matching (tracker emails arrive pre-normed; re-norm is safe)
         name_n, email_n = _norm(t["name"]), _norm(t.get("email"))
+        # DECISIONS #131: a close date already AUTO-derived under the payment-class
+        # ruling no longer needs a card — the queue shows only what still needs a
+        # human. The Piolo source-fill item persists via close_integrity; the
+        # derivation is visible in the rail's Derived section with its chip.
+        if (derived.get(name_n) or {}).get("close_date"):
+            continue
         candidates = []
         g = ghl_dates.get(email_n) or ghl_dates.get(name_n)
         if g:
@@ -117,7 +132,9 @@ def propose_fixes() -> list[dict]:
                                "source": f"GHL closed-won stage move (matched by {g['via']})"})
         s = stripe_dates.get(email_n) or stripe_dates.get(name_n)
         if s:
-            candidates.append({"date": str(s), "source": "Stripe first payment"})
+            candidates.append({"date": str(s["date"]),
+                               "source": f"Stripe first payment (matched by {s['via']})",
+                               "charge_id": s.get("charge_id")})
         if candidates:
             cards.append({
                 "kind": "P1_close_date_candidate", "name": t["name"],
@@ -300,9 +317,83 @@ def resolve_dates() -> dict:
                                        "derived:ghl-contact-created",
                                        {"contact_id": c["id"]}):
                     out["input_auto"] += 1
+    # DECISIONS #131: the payment-class AUTO rung runs in the same nightly pass —
+    # a future dateless close with ID-exact Stripe evidence converts automatically.
+    try:
+        out["payment_class_ruling"] = apply_payment_class_ruling()
+    except Exception as e:
+        out["payment_class_ruling"] = {"error": str(e)[:80]}
     cards = (latest_proposed() or {}).get("cards") or []
     out["close_proposed_existing"] = sum(1 for c in cards
                                          if c.get("kind") == "P1_close_date_candidate")
+    return out
+
+
+def apply_payment_class_ruling() -> dict:
+    """DECISIONS #131 — dateless-close auto-derivation (Rydel's ruling, stated
+    twice; veto-able). PAYMENT-CLASS evidence at ID-exact AUTO-derives the Close
+    Date where the tracker cell is BLANK:
+      · Stripe first payment matched by EMAIL → AUTO (the email is the ID);
+        journaled 'ruling-conversion DECISIONS #131', charge id as evidence.
+      · Stripe matched by name only → stays PROPOSED (a label match, not an ID).
+      · GHL payment/transaction objects → 401 scope-locked at probe (2026-08-08);
+        no rung built. Xero → scopes not landed; same.
+      · GHL STAGE timestamps → PROPOSED forever (the lane demonstrably lags —
+        a stage move is when someone dragged a card, not when the deal closed).
+    Filled tracker dates always win (this runs over blanks only); supersession +
+    disagreement surfacing unchanged; the Piolo source-fill item persists.
+    IDEMPOTENT: an already-derived close converts nothing twice (record_derived_
+    date returns True without journal churn on an identical re-derivation, and we
+    skip up front). One action-feed notice per batch that actually converted."""
+    import close_integrity as CI
+    out = {"converted": [], "skipped_name_only": [], "already_derived": 0,
+           "cash_placed": 0.0}
+    try:
+        won = CI._tracker_won_rows()
+    except Exception as e:
+        return {"skipped": f"tracker unavailable: {e}"}
+    blanks = [t for t in won if t["close_date"] is None]
+    if not blanks:
+        return out
+    stripe_dates = _stripe_first_payment_dates()
+    store = derived_dates()
+    for t in blanks:
+        nm, email_n = _norm(t["name"]), _norm(t.get("email"))
+        if (store.get(nm) or {}).get("close_date"):
+            out["already_derived"] += 1          # convert-twice = structural no-op
+            continue
+        s = stripe_dates.get(email_n)
+        if s and s.get("via") == "email":
+            ok = record_derived_date(
+                nm, "close_date", str(s["date"]), "derived:stripe",
+                {"charge_id": s.get("charge_id"), "matched_by": "email",
+                 "ruling": "DECISIONS #131", "card": f"pfix:close_date:{nm}"})
+            if ok:
+                log_autofix("ruling-conversion DECISIONS #131",
+                            f"{t['name']}: close_date {s['date']} derived from Stripe "
+                            f"charge {s.get('charge_id')} (ID-exact email match)")
+                out["converted"].append({"name": t["name"], "date": str(s["date"]),
+                                         "charge_id": s.get("charge_id"),
+                                         "cash": t.get("cash")})
+                out["cash_placed"] += t.get("cash") or 0.0
+        else:
+            s2 = s or stripe_dates.get(nm)
+            if s2:
+                out["skipped_name_only"].append(t["name"])   # PROPOSED card persists
+    out["cash_placed"] = round(out["cash_placed"], 2)
+    if out["converted"]:
+        try:
+            import kv_store
+            from helpers import today_sydney
+            flags = kv_store.get("ads_truth:flags") or []
+            flags.append({"metric": "ads_truth_action", "date": str(today_sydney()),
+                          "reason": (f"{len(out['converted'])} close date(s) applied under "
+                                     f"DECISIONS #131 (payment-class auto-derivation) — "
+                                     f"${out['cash_placed']:,.0f} placed on the clocks; "
+                                     f"evidence journaled per deal")})
+            kv_store.put("ads_truth:flags", flags[-60:])
+        except Exception:
+            pass
     return out
 
 

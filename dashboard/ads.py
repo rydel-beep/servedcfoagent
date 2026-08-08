@@ -29,14 +29,8 @@ logger = logging.getLogger(__name__)
 
 bp = Blueprint("ads", __name__)
 
-_STAGES = {
-    "leads": lambda r: True,
-    "qualified": lambda r: r["qualified"],
-    "reached": lambda r: r["qualified"] and r.get("reached"),   # Gate 2 Option A
-    "sets": lambda r: r["set"],
-    "shows": lambda r: r["show"],
-}
-
+# person-list predicates DELETED (2026-08-08): the roster engine is the one query
+# path — see roster_engine.py. No stage predicate may live route-side again.
 
 ALL_DAYS = 3650   # the "All" window (the tracker's full history fits comfortably)
 
@@ -446,28 +440,13 @@ def dossier():
                  "cost_per_close", "ltgp_cac", "verdict", "provisional",
                  "earlier_closes", "undated_sets", "sets_src", "shows_src")}
 
-    # the lead ledger: every attributed lead, window-filtered (all-time via ?days=all)
-    ledger = [v for v in (result.get("rows") or [])
-              if (v.get("creative") or {}).get("key") == key]
-    # links: contact id + GHL, same join the roster uses
-    try:
-        import attribution_join
-        from config import GHL_LOCATION_ID
-        contacts = attribution_join.load_contacts()
-        by_email = {c["email"]: c for c in contacts if c.get("email")}
-        by_cname = {}
-        for c in contacts:
-            if c.get("name"):
-                by_cname.setdefault(re.sub(r"[^a-z0-9 @.]", "", c["name"].lower()).strip(), c)
-        for v in ledger:
-            c = (by_email.get((v.get("email") or "").lower()) if v.get("email") else None) \
-                or by_cname.get(re.sub(r"[^a-z0-9 @.]", "", (v["name"] or "").lower()).strip())
-            if c:
-                v["contact_id"] = c["id"]
-                v["ghl_link"] = (f"https://app.gohighlevel.com/v2/location/"
-                                 f"{GHL_LOCATION_ID}/contacts/detail/{c['id']}")
-    except Exception as e:
-        logger.info("dossier links degraded: %s", e)
+    # the lead ledger IS the roster engine's leads roster for this cell — the
+    # dossier is a CONSUMER, not a second list (the old private join is deleted)
+    import roster_engine
+    ledger_payload = roster_engine.build(days=days, start=start, end=end,
+                                         basis=basis, market=market,
+                                         level="creative", key=key, metric="leads")
+    ledger = ledger_payload.get("people") or []
     ledger.sort(key=lambda v: v.get("input_date") or "", reverse=True)
 
     resp = jsonify({
@@ -483,6 +462,11 @@ def dossier():
         "econ_window": econ(row), "econ_all_time": econ(row_all),
         "min_n": result.get("min_n"),
         "ledger": ledger, "ledger_count": len(ledger),
+        "ledger_i17": ledger_payload.get("i17"),
+        "ledger_empty_reason": (ledger_payload.get("empty_reason")
+                                or (f"no leads roster in this window "
+                                    f"({ledger_payload['error']})"
+                                    if ledger_payload.get("error") else None)),
         "deals": (row or {}).get("deals") or [],
         "deals_all_time": (row_all or {}).get("deals") or [],
     })
@@ -490,133 +474,67 @@ def dossier():
     return resp
 
 
+def _roster_notes_enrich(people: list[dict]) -> None:
+    """Dashboard nicety layered ON TOP of the roster engine: GHL notes (capped,
+    throttled, stamped) + pipeline stage from the mirror. The engine stays
+    deterministic; this never changes who is in the roster."""
+    want_notes = [p["contact_id"] for p in people if p.get("contact_id")]
+    notes = _ghl_notes_for(want_notes)
+    try:
+        import db
+        if db.db_configured() and want_notes:
+            with db.get_conn() as conn:
+                rows_db = conn.execute(
+                    "SELECT contact_id, stage_name FROM ghl_opportunities "
+                    "WHERE contact_id = ANY(%s) AND deleted = FALSE",
+                    (want_notes,)).fetchall()
+            stage_by = {r["contact_id"]: r["stage_name"] for r in rows_db}
+            for p in people:
+                if p.get("contact_id") in stage_by:
+                    p["pipeline_stage"] = stage_by[p["contact_id"]]
+    except Exception as e:
+        logger.info("pipeline stage join skipped: %s", e)
+    for p in people:
+        merged = []
+        if p.get("setter_notes"):
+            merged.append({"body": p["setter_notes"],
+                           "source": "tracker · Setter Notes (mirror)"})
+        if p.get("dq_reason"):
+            merged.append({"body": p["dq_reason"],
+                           "source": "tracker · DQ Reason (mirror)"})
+        merged.extend(notes.get(p.get("contact_id"), []))
+        p["notes"] = merged     # empty list = "no notes recorded" client-side
+
+
 @bp.route("/api/roster", methods=["GET"])
 @require_auth
 def roster():
-    """The humans behind a count: ?creative=<key>&stage=leads|qualified|sets|shows|closes.
-    EXACTLY the engine's cohort for that cell — the caller can assert len == count."""
+    """EVERY FUNNEL NUMBER OPENS ITS PEOPLE — the ONE roster engine behind every
+    cell on every tab (?level=&key=&metric=), tier rows included. Legacy params
+    (?creative=&stage=) map onto the same cell-spec. len(people) == the cell
+    (I17); drift is stated in the payload and flagged loudly, never hidden."""
     days, start, end = _window_args()
     if days is None:
         return jsonify({"error": "bad days"}), 400
-    stage = request.args.get("stage", "leads")
-    creative = request.args.get("creative") or None
-    if stage not in _STAGES and stage != "closes":
-        return jsonify({"error": "bad stage"}), 400
-    # THE CASE-A CLASS FIX: the drill inherits the clicked cell's CLOCK. The old
-    # path computed cohort unconditionally — every activity-basis close cell
-    # drilled to a different count (5 live instances at diagnosis).
-    basis = _basis_arg()
-    result = _compute(days, start, end, basis=basis, market=_market_arg())
-    import attribution_engine as _AE
-    _AE.assert_same_basis(result)   # and the payload states its clock (below)
-
-    people = []
-    if stage == "closes":
-        # close-date basis — the SAME deals list the count is len() of
-        for c in (result.get("creatives") or []):
-            if creative and c["creative_key"] != creative:
-                continue
-            for d in c.get("deals") or []:
-                people.append({"name": d["name"], "close_date": d["close_date"],
-                               "contract": d["contract"], "cash": d["cash"],
-                               "creative": c["label"], "creative_key": c["creative_key"],
-                               "stage": "closes", "note": d.get("note")})
-        # enrich from the all-time tracker rows (business, revenue, setter fields)
-        import attribution_engine as AE
-        leads_all, _cm = AE.parse_tracker(AE._tracker_rows_clean())
-        by_name = {}
-        for l in leads_all:
-            by_name.setdefault(l["name_norm"], l)
-        for p in people:
-            l = by_name.get(re.sub(r"[^a-z0-9 @.]", "", p["name"].lower()).strip())
-            if l:
-                p.update({"business": l["business"],
-                          "input_date": str(l["input_date"]) if l["input_date"] else None,
-                          "setter_outcome": l["setter_outcome"] or None,
-                          "revenue": {"band": None, "state": "unknown", "source": None},
-                          "setter_notes": l.get("setter_notes") or None,
-                          "dq_reason": l.get("dq_reason") or None,
-                          "email": l["email"] or None})
-                try:
-                    import revenue_bands
-                    p["revenue"] = {k: v for k, v in revenue_bands.parse_band(
-                        l.get("revenue_raw")).items() if k in ("band", "state", "source")}
-                except Exception:
-                    pass
-    else:
-        pred = _STAGES[stage]
-        for r in (result.get("rows") or []):
-            if creative and r["creative"]["key"] != creative:
-                continue
-            if not pred(r):
-                continue
-            people.append({**{k: r.get(k) for k in
-                              ("name", "business", "input_date", "setter_outcome", "set",
-                               "set_date", "show", "closer_outcome", "close_date",
-                               "contract", "cash", "revenue", "qualified", "finalised",
-                               "setter_notes", "dq_reason")},
-                           "creative": r["creative"]["label"],
-                           "creative_key": r["creative"]["key"], "stage": stage})
-
-    # attach contact ids + GHL notes + pipeline stage (mirror) + the GHL link
+    import roster_engine
+    metric = request.args.get("metric") or request.args.get("stage") or "leads"
+    level = request.args.get("level") or "creative"
+    key = request.args.get("key") or request.args.get("creative") or None
+    if level == "account":
+        key = "__account__"
+    if metric not in roster_engine.METRICS + roster_engine.ANOMALY_METRICS:
+        return jsonify({"error": "bad metric"}), 400
+    if not key:
+        return jsonify({"error": "key required (a creative/group key, or level=account)"}), 400
+    payload = roster_engine.build(days=days, start=start, end=end,
+                                  basis=_basis_arg(), market=_market_arg(),
+                                  level=level, key=key, metric=metric)
+    if payload.get("error"):
+        return jsonify(payload), 404 if "unknown" in payload["error"] else 400
     try:
-        import attribution_join
-        from config import GHL_LOCATION_ID
-        contacts = attribution_join.load_contacts()
-        by_email = {c["email"]: c for c in contacts if c.get("email")}
-        by_cname = {}
-        for c in contacts:
-            if c.get("name"):
-                by_cname.setdefault(re.sub(r"[^a-z0-9 @.]", "", c["name"].lower()).strip(), c)
-        want_notes = []
-        for p in people:
-            key = (p.get("email") or "").lower() or None
-            c = (by_email.get(key) if key else None) or \
-                by_cname.get(re.sub(r"[^a-z0-9 @.]", "", p["name"].lower()).strip())
-            if c:
-                p["contact_id"] = c["id"]
-                p["ghl_link"] = (f"https://app.gohighlevel.com/v2/location/"
-                                 f"{GHL_LOCATION_ID}/contacts/detail/{c['id']}")
-                want_notes.append(c["id"])
-        notes = _ghl_notes_for(want_notes)
-        # pipeline stage from the mirror (open-pipeline coverage; absent = not shown)
-        try:
-            import db
-            if db.db_configured() and want_notes:
-                with db.get_conn() as conn:
-                    rows_db = conn.execute(
-                        "SELECT contact_id, stage_name FROM ghl_opportunities "
-                        "WHERE contact_id = ANY(%s) AND deleted = FALSE",
-                        (want_notes,)).fetchall()
-                stage_by = {r["contact_id"]: r["stage_name"] for r in rows_db}
-                for p in people:
-                    if p.get("contact_id") in stage_by:
-                        p["pipeline_stage"] = stage_by[p["contact_id"]]
-        except Exception as e:
-            logger.info("pipeline stage join skipped: %s", e)
-        from helpers import today_sydney
-        sheet_stamp = str(today_sydney())
-        for p in people:
-            merged = []
-            if p.get("setter_notes"):
-                merged.append({"body": p["setter_notes"],
-                               "source": "tracker · Setter Notes (mirror)"})
-            if p.get("dq_reason"):
-                merged.append({"body": p["dq_reason"],
-                               "source": "tracker · DQ Reason (mirror)"})
-            merged.extend(notes.get(p.get("contact_id"), []))
-            p["notes"] = merged     # empty list = "no notes recorded" client-side
+        _roster_notes_enrich(payload["people"])
     except Exception as e:
         logger.warning("roster enrichment degraded: %s", e)
-
-    resp = jsonify({"window": result.get("window"), "stage": stage,
-                    "creative": creative, "people": people, "count": len(people),
-                    # the drill STATES its clock (I11) — the client renders it in
-                    # the panel header and compares against the clicked cell's clock
-                    "basis": result.get("basis"),
-                    "clock_note": ("lead-cohort clock: this window's leads and "
-                                   "everything that later happened to them"
-                                   if result.get("basis") == "cohort" else
-                                   "activity clock: events dated in this window")})
+    resp = jsonify(payload)
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     return resp

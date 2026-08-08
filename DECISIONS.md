@@ -1676,3 +1676,28 @@
      (Invoices/BankTransactions 401 at probe) — the gap is reported, zero speculative
      code; the five bank-transfer no-evidence contacts remain the honest blind spot
      until the scopes land. Suite 683 (7 new).
+
+131. **DATELESS-CLOSE AUTO-DERIVATION — THE PAYMENT-CLASS RULING (2026-08-08).**
+     Rydel's ruling (stated twice; this entry is the encode — veto window open):
+     for closes whose tracker Close Date is BLANK, ID-EXACT PAYMENT-CLASS evidence
+     AUTO-derives the close date. The rungs: Stripe first payment matched by EMAIL
+     (the email is the ID) → AUTO now, journaled "ruling-conversion DECISIONS #131"
+     with the charge id as evidence; GHL payment/transaction objects → probed
+     2026-08-08 under the current token: /payments/orders, /payments/transactions,
+     /invoices all 401 "not authorized for this scope" — NO rung built (zero
+     speculative code; if the scope ever lands, the rung joins this ruling); Xero
+     invoice/payment → scopes still not landed (Invoices 401) — same. GHL STAGE
+     timestamps remain PROPOSED FOREVER: the lane demonstrably lags — a stage move
+     is when someone dragged a card, not when the deal closed. Stripe matched by
+     NAME ONLY is a label match, not an ID → stays PROPOSED. Filled tracker dates
+     always win (the pass runs over blanks only); supersession + surfaced-
+     disagreement rules unchanged (#128); the Piolo source-fill queue item persists
+     until the tracker cell is filled. Conversions are NEVER silent: each is
+     journaled per deal, the batch posts ONE action-feed notice ("N close dates
+     applied under DECISIONS #131 — $X placed on the clocks", 7-day retention
+     through sweep rebuilds), and derived closes land on the clocks immediately
+     with their derived:stripe chip (derived_placed recon terms keep reconciliation
+     green). Idempotent: re-running converts nothing twice. The nightly
+     resolve_dates pass carries the rung forward for future dateless closes.
+     Live at encode: 15 P1 cards → 11 Stripe-backed eligible, 4 stage-only stay
+     (Tommy Lê, Neri Roth Herrmann, Julieta Pablo Tadiaman, Jenny Bui).

@@ -37,17 +37,19 @@ def test_case_a_roster_inherits_the_cell_clock():
     """The drill computes the clicked cell's basis — the exact live bug (5 cells
     at diagnosis) can never come back silently."""
     src = open(os.path.join(os.path.dirname(__file__), "..", "dashboard", "ads.py")).read()
-    assert "basis = _basis_arg()" in src.split("def roster()")[1][:800]
-    # the drill inherits BOTH the clock and the market filter of the clicked cell
-    assert "_compute(days, start, end, basis=basis, market=_market_arg())" in src
-    # and the payload states its clock for the panel header
-    assert '"clock_note"' in src
+    # the route hands the clicked cell's clock AND market to THE roster engine
+    roster_src = src.split("def roster()")[1][:1600]
+    assert "basis=_basis_arg(), market=_market_arg()" in roster_src
+    # the engine inherits the clock (I11) and states it in the payload
+    eng_src = open(os.path.join(os.path.dirname(__file__), "..", "roster_engine.py")).read()
+    assert "AE.assert_same_basis(result)" in eng_src
+    assert '"clock_note"' in eng_src
     js = open(os.path.join(os.path.dirname(__file__), "..", "dashboard", "static",
                            "js", "adsapp.js")).read()
     assert "'&basis=' + encodeURIComponent(state.basis)" in js
     # the bare "mismatch, report this" message class is DEAD — legible cause or nothing
     assert "mismatch, report this" not in js
-    assert "clock-inheritance bug (I11)" in js
+    assert "I17 DRIFT" in js and "render/engine skew" in js
 
 
 # ── CASE B class: activity funnel-lag annotations + I8 ───────────────────────
@@ -194,9 +196,11 @@ def test_i13_single_computation_path():
     # the board layer READS the engine; it never re-derives a metric
     import re as _re
     assert not _re.search(r"\[(['\"])(closes|leads|sets|shows|cash)\1\]\s*[+\-*]\s*", ads)
-    # roster's only count is the len()==cell contract
-    assert 'people, "count": len(people)' in ads.replace("\n", " ") or \
-           '"count": len(people)' in ads
+    # roster counts moved INTO the engine (I17): the payload count is the cell
+    # value and len(people) is checked against it — never a second computation
+    reng = open(os.path.join(os.path.dirname(__file__), "..", "roster_engine.py")).read()
+    assert '"count": cell_value' in reng
+    assert 'len(people) == cell_value' in reng
 
 
 # ── THE SWEEP: loud failure + EDITH accuracy ─────────────────────────────────

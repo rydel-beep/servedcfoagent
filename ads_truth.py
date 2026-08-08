@@ -74,6 +74,22 @@ def _leads_index(leads_all: list[dict]) -> dict:
     return idx
 
 
+def _dedup_proposed(items: list[dict]) -> list[dict]:
+    """The proposed queue is append-across-runs; a cap-trim can forget an id and
+    re-append it (found live 2026-08-08: setdate:multi:lucas reid ×2). Dedup by
+    id, first occurrence wins — excluded ≠ deleted, but never listed twice."""
+    seen: set = set()
+    out = []
+    for p in items or []:
+        pid = p.get("id")
+        if pid and pid in seen:
+            continue
+        if pid:
+            seen.add(pid)
+        out.append(p)
+    return out
+
+
 def _publish_flags(flags: list[dict]) -> None:
     """The sweep's OWN kv channel (attr:data_quality_flags is overwritten by every
     engine compute — findings there would silently vanish). REBUILT each sweep:
@@ -175,7 +191,7 @@ def spine_census(days: int = 90) -> dict:
                 lanes["T0"].append(dl["name"])
                 _flag_phantom(dl["name"], c.get("label"))
     kv_store.put(_KV_SPINE, derived[-200:])
-    kv_store.put(_KV_PROPOSED, proposed[-40:])
+    kv_store.put(_KV_PROPOSED, _dedup_proposed(proposed)[-40:])
     return {"days": days, "counts": {k: len(v) for k, v in lanes.items()},
             "lanes": lanes, "total": sum(len(v) for v in lanes.values())}
 
@@ -353,7 +369,7 @@ def event_sweep(max_contacts: int = 40) -> dict:
                                                 for a in appts],
                                  "ask": "multiple appointments — pick the set call"})
                 prop_n += 1
-    kv_store.put(_KV_PROPOSED, proposed[-60:])
+    kv_store.put(_KV_PROPOSED, _dedup_proposed(proposed)[-60:])
     return {"ghl_calls": calls, "derived_set_dates": derived,
             "proposed_multi": prop_n, "remaining": max(0, len(todo) - max_contacts)}
 
@@ -502,7 +518,7 @@ def show_verification_pass(max_contacts: int = 40) -> dict:
     if changed:
         import kv_store as _kv
         _kv.put("derived:dates", store)
-    kv_store.put(_KV_PROPOSED, proposed[-80:])
+    kv_store.put(_KV_PROPOSED, _dedup_proposed(proposed)[-80:])
     return out
 
 
@@ -692,6 +708,31 @@ def integrity_sweep() -> dict:
         out["show_verification"] = show_verification_pass()
     except Exception as e:
         out["show_verification"] = {"error": str(e)[:80]}
+    # I17 (ROSTER-CELL EQUALITY) nightly sampling: 20 random cells across both
+    # clocks — the rendered number vs the member roster recorded at increment
+    # time. Any drift is the old count/detail mismatch class reborn → LOUD.
+    try:
+        import random
+        cells = []
+        for basis in ("cohort", "activity"):
+            r = AE.compute(days=90, basis=basis)
+            for row in (r.get("creatives") or []):
+                for m in ("leads", "qualified", "reached", "sets", "shows", "closes"):
+                    cells.append((basis, row, m))
+        drift = 0
+        sample = random.sample(cells, min(20, len(cells)))
+        for basis, row, m in sample:
+            n = len((row.get("members") or {}).get(m) or [])
+            if n != (row.get(m) or 0):
+                drift += 1
+                out["disagreements"].append({
+                    "kind": "i17_roster_drift",
+                    "cause": (f"I17: '{row['label'][:40]}' {m} cell={row.get(m)} but "
+                              f"roster={n} — count/detail mismatch"),
+                    "where": f"{basis} 90d"})
+        out["i17_sample"] = {"checked": len(sample), "drift": drift}
+    except Exception as e:
+        out["i17_sample"] = {"error": str(e)[:80]}
 
     # NEW cause classes → auto-file a PROPOSED regression-test skeleton
     causes = kv_store.get(_KV_CAUSES) or {}
@@ -707,14 +748,27 @@ def integrity_sweep() -> dict:
                                           f"    # {dgg['cause']}\n"
                                           f"    assert False  # write the repro")})
     kv_store.put(_KV_CAUSES, causes)
-    kv_store.put(_KV_PROPOSED, proposed[-40:])
+    kv_store.put(_KV_PROPOSED, _dedup_proposed(proposed)[-40:])
 
     # feed lanes: close-level/≥$1k → ACTION-promoted category; else hygiene.
     # The channel is REBUILT each run (self-retiring); Piolo items survive the run.
-    flags = [f for f in (kv_store.get("ads_truth:flags") or [])
-             if f.get("metric") == "tracker_missing_set"]
+    # Ruling-conversion notices (DECISIONS #131) survive 7 days — "notify once"
+    # must not mean "wiped by the same sweep that produced it".
+    def _keep(f):
+        if f.get("metric") == "tracker_missing_set":
+            return True
+        if "DECISIONS #131" in (f.get("reason") or ""):
+            import datetime as _dt
+            try:
+                age = (today_sydney() - _dt.date.fromisoformat(f.get("date") or "")).days
+            except Exception:
+                return False
+            return age <= 7
+        return False
+    flags = [f for f in (kv_store.get("ads_truth:flags") or []) if _keep(f)]
     for dgg in out["disagreements"]:
-        big = (dgg.get("cash") or 0) >= 1000 or dgg["kind"] in ("phantom_close", "quad")
+        big = (dgg.get("cash") or 0) >= 1000 or dgg["kind"] in ("phantom_close", "quad",
+                                                               "i17_roster_drift")
         flags.append({"metric": "ads_truth_action" if big else "ads_truth",
                       "reason": f"ads truth sweep: {dgg['kind']} — {dgg['cause'][:110]}"})
     _publish_flags(flags)

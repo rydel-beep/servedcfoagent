@@ -13,8 +13,14 @@
 
   var state = { days: 30, sort: 'spend', sortDir: -1, verdict: null, creative: null,
                 q: '', gq: '', board: null, shown: 0, reqToken: 0, level: 'creative',
-                basis: 'cohort', market: 'all' };
-  var PAGE = 150;
+                basis: 'cohort', market: 'all', rows: 70 };
+  // ROW CONTROL: 70/150/300/'all' — a RENDER window only. Sort and find always
+  // run over the FULL dataset before the slice; tier rows stay pinned outside it.
+  try {
+    var savedRows = localStorage.getItem('adx-rows');
+    if (savedRows) state.rows = savedRows === 'all' ? 'all' : (+savedRows || 70);
+  } catch (e) {}
+  function rowLimit() { return state.rows === 'all' ? Infinity : +state.rows; }
 
   function $(s) { return document.querySelector(s); }
   function esc(s) {
@@ -85,7 +91,8 @@
       b.classList.toggle('active', b.dataset.market === state.market);
     });
     try { history.replaceState(null, '', '?window=' + days + '&basis=' + state.basis +
-      '&market=' + state.market + '&sort=' + state.sort + '.' + (state.sortDir === -1 ? 'desc' : 'asc')); } catch (e) {}
+      '&market=' + state.market + '&sort=' + state.sort + '.' + (state.sortDir === -1 ? 'desc' : 'asc') +
+      '&rows=' + state.rows); } catch (e) {}
     $('#adx-banner').innerHTML = '<span class="adx-skel">Loading ' + days + (days === 'all' ? '' : 'd') + ' · ' + state.basis +
       (state.market !== 'all' ? ' · ' + state.market.toUpperCase() : '') + '…</span>';
     document.body.classList.add('adx-loading');
@@ -389,7 +396,18 @@
       return (r.spend || r.leads || r.closes);
     });
     if (state.level !== 'creative') rows = rows.filter(function (r) { return r.tier === 'ad'; });
-    tbody.innerHTML = sortRows(rows).map(function (r) {
+    // ROW CONTROL: sort the FULL dataset, then render a window of ad rows;
+    // tier rows are pinned BELOW at every size (never sliced away).
+    var sorted = sortRows(rows);
+    var adRows = sorted.filter(function (r) { return r.tier === 'ad'; });
+    var tierRows = sorted.filter(function (r) { return r.tier !== 'ad'; });
+    var lim = rowLimit();
+    var windowed = adRows.slice(0, lim).concat(tierRows);
+    var cut = adRows.length - Math.min(adRows.length, lim);
+    document.querySelectorAll('.adx-rowlimit').forEach(function (b) {
+      b.classList.toggle('active', String(b.dataset.rows) === String(state.rows));
+    });
+    tbody.innerHTML = windowed.map(function (r) {
       var cls = 'adx-tier-' + r.tier + (state.creative === r.creative_key ? ' adx-selected' : '');
       if (r.integrity_error) {
         return '<tr class="adx-integrity-error" data-window="' + windowStamp() + '">' +
@@ -402,7 +420,9 @@
         (VCOLS.some(function (c) { return c.k === 'verdict'; }) ? '<td>' + (r.tier === 'ad' ? badge(r) : '—') + '</td>' : '') +
         VCOLS.filter(function (c) { return c.k !== 'creative' && c.k !== 'verdict'; }).map(function (c) {
           var v = r[c.k];
-          var drill = DRILLABLE[c.k] && r.tier === 'ad' && v && state.level === 'creative' ?
+          // EVERY FUNNEL NUMBER OPENS ITS PEOPLE: all tabs, tier rows, zero cells
+          // (a zero opens an honest empty state with the reason — never a dead click)
+          var drill = DRILLABLE[c.k] ?
             ' class="adx-cell-drill" data-stage="' + c.k + '"' : '';
           var extra = (c.k === 'closes' && r.earlier_closes) ?
             ' <span class="adx-earlier adx-door" data-anom="earlier_closes" data-key="' + esc(r.creative_key) + '" title="' + r.earlier_closes + ' close(s) from leads that entered before this window (activity clock) — click for the deals">↤' + r.earlier_closes + '</span>' : '';
@@ -431,7 +451,8 @@
           }
           return '<td' + drill + '>' + (c.money ? money(v) : num(v)) + extra + '</td>';
         }).join('') + '</tr>';
-    }).join('');
+    }).join('') + (cut > 0 ? '<tr class="adx-rowcut"><td colspan="' + VCOLS.length + '">' +
+      cut + ' more row(s) — raise the rows control (sort + find already ran over the full set)</td></tr>' : '');
   }
 
   function rowMatches(r) {
@@ -450,7 +471,10 @@
       '<th>Setter</th><th>Set</th><th>Show</th><th>Close</th><th>Cash</th><th>Creative</th></tr>';
     var rows = (state.board.rows || []).filter(rowMatches);
     if (reset) state.shown = 0;
-    state.shown = Math.min(rows.length, state.shown + PAGE);
+    // ROW CONTROL: the selector sets the render window here too; "show more"
+    // extends by the same step. Search always ran over the full dataset above.
+    var step = state.rows === 'all' ? rows.length || 1 : +state.rows;
+    state.shown = Math.min(rows.length, state.shown + step);
     tbody.innerHTML = rows.slice(0, state.shown).map(function (r, i) {
       var h = r.highlights || {};
       var cls = ['adx-row'];
@@ -492,6 +516,19 @@
       ' — QUARANTINED, not assigned</div>';
   }
 
+  function identityChip(p) {
+    if (!p.identity) return '';
+    var cls = p.identity === 'id-linked' ? 'adx-id-ok'
+      : p.identity.indexOf('ambiguous') === 0 ? 'adx-id-amb'
+      : p.identity.indexOf('name-match') === 0 ? 'adx-id-name' : 'adx-id-only';
+    return '<span class="adx-chip adx-id ' + cls + '" title="tracker↔GHL identity">' + esc(p.identity) + '</span>';
+  }
+  function funnelChips(p) {
+    return (p.funnel || []).map(function (c) {
+      return '<span class="adx-chip' + (c.on ? ' on' : '') + '"' +
+        (c.provenance ? ' title="' + esc(c.provenance) + '"' : '') + '>' + esc(c.chip) + '</span>';
+    }).join('');
+  }
   function personCard(p) {
     var rev = p.revenue || {};
     var revLine = rev.state === 'unknown' ? '<span class="adx-rev-unknown">revenue not captured</span>'
@@ -500,10 +537,21 @@
       return '<div class="adx-note"><span class="adx-note-body">' + esc(n.body) + '</span>' +
         '<span class="adx-note-src">' + esc(n.source) + (n.date ? ' · ' + esc(n.date) : '') + '</span></div>';
     }).join('') || '<div class="adx-note adx-note-empty">no notes recorded</div>';
+    var ev = p.event || {};
+    var evLine = ev.kind ? '<div class="adx-person-event">' + esc(ev.kind) + ' ' +
+      (ev.date ? esc(ev.date) : '<em>no date</em>') +
+      ' <span class="adx-prov" title="provenance">' + esc(ev.provenance || '') + '</span>' +
+      (ev.note ? ' <em>' + esc(ev.note) + '</em>' : '') + '</div>' : '';
     return '<div class="adx-person">' + candidatesNote(p) +
       '<div class="adx-person-head"><strong>' + esc(p.name) + '</strong>' +
+      (p.name_discrepancy ? ' <span class="adx-chip adx-id-amb" title="tracker vs GHL name differ — both shown">name discrepancy: GHL says “' + esc(p.ghl_name) + '”</span>' : '') +
       (p.business && p.business !== p.name ? ' · ' + esc(p.business) : '') +
-      (p.ghl_link ? ' <a class="adx-ghl" href="' + esc(p.ghl_link) + '" target="_blank" rel="noopener">GHL ↗</a>' : '') + '</div>' +
+      ' ' + identityChip(p) +
+      (p.ghl_link ? ' <a class="adx-ghl" href="' + esc(p.ghl_link) + '" target="_blank" rel="noopener">GHL ↗</a>' : '') +
+      (p.tracker_link ? ' <a class="adx-ghl" href="' + esc(p.tracker_link) + '" target="_blank" rel="noopener" title="Lead-to-Cash tracker (find the row by name — row anchors are unsafe under the clean view)">tracker ↗</a>' : '') + '</div>' +
+      evLine +
+      (p.tier_reason ? '<div class="adx-warnline">' + esc(p.tier_reason) + '</div>' : '') +
+      '<div class="adx-person-chips">' + funnelChips(p) + '</div>' +
       '<div class="adx-person-meta">in ' + esc(p.input_date || '—') +
       ' · revenue ' + revLine +
       ' · setter: ' + esc(p.setter_outcome || '—') +
@@ -523,33 +571,27 @@
     undated_sets: 'set exists in the tracker but its Set Date cell is BLANK — the activity clock cannot place it (Piolo queue: fill at source)'
   };
   function anomalyPanel(creativeKey, kind) {
-    // the deals behind the badge, from the board payload (presentation-only filter)
+    // THE ROSTER ENGINE serves anomaly classes too (?metric=earlier_sets etc.) —
+    // the old client-side filter over board.rows was a parallel person list; deleted.
     var row = (state.board.scoreboard.rows || []).filter(function (r) {
       return r.creative_key === creativeKey; })[0] || {};
-    var deals = [];
-    (state.board.rows || []).forEach(function (v) {
-      if ((v.creative || {}).key !== creativeKey || !v.close_date) return;
-      if (kind === 'undated_sets' && !(v.set && !v.set_date)) return;
-      if (kind === 'earlier_sets' && !v.set_date) return;
-      deals.push(v);
-    });
-    // activity-basis boards: rows are the window LEADS — earlier-lead closes live in
-    // the creative's deals list instead
-    var rowDeals = [];
-    (state.board.scoreboard.rows || []).length; // no-op guard
-    var cr = ((state.board || {}).scoreboard || {}).rows || [];
-    openDrill(esc((row.creative || creativeKey).slice(0, 50)) + ' · anomaly · ' + windowStamp() +
+    openDrill(esc(String(row.creative || creativeKey).slice(0, 50)) + ' · anomaly · ' + windowStamp() +
               ' · ' + state.basis + ' clock',
-      '<div class="adx-roster-note">' + esc(ANOM_COPY[kind] || kind) + '</div>' +
-      (deals.length ? deals.map(function (v) {
-        return '<div class="adx-anom-deal"><button class="adx-deal-open adx-door" data-deal="' + esc(v.name) + '">' +
-          esc(v.name) + '</button> · closed ' + esc(v.close_date || '—') +
-          (v.cash != null ? ' · cash ' + money(v.cash) : '') +
-          ' · set ' + (v.set ? (v.set_date ? esc(v.set_date) : '<em>date BLANK</em>') : '—') +
-          '</div>';
-      }).join('')
-      : '<div class="adx-roster-note">The deal(s) behind this badge closed in this window from an earlier cohort — open the closes drill for the roster, or the deal panel:</div>' +
-        '<button class="adx-deal-list adx-door" data-key="' + esc(creativeKey) + '">list the closes →</button>'));
+              '<div class="adx-skel">Loading the deals…</div>');
+    var note = '<div class="adx-roster-note">' + esc(ANOM_COPY[kind] || kind) + '</div>';
+    fetch('/ads/api/roster?days=' + state.days + '&basis=' + encodeURIComponent(state.basis) +
+          '&market=' + encodeURIComponent(state.market) +
+          '&level=' + encodeURIComponent(state.level) +
+          '&key=' + encodeURIComponent(creativeKey) + '&metric=' + encodeURIComponent(kind),
+          { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || d.error) { $('#adx-drill-body').innerHTML = note + '<div class="adx-roster-note">' + esc((d && d.error) || 'fetch failed') + '</div>'; return; }
+        rosterState.people = d.people || [];
+        rosterState.head = note + (d.empty_reason ? '<div class="adx-roster-note">' + esc(d.empty_reason) + '</div>' : '');
+        renderRosterPeople();
+      })
+      .catch(function () { $('#adx-drill-body').innerHTML = note + 'fetch failed'; });
   }
   function dealPanel(name) {
     openDrill(esc(name) + ' · deal evidence', '<div class="adx-skel">Loading the evidence…</div>');
@@ -599,24 +641,16 @@
             (e.provisional ? ' <span class="adx-prov">' + esc(e.provisional.label || 'provisional') + '</span>' : '') +
             '</div>';
         }
-        var chips = function (v) {
-          function chip(on, label, prov) {
-            return on ? '<span class="adx-chip on" title="' + esc(prov || 'tracker') + '">' + label + '</span>'
-                      : '<span class="adx-chip">' + label + '</span>';
-          }
-          var dv = v.derived_dates || {};
-          return chip(v.qualified, 'Q') + chip(v.reached, 'R') +
-                 chip(v.set, 'set' + (dv.set_date ? ' ·d' : ''), dv.set_date || 'tracker') +
-                 chip(v.show, 'show') +
-                 chip(!!v.close_date, v.close_date ? 'closed ' + v.close_date + (dv.close_date ? ' ·d' : '') : 'closed',
-                      dv.close_date || 'tracker');
-        };
+        // the ledger arrives from THE roster engine (leads roster for this cell) —
+        // identity + provenance chips identical to every other roster surface
         var ledger = (d.ledger || []).map(function (v) {
           return '<div class="adx-ledger-row"><button class="adx-deal-open adx-door" data-deal="' + esc(v.name) + '">' + esc(v.name) + '</button>' +
+            (v.name_discrepancy ? ' <span class="adx-chip adx-id-amb" title="tracker vs GHL name differ">GHL: “' + esc(v.ghl_name) + '”</span>' : '') +
             (v.business ? ' · ' + esc(v.business) : '') + ' · in ' + esc(v.input_date || '—') +
-            ' <span class="adx-prov" title="attribution provenance">' + esc(v.joined_via || (v.creative || {}).tier || '') + '</span> ' +
-            chips(v) + (v.cash != null && v.close_date ? ' · ' + money(v.cash) : '') +
+            ' ' + identityChip(v) + ' ' + funnelChips(v) +
+            (v.cash != null && v.close_date ? ' · ' + money(v.cash) : '') +
             (v.ghl_link ? ' <a class="adx-ghl" href="' + esc(v.ghl_link) + '" target="_blank" rel="noopener">GHL ↗</a>' : '') +
+            (v.tracker_link ? ' <a class="adx-ghl" href="' + esc(v.tracker_link) + '" target="_blank" rel="noopener">tracker ↗</a>' : '') +
             '</div>';
         }).join('');
         $('#adx-drill-body').innerHTML =
@@ -630,36 +664,61 @@
           econRow(windowStamp(), d.econ_window) + econRow('All time', d.econ_all_time) +
           (state.board.market_note ? '<div class="adx-market-note">' + esc(state.board.market_note) + '</div>' : '') + '</div>' +
           '<div class="adx-dossier-sec"><h3>Lead ledger <span class="adx-h2-sub">' + d.ledger_count + ' lead(s) · newest first · window-scoped (switch window to All for history)</span></h3>' +
-          (ledger || '<div class="adx-roster-note">no leads in this window for this creative — honest empty, not an error</div>') + '</div>';
+          (ledger || '<div class="adx-roster-note">' + esc(d.ledger_empty_reason || 'no leads in this window for this creative — honest empty, not an error') + '</div>') + '</div>';
       })
       .catch(function () { $('#adx-drill-body').textContent = 'Dossier fetch failed.'; });
   }
 
-  function loadRoster(creativeKey, creativeLabel, stage, expected) {
+  var rosterState = { people: [], sort: 'event', head: '', title: '' };
+  function rosterSortBtns() {
+    return '<div class="adx-roster-sorts">sort: ' + ['event', 'state', 'cash'].map(function (k) {
+      return '<button class="adx-roster-sort' + (rosterState.sort === k ? ' active' : '') +
+        '" data-rsort="' + k + '">' + (k === 'event' ? 'event date' : k) + '</button>';
+    }).join(' ') + '</div>';
+  }
+  function renderRosterPeople() {
+    var ppl = rosterState.people.slice();
+    if (rosterState.sort === 'event') {
+      ppl.sort(function (a, b) { return String((b.event || {}).date || '').localeCompare(String((a.event || {}).date || '')); });
+    } else if (rosterState.sort === 'state') {
+      ppl.sort(function (a, b) { return (b.state_rank || 0) - (a.state_rank || 0); });
+    } else if (rosterState.sort === 'cash') {
+      ppl.sort(function (a, b) { return (b.cash || 0) - (a.cash || 0); });
+    }
+    $('#adx-drill-body').innerHTML = rosterState.head +
+      (ppl.length ? rosterSortBtns() : '') + ppl.map(personCard).join('');
+  }
+  function loadRoster(level, key, label, metric, expected) {
     // the drill INHERITS the clicked cell's clock (I11) and states it in the header
-    openDrill(esc(creativeLabel.slice(0, 50)) + ' · ' + stage + ' · ' + windowStamp() +
+    openDrill(esc(String(label || key).slice(0, 50)) + ' · ' + metric + ' · ' + windowStamp() +
               ' · ' + state.basis + ' clock',
               '<div class="adx-skel">Loading the humans…</div>');
-    fetch('/ads/api/roster?days=' + state.days + '&stage=' + stage +
-          '&basis=' + encodeURIComponent(state.basis) +
-          (creativeKey ? '&creative=' + encodeURIComponent(creativeKey) : ''),
+    var spec = 'level=' + encodeURIComponent(level) + '&key=' + encodeURIComponent(key) +
+               '&metric=' + encodeURIComponent(metric);
+    try { history.replaceState(null, '', location.search.replace(/&?roster=[^&]*/, '') +
+      '&roster=' + encodeURIComponent(level + '~' + key + '~' + metric)); } catch (e) {}
+    fetch('/ads/api/roster?days=' + state.days + '&basis=' + encodeURIComponent(state.basis) +
+          '&market=' + encodeURIComponent(state.market) + '&' + spec,
           { credentials: 'same-origin' })
-      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (r) { return r.ok ? r.json() : r.json().then(function (j) { return j; }).catch(function () { return null; }); })
       .then(function (d) {
-        if (!d) { $('#adx-drill-body').textContent = 'Roster fetch failed.'; return; }
+        if (!d || d.error) { $('#adx-drill-body').innerHTML = '<div class="adx-roster-note">' + esc((d && d.error) || 'Roster fetch failed.') + '</div>'; return; }
         var head = '<div class="adx-roster-note">' + esc(d.clock_note || '') + '</div>';
-        if (expected != null && +expected !== d.count) {
-          // HUMAN-LEGIBLE integrity message — always a cause, never a bare warning.
-          var cause = (d.basis && d.basis !== state.basis)
-            ? 'cause: the drill computed the ' + esc(d.basis) + ' clock while the cell is on the ' + esc(state.basis) + ' clock — a clock-inheritance bug (I11)'
-            : 'cause unknown — engine duplication suspected (I13); queued for resolution in tonight’s truth sweep';
-          head += '<div class="adx-roster-count">' + stage + ': grid ' + expected + ' (' + esc(state.basis) +
-            ') vs detail ' + d.count + ' (' + esc(d.basis || '?') + ') — ' + cause + '</div>';
+        var i17 = d.i17 || {};
+        if (i17.ok === false) {
+          head += '<div class="adx-roster-count">I17 DRIFT: the cell reads ' + i17.cell +
+            ' but the roster carries ' + i17.roster + ' — flagged loudly in the truth sweep; do not trust this cell until it clears</div>';
+        } else if (expected != null && !isNaN(expected) && +expected !== d.count) {
+          head += '<div class="adx-roster-count">' + metric + ': grid ' + expected +
+            ' vs engine ' + d.count + ' — a render/engine skew (stale board?); reload the window</div>';
         } else {
-          head += '<div class="adx-roster-count">' + d.count + ' ' + stage +
+          head += '<div class="adx-roster-count">' + d.count + ' ' + metric +
             ' <span class="adx-match">— matches the cell ✓ (' + esc(d.basis || state.basis) + ' clock)</span></div>';
         }
-        $('#adx-drill-body').innerHTML = head + (d.people || []).map(personCard).join('');
+        if (d.empty_reason) head += '<div class="adx-roster-note">' + esc(d.empty_reason) + '</div>';
+        rosterState.people = d.people || [];
+        rosterState.head = head;
+        renderRosterPeople();
       })
       .catch(function () { $('#adx-drill-body').textContent = 'Roster fetch failed.'; });
   }
@@ -668,6 +727,16 @@
   function init() {
     var m = (location.search.match(/[?&]window=(\d{1,3}|all)/) || [])[1];
     var days = m === 'all' ? 'all' : ([30, 60, 90].indexOf(+m) >= 0 ? +m : 30);
+    var rowsParam = (location.search.match(/[?&]rows=(\d{1,4}|all)/) || [])[1];
+    if (rowsParam) state.rows = rowsParam === 'all' ? 'all' : +rowsParam;
+    document.querySelectorAll('.adx-rowlimit').forEach(function (b) {
+      b.addEventListener('click', function () {
+        state.rows = b.dataset.rows === 'all' ? 'all' : +b.dataset.rows;
+        try { localStorage.setItem('adx-rows', String(state.rows)); } catch (err) {}
+        try { history.replaceState(null, '', location.search.replace(/([?&])rows=[^&]*/, '$1rows=' + state.rows)); } catch (err) {}
+        renderScoreboard(); renderRows(true);
+      });
+    });
     var mk = (location.search.match(/[?&]market=(au|us|unknown|all)/) || [])[1];
     if (mk) state.market = mk;
     var so = (location.search.match(/[?&]sort=([a-z_]+)\.(asc|desc)/) || []);
@@ -697,8 +766,8 @@
       var td = e.target.closest('td.adx-cell-drill');
       var tr = e.target.closest('tr[data-key]');
       if (td && tr) {
-        loadRoster(tr.dataset.key, tr.querySelector('.adx-name').textContent,
-                   td.dataset.stage, td.textContent.trim());
+        loadRoster(state.level, tr.dataset.key, tr.querySelector('.adx-name').textContent,
+                   td.dataset.stage, parseInt(td.textContent, 10));
         return;
       }
       // THE DOSSIER: clicking the creative NAME opens the whole story
@@ -716,7 +785,9 @@
       var dbtn = e.target.closest('.adx-deal-open[data-deal]');
       if (dbtn) { dealPanel(dbtn.dataset.deal); return; }
       var lbtn = e.target.closest('.adx-deal-list[data-key]');
-      if (lbtn) { loadRoster(lbtn.dataset.key, lbtn.dataset.key, 'closes', null); }
+      if (lbtn) { loadRoster('creative', lbtn.dataset.key, lbtn.dataset.key, 'closes', null); return; }
+      var rsort = e.target.closest('.adx-roster-sort[data-rsort]');
+      if (rsort) { rosterState.sort = rsort.dataset.rsort; renderRosterPeople(); }
     });
     document.querySelectorAll('.adx-market').forEach(function (b) {
       b.addEventListener('click', function () { loadBoard(state.days, null, b.dataset.market); });
@@ -797,9 +868,15 @@
       .then(function (w) { if (w) $('#adx-who').textContent = w.display || w.user || ''; });
     var dossierParam = (location.search.match(/[?&]dossier=([^&]+)/) || [])[1];
     var dealParam = (location.search.match(/[?&]deal=([^&]+)/) || [])[1];
+    var rosterParam = (location.search.match(/[?&]roster=([^&]+)/) || [])[1];
     loadBoard(days);
     if (dossierParam) setTimeout(function () { openDossier(decodeURIComponent(dossierParam)); }, 600);
     else if (dealParam) setTimeout(function () { dealPanel(decodeURIComponent(dealParam)); }, 600);
+    else if (rosterParam) setTimeout(function () {
+      // ?roster=<level>~<key>~<metric> — a linkable cell-spec
+      var parts = decodeURIComponent(rosterParam).split('~');
+      if (parts.length === 3) loadRoster(parts[0], parts[1], parts[1], parts[2], null);
+    }, 600);
   }
 
   window.AdsApp = {

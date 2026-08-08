@@ -334,11 +334,37 @@ def _aggregate(rows: list[dict], key: str, label: str) -> dict:
     return agg
 
 
+def ladder_groups(result: dict) -> dict:
+    """THE one grouping path for every ladder level. Returns
+    {level: {group_key: [member creative rows]}} keyed by the SAME group keys the
+    rendered ladder rows carry. ladder() consumes this; so does the roster engine —
+    a ladder-cell roster is the concat of its member creatives' rosters, which
+    equals the cell because _aggregate() sums the same members (I17)."""
+    ads = [r for r in (result.get("creatives") or []) if r.get("tier") == "ad"
+           and (r.get("spend") or r.get("leads") or r.get("closes"))]
+    names: dict = {}
+    for r in ads:
+        k = r.get("name_norm") or "UNNAMED"
+        names.setdefault(k if k != "UNNAMED" else "MIXED/AMBIGUOUS", []).append(r)
+    batches: dict = {}
+    for r in ads:
+        m = _BATCH_RE.match(r.get("label") or "")
+        batches.setdefault(m.group(1) if m else "UNBATCHED", []).append(r)
+    camps: dict = {}
+    for r in ads:
+        cs = r.get("campaigns") or []
+        key = cs[0] if len(cs) == 1 else ("MIXED/AMBIGUOUS" if cs or r.get("leads")
+                                          else "NO CAMPAIGN DATA")
+        camps.setdefault(key, []).append(r)
+    return {"name": names, "batch": batches, "campaign": camps,
+            "account": {"__account__": ads}}
+
+
 def ladder(result: dict, floor: float) -> dict:
     """batch (B008…) → campaign → account, each with the SAME verdict rules. The
     scorecard defaults to the highest level holding a confirmed verdict."""
-    ads = [r for r in (result.get("creatives") or []) if r.get("tier") == "ad"
-           and (r.get("spend") or r.get("leads") or r.get("closes"))]
+    groups = ladder_groups(result)
+    ads = groups["account"]["__account__"]
     base = baselines(result.get("creatives") or [])
 
     _MIXED_KEYS = {"UNBATCHED", "MIXED/AMBIGUOUS", "NO CAMPAIGN DATA"}
@@ -363,29 +389,16 @@ def ladder(result: dict, floor: float) -> dict:
 
     # NAME level — the DELIBERATE cross-campaign view of one creative (hybrid keying:
     # the base rows are ad ids; grouping by name here is a choice, not an accident)
-    names: dict = {}
-    for r in ads:
-        key = r.get("name_norm") or "UNNAMED"
-        names.setdefault(key, []).append(r)
-    name_rows = verd([_aggregate(v, k if k != "UNNAMED" else "MIXED/AMBIGUOUS",
+    name_rows = verd([_aggregate(v, k,
                                  (v[0].get("label") or k).split(" [")[0] +
                                  (f" (all campaigns, {len(v)} ads)" if len(v) > 1 else ""))
-                      for k, v in names.items()])
+                      for k, v in groups["name"].items()])
 
-    batches: dict = {}
-    for r in ads:
-        m = _BATCH_RE.match(r.get("label") or "")
-        key = m.group(1) if m else "UNBATCHED"
-        batches.setdefault(key, []).append(r)
     batch_rows = verd([_aggregate(v, k, f"Batch {k}" if k != "UNBATCHED" else
-                                  "Unbatched creatives") for k, v in batches.items()])
+                                  "Unbatched creatives")
+                       for k, v in groups["batch"].items()])
 
-    camps: dict = {}
-    for r in ads:
-        cs = r.get("campaigns") or []
-        key = cs[0] if len(cs) == 1 else ("MIXED/AMBIGUOUS" if cs or r.get("leads") else "NO CAMPAIGN DATA")
-        camps.setdefault(key, []).append(r)
-    camp_rows = verd([_aggregate(v, k, k) for k, v in camps.items()])
+    camp_rows = verd([_aggregate(v, k, k) for k, v in groups["campaign"].items()])
 
     account = _aggregate(ads, "__account__", "Attributed ads (account)")
     account["note"] = ("ad-attributed rows only — the banner totals carry the WHOLE "

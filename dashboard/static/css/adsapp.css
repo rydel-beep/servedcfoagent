@@ -225,3 +225,21 @@ button.adx-deal-open { color: var(--accent, #7aa2ff); }
   padding: 0 4px; margin: 0 1px; color: var(--muted); }
 .adx-chip.on { color: var(--good); border-color: var(--good); }
 .adx-warnline { color: var(--warn); font-size: 12px; margin: 6px 0; }
+/* ── roster engine chips + row control (2026-08-08 build) ─────────────────── */
+.adx-rowctl { display: flex; gap: 4px; align-items: center; font-size: 12px; color: var(--muted); }
+.adx-rowctl-label { margin-right: 2px; }
+.adx-rowlimit { background: var(--panel, #14161d); border: 1px solid var(--line); color: var(--muted);
+  border-radius: 5px; padding: 4px 8px; font-size: 12px; cursor: pointer; }
+.adx-rowlimit.active { color: var(--fg); border-color: var(--good); }
+.adx-rowcut td { color: var(--muted); font-size: 12px; font-style: italic; padding: 8px; }
+.adx-person-chips { margin: 4px 0; }
+.adx-person-event { font-size: 12.5px; margin: 3px 0; }
+.adx-chip.adx-id { text-transform: none; }
+.adx-id-ok { color: var(--good); border-color: var(--good); }
+.adx-id-name { color: var(--warn); border-color: var(--warn); }
+.adx-id-amb { color: var(--warn); border-color: var(--warn); font-style: italic; }
+.adx-id-only { color: var(--muted); border-style: dashed; }
+.adx-roster-sorts { font-size: 12px; color: var(--muted); margin: 6px 0; }
+.adx-roster-sort { background: none; border: 1px solid var(--line); color: var(--muted);
+  border-radius: 4px; padding: 2px 7px; font-size: 11px; cursor: pointer; }
+.adx-roster-sort.active { color: var(--fg); border-color: var(--good); }

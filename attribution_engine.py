@@ -348,7 +348,14 @@ def compute_from_inputs(
             "closes": 0, "contract": 0.0, "cash": 0.0, "deals": [],
             "spend": 0.0, "impressions": 0, "clicks": 0,
             "last_touch_differs": 0, "basis_counts": {},
+            # I17 (ROSTER-CELL EQUALITY): every counted event records WHO, at the
+            # same line the counter moves — the roster engine reads these lists,
+            # so len(roster) == the cell by construction, never a second query.
+            "members": {},
         })
+
+    def _mem(b: dict, metric: str, lead: dict) -> None:
+        b["members"].setdefault(metric, []).append(lead["name_norm"])
 
     def _bucket_label(lead, key):
         if key == _IG_KEY: return "IG DM (channel)"
@@ -440,6 +447,7 @@ def compute_from_inputs(
         key, contact = lead_bucket_key(lead)
         b = bucket(key, _bucket_label(lead, key))
         b["leads"] += 1
+        _mem(b, "leads", lead)
         # QUALIFIED v2 (Rydel): finalised (≠DQ) AND revenue band ≥ floor (tracker cell
         # wins, GHL form fills) AND form-complete. Unknown revenue excluded, never 0.
         c = contact or {}
@@ -469,6 +477,7 @@ def compute_from_inputs(
             b["revenue_unknown"] = b.get("revenue_unknown", 0) + 1
         if lead["qualified"]:
             b["qualified"] += 1
+            _mem(b, "qualified", lead)
         derived = derived_events.get(lead.get("name_norm") or "", set())
         # REACHED (the funnel column = qualified leads with contact evidence):
         # tracker set/show/won imply a conversation; otherwise the GHL evidence cache.
@@ -477,26 +486,34 @@ def compute_from_inputs(
                                     (contact or {}).get("id")) in reached_cache))
         if lead["qualified"] and lead["reached"]:
             b["reached"] = b.get("reached", 0) + 1
+            _mem(b, "reached", lead)
         if basis == "cohort":
             if lead["set"]:
                 b["sets"] += 1
+                _mem(b, "sets", lead)
             elif "set" in derived:
                 b["sets"] += 1
+                _mem(b, "sets", lead)
                 b["sets_derived"] = b.get("sets_derived", 0) + 1
             if lead["show"]:
                 b["shows"] += 1
+                _mem(b, "shows", lead)
             elif "show" in derived:
                 b["shows"] += 1
+                _mem(b, "shows", lead)
                 b["shows_derived"] = b.get("shows_derived", 0) + 1
             elif lead.get("_derived_show"):
                 b["shows"] += 1
+                _mem(b, "shows", lead)
                 b["shows_derived"] = b.get("shows_derived", 0) + 1
                 if lead["_derived_show"] != "verified":
                     b["shows_unverified"] = b.get("shows_unverified", 0) + 1
+                    _mem(b, "shows_unverified", lead)
         if lead["won"]:
             b["closes_cohort"] += 1
         view_rows.append({
-            "name": lead["name"], "business": lead["business"],
+            "name": lead["name"], "name_norm": lead["name_norm"],
+            "business": lead["business"],
             "input_date": str(lead["input_date"]), "lead_source": lead["lead_source"],
             "setter_outcome": lead["setter_outcome"] or None,
             "set": lead["set"],
@@ -554,13 +571,17 @@ def compute_from_inputs(
             key, _c = lead_bucket_key(lead)
             b = bucket(key, _bucket_label(lead, key))
             b["sets"] += 1
+            _mem(b, "sets", lead)
             if lead["show"]:
                 b["shows"] += 1     # a show belongs to its set call (no own date column)
+                _mem(b, "shows", lead)
             elif lead.get("_derived_show"):
                 b["shows"] += 1
+                _mem(b, "shows", lead)
                 b["shows_derived"] = b.get("shows_derived", 0) + 1
                 if lead["_derived_show"] != "verified":
                     b["shows_unverified"] = b.get("shows_unverified", 0) + 1
+                    _mem(b, "shows_unverified", lead)
 
     # closes on the ACTIVE basis clock (cohort: the cohort's closes whenever they land;
     # activity: close-dated in window)
@@ -568,21 +589,26 @@ def compute_from_inputs(
         key, _contact = lead_bucket_key(lead)
         b = bucket(key, _bucket_label(lead, key))
         b["closes"] += 1
+        _mem(b, "closes", lead)
         if basis == "activity" and lead["input_date"] and lead["input_date"] < w0:
             b["earlier_closes"] = b.get("earlier_closes", 0) + 1   # inline-explained, never phantom
+            _mem(b, "earlier_closes", lead)
         # FUNNEL-LAG annotations (Case B's fix): on the activity clock a close can
         # land in a window whose set/show happened earlier — annotate like closes'
         # ↤, never render an unexplained "0 sets, 1 close" row.
         if basis == "activity":
             if lead["set"] and lead["set_date"] and lead["set_date"] < w0:
                 b["earlier_sets"] = b.get("earlier_sets", 0) + 1
+                _mem(b, "earlier_sets", lead)
                 if lead["show"]:
                     b["earlier_shows"] = b.get("earlier_shows", 0) + 1
+                    _mem(b, "earlier_shows", lead)
             elif lead["set"] and not lead["set_date"]:
                 # the set EXISTS but its date cell is blank — the activity clock
                 # can't place it. Annotated (◔) + a hygiene item, not a red row
                 # (found live 2026-08-07: 22 close rows across windows).
                 b["undated_sets"] = b.get("undated_sets", 0) + 1
+                _mem(b, "undated_sets", lead)
         b["contract"] += lead["contract"] or 0.0
         b["cash"] += lead["cash"] or 0.0
         deal = {"name": lead["name"], "close_date": str(lead["close_date"]),
@@ -640,6 +666,7 @@ def compute_from_inputs(
                            "derived": b["shows_derived"]}
                           if b.get("shows_derived") else None),
             "ad_ids": sorted(b["ad_ids"]), "campaigns": sorted(b["campaigns"]),
+            "members": b["members"],       # I17: who is behind every cell, engine-side
             "leads": b["leads"], "qualified": b["qualified"],
             "revenue_unknown": b.get("revenue_unknown", 0), "sets": b["sets"],
             "shows": b["shows"], "closes_cohort": b["closes_cohort"],
@@ -752,10 +779,18 @@ def compute_from_inputs(
                                 f"set/show and no earlier-event annotation — unexplained")
         if len(r.get("deals") or []) != r["closes"]:
             problems.append(f"I2: {r['closes']} closes but {len(r.get('deals') or [])} traced deals")
+        # I17 — ROSTER-CELL EQUALITY: the member list recorded at each counter
+        # increment must equal the rendered number, every metric, both clocks.
+        # Drift here is the old count/detail mismatch class reborn — LOUD.
+        for _m in ("leads", "qualified", "reached", "sets", "shows", "closes"):
+            _n = len((r.get("members") or {}).get(_m) or [])
+            if _n != (r.get(_m) or 0):
+                problems.append(f"I17: {_m} cell reads {r.get(_m)} but the roster "
+                                f"records {_n} person(s)")
         if problems:
             r["integrity_error"] = "; ".join(problems)
             invariants.append({"id": f"invariant:{r['creative_key']}", "ok": False,
-                               "invariant": "I1/I2/I8", "row": r["label"],
+                               "invariant": "I1/I2/I8/I17", "row": r["label"],
                                "detail": "; ".join(problems)})
     # I10 (ADS TRUTH): tier partition — a close lives in exactly ONE row/tier
     for viol in partition_violations(rows_out):
@@ -765,8 +800,8 @@ def compute_from_inputs(
                                      f"appears under two tiers/rows — partition violation"})
     if not any(not i["ok"] for i in invariants):
         invariants.append({"id": "invariant:rows", "ok": True,
-                           "invariant": "I1+I2+I8+I10", "detail": "all rows coherent on "
-                                                                  f"the {basis} clock"})
+                           "invariant": "I1+I2+I8+I10+I17", "detail": "all rows coherent on "
+                                                                     f"the {basis} clock"})
     return {
         "window": {"start": str(w0), "end": str(w1), "days": (w1 - w0).days + 1},
         "basis": basis,
