@@ -299,6 +299,25 @@ def test_ruling_email_match_converts_journaled(monkeypatch):
                f.get("metric") == "ads_truth_action" for f in flags)
 
 
+def test_ruling_duplicate_dated_row_never_converts(monkeypatch):
+    """A blank whose identity also has a DATED won row is a duplicate — deriving
+    a date would double-place the deal (the live Nirosha class)."""
+    _reset_kv()
+    import close_integrity as CI
+    rows = _won_rows() + [
+        {"name": "Dana Dated", "email": "dana@x.com", "close_date": None,
+         "close_raw": "", "input_date": dt.date(2026, 5, 1), "contract": 900.0,
+         "cash": 900.0}]
+    monkeypatch.setattr(CI, "_tracker_won_rows", lambda: rows)
+    monkeypatch.setattr(RES, "_stripe_first_payment_dates", lambda days=365: {
+        RES._norm("dana@x.com"): {"date": dt.date(2026, 5, 2),
+                                  "charge_id": "ch_dana", "via": "email"}})
+    out = RES.apply_payment_class_ruling()
+    assert out["converted"] == []
+    assert "Dana Dated" in out["skipped_duplicate_dated"]
+    assert "dana dated" not in RES.derived_dates()
+
+
 def test_ruling_name_only_and_stage_only_stay_proposed(monkeypatch):
     _reset_kv()
     _patch_ruling(monkeypatch)

@@ -1,5 +1,31 @@
 # STATUS — served-cfo-agent session log
 
+## 2026-08-08 — Roster engine + payment-class ruling (#131) + row control
+
+1. **roster_engine.py (NEW)** — the ONE cellspec→roster path. attribution_engine
+   records members at every counter increment (I17: len(roster) == cell, both
+   clocks, every metric incl. anomaly classes). Consumers refactored to it:
+   /ads/api/roster (all tabs + tier rows + zero cells + anomaly metrics), the
+   dossier lead ledger, the JS anomaly panel — parallel person-list code deleted.
+   Rosters carry identity chips (id-linked / name-match / ambiguous / tracker-only),
+   name-discrepancy, event-with-provenance, funnel chips, GHL + tracker links;
+   ?roster= deep links; panel sorts (event/state/cash). I17 in the compute
+   invariant sweep + suite + nightly 20-cell sampling (drift = ACTION-lane loud).
+2. **DECISIONS #131** — dateless-close payment-class auto-derivation: Stripe
+   first-payment matched by EMAIL auto-derives blank Close Dates (journaled
+   "ruling-conversion DECISIONS #131" w/ charge id; one feed notice, 7d retention;
+   idempotent; nightly rung in resolve_dates). GHL stage stays PROPOSED forever;
+   GHL payments + Xero rungs NOT built (both 401 at probe — zero speculative code).
+   P1 cards stop generating for derived closes.
+3. **Row control** — 70/150/300/All on grid + tracker tables; full-dataset
+   sort/find before the slice; tier rows pinned; localStorage + ?rows= state.
+   D4 finding: no hard cap existed — ~70 was the natural 30d rollup shape.
+
+**Files:** attribution_engine.py, attribution_verdicts.py (ladder_groups extraction),
+roster_engine.py (new), resolution.py, ads_truth.py, dashboard/ads.py, adsapp.js,
+ads.html, adsapp.css, DECISIONS.md, dashboard/ROSTER_DIAGNOSIS.md (new).
+**Tests:** 683 passed (21 new in tests/test_roster_engine.py).
+
 ## 2026-08-07 — PD engine fixes (Master Spec v1.1 reconciliation)
 
 **What changed (4 surgical items; send path untouched):**

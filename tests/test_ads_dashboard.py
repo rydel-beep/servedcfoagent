@@ -99,6 +99,10 @@ def test_sales_role_cannot_reach_ads(monkeypatch):
     r = c.get("/ads/")
     assert r.status_code == 302 and "/dashboard/leads" in r.headers.get("Location", "")
     assert c.get("/ads/api/board?days=30").status_code == 403
+    # the roster engine's cellspec params are inside the same fail-closed wall
+    assert c.get("/ads/api/roster?days=30&level=creative&key=x&metric=leads"
+                 ).status_code == 403
+    assert c.get("/ads/?rows=300&roster=creative~x~leads").status_code in (302, 403)
 
 
 def test_anon_sees_nothing(monkeypatch):

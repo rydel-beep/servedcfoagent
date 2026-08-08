@@ -93,7 +93,8 @@ def _identity(lead: dict | None, name_norm: str, by_email: dict, by_name: dict):
     return contact, chip, ghl_name, discrepancy
 
 
-def _event_for(metric: str, lead: dict | None, derived: dict) -> dict:
+def _event_for(metric: str, lead: dict | None, derived: dict,
+               spine: dict | None = None) -> dict:
     """THE EVENT that placed this person in the cell: its date + provenance chip.
     Tracker always wins; a derived date carries its provenance; a blank stays an
     honest blank with the reason."""
@@ -104,6 +105,7 @@ def _event_for(metric: str, lead: dict | None, derived: dict) -> dict:
             return {"kind": "entered", "date": str(lead["input_date"]), "provenance": prov}
         return {"kind": "entered", "date": None,
                 "provenance": "tracker (Input Date blank)"}
+    sp = spine or {}
     if metric in ("sets", "earlier_sets", "undated_sets"):
         if lead and lead.get("set_date"):
             prov = (d.get("set_date") or {}).get("provenance") or "tracker"
@@ -111,6 +113,12 @@ def _event_for(metric: str, lead: dict | None, derived: dict) -> dict:
         if (d.get("set_date") or {}).get("date"):
             return {"kind": "set booked", "date": d["set_date"]["date"],
                     "provenance": d["set_date"]["provenance"]}
+        if lead and lead.get("set"):
+            return {"kind": "set booked", "date": None,
+                    "provenance": "tracker (set exists, Set Date blank — Piolo queue)"}
+        if sp.get("set"):
+            return {"kind": "set booked", "date": None,
+                    "provenance": sp["set"] + " (spine — appointment evidence, undated)"}
         return {"kind": "set booked", "date": None,
                 "provenance": "tracker (set exists, Set Date blank — Piolo queue)"}
     if metric in ("shows", "earlier_shows", "shows_unverified"):
@@ -124,6 +132,9 @@ def _event_for(metric: str, lead: dict | None, derived: dict) -> dict:
             via = ((sd.get("verification") or {}).get("via"))
             prov = via if state == "verified" else "show:unverified (status-only)"
             return {"kind": "showed", "date": sd["date"], "provenance": prov}
+        if sp.get("show"):
+            return {"kind": "showed", "date": None,
+                    "provenance": sp["show"] + " (spine — appointment evidence, undated)"}
         return {"kind": "showed", "date": None, "provenance": "no show evidence recorded"}
     if metric in ("closes", "earlier_closes"):
         if lead and lead.get("close_date"):
@@ -137,7 +148,8 @@ def _event_for(metric: str, lead: dict | None, derived: dict) -> dict:
     return {"kind": metric, "date": None, "provenance": "unknown metric"}
 
 
-def _funnel_chips(lead: dict | None, view_row: dict | None, derived: dict) -> list[dict]:
+def _funnel_chips(lead: dict | None, view_row: dict | None, derived: dict,
+                  spine: dict | None = None) -> list[dict]:
     """Downstream funnel state: qualified → reached → set → show → closed, each
     with provenance. Chips render, never filter."""
     d = derived or {}
@@ -147,10 +159,12 @@ def _funnel_chips(lead: dict | None, view_row: dict | None, derived: dict) -> li
     def chip(name, on, prov):
         return {"chip": name, "on": bool(on), "provenance": prov if on else None}
 
-    show_on = lv.get("show") or bool(d.get("show_date"))
+    sp = spine or {}
+    show_on = lv.get("show") or bool(d.get("show_date")) or bool(sp.get("show"))
     show_prov = ("show:tracker-authority" if lv.get("show") else
                  ((d.get("show_date") or {}).get("verification") or {}).get("via")
-                 or ("show:unverified (status-only)" if d.get("show_date") else None))
+                 or ("show:unverified (status-only)" if d.get("show_date") else None)
+                 or (sp.get("show") and sp["show"] + " (spine)") or None)
     closed_on = bool(lv.get("won") and (lv.get("close_date") or d.get("close_date")))
     closed_prov = ((d.get("close_date") or {}).get("provenance")
                    if (lv.get("close_date") is None and d.get("close_date")) else "tracker")
@@ -159,9 +173,11 @@ def _funnel_chips(lead: dict | None, view_row: dict | None, derived: dict) -> li
         chip("reached", vr.get("reached") or lv.get("set") or lv.get("show") or lv.get("won"),
              "tracker set/show/close" if (lv.get("set") or lv.get("show") or lv.get("won"))
              else "GHL contact evidence (sweep)"),
-        chip("set", lv.get("set") or bool(d.get("set_date")),
-             (d.get("set_date") or {}).get("provenance") if not lv.get("set_date")
-             and d.get("set_date") else "tracker"),
+        chip("set", lv.get("set") or bool(d.get("set_date")) or bool(sp.get("set")),
+             ((d.get("set_date") or {}).get("provenance") if not lv.get("set_date")
+              and d.get("set_date") else
+              (sp["set"] + " (spine)") if (not lv.get("set") and sp.get("set"))
+              else "tracker")),
         chip("show", show_on, show_prov),
         chip("closed", closed_on, closed_prov if closed_on else None),
     ]
@@ -232,6 +248,16 @@ def build(days=30, start=None, end=None, basis="cohort", market=None,
         derived_store = resolution.derived_dates() or {}
     except Exception:
         derived_store = {}
+    # spine events (T2 appointment derivations, undated) — evidence, never a blank label
+    spine_store: dict = {}
+    try:
+        import kv_store
+        for ev in (kv_store.get("spine:events") or []):
+            if ev.get("name_norm") and ev.get("kind") in ("set", "show"):
+                spine_store.setdefault(ev["name_norm"], {})[ev["kind"]] = \
+                    ev.get("provenance") or "derived:ghl-appointment"
+    except Exception:
+        pass
     by_email: dict = {}
     by_name: dict = {}
     try:
@@ -255,7 +281,8 @@ def build(days=30, start=None, end=None, basis="cohort", market=None,
         deal = deals_by_norm.get(nm)
         derived = derived_store.get(nm) or {}
         contact, ident_chip, ghl_name, discrepancy = _identity(lead, nm, by_email, by_name)
-        event = _event_for(metric, lead, derived)
+        spine_p = spine_store.get(nm) or {}
+        event = _event_for(metric, lead, derived, spine_p)
         lv = lead or {}
         person = {
             "name": (lead or {}).get("name") or (vr or {}).get("name") or nm,
@@ -265,7 +292,7 @@ def build(days=30, start=None, end=None, basis="cohort", market=None,
             "business": lv.get("business") or (vr or {}).get("business"),
             "identity": ident_chip,
             "event": event,
-            "funnel": _funnel_chips(lead, vr, derived),
+            "funnel": _funnel_chips(lead, vr, derived, spine_p),
             "input_date": str(lv["input_date"]) if lv.get("input_date") else None,
             "setter_outcome": lv.get("setter_outcome") or None,
             "setter_notes": lv.get("setter_notes") or None,
