@@ -87,3 +87,8 @@ the TARGET state in the same frame numeric cells skeleton; superseded fetches
 aborted (AbortController) atop the token + server-echo guards; failures revert
 controls to the last-good board. Sentinel: bucket_drift (nightly closed-day
 sample vs fresh Meta, ACTION-promoted) + name_recovery_pass live.
+
+## Sign-off
+**RYDEL-VERIFIED 2026-08-10: "range feels instant now — approved."** The
+browser-feel item (rapid range changes: no dim, no jank, truthful labels) is
+closed by Rydel's own check; nothing in this wave remains open.
