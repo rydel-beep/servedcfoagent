@@ -1,0 +1,438 @@
+{
+ "dry_run": false,
+ "f8_dry": {
+  "checked": 72,
+  "changed": [
+   {
+    "name": "lynn",
+    "field": "set_date",
+    "old": "2026-07-24",
+    "new": "2026-07-25",
+    "evidence_id": "h2iFmM76XS75tw7oeUd1",
+    "crossed_window": []
+   },
+   {
+    "name": "ramin",
+    "field": "set_date",
+    "old": "2026-07-06",
+    "new": "2026-07-07",
+    "evidence_id": "LtKkHS8qkTg7cXwkFUY6",
+    "crossed_window": []
+   },
+   {
+    "name": "ramin",
+    "field": "show_date",
+    "old": "2026-07-07",
+    "new": "2026-07-08",
+    "evidence_id": "LtKkHS8qkTg7cXwkFUY6",
+    "crossed_window": []
+   },
+   {
+    "name": "george",
+    "field": "set_date",
+    "old": "2026-07-16",
+    "new": "2026-07-17",
+    "evidence_id": "IK5aQzKmVx2SnRkCWB6E",
+    "crossed_window": []
+   },
+   {
+    "name": "ron ling",
+    "field": "set_date",
+    "old": "2026-07-17",
+    "new": "2026-07-18",
+    "evidence_id": "n5pXUSdkWvb6bldCXS5x",
+    "crossed_window": []
+   },
+   {
+    "name": "ron ling",
+    "field": "show_date",
+    "old": "2026-07-22",
+    "new": "2026-07-23",
+    "evidence_id": "n5pXUSdkWvb6bldCXS5x",
+    "crossed_window": []
+   },
+   {
+    "name": "shamsher",
+    "field": "set_date",
+    "old": "2026-05-21",
+    "new": "2026-05-22",
+    "evidence_id": "28RkcCr1u0f99hdrJjzV",
+    "crossed_window": []
+   },
+   {
+    "name": "sami amor",
+    "field": "set_date",
+    "old": "2026-04-23",
+    "new": "2026-04-24",
+    "evidence_id": "YnUuO5Q6vHapQW08foU5",
+    "crossed_window": []
+   },
+   {
+    "name": "sami amor",
+    "field": "show_date",
+    "old": "2026-04-24",
+    "new": "2026-04-25",
+    "evidence_id": "YnUuO5Q6vHapQW08foU5",
+    "crossed_window": []
+   },
+   {
+    "name": "dani zeini",
+    "field": "set_date",
+    "old": "2026-06-29",
+    "new": "2026-06-30",
+    "evidence_id": "B8Q5G9YNNJYJhoCp816w",
+    "crossed_window": []
+   },
+   {
+    "name": "iqbal fauzan",
+    "field": "set_date",
+    "old": "2026-04-28",
+    "new": "2026-04-29",
+    "evidence_id": "Z0zngfl2pHHB3H9Ko73J",
+    "crossed_window": []
+   },
+   {
+    "name": "silvia kubes",
+    "field": "set_date",
+    "old": "2026-05-26",
+    "new": "2026-05-27",
+    "evidence_id": "KnXrh0OC41Bmwo60HMgx",
+    "crossed_window": []
+   },
+   {
+    "name": "nguyen nguyen",
+    "field": "set_date",
+    "old": "2026-05-04",
+    "new": "2026-05-05",
+    "evidence_id": "bRZj1QEvzhmuv8nSyDWq",
+    "crossed_window": []
+   },
+   {
+    "name": "bilal siddique",
+    "field": "set_date",
+    "old": "2026-05-25",
+    "new": "2026-05-26",
+    "evidence_id": "MzFCSFds4sup1f29DrDT",
+    "crossed_window": []
+   },
+   {
+    "name": "isaac anderson",
+    "field": "show_date",
+    "old": "2026-07-23",
+    "new": "2026-07-24",
+    "evidence_id": "YXVzlAniZzb9a2U6gVAb",
+    "crossed_window": []
+   },
+   {
+    "name": "owen stuchbery",
+    "field": "set_date",
+    "old": "2026-05-20",
+    "new": "2026-05-21",
+    "evidence_id": "nfQjtaGXvBK3aXfB6djB",
+    "crossed_window": []
+   },
+   {
+    "name": "owen stuchbery",
+    "field": "show_date",
+    "old": "2026-05-22",
+    "new": "2026-05-23",
+    "evidence_id": "nfQjtaGXvBK3aXfB6djB",
+    "crossed_window": []
+   },
+   {
+    "name": "renato chilelli",
+    "field": "show_date",
+    "old": "2026-06-18",
+    "new": "2026-06-19",
+    "evidence_id": "vo3Ze0aeiUzOqrNGiE8s",
+    "crossed_window": []
+   },
+   {
+    "name": "francesca martina",
+    "field": "set_date",
+    "old": "2026-07-09",
+    "new": "2026-07-10",
+    "evidence_id": "lW6DHxPLt0TdTwbzgTPy",
+    "crossed_window": []
+   },
+   {
+    "name": "jingjie yangjacky",
+    "field": "set_date",
+    "old": "2026-07-20",
+    "new": "2026-07-21",
+    "evidence_id": "ygKEzcEmpKnaqH6DEWKb",
+    "crossed_window": []
+   },
+   {
+    "name": "michiel de ruyter",
+    "field": "set_date",
+    "old": "2026-08-07",
+    "new": "2026-08-08",
+    "evidence_id": "gNuuzTwiGt5tKrYHDQXQ",
+    "crossed_window": []
+   },
+   {
+    "name": "michiel de ruyter",
+    "field": "show_date",
+    "old": "2026-08-13",
+    "new": "2026-08-14",
+    "evidence_id": "gNuuzTwiGt5tKrYHDQXQ",
+    "crossed_window": []
+   }
+  ],
+  "unchanged": 50,
+  "no_evidence": [],
+  "crossed_window": [],
+  "dry_run": true
+ },
+ "f8_apply": {
+  "checked": 72,
+  "changed": [
+   {
+    "name": "lynn",
+    "field": "set_date",
+    "old": "2026-07-24",
+    "new": "2026-07-25",
+    "evidence_id": "h2iFmM76XS75tw7oeUd1",
+    "crossed_window": []
+   },
+   {
+    "name": "ramin",
+    "field": "set_date",
+    "old": "2026-07-06",
+    "new": "2026-07-07",
+    "evidence_id": "LtKkHS8qkTg7cXwkFUY6",
+    "crossed_window": []
+   },
+   {
+    "name": "ramin",
+    "field": "show_date",
+    "old": "2026-07-07",
+    "new": "2026-07-08",
+    "evidence_id": "LtKkHS8qkTg7cXwkFUY6",
+    "crossed_window": []
+   },
+   {
+    "name": "george",
+    "field": "set_date",
+    "old": "2026-07-16",
+    "new": "2026-07-17",
+    "evidence_id": "IK5aQzKmVx2SnRkCWB6E",
+    "crossed_window": []
+   },
+   {
+    "name": "ron ling",
+    "field": "set_date",
+    "old": "2026-07-17",
+    "new": "2026-07-18",
+    "evidence_id": "n5pXUSdkWvb6bldCXS5x",
+    "crossed_window": []
+   },
+   {
+    "name": "ron ling",
+    "field": "show_date",
+    "old": "2026-07-22",
+    "new": "2026-07-23",
+    "evidence_id": "n5pXUSdkWvb6bldCXS5x",
+    "crossed_window": []
+   },
+   {
+    "name": "shamsher",
+    "field": "set_date",
+    "old": "2026-05-21",
+    "new": "2026-05-22",
+    "evidence_id": "28RkcCr1u0f99hdrJjzV",
+    "crossed_window": []
+   },
+   {
+    "name": "sami amor",
+    "field": "set_date",
+    "old": "2026-04-23",
+    "new": "2026-04-24",
+    "evidence_id": "YnUuO5Q6vHapQW08foU5",
+    "crossed_window": []
+   },
+   {
+    "name": "sami amor",
+    "field": "show_date",
+    "old": "2026-04-24",
+    "new": "2026-04-25",
+    "evidence_id": "YnUuO5Q6vHapQW08foU5",
+    "crossed_window": []
+   },
+   {
+    "name": "dani zeini",
+    "field": "set_date",
+    "old": "2026-06-29",
+    "new": "2026-06-30",
+    "evidence_id": "B8Q5G9YNNJYJhoCp816w",
+    "crossed_window": []
+   },
+   {
+    "name": "iqbal fauzan",
+    "field": "set_date",
+    "old": "2026-04-28",
+    "new": "2026-04-29",
+    "evidence_id": "Z0zngfl2pHHB3H9Ko73J",
+    "crossed_window": []
+   },
+   {
+    "name": "silvia kubes",
+    "field": "set_date",
+    "old": "2026-05-26",
+    "new": "2026-05-27",
+    "evidence_id": "KnXrh0OC41Bmwo60HMgx",
+    "crossed_window": []
+   },
+   {
+    "name": "nguyen nguyen",
+    "field": "set_date",
+    "old": "2026-05-04",
+    "new": "2026-05-05",
+    "evidence_id": "bRZj1QEvzhmuv8nSyDWq",
+    "crossed_window": []
+   },
+   {
+    "name": "bilal siddique",
+    "field": "set_date",
+    "old": "2026-05-25",
+    "new": "2026-05-26",
+    "evidence_id": "MzFCSFds4sup1f29DrDT",
+    "crossed_window": []
+   },
+   {
+    "name": "isaac anderson",
+    "field": "show_date",
+    "old": "2026-07-23",
+    "new": "2026-07-24",
+    "evidence_id": "YXVzlAniZzb9a2U6gVAb",
+    "crossed_window": []
+   },
+   {
+    "name": "owen stuchbery",
+    "field": "set_date",
+    "old": "2026-05-20",
+    "new": "2026-05-21",
+    "evidence_id": "nfQjtaGXvBK3aXfB6djB",
+    "crossed_window": []
+   },
+   {
+    "name": "owen stuchbery",
+    "field": "show_date",
+    "old": "2026-05-22",
+    "new": "2026-05-23",
+    "evidence_id": "nfQjtaGXvBK3aXfB6djB",
+    "crossed_window": []
+   },
+   {
+    "name": "renato chilelli",
+    "field": "show_date",
+    "old": "2026-06-18",
+    "new": "2026-06-19",
+    "evidence_id": "vo3Ze0aeiUzOqrNGiE8s",
+    "crossed_window": []
+   },
+   {
+    "name": "francesca martina",
+    "field": "set_date",
+    "old": "2026-07-09",
+    "new": "2026-07-10",
+    "evidence_id": "lW6DHxPLt0TdTwbzgTPy",
+    "crossed_window": []
+   },
+   {
+    "name": "jingjie yangjacky",
+    "field": "set_date",
+    "old": "2026-07-20",
+    "new": "2026-07-21",
+    "evidence_id": "ygKEzcEmpKnaqH6DEWKb",
+    "crossed_window": []
+   },
+   {
+    "name": "michiel de ruyter",
+    "field": "set_date",
+    "old": "2026-08-07",
+    "new": "2026-08-08",
+    "evidence_id": "gNuuzTwiGt5tKrYHDQXQ",
+    "crossed_window": []
+   },
+   {
+    "name": "michiel de ruyter",
+    "field": "show_date",
+    "old": "2026-08-13",
+    "new": "2026-08-14",
+    "evidence_id": "gNuuzTwiGt5tKrYHDQXQ",
+    "crossed_window": []
+   }
+  ],
+  "unchanged": 50,
+  "no_evidence": [],
+  "crossed_window": [],
+  "dry_run": false
+ },
+ "f8_idempotence": {
+  "checked": 72,
+  "changed": [],
+  "unchanged": 72,
+  "no_evidence": [],
+  "crossed_window": [],
+  "dry_run": false
+ },
+ "f16_dedupe": {
+  "before": 5,
+  "after": 3,
+  "removed": 2
+ },
+ "f16_idempotence": {
+  "before": 3,
+  "after": 3,
+  "removed": 0
+ },
+ "full_i17": {
+  "cells": 4344,
+  "drift": 0,
+  "drifts": []
+ },
+ "full_i17_runtime_s": 36.2,
+ "recon": true,
+ "degraded": [],
+ "claims_reproof": {
+  "recon_block_present": true,
+  "partition_holds": true,
+  "one_clock_per_view": true,
+  "degraded_channel_sound": true,
+  "evidence_journal_alive": true,
+  "ok": true
+ },
+ "roster_cold_s": 8.044,
+ "roster_cold_served_from": "engine",
+ "roster_second_s": 0.064,
+ "accuracy_rows": [
+  {
+   "date": "2026-08-07",
+   "agreements": 18,
+   "disagreements": 1,
+   "facts_checked": 24,
+   "invariant_violations": 0
+  },
+  {
+   "date": "2026-08-08",
+   "agreements": 18,
+   "disagreements": 1,
+   "facts_checked": 24,
+   "verified_show_ratio": 0.857,
+   "invariant_violations": 0
+  },
+  {
+   "date": "2026-08-09",
+   "agreements": 18,
+   "disagreements": 1,
+   "facts_checked": 24,
+   "verified_show_ratio": 0.857,
+   "invariant_violations": 0
+  }
+ ],
+ "evidence_journal_n": 22,
+ "integrity_pending_n": 38,
+ "sentinel_cost_rows": []
+}
