@@ -164,3 +164,27 @@ def test_controls_never_locked():
             assert ".adx-hover" in chunk, f"pointer lock outside the hover card: {chunk[:120]}"
     assert ".adx-pending" in _CSS and "pointer-events" not in \
         _CSS.split(".adx-pending tbody")[1].split("@keyframes")[0]
+
+
+def test_recover_by_name_negative_caches_misses(monkeypatch):
+    """RANGE SPEED (profiled 12.8s/serve): an unresolvable name-ref re-swept up
+    to 3 YEARLY insights chunks on EVERY fresh compute. Misses negative-cache
+    for 7 days; a cached miss makes ZERO network calls; hits still learn."""
+    import kv_store
+    store = {}
+    monkeypatch.setattr(kv_store, "get", lambda k, default=None: store.get(k, default))
+    monkeypatch.setattr(kv_store, "put", lambda k, v: store.__setitem__(k, v))
+    monkeypatch.setattr(ME, "configured", lambda: True)
+    calls = []
+    monkeypatch.setattr(ME, "_get_all", lambda p, prm: (calls.append(p) or [], None))
+    assert ME.recover_by_name("Ghost Ad That Never Existed") is None
+    assert calls                                   # first miss swept
+    n = len(calls)
+    assert ME.recover_by_name("Ghost Ad That Never Existed") is None
+    assert len(calls) == n                         # cached miss: zero network
+    assert "ghost ad that never existed" in store[ME._NAME_MISS_KEY]
+    # expiry re-opens the sweep
+    store[ME._NAME_MISS_KEY]["ghost ad that never existed"] = \
+        time.time() - ME._NAME_MISS_TTL_S - 5
+    ME.recover_by_name("Ghost Ad That Never Existed")
+    assert len(calls) > n

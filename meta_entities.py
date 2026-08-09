@@ -274,10 +274,21 @@ def candidates_by_name(name: str, store: dict | None = None) -> list[dict]:
     return out
 
 
+_NAME_MISS_KEY = "attr:name_recover_misses"   # {name_norm: ts} — RANGE SPEED:
+_NAME_MISS_TTL_S = 7 * 86400                  # profiled 12.8s/serve — 3 unresolvable
+                                              # name-refs re-swept up to 3 YEARLY
+                                              # insights chunks on EVERY fresh
+                                              # compute (the dominant term of the
+                                              # old F1 cold path). Misses now
+                                              # negative-cache for 7 days, same
+                                              # discipline as _NEG_KEY id misses.
+
+
 def recover_by_name(name: str) -> dict | None:
     """Historical name → ad id via insights (works for DELETED ads). On a UNIQUE hit the
     alias is learned in kv (like Stripe payer aliases) so the next run is a lookup, not a
-    fetch. Ambiguous/no hits → None (never guesses)."""
+    fetch. Ambiguous/no hits → None (never guesses) — and the miss is negative-cached
+    (7d) so it never re-sweeps insights history on the interactive path."""
     key = norm_name(name)
     if not key or not configured():
         return None
@@ -286,6 +297,10 @@ def recover_by_name(name: str) -> dict | None:
     if key in aliases:
         return lookup_ad_id(aliases[key]) or {"ad_id": aliases[key], "name": name,
                                               "name_norm": key, "basis": "alias"}
+    misses = kv_store.get(_NAME_MISS_KEY) or {}
+    miss_ts = misses.get(key)
+    if miss_ts and time.time() - float(miss_ts) < _NAME_MISS_TTL_S:
+        return None
     today = today_sydney()
     hits = {}
     for years_back in range(0, 3):     # sweep up to 3 yearly chunks of insights history
@@ -310,6 +325,10 @@ def recover_by_name(name: str) -> dict | None:
         logger.info("ad alias learned: '%s' -> %s", key[:60], aid)
         return lookup_ad_id(aid) or {"ad_id": aid, "name": hits[aid], "name_norm": key,
                                      "basis": "alias"}
+    # no unique hit — negative-cache so the sweep never re-fires interactively;
+    # expiry (7d) keeps the door open for genuinely new historical resolutions
+    misses[key] = time.time()
+    kv_store.put(_NAME_MISS_KEY, dict(list(misses.items())[-200:]))
     return None
 
 
