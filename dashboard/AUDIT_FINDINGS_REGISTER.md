@@ -103,6 +103,18 @@ out, one epoch bump) — LIVE RUN post-deploy (artifact 08); reconciliation
 re-checked green after. DST pinned: Oct 2026 transition cases in
 `tests/test_sydney_day.py` (9 tests incl. drill B9's exact timestamp).
 
+> **CORRECTION (2026-08-09, post-ship — evidence-first, SEV1 in the follow-up
+> sweep):** the migration's 22 appointment-sourced moves were WRONG. Live probe
+> of ghl:appt_cache: all 266 appointment stamps are SPACE-SEPARATED OFFSET-LESS
+> Sydney-LOCAL ("2026-04-17 17:25:43") — the GHL appointments endpoint does not
+> emit UTC. sydney_day()'s naive=UTC assumption (calibrated on drill B9's
+> Z-suffixed SYNTHETIC fixture) mis-shifted them +1 day; the old [:10] slice was
+> accidentally right for THIS endpoint. The F8 fix remains CORRECT for Z/offset
+> wire stamps and Postgres datetimes (contacts, GHL-won, Stripe epochs — all
+> verified unmoved). Rollback data intact (rederived{old} blocks + journal).
+> Source-aware re-fix + journaled re-derivation owned by the follow-up session's
+> sweep; this entry stays honest until its artifact lands.
+
 **F9 · Stripe pagination partial-failure absorbed silently — CLEARED (drill
 B13 re-run).** A page error after partial data now STOPS the pull and marks
 kv `stripe:partial_pull` (cleared on the next clean pull; pagination-cap

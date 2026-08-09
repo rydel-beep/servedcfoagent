@@ -11,7 +11,7 @@ permitted statement of improvement; no percentages.
 | Reconciliation (leads/closes/cash/spend × cohort/activity × 30/90) | all-ok (8/8) | all-ok LIVE post-migration (recon: true, degraded: []) — artifact 08 |
 | Invariants I1–I17 (both clocks × 30/60/90) | all-ok live; I17 full sweep 18,744 cells 0 drift | LIVE full I17 post-deploy: **4,344 cells, 0 drift** (36.2s) + peer's custom-range sweep 2,970 cells 0 drift |
 | Accuracy history | 4 rows, DOUBLED dates (08-07 ×2, 08-08 ×2), disagreements 26→1→1→1 | doubles COLLAPSED live (5→3 rows, journaled, idempotent); one row/date structural; 08-09 row: 18 agree / 1 standing disagree / 0 invariant viol + the FIRST sentinel cost block |
-| Date coverage | sets 156/245 (63.7%) · closes 58/67 (86.6%) · inputs 1113/1114 | counts unchanged; F8 moved **22 dates +1 day** (15 set, 7 show; 0 window crossings; 10 stripe close dates verified unmoved) — full old→new list in artifact 08 |
+| Date coverage | sets 156/245 (63.7%) · closes 58/67 (86.6%) · inputs 1113/1114 | counts unchanged; F8's 22 appointment-date moves were RETRACTED same-night (endpoint emits Sydney-local stamps — see register correction; rollback data intact); stripe/contact classes verified correct |
 | Roster link rate (identity) | exact-id ~ as artifact 05; contact→tracker hop rates stated on board | unchanged data-state (board identity block live) |
 | Derived-vs-source agreement (supersessions) | 4 total / 4 DISAGREED (n small, watch) | unchanged (no new supersessions); now under the sentinel's L2 drift watch |
 | Verified-show ratio | 0.857 and FALLING — **nobody watching** (F15) | 0.857 live — now a TRACKED L1 metric (decline >0.03 alerts) + L2 night-over-night drift diff |

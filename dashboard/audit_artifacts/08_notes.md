@@ -28,3 +28,12 @@ after apply (recon: true, degraded: []).
 - External security probes on the live domain: /debug/stripe-ping 401 ·
   /debug/sources 401 · crafted ?roster= metric → 401 at the auth wall, zero
   payload echo (behind auth: whitelist + esc + server 400, test-proven).
+
+## CORRECTION (same night, post-ship)
+The 22 F8 moves above were ERRONEOUS — the GHL appointments endpoint emits
+offset-less Sydney-LOCAL stamps (live format probe: 266/266 space-separated,
+no Z/offset; hours cluster in Sydney business hours). The +1-day shifts came
+from sydney_day()'s naive=UTC assumption applied to local stamps. Stripe (10)
+and contact-created (4) classes verified correct and unmoved. Rollback data:
+each entry's `rederived.old` + journal lines. Fix + re-derivation: follow-up
+session (SEV1), registered in AUDIT_FINDINGS_REGISTER.md F8 correction note.
