@@ -817,6 +817,63 @@ def consult_freshness_check(out: dict) -> None:
         out["consult_freshness"] = {"error": str(e)[:80]}
 
 
+def bucket_drift_check(out: dict, sample_ads: int = 2, days_per_ad: int = 5) -> None:
+    """RANGE SPEED sentinel watch: the daily spend buckets are now the serving
+    layer for EVERY box — sample random (ad, closed-day) buckets against a
+    fresh Meta daily pull; drift = loud finding. Closed days (>72h, past the
+    restatement horizon) must match exactly. Never raises."""
+    try:
+        import random
+        import datetime as _dt
+        import meta_entities
+        import json as _json
+        from helpers import today_sydney
+        if not meta_entities.configured():
+            out["bucket_drift"] = {"skipped": "Meta not configured"}
+            return
+        store_days = (meta_entities._load_json(meta_entities.AD_SPEND_STORE)
+                      .get("days")) or {}
+        closed_cut = str(today_sydney() - _dt.timedelta(days=3))
+        candidates: dict = {}
+        for ds, admap in store_days.items():
+            if ds <= closed_cut:
+                for aid, row in (admap or {}).items():
+                    if float(row.get("spend") or 0) > 0:
+                        candidates.setdefault(aid, []).append(ds)
+        picks = random.sample(sorted(candidates), min(sample_ads, len(candidates)))
+        checked = drift = 0
+        for aid in picks:
+            days = sorted(random.sample(candidates[aid],
+                                        min(days_per_ad, len(candidates[aid]))))
+            rows, err = meta_entities._get_all(f"{aid}/insights", {
+                "access_token": __import__("config").META_ACCESS_TOKEN,
+                "fields": "spend,impressions", "time_increment": 1, "limit": 500,
+                "time_range": _json.dumps({"since": days[0], "until": days[-1]})})
+            if err and not rows:
+                out.setdefault("bucket_drift_errors", []).append(err)
+                continue
+            fresh = {r["date_start"]: (round(float(r.get("spend") or 0), 2),
+                                       int(float(r.get("impressions") or 0)))
+                     for r in rows or []}
+            for ds in days:
+                checked += 1
+                b = store_days.get(ds, {}).get(aid) or {}
+                want = fresh.get(ds, (0.0, 0))
+                got = (round(float(b.get("spend") or 0), 2),
+                       int(b.get("impressions") or 0))
+                if want != got:
+                    drift += 1
+                    out["disagreements"].append({
+                        "kind": "bucket_drift",
+                        "cause": (f"daily bucket drift: ad {aid} day {ds} store "
+                                  f"{got} vs fresh Meta {want} — a closed day "
+                                  f"changed or the bucket is corrupt"),
+                        "where": "meta_ad_spend_daily vs fresh insights"})
+        out["bucket_drift"] = {"checked": checked, "drift": drift}
+    except Exception as e:
+        out["bucket_drift"] = {"error": str(e)[:80]}
+
+
 # ── THE NIGHTLY SWEEP ────────────────────────────────────────────────────────
 
 def integrity_sweep() -> dict:
@@ -940,6 +997,7 @@ def integrity_sweep() -> dict:
     launch_freshness_check(out)
     clock_label_check(out)
     consult_freshness_check(out)
+    bucket_drift_check(out)
 
     # NEW cause classes → auto-file a PROPOSED regression-test skeleton
     causes = kv_store.get(_KV_CAUSES) or {}
@@ -976,7 +1034,8 @@ def integrity_sweep() -> dict:
     for dgg in out["disagreements"]:
         big = (dgg.get("cash") or 0) >= 1000 or dgg["kind"] in ("phantom_close", "quad",
                                                                "i17_roster_drift",
-                                                               "clock_label")
+                                                               "clock_label",
+                                                               "bucket_drift")
         flags.append({"metric": "ads_truth_action" if big else "ads_truth",
                       "reason": f"ads truth sweep: {dgg['kind']} — {dgg['cause'][:110]}"})
     _publish_flags(flags)

@@ -118,7 +118,19 @@ td.adx-cell-drill:hover { color: var(--accent); }
 
 .adx-skel { color: var(--dim); animation: adxPulse 1.2s ease-in-out infinite; }
 @keyframes adxPulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
-body.adx-loading .adx-panel, body.adx-loading .adx-scorecard { opacity: .55; transition: opacity .2s; }
+/* RANGE FLOW: the blocking full-dim overlay is DEAD (body.adx-loading removed).
+   Loading is per-cell: structure stays visible + interactive; ONLY numeric
+   content skeletons while the target range arrives. Old-range numbers are
+   hidden the moment the header claims the new range — no lying frame. */
+.adx-pending tbody td:not(.adx-name) { color: transparent !important;
+  background: linear-gradient(90deg, transparent 25%, rgba(122,162,255,.08) 50%, transparent 75%);
+  background-size: 200% 100%; animation: adx-shimmer 1.1s linear infinite; }
+.adx-pending tbody td:not(.adx-name) > * { visibility: hidden; }
+.adx-pending-head .adx-head-num { color: transparent !important;
+  background: linear-gradient(90deg, transparent 25%, rgba(122,162,255,.08) 50%, transparent 75%);
+  background-size: 200% 100%; animation: adx-shimmer 1.1s linear infinite; border-radius: 6px; }
+.adx-pending-head .adx-head-num > * { visibility: hidden; }
+@keyframes adx-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
 @media (max-width: 760px) {
   .adx-main { padding: 10px 10px 50px; }

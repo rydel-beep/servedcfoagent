@@ -125,12 +125,26 @@ def _get_all(path: str, params: dict) -> tuple[list, str | None]:
 
 # ── Entity map (id → ad/adset/campaign), ALL statuses incl. archived ─────────
 
+_json_memo: dict = {}   # {path: (mtime, obj)} — RANGE SPEED: store re-reads were
+                        # 370–405ms PER compute; an mtime-keyed memo makes them ~0.
+                        # Callers get the SAME object — mutate only on the
+                        # refresh paths that _save_json() right after (which
+                        # re-stamps the memo), never casually.
+
+
 def _load_json(path: str) -> dict:
     try:
         if os.path.exists(path):
+            mt = os.path.getmtime(path)
+            hit = _json_memo.get(path)
+            if hit and hit[0] == mt:
+                return hit[1]
             with open(path) as f:
                 d = json.load(f)
-                return d if isinstance(d, dict) else {}
+            if isinstance(d, dict):
+                _json_memo[path] = (mt, d)
+                return d
+            return {}
     except (OSError, json.JSONDecodeError) as e:
         logger.warning("store unreadable %s: %s", path, e)
     return {}
@@ -141,16 +155,23 @@ def _save_json(path: str, data: dict) -> None:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "w") as f:
             json.dump(data, f, indent=0)
+        _json_memo[path] = (os.path.getmtime(path), data)
     except OSError as e:
         logger.warning("store not persisted %s: %s", path, e)
 
 
 def refresh_entity_map(force: bool = False) -> dict:
     """Fetch/refresh the full ad entity map. Returns the store dict:
-    {"fetched_at": epoch, "ads": {ad_id: {...}}, "degraded": [...]}."""
+    {"fetched_at": epoch, "ads": {ad_id: {...}}, "degraded": [...]}.
+    RANGE SPEED: a TTL lapse no longer blocks the interactive path (4.2s
+    measured) — stale-but-present serves the stamped store and refreshes in
+    the background; only an EMPTY map (first boot) or force=True fetches inline."""
     store = _load_json(ENTITY_STORE)
     if (not force and store.get("ads")
             and time.time() - float(store.get("fetched_at") or 0) < _ENTITY_TTL_S):
+        return store
+    if not force and store.get("ads"):
+        _kick_bg("entity_map", lambda: refresh_entity_map(force=True))
         return store
     if not configured():
         return {"fetched_at": 0, "ads": store.get("ads") or {},
@@ -294,14 +315,54 @@ def recover_by_name(name: str) -> dict | None:
 
 # ── Per-ad daily spend (level=ad insights; retroactive-backfill discipline) ──
 
-def refresh_ad_spend_daily() -> dict:
-    """Refresh the per-ad daily store {date: {ad_id: {name, spend, impressions, clicks}}}.
-    Full series on first run; afterwards only the trailing _BACKFILL_DAYS are re-fetched
-    and OVERWRITTEN (Meta restates recent days). Returns the store."""
+_AD_SPEND_TTL_S = int(os.getenv("META_AD_SPEND_TTL_S", "1800"))
+_RETAIN_DAYS = int(os.getenv("META_AD_SPEND_RETAIN_DAYS", "800"))
+_bg_running: set = set()
+
+
+def _kick_bg(key: str, fn) -> None:
+    """Single-flight background refresh — Meta network NEVER blocks the
+    interactive compute path (RANGE SPEED D1: the trailing backfill fired on
+    EVERY compute with no TTL — 2–7s of Meta latency per range change)."""
+    if key in _bg_running:
+        return
+    _bg_running.add(key)
+
+    def _run():
+        try:
+            fn()
+        except Exception as e:
+            logger.warning("background refresh %s failed: %s", key, e)
+        finally:
+            _bg_running.discard(key)
+    import threading
+    threading.Thread(target=_run, daemon=True, name=f"meta-bg-{key}").start()
+
+
+def refresh_ad_spend_daily(force: bool = False) -> dict:
+    """The per-ad daily store {date: {ad_id: {name, spend, impressions, clicks}}} —
+    THE Sydney-day spend buckets. TTL-guarded: within _AD_SPEND_TTL_S the store
+    serves as-is (refreshed_at = the freshness stamp, carried to payloads);
+    stale-but-present kicks a BACKGROUND refresh and serves the stamped store
+    (trailing _BACKFILL_DAYS stay provisional by doctrine — Meta restates ~72h);
+    only an EMPTY store (first boot) blocks. force=True refreshes inline."""
     store = _load_json(AD_SPEND_STORE)
-    days = store.get("days") or {}
     if not configured():
-        return {"days": days, "degraded": [{"metric": "meta_ad_spend", "reason": "Meta not configured"}]}
+        return {"days": store.get("days") or {},
+                "degraded": [{"metric": "meta_ad_spend", "reason": "Meta not configured"}]}
+    import time as _t
+    age = _t.time() - float(store.get("refreshed_at") or 0)
+    if store.get("days") and not force:
+        if age < _AD_SPEND_TTL_S:
+            return store
+        _kick_bg("ad_spend", _refresh_ad_spend_sync)
+        return store
+    return _refresh_ad_spend_sync()
+
+
+def _refresh_ad_spend_sync() -> dict:
+    store = _load_json(AD_SPEND_STORE)
+    days = dict(store.get("days") or {})
     today = today_sydney()
     have = sorted(days.keys())
     if have and date.fromisoformat(have[0]) <= today - timedelta(days=_SERIES_DAYS - 1):
@@ -332,8 +393,10 @@ def refresh_ad_spend_daily() -> dict:
                 "impressions": int(float(r.get("impressions") or 0)),
                 "clicks": int(float(r.get("clicks") or 0)),
             }
-        # retention: keep the trailing _SERIES_DAYS only
-        cutoff = today - timedelta(days=_SERIES_DAYS - 1)
+        # retention: FULL history within _RETAIN_DAYS (range-speed: Maximum and
+        # old custom boxes are store-served — the 90d cap forced live Meta
+        # calls onto the interactive path for any older box)
+        cutoff = today - timedelta(days=_RETAIN_DAYS - 1)
         for ds in list(days.keys()):
             try:
                 if date.fromisoformat(ds) < cutoff:
@@ -341,11 +404,65 @@ def refresh_ad_spend_daily() -> dict:
             except ValueError:
                 del days[ds]
         store = {"days": days, "refreshed_at": time.time(),
+                 "history_since": store.get("history_since"),
                  "provisional_since": str(today - timedelta(days=2)), "degraded": degraded}
         _save_json(AD_SPEND_STORE, store)
     else:
         store.setdefault("degraded", []).extend(degraded)
     return store
+
+
+def backfill_history(since: str) -> dict:
+    """ONE-TIME full-history backfill of the daily buckets back to `since`
+    (Sydney days) — Maximum and old custom boxes must be store-served, never a
+    live Meta call on the interactive path. Fills only days OLDER than the
+    store's current oldest, in ~180-day chunks; idempotent (once history_since
+    <= since, re-runs fetch nothing). Closed days are stable — backfilled once,
+    they never refetch."""
+    store = _load_json(AD_SPEND_STORE)
+    days = store.get("days") or {}
+    if not configured():
+        return {"error": "Meta not configured"}
+    if store.get("history_since") and str(store["history_since"]) <= since:
+        return {"fetched_days": 0, "note": "already covered", "chunks": 0,
+                "history_since": store["history_since"]}
+    have = sorted(days.keys())
+    oldest = date.fromisoformat(have[0]) if have else today_sydney()
+    s0 = date.fromisoformat(since)
+    fetched = chunks = 0
+    errs = []
+    cur_end = oldest - timedelta(days=1)
+    while cur_end >= s0:
+        cur_start = max(s0, cur_end - timedelta(days=179))
+        rows, err = _get_all(f"{_account_id()}/insights", {
+            "access_token": META_ACCESS_TOKEN, "level": "ad",
+            "fields": "ad_id,ad_name,spend,impressions,clicks",
+            "time_increment": 1, "limit": 500,
+            "time_range": json.dumps({"since": str(cur_start), "until": str(cur_end)}),
+        })
+        chunks += 1
+        if err:
+            errs.append(err)
+            if rows is None or not rows:
+                break                      # partial history is worse than honest absence
+        for r in rows or []:
+            ds, aid = r.get("date_start"), r.get("ad_id")
+            if not ds or not aid or ds in days and aid in (days.get(ds) or {}):
+                continue
+            days.setdefault(ds, {})[aid] = {
+                "name": r.get("ad_name") or "",
+                "spend": float(r.get("spend") or 0),
+                "impressions": int(float(r.get("impressions") or 0)),
+                "clicks": int(float(r.get("clicks") or 0)),
+            }
+            fetched += 1
+        cur_end = cur_start - timedelta(days=1)
+    store["days"] = days
+    if not errs:
+        store["history_since"] = since
+    _save_json(AD_SPEND_STORE, store)
+    return {"fetched_days": fetched, "chunks": chunks,
+            "history_since": store.get("history_since"), "errors": errs[:3]}
 
 
 def spend_by_ad_in_range(start: str, end: str) -> dict:

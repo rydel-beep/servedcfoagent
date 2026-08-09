@@ -96,11 +96,23 @@ def _delivered(row: dict) -> bool:
         return False
 
 
+_refresh_memo: dict = {}   # spend-store mtime at last merge (range speed: the
+                           # 109ms merge refires only when the buckets changed)
+
+
 def refresh(max_probes: int = _PROBE_CAP_PER_REFRESH) -> dict:
     """Merge the per-ad daily spend store into the durable lineage store, then
     lifetime-probe (once, capped per refresh) any store-censored ad. Idempotent;
     zero network when nothing needs probing. Returns a summary dict."""
     import meta_entities
+    try:
+        _mt = (os.path.getmtime(meta_entities.AD_SPEND_STORE), LINEAGE_STORE)
+    except OSError:
+        _mt = None
+    if _mt is not None and _refresh_memo.get("spend_mtime") == _mt \
+            and not _refresh_memo.get("had_pending"):
+        return _refresh_memo.get("last") or {"ads": 0, "probed": 0,
+                                             "pending_probes": 0, "degraded": []}
     store = _load()
     ads = store.setdefault("ads", {})
     spend_store = meta_entities._load_json(meta_entities.AD_SPEND_STORE)
@@ -152,8 +164,11 @@ def refresh(max_probes: int = _PROBE_CAP_PER_REFRESH) -> dict:
         store["updated_at"] = time.time()
         _save(store)
     pending = sum(1 for r in ads.values() if r.get("censored") and not r.get("lifetime_probed"))
-    return {"ads": len(ads), "probed": probed, "pending_probes": pending,
-            "degraded": degraded}
+    out = {"ads": len(ads), "probed": probed, "pending_probes": pending,
+           "degraded": degraded}
+    _refresh_memo.update({"spend_mtime": _mt, "had_pending": bool(pending or degraded),
+                          "last": out})
+    return out
 
 
 def _lifetime_probe(ad_id: str, rec: dict, store_min: str | None) -> str | None:

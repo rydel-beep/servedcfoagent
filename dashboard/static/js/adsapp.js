@@ -180,13 +180,21 @@
     });
     syncPresetSelect();
     writeUrl();
+    // RANGE FLOW: NON-BLOCKING HONEST LOADING. No dim, no pointer lock —
+    // structure stays visible and interactive; the header claims the TARGET
+    // state (pending-marked) and the numeric cells skeleton AT THE SAME
+    // FRAME, so old-range numbers never sit under a new-range label.
+    enterPending();
     $('#adx-banner').innerHTML = '<span class="adx-skel">Loading ' +
-      (state.range ? esc(state.range) : state.days + (state.days === 'all' ? '' : 'd')) +
-      ' · ' + state.basis +
+      esc(state.windowLabel || '') + ' · ' + state.basis +
       (state.market !== 'all' ? ' · ' + state.market.toUpperCase() : '') + '…</span>';
-    document.body.classList.add('adx-loading');
     clearTimeout(stalePoll);
-    fetch('/ads/api/board?' + windowQS(), { credentials: 'same-origin' })
+    // RACE GUARD: superseded in-flight requests are CANCELLED, not just
+    // discarded — reqToken remains the paint gate for anything that slips by.
+    if (inflight) { try { inflight.abort(); } catch (e) {} }
+    inflight = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    fetch('/ads/api/board?' + windowQS(),
+          { credentials: 'same-origin', signal: inflight && inflight.signal })
       .then(function (r) {
         if (r.ok) return r.json();
         return r.json().then(function (j) { return { _httpError: true, error: j.error }; })
@@ -194,9 +202,12 @@
       })
       .then(function (data) {
         if (token !== state.reqToken) return;              // latest wins — stale dropped
-        document.body.classList.remove('adx-loading');
-        if (!data) { $('#adx-banner').textContent = 'Engine unreachable — nothing rendered rather than stale numbers.'; return; }
+        if (!data) {
+          exitPendingToLastGood('Engine unreachable — nothing rendered rather than stale numbers.');
+          return;
+        }
         if (data._httpError) {       // the server's friendly range refusal, verbatim
+          exitPendingToLastGood(null);
           $('#adx-banner').innerHTML = '<span class="adx-range-err">' + esc(data.error || 'bad request') + '</span>';
           return;
         }
@@ -206,16 +217,71 @@
           return;
         }
         state.board = data;
-        renderAll();
+        renderAll();                 // rebuilds cells + drops the pending marks
         if (data.stale) {           // a labelled rollup — poll for the fresh build
           stalePoll = setTimeout(function () { loadBoard(null); }, 8000);
         }
       })
-      .catch(function () {
+      .catch(function (err) {
+        if (err && err.name === 'AbortError') return;      // superseded — the newer request owns the UI
         if (token !== state.reqToken) return;
-        document.body.classList.remove('adx-loading');
-        $('#adx-banner').textContent = 'Board fetch failed — toggle a window to retry.';
+        exitPendingToLastGood('Board fetch failed — pick any range to retry.');
       });
+  }
+
+  var inflight = null;
+  function enterPending() {
+    // the header claims the TARGET (pending-marked); numbers skeleton in the
+    // same frame. Controls untouched — no blanket, no dim.
+    var tw = $('#adx-table-window');
+    if (tw) tw.textContent = '· ' + pendingHeaderLine() + ' · loading…';
+    var sb = $('#adx-scoreboard');
+    if (sb) sb.classList.add('adx-pending');
+    var rowsT = $('#adx-rows');
+    if (rowsT) rowsT.classList.add('adx-pending');
+    var hl = $('#adx-headline');
+    if (hl) hl.classList.add('adx-pending-head');
+  }
+  function clearPending() {
+    var sb = $('#adx-scoreboard');
+    if (sb) sb.classList.remove('adx-pending');
+    var rowsT = $('#adx-rows');
+    if (rowsT) rowsT.classList.remove('adx-pending');
+    var hl = $('#adx-headline');
+    if (hl) hl.classList.remove('adx-pending-head');
+  }
+  function pendingHeaderLine() {
+    // TARGET state from the CONTROLS (the board hasn't arrived): range dates
+    // are known exactly; a days-window's exact edges arrive with the data.
+    var span = state.range ? state.range.replace('..', ' → ') : 'updating…';
+    return clockStamp() + ' · ' + (state.windowLabel || '?') + ' · ' + span;
+  }
+  function exitPendingToLastGood(bannerMsg) {
+    // fetch failed / refused: revert the CONTROLS + header to the last-good
+    // board so the visible numbers and their label agree again — old numbers
+    // never sit under the target label.
+    clearPending();
+    var b = state.board;
+    if (b && b.window) {
+      var w = b.window;
+      state.basis = b.basis || state.basis;
+      var std = { 30: 1, 60: 1, 90: 1 }[w.days];
+      if (w.days >= 3650) {
+        state.range = null; state.days = 'all';
+      } else if (std && String(w.end) === sydToday()) {
+        state.range = null; state.days = w.days;    // a trailing standard window
+      } else if (w.start && w.end) {
+        state.range = String(w.start) + '..' + String(w.end);
+        state.rangeLabel = 'Custom';
+      }
+      state.windowLabel = state.range ? 'Custom' :
+        ({ 30: 'Last 30 days', 60: 'Last 60 days', 90: 'Last 90 days',
+           all: 'Maximum' }[state.days] || (state.days + 'd'));
+      syncPresetSelect();
+      writeUrl();
+      renderAll();
+    }
+    if (bannerMsg) $('#adx-banner').textContent = bannerMsg;
   }
 
   function echoMatches(data) {
@@ -269,6 +335,7 @@
 
   var levelChosen = false;   // the user's explicit pick beats the default
   function renderAll() {
+    clearPending();          // data matching the header is here — skeletons off
     if (!levelChosen && state.board.ladder && state.board.ladder.default_level) {
       state.level = state.board.ladder.default_level;
     }

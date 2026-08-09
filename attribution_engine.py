@@ -49,6 +49,9 @@ _INQUIRY_RE = re.compile(
 
 _cache: dict = {}   # {(w0,w1,basis,market,derived_epoch): (built_at, result)} — 30 min
 _CACHE_TTL_S = 1800
+_contacts_memo: dict = {}      # keyed by the contact-sync stamp (range speed)
+_tracker_memo: dict = {}       # (fetched_at, rows) — short TTL; the mirror is ~90s
+_TRACKER_MEMO_TTL_S = 60       # ≤60s extra lag on a source already ~90s-lagged (stated in the banner)
 
 
 def _derived_epoch() -> int:
@@ -1007,6 +1010,12 @@ def ig_non_lead_inquiries(contacts: list[dict], leads: list[dict],
 # ── The wrapper: gather live inputs, compute, cache ──────────────────────────
 
 def _tracker_rows_clean() -> list[list[str]]:
+    # RANGE SPEED: 60s memo. The mirror itself refreshes ~90s (stated in the
+    # banner), so this adds at most 60s to an already-lagged read — and takes
+    # 110ms of re-read+clean off every range change.
+    hit = _tracker_memo.get("v")
+    if hit is not None and time.time() - _tracker_memo.get("at", 0) < _TRACKER_MEMO_TTL_S:
+        return hit
     try:
         import sheet_mirror
         rows = sheet_mirror.read_by_name("Lead-to-Cash Tracker")
@@ -1021,9 +1030,11 @@ def _tracker_rows_clean() -> list[list[str]]:
     rows = rows or []
     try:
         import test_leads
-        return test_leads.clean_tracker_rows(rows)
+        rows = test_leads.clean_tracker_rows(rows)
     except Exception:
-        return rows
+        pass
+    _tracker_memo.update({"at": time.time(), "v": rows})
+    return rows
 
 
 def compute(days: int = 30, start: str | None = None, end: str | None = None,
@@ -1048,7 +1059,17 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
     import attribution_join
     import meta_entities
     sync = attribution_join.sync_contacts()
-    contacts = attribution_join.load_contacts()
+    # RANGE SPEED: contacts memo keyed by the SYNC STAMP — the Postgres read
+    # (95ms) refires only when the sync actually advanced. Freshness is the
+    # stamp itself, not a guess.
+    _ckey = sync.get("at")
+    if _ckey and _contacts_memo.get("key") == _ckey \
+            and _contacts_memo.get("rows") is not None:
+        contacts = _contacts_memo["rows"]
+    else:
+        contacts = attribution_join.load_contacts()
+        if _ckey:                     # no stamp → no memo (never cache blind)
+            _contacts_memo.update({"key": _ckey, "rows": contacts})
     entity_store = meta_entities.refresh_entity_map()
     meta_entities.refresh_ad_spend_daily()
     # LAUNCH LINEAGE (#133): keep the durable first-delivery/active-days store
@@ -1101,7 +1122,13 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
                 c = _cw_by_email.get(l["email"]) or _cw_by_name.get(l["name_norm"])
                 if c and c.get("id"):
                     _cw_ids.append(c["id"])
-        consult_schedule.warm(_cw_ids, cap=20)
+        # RANGE SPEED: the warm is GHL network — background it (single daemon
+        # thread, bounded cap). Unwarmed rows render the honest "fetch pending"
+        # state for the seconds it takes; nothing blocks the range change.
+        if _cw_ids:
+            import threading as _th
+            _th.Thread(target=lambda: consult_schedule.warm(_cw_ids, cap=20),
+                       daemon=True, name="consult-warm").start()
     except Exception as e:
         logger.info("consult warm skipped: %s", e)
     # canonical anchors — the same engines the dashboard quotes. Closes/cash canonical

@@ -123,13 +123,23 @@ def _graph_get_all(path: str, params: dict) -> tuple[list | None, str | None]:
     return rows, None
 
 
+_store_memo: dict = {}   # (mtime, obj) — RANGE SPEED: the canonical-spend leg
+                         # re-read this file on every compute (368ms measured)
+
+
 def _load_store() -> dict:
     """Load the persisted per-day spend store: {date: {spend, impressions, clicks, last_fetched}}."""
     try:
         if os.path.exists(META_SPEND_STORE):
+            mt = os.path.getmtime(META_SPEND_STORE)
+            if _store_memo.get("mt") == mt:
+                return _store_memo["obj"]
             with open(META_SPEND_STORE) as f:
                 d = json.load(f)
-                return d if isinstance(d, dict) else {}
+            if isinstance(d, dict):
+                _store_memo.update({"mt": mt, "obj": d})
+                return d
+            return {}
     except (OSError, json.JSONDecodeError) as e:
         logger.warning("Meta spend store unreadable: %s", e)
     return {}
@@ -140,8 +150,56 @@ def _save_store(store: dict) -> None:
         os.makedirs(os.path.dirname(META_SPEND_STORE) or ".", exist_ok=True)
         with open(META_SPEND_STORE, "w") as f:
             json.dump(store, f, indent=0)
+        _store_memo.update({"mt": os.path.getmtime(META_SPEND_STORE), "obj": store})
     except OSError as e:
         logger.warning("Meta spend store not persisted: %s", e)
+
+
+def backfill_history(since: str) -> dict:
+    """ONE-TIME account-level daily backfill to `since` — the canonical-spend
+    anchor must be store-served for Maximum/old boxes (a cold box paid a live
+    Meta call per compute otherwise). Idempotent once coverage reaches `since`."""
+    import datetime as _dt
+    store = _load_store()
+    if not META_ACCESS_TOKEN or not META_AD_ACCOUNT_ID:
+        return {"error": "Meta not configured"}
+    dates = []
+    for ds in store:
+        try:
+            dates.append(_dt.date.fromisoformat(ds))
+        except ValueError:
+            pass
+    oldest = min(dates) if dates else today_sydney()
+    s0 = _dt.date.fromisoformat(since)
+    if oldest <= s0:
+        return {"fetched_days": 0, "note": "already covered"}
+    fetched = 0
+    errs = []
+    cur_end = oldest - timedelta(days=1)
+    while cur_end >= s0:
+        cur_start = max(s0, cur_end - timedelta(days=364))
+        rows, err = _graph_get_all(f"{_account_id()}/insights", {
+            "fields": "spend,impressions,clicks", "level": "account",
+            "time_increment": 1, "limit": 500,
+            "time_range": json.dumps({"since": str(cur_start), "until": str(cur_end)}),
+            "access_token": META_ACCESS_TOKEN,
+        })
+        if rows is None:
+            errs.append(err)
+            break
+        for r in rows:
+            ds = r.get("date_start")
+            if ds and ds not in store:
+                store[ds] = {"spend": round(_f(r.get("spend")), 2),
+                             "impressions": int(_f(r.get("impressions"))),
+                             "clicks": int(_f(r.get("clicks"))),
+                             "last_fetched": str(today_sydney())}
+                fetched += 1
+        if err:
+            errs.append(err)
+        cur_end = cur_start - timedelta(days=1)
+    _save_store(store)
+    return {"fetched_days": fetched, "errors": errs[:3]}
 
 
 def _f(v) -> float:
