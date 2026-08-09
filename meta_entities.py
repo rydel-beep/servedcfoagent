@@ -339,6 +339,36 @@ def _kick_bg(key: str, fn) -> None:
     threading.Thread(target=_run, daemon=True, name=f"meta-bg-{key}").start()
 
 
+_KV_AD_SPEND = "meta:ad_spend_daily"   # durable mirror — Railway files die per deploy;
+                                       # without this the history backfill would too,
+                                       # and every deploy's first compute paid a full
+                                       # 90d inline fetch
+
+
+def _load_spend_store() -> dict:
+    store = _load_json(AD_SPEND_STORE)
+    if store.get("days"):
+        return store
+    try:
+        import kv_store
+        mirrored = kv_store.get(_KV_AD_SPEND)
+        if isinstance(mirrored, dict) and mirrored.get("days"):
+            _save_json(AD_SPEND_STORE, mirrored)     # reseed the fast local file
+            return mirrored
+    except Exception as e:
+        logger.info("ad-spend kv seed failed: %s", e)
+    return store
+
+
+def _save_spend_store(store: dict) -> None:
+    _save_json(AD_SPEND_STORE, store)
+    try:
+        import kv_store
+        kv_store.put(_KV_AD_SPEND, store)
+    except Exception as e:
+        logger.info("ad-spend kv mirror failed: %s", e)
+
+
 def refresh_ad_spend_daily(force: bool = False) -> dict:
     """The per-ad daily store {date: {ad_id: {name, spend, impressions, clicks}}} —
     THE Sydney-day spend buckets. TTL-guarded: within _AD_SPEND_TTL_S the store
@@ -346,7 +376,7 @@ def refresh_ad_spend_daily(force: bool = False) -> dict:
     stale-but-present kicks a BACKGROUND refresh and serves the stamped store
     (trailing _BACKFILL_DAYS stay provisional by doctrine — Meta restates ~72h);
     only an EMPTY store (first boot) blocks. force=True refreshes inline."""
-    store = _load_json(AD_SPEND_STORE)
+    store = _load_spend_store()
     if not configured():
         return {"days": store.get("days") or {},
                 "degraded": [{"metric": "meta_ad_spend", "reason": "Meta not configured"}]}
@@ -361,7 +391,7 @@ def refresh_ad_spend_daily(force: bool = False) -> dict:
 
 
 def _refresh_ad_spend_sync() -> dict:
-    store = _load_json(AD_SPEND_STORE)
+    store = _load_spend_store()
     days = dict(store.get("days") or {})
     today = today_sydney()
     have = sorted(days.keys())
@@ -406,7 +436,7 @@ def _refresh_ad_spend_sync() -> dict:
         store = {"days": days, "refreshed_at": time.time(),
                  "history_since": store.get("history_since"),
                  "provisional_since": str(today - timedelta(days=2)), "degraded": degraded}
-        _save_json(AD_SPEND_STORE, store)
+        _save_spend_store(store)
     else:
         store.setdefault("degraded", []).extend(degraded)
     return store
@@ -419,7 +449,7 @@ def backfill_history(since: str) -> dict:
     store's current oldest, in ~180-day chunks; idempotent (once history_since
     <= since, re-runs fetch nothing). Closed days are stable — backfilled once,
     they never refetch."""
-    store = _load_json(AD_SPEND_STORE)
+    store = _load_spend_store()
     days = store.get("days") or {}
     if not configured():
         return {"error": "Meta not configured"}
@@ -433,7 +463,8 @@ def backfill_history(since: str) -> dict:
     errs = []
     cur_end = oldest - timedelta(days=1)
     while cur_end >= s0:
-        cur_start = max(s0, cur_end - timedelta(days=179))
+        # 59-day chunks: a 180-day level=ad page exceeded the 10s read timeout
+        cur_start = max(s0, cur_end - timedelta(days=59))
         rows, err = _get_all(f"{_account_id()}/insights", {
             "access_token": META_ACCESS_TOKEN, "level": "ad",
             "fields": "ad_id,ad_name,spend,impressions,clicks",
@@ -460,7 +491,7 @@ def backfill_history(since: str) -> dict:
     store["days"] = days
     if not errs:
         store["history_since"] = since
-    _save_json(AD_SPEND_STORE, store)
+    _save_spend_store(store)
     return {"fetched_days": fetched, "chunks": chunks,
             "history_since": store.get("history_since"), "errors": errs[:3]}
 
@@ -475,7 +506,7 @@ def spend_by_ad_in_range(start: str, end: str) -> dict:
     except (TypeError, ValueError):
         return {"ads": {}, "source": None,
                 "degraded": [{"metric": "meta_ad_spend_range", "reason": "bad dates"}]}
-    store = _load_json(AD_SPEND_STORE)
+    store = _load_spend_store()
     days = store.get("days") or {}
     ds_dates = []
     for ds in days:
