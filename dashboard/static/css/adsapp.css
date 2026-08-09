@@ -290,3 +290,14 @@ button.adx-deal-open { color: var(--accent, #7aa2ff); }
 .adx-tl-day { width: 4px; height: 12px; border-radius: 1px; background: #22304a; }
 .adx-tl-day.on { background: var(--good, #43c774); }
 .adx-tl-cap { font-size: 10px; color: var(--muted, #7b8598); width: 100%; }
+
+/* #134 — CONSULT DATETIME (scheduled-for, display only; windowing stays booked-on) */
+.adx-consult { font-size: 11.5px; color: var(--fg, #dfe6f2); margin-left: 6px; white-space: nowrap; }
+.adx-consult strong { font-weight: 600; }
+.adx-consult-up strong { color: var(--good, #43c774); }
+.adx-consult-chip { display: inline-block; padding: 0 5px; border-radius: 3px; font-size: 9.5px;
+  font-weight: 700; letter-spacing: .3px; background: #1c2c4a; color: #8fb4ff; border: 1px solid #33507f; }
+.adx-consult-rebook { background: #3a2c14; color: #e0b653; border-color: #7f6733; cursor: help; }
+.adx-consult-tz { font-size: 9.5px; color: var(--muted, #7b8598); border: 1px solid var(--line, #2a3448);
+  border-radius: 3px; padding: 0 4px; cursor: help; }
+.adx-consult-none { color: var(--muted, #7b8598); font-style: italic; }

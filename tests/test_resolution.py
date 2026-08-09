@@ -79,3 +79,42 @@ def test_no_write_paths_exist():
     for needle in ("update_cell", "batch_update", "append_row", "requests.post",
                    "stripe.Charge.modify", ".update("):
         assert needle not in src
+
+
+def test_card_layer_duplicate_dated_guard(monkeypatch):
+    """Triple-sweep SEV3 (2026-08-10, the Nirosha card): a blank won row whose
+    identity already has a DATED won row must NOT get a date-candidate card —
+    acting on it would double-count the deal. It gets the honest duplicate card
+    instead (delete the row, never fill a date). Both identity keys guard."""
+    import close_integrity as CI
+    monkeypatch.setattr(CI, "_tracker_won_rows", lambda: [
+        {"name": "Nirosha J", "email": "walkway@x.com", "close_date": None,
+         "close_raw": "", "input_date": None, "contract": 18300.0, "cash": 0},
+        {"name": "Nirosha Jay", "email": "walkway@x.com",
+         "close_date": __import__("datetime").date(2026, 1, 12), "close_raw": "2026-01-12",
+         "input_date": __import__("datetime").date(2026, 1, 12),
+         "contract": 18300.0, "cash": 5000.0},
+        {"name": "Clean Blank", "email": "clean@x.com", "close_date": None,
+         "close_raw": "", "input_date": None, "contract": 7000.0, "cash": 0},
+    ])
+    import datetime as dt
+    monkeypatch.setattr(resolution, "_ghl_won_dates", lambda: {})
+    monkeypatch.setattr(resolution, "_stripe_first_payment_dates",
+                        lambda days=365: {"walkwayxcom": {"date": dt.date(2026, 1, 11),
+                                                          "via": "email",
+                                                          "charge_id": "ch_x"},
+                                          "cleanxcom": {"date": dt.date(2026, 7, 1),
+                                                        "via": "email",
+                                                        "charge_id": "ch_y"}})
+    monkeypatch.setattr("db.db_configured", lambda: False)
+    cards = resolution.propose_fixes()
+    by_kind = {}
+    for c in cards:
+        by_kind.setdefault(c["kind"], []).append(c["name"])
+    # the duplicate blank NEVER gets a P1 candidate — it gets the delete-me card
+    assert "Nirosha J" not in by_kind.get("P1_close_date_candidate", [])
+    assert by_kind.get("duplicate_blank_won_row") == ["Nirosha J"]
+    dup = next(c for c in cards if c["kind"] == "duplicate_blank_won_row")
+    assert "DELETE" in dup["instruction"] and "do NOT fill" in dup["instruction"]
+    # a clean blank still gets its candidate — the guard is surgical
+    assert by_kind.get("P1_close_date_candidate") == ["Clean Blank"]

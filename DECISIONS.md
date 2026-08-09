@@ -1746,3 +1746,27 @@
      honesty notes. Sourcing: META chips on Meta-sourced columns, HYB chips on
      Meta÷engine hybrids (degrade if either side degrades) — grep-asserted no
      unlabelled Meta metric. D1/D2/D3 in dashboard/LAUNCH_DATE_DIAGNOSIS.md.
+
+134. **CONSULT SCHEDULED-DATETIME — THE DISPLAY CONVENTION + THE APPOINTMENT-TZ
+     TRUTH (2026-08-09).** ENCODED (veto-able): two dates exist per set and BOTH
+     stay with distinct jobs — BOOKED-ON (setter action; appointment dateAdded /
+     tracker Set Date) remains the WINDOWING clock for Sets (#128, unchanged);
+     SCHEDULED-FOR (appointment startTime — when the consult happens) is the
+     DISPLAY beside the tracker link: "August 14, 2026, 2:30 PM", Sydney local,
+     one shared formatter (consult_schedule.format_consult), provenance chip
+     attached, US-market rows carry the AEST/AEDT suffix. Never swapped; never
+     windowed on scheduled; never booked shown where "consult:" is labelled.
+     Rebook chains: cancelled/invalid NEVER render as the consult; earliest
+     upcoming beats latest past; "rebooked ×N" marks the chain. Tracker-only
+     sets state "set (tracker) · no GHL appointment" — no fabricated time;
+     unfetched-cache is a distinct stated state the warm passes converge to
+     zero (compute() cap-20 warm + nightly). TZ TRUTH (probed, peer-confirmed
+     266/266): the GHL /contacts/{id}/appointments endpoint returns OFFSET-LESS
+     LOCATION-LOCAL timestamps (raw hours all business-time; the UTC reading
+     put 121/130 consults 7pm–6am — absurd) — parsed as Sydney-LOCAL in
+     consult_schedule.parse_appt_dt. This is the OPPOSITE of sydney_day's
+     naive=UTC default (correct for Z/offset wire stamps and Postgres); the
+     F8 migration's 22 appointment-sourced set/show re-derivations were
+     +1-day regressions and are corrected under the triple-sweep register
+     (source-aware parse + journaled re-derivation; artifact 08 carries the
+     changed list; the peer session amends its own F8 claims).

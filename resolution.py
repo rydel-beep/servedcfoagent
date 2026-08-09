@@ -177,6 +177,19 @@ def propose_fixes() -> list[dict]:
     if not blanks:
         return []
 
+    # DUPLICATE-DATED GUARD at the CARD layer (triple-sweep SEV3, 2026-08-10):
+    # the #131 auto-converter refuses a blank won row whose identity already has
+    # a DATED won row (both keys), but the card generator kept proposing a
+    # candidate for it — acting on Nirosha's card would have dated her duplicate
+    # blank row and recreated the double-count. Same guard, both keys; the
+    # duplicate surfaces as its own honest card kind instead (excluded ≠ deleted).
+    dated_idents: set = set()
+    for t in won:
+        if t.get("close_date") is not None:
+            for ident in (_norm(t.get("email")), _norm(t["name"])):
+                if ident:
+                    dated_idents.add(ident)
+
     ghl_dates = _ghl_won_dates()
     stripe_dates = _stripe_first_payment_dates()
     # F9: the guard runs AFTER the fresh pull — checking a previous run's marker
@@ -201,6 +214,16 @@ def propose_fixes() -> list[dict]:
         # human. The Piolo source-fill item persists via close_integrity; the
         # derivation is visible in the rail's Derived section with its chip.
         if (derived.get(name_n) or {}).get("close_date"):
+            continue
+        if (email_n and email_n in dated_idents) or name_n in dated_idents:
+            cards.append({
+                "kind": "duplicate_blank_won_row", "name": t["name"],
+                "field": "Close Date", "contract": t.get("contract"),
+                "instruction": (f"{t['name']} already has a DATED won row — this "
+                                f"blank row is a duplicate. DELETE the duplicate "
+                                f"row in the tracker (do NOT fill a date; that "
+                                f"would double-count the deal)."),
+                "id": f"pfix:dup_blank:{name_n}"})
             continue
         candidates = []
         g = ghl_dates.get(email_n) or ghl_dates.get(name_n)
@@ -536,7 +559,8 @@ def apply_payment_class_ruling() -> dict:
     return out
 
 
-def rederive_ghl_dates_sydney(dry_run: bool = False) -> dict:
+def rederive_ghl_dates_sydney(dry_run: bool = False,
+                              reason: str = "F8-sydney-day") -> dict:
     """F8 ONE-OFF (journaled, reversible): re-derive every GHL-derived date with
     the Sydney-day helper. The pre-F8 derivations sliced the UTC day — any
     appointment/contact event before ~10–11am Sydney sat on the previous day.
@@ -603,8 +627,13 @@ def rederive_ghl_dates_sydney(dry_run: bool = False) -> dict:
                                                "appointment_id": aid})
                     continue
                 raw = appt.get("dateAdded") if field == "set_date" else appt.get("startTime")
-                d = sydney_day(raw)
-                new_iso = str(d) if d else None
+                # #134 tz truth: the appointment endpoint's stamps are LOCATION-
+                # LOCAL offset-less — source-aware day, NOT the naive=UTC path.
+                # (The first run of this migration used sydney_day here and
+                # moved 22 dates +1 day; rederive_appointment_local_days()
+                # corrected them, journaled.)
+                import consult_schedule
+                new_iso = consult_schedule.appt_day(raw)
             elif field == "input_date" and prov.startswith("derived:ghl-contact-created"):
                 out["checked"] += 1
                 cid = ev.get("contact_id")
@@ -653,16 +682,27 @@ def rederive_ghl_dates_sydney(dry_run: bool = False) -> dict:
                 out["crossed_window"].append(change)
             if not dry_run:
                 entry["date"] = new_iso
-                entry["rederived"] = {"reason": "F8-sydney-day", "old": change["old"],
+                entry["rederived"] = {"reason": reason, "old": change["old"],
                                       "ts": str(today)}
                 changed_any = True
                 log_autofix(f"date rederived ({field})",
                             f"{nm}: {change['old']} → {new_iso} via {prov} "
-                            f"(evidence {ev_id}, reason F8-sydney-day)")
+                            f"(evidence {ev_id}, reason {reason})")
     if changed_any:
         _put_derived(store)
-        bump_derived_epoch("F8 sydney-day re-derivation")
+        bump_derived_epoch(f"date re-derivation ({reason})")
     return out
+
+
+def rederive_appointment_local_days(dry_run: bool = False) -> dict:
+    """#134 CORRECTIVE MIGRATION: the F8 run treated the appointment endpoint's
+    OFFSET-LESS LOCATION-LOCAL stamps as UTC and moved 22 derived set/show
+    dates +1 day (peer-confirmed 266/266 offset-less; hour-distribution proof
+    in DECISIONS #134). The re-derivation machinery above now parses those
+    stamps source-aware (consult_schedule.appt_day), so this run reverts
+    exactly the wrongly-shifted entries; contact-created and Stripe legs
+    recompute identically and journal nothing. Idempotent."""
+    return rederive_ghl_dates_sydney(dry_run=dry_run, reason="appt-local-tz (#134)")
 
 
 _APPLY_DATE_RE = re.compile(r"apply (the )?date card (for )?(.+)", re.I)

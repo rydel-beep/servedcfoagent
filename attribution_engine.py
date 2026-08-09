@@ -1079,6 +1079,31 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
         return attribution_join._label_for(ad_id, hit, entity_store)
 
     rows = _tracker_rows_clean()
+    # CONSULT WARM (#134): keep the appointment cache covering recent set-leads
+    # so roster rows render scheduled datetimes without per-panel lookups.
+    # Bounded (cap 20/refresh, 7d TTL) — one burst then quiet, like the lineage
+    # probes above.
+    try:
+        import consult_schedule
+        _cw_leads, _cw_cm = parse_tracker(rows)
+        _cw_by_email = {c["email"]: c for c in contacts if c.get("email")}
+        _cw_by_name: dict = {}
+        for c in contacts:
+            if c.get("name"):
+                _cw_by_name.setdefault(_norm(c["name"]), c)
+        _cw_floor = today_sydney() - dt.timedelta(days=120)
+        _cw_ids = []
+        for l in _cw_leads:
+            if not l.get("set"):
+                continue
+            _ld = l.get("set_date") or l.get("input_date")
+            if _ld and _ld >= _cw_floor:
+                c = _cw_by_email.get(l["email"]) or _cw_by_name.get(l["name_norm"])
+                if c and c.get("id"):
+                    _cw_ids.append(c["id"])
+        consult_schedule.warm(_cw_ids, cap=20)
+    except Exception as e:
+        logger.info("consult warm skipped: %s", e)
     # canonical anchors — the same engines the dashboard quotes. Closes/cash canonical
     # follows THE ACTIVE CLOCK: activity = the tracker authority by Close Date (the
     # unit-economics engine); cohort = the same clean won rows keyed by Input Date.

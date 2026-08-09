@@ -336,6 +336,12 @@ def build(days=30, start=None, end=None, basis="cohort", market=None,
     tracker_link = _tracker_link()
     tier_key = key if key in _TIER_KEYS else None
 
+    # CONSULT DATETIME (#134): the scheduled-for field, from the ONE source over
+    # the cached GHL appointment objects — read once per build, attached wherever
+    # a set exists for the person. DISPLAY only; windowing stays on booked-on.
+    import consult_schedule
+    consult_cache = consult_schedule._cache()
+
     people = []
     for nm in name_norms:
         lead = by_norm.get(nm)
@@ -368,6 +374,16 @@ def build(days=30, start=None, end=None, basis="cohort", market=None,
             "tracker_link": tracker_link if lead is not None else None,
             "email": lv.get("email") or None,
         }
+        # a set exists (tracker / derived / spine) → the consult slot renders;
+        # no-set rows carry NO field — absence is honest, not an empty bug (#134)
+        set_exists = bool(lv.get("set") or (derived.get("set_date") or {}).get("date")
+                          or spine_p.get("set"))
+        if set_exists:
+            person["consult"] = consult_schedule.consult_field(
+                (contact or {}).get("id"), market=lv.get("market"),
+                cache=consult_cache)
+            person["booked_date"] = (str(lv["set_date"]) if lv.get("set_date")
+                                     else (derived.get("set_date") or {}).get("date"))
         if metric in ("closes", "earlier_closes") or lv.get("won"):
             person["cash"] = (deal or {}).get("cash", lv.get("cash"))
             person["contract"] = (deal or {}).get("contract", lv.get("contract"))

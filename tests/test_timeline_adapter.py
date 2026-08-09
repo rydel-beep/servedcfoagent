@@ -66,6 +66,11 @@ def test_risk_counts_verbatim(monkeypatch):
 
 def test_signals_week_filter_and_praise_split(monkeypatch):
     import helpers
+    import datetime as _dt
+    # freeze the clock inside the fixture's week — the complaint is dated
+    # 2026-08-02, so an unfrozen "today − 7d" cutoff made this test start
+    # failing every day after 2026-08-09 (triple-sweep calendar-flake fix)
+    monkeypatch.setattr(helpers, "today_sydney", lambda: _dt.date(2026, 8, 8))
     _wire(monkeypatch, {"/bridge/data/overview": OV, "/bridge/data/signals": SIGNALS})
     r, h = TA.handle_timeline_signals("any complaints this week?")
     assert h and "Food arrived cold" in r and "severity High" in r and "Loved the reel" not in r

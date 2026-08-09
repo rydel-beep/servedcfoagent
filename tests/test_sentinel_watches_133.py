@@ -109,3 +109,30 @@ def test_clock_label_drift_is_loud_and_action_promoted(monkeypatch):
     src = open(os.path.join(os.path.dirname(__file__), "..", "ads_truth.py")).read()
     promo = src.split('dgg["kind"] in (')[1].split(")")[0]
     assert "clock_label" in promo
+
+
+def test_consult_freshness_persisting_unfetched_flags(monkeypatch):
+    """#134: set-lead contacts missing from the appointment cache across two
+    sweep nights = a converging-warm failure — flagged; first night only records."""
+    import attribution_engine as eng
+    import attribution_join
+    import consult_schedule as CS2
+    import datetime as dt
+    from tests.test_attribution import HDR, row, contact
+    monkeypatch.setattr(eng, "_tracker_rows_clean",
+                        lambda: [HDR, row("Set Lead", "sl@x.com",
+                                          input_date=str(dt.date.today()))])
+    monkeypatch.setattr(attribution_join, "load_contacts",
+                        lambda: [contact("c9", "sl@x.com", "Set Lead")])
+    monkeypatch.setattr(CS2, "_cache", lambda: {})
+    import kv_store
+    store = {}
+    monkeypatch.setattr(kv_store, "get", lambda k, default=None: store.get(k, default))
+    monkeypatch.setattr(kv_store, "put", lambda k, v: store.__setitem__(k, v))
+    out1 = {"date": "2026-08-10", "disagreements": []}
+    ads_truth.consult_freshness_check(out1)
+    assert out1["consult_freshness"]["unfetched"] == 1
+    assert out1["disagreements"] == []            # first night: recorded only
+    out2 = {"date": "2026-08-11", "disagreements": []}
+    ads_truth.consult_freshness_check(out2)
+    assert any(d["kind"] == "consult_freshness" for d in out2["disagreements"])

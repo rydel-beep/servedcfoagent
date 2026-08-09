@@ -55,12 +55,13 @@ def test_hover_dom_exists_and_is_fixed_position():
 
 
 def test_date_control_declares_its_clock():
-    """§2.2: the control exists, the clock toggle sits beside it, presets default
-    to activity, standard windows restore the ruled cohort default, and the URL
-    carries ?range=&clock=."""
+    """#134: ONE control, in the Ads card header — Meta-familiar presets +
+    Maximum + custom; the clock toggle beside it; presets default to activity,
+    the ruled standard windows (30/60/90/Maximum) to cohort; URL-stated."""
     assert 'id="adx-range-preset"' in _HTML
     assert 'id="adx-range-custom"' in _HTML
-    for preset in ("today", "24h", "7d", "14d", "30d", "thismonth", "lastmonth", "max"):
+    for preset in ("today", "yesterday", "7d", "14d", "30d", "60d", "90d",
+                   "thismonth", "lastmonth", "max", "custom"):
         assert f'value="{preset}"' in _HTML, preset
     assert "state.basis = 'activity'" in _JS          # the box default
     assert "state.basis = 'cohort'" in _JS            # the ruled standard-window default
@@ -69,6 +70,27 @@ def test_date_control_declares_its_clock():
     assert "'&clock=' + state.basis" in _JS
     # Sydney days, not browser-local days
     assert "Australia/Sydney" in _JS
+    # the resolved state is ALWAYS rendered: "{Clock} · {label} · {start} → {end}"
+    assert "function headerLine" in _JS
+    assert "headerLine()" in _JS
+
+
+def test_the_unbind_one_table_one_control():
+    """#134 THE UNBIND: the page-top window/range controls are GONE — the ONE
+    date control lives inside the table card header; nothing else governs the
+    ads table. The main dashboard never touched /ads (cross-page assert)."""
+    head = _HTML.split('<main class="adx-main">')[0]
+    assert 'adx-win"' not in head                    # the 30/60/90/All buttons are gone
+    assert 'id="adx-range"' not in head              # no picker in the page top either
+    card = _HTML.split('<div class="adx-table-head">')[1].split("</section>")[0]
+    assert 'id="adx-range-preset"' in card           # the control lives IN the card
+    assert 'id="adx-bases"' in card                  # the clock toggle beside it
+    assert _HTML.count('id="adx-range-preset"') == 1  # exactly one control, ever
+    # no leftover top-bar wiring in the JS
+    assert "'.adx-win'" not in _JS and '".adx-win"' not in _JS
+    # the main dashboard has no binding to the ads table at all
+    dj = open(os.path.join(_REPO, "dashboard", "static", "js", "dashboard.js")).read()
+    assert "/ads/api" not in dj
 
 
 def test_every_drill_fetch_inherits_box_and_clock():

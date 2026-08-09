@@ -369,14 +369,17 @@ def event_sweep(max_contacts: int = 40) -> dict:
             continue
         if len(appts) == 1:
             a = appts[0]
-            booked = _date_of(a.get("dateAdded"))
+            import consult_schedule
+            # #134 tz truth: appointment-endpoint stamps are LOCATION-LOCAL —
+            # source-aware day, never the naive=UTC path (the F8-appt class)
+            booked = consult_schedule.appt_day(a.get("dateAdded"))
             if booked and resolution.record_derived_date(
                     nm, "set_date", booked, "derived:ghl-appt",
                     {"appointment_id": a.get("id"), "contact_id": cid,
                      "raw_status": a.get("appointmentStatus") or a.get("status")}):
                 derived += 1
                 status = str(a.get("appointmentStatus") or a.get("status") or "").lower()
-                sched = _date_of(a.get("startTime"))
+                sched = consult_schedule.appt_day(a.get("startTime"))
                 if sched and status in _APPT_KEPT:
                     resolution.record_derived_date(
                         nm, "show_date", sched, "derived:ghl-appt",
@@ -388,8 +391,8 @@ def event_sweep(max_contacts: int = 40) -> dict:
                 proposed.append({"id": pid, "kind": "set_date_candidates",
                                  "close": name, "contact_id": cid,
                                  "candidates": [{"appointment_id": a.get("id"),
-                                                 "booked": _date_of(a.get("dateAdded")),
-                                                 "start": _date_of(a.get("startTime")),
+                                                 "booked": __import__("consult_schedule").appt_day(a.get("dateAdded")),
+                                                 "start": __import__("consult_schedule").appt_day(a.get("startTime")),
                                                  "status": a.get("appointmentStatus") or a.get("status")}
                                                 for a in appts],
                                  "ask": "multiple appointments — pick the set call"})
@@ -753,6 +756,58 @@ def clock_label_check(out: dict) -> None:
         out["clock_label"] = {"error": str(e)[:80]}
 
 
+def consult_freshness_check(out: dict) -> None:
+    """#134 sentinel watch: the consult-datetime surface must not silently rot.
+    Coverage = set-leads (last 60d) whose GHL contact has an appointment-cache
+    entry; unfetched contacts PERSISTING across nights (the warm passes should
+    converge them to zero) flag as a disagreement. Never raises."""
+    import kv_store
+    try:
+        import attribution_engine as AE
+        import attribution_join
+        import consult_schedule
+        import datetime as _dt
+        from helpers import today_sydney
+        cache = consult_schedule._cache()
+        leads_all, _cm = AE.parse_tracker(AE._tracker_rows_clean())
+        by_email = {}
+        by_name = {}
+        for c in attribution_join.load_contacts():
+            if c.get("email"):
+                by_email.setdefault(c["email"], c)
+            if c.get("name"):
+                by_name.setdefault(_norm(c["name"]), c)
+        floor = today_sydney() - _dt.timedelta(days=60)
+        want = unfetched = tracker_only = 0
+        for l in leads_all:
+            if not l.get("set"):
+                continue
+            ld = l.get("set_date") or l.get("input_date")
+            if not ld or ld < floor:
+                continue
+            want += 1
+            c = by_email.get(l["email"]) or by_name.get(l["name_norm"])
+            if not c:
+                tracker_only += 1
+            elif c.get("id") not in cache:
+                unfetched += 1
+        out["consult_freshness"] = {"set_leads_60d": want, "unfetched": unfetched,
+                                    "tracker_only": tracker_only}
+        prev = kv_store.get("consult:unfetched_prev") or {}
+        if unfetched and prev.get("count") and prev.get("date") != out.get("date"):
+            out["disagreements"].append({
+                "kind": "consult_freshness",
+                "cause": (f"{unfetched} set-lead contact(s) still lack an "
+                          f"appointment-cache entry since {prev.get('date')} — "
+                          f"their roster rows show 'fetch pending' instead of a "
+                          f"consult datetime (warm passes not converging)"),
+                "where": "ghl:appt_cache coverage, 60d set-leads"})
+        kv_store.put("consult:unfetched_prev", {"date": out.get("date"),
+                                                "count": unfetched})
+    except Exception as e:
+        out["consult_freshness"] = {"error": str(e)[:80]}
+
+
 # ── THE NIGHTLY SWEEP ────────────────────────────────────────────────────────
 
 def integrity_sweep() -> dict:
@@ -875,6 +930,7 @@ def integrity_sweep() -> dict:
 
     launch_freshness_check(out)
     clock_label_check(out)
+    consult_freshness_check(out)
 
     # NEW cause classes → auto-file a PROPOSED regression-test skeleton
     causes = kv_store.get(_KV_CAUSES) or {}

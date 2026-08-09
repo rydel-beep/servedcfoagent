@@ -164,21 +164,21 @@
     }
     if (basis) state.basis = basis;
     if (market) state.market = market;
+    if (!state.range) {
+      state.windowLabel = { 30: 'Last 30 days', 60: 'Last 60 days',
+                            90: 'Last 90 days', all: 'Maximum' }[state.days] ||
+                          (state.days + 'd');
+    } else {
+      state.windowLabel = state.rangeLabel || 'Custom';
+    }
     var token = ++state.reqToken;
-    document.querySelectorAll('.adx-win').forEach(function (b) {
-      b.classList.toggle('active', !state.range && String(b.dataset.days) === String(state.days));
-    });
     document.querySelectorAll('.adx-basis').forEach(function (b) {
       b.classList.toggle('active', b.dataset.basis === state.basis);
     });
     document.querySelectorAll('.adx-market').forEach(function (b) {
       b.classList.toggle('active', b.dataset.market === state.market);
     });
-    var clearBtn = $('#adx-range-clear');
-    if (clearBtn) {
-      clearBtn.style.display = state.range ? '' : 'none';
-      clearBtn.classList.toggle('on', !!state.range);
-    }
+    syncPresetSelect();
     writeUrl();
     $('#adx-banner').innerHTML = '<span class="adx-skel">Loading ' +
       (state.range ? esc(state.range) : state.days + (state.days === 'all' ? '' : 'd')) +
@@ -244,6 +244,28 @@
   function clockStamp() {
     return state.basis === 'activity' ? 'Activity' : 'Cohort';
   }
+  // the card header ALWAYS renders the resolved state (#134):
+  // "{Clock} · {label} · {start} → {end}" — the box is never implicit
+  function headerLine() {
+    var w = (state.board || {}).window || {};
+    var span = w.start === w.end ? String(w.start || '') :
+      String(w.start || '?') + ' → ' + String(w.end || '?');
+    return clockStamp() + ' · ' + (state.windowLabel || '?') + ' · ' + span;
+  }
+  // the select mirrors the active state — the control DISPLAYS what governs
+  function syncPresetSelect() {
+    var sel = $('#adx-range-preset');
+    if (!sel) return;
+    var v;
+    if (!state.range) {
+      v = { 30: '30d', 60: '60d', 90: '90d', all: 'max' }[state.days] || 'custom';
+    } else {
+      v = { 'Today': 'today', 'Yesterday': 'yesterday', 'Last 7 days': '7d',
+            'Last 14 days': '14d', 'This month': 'thismonth',
+            'Last month': 'lastmonth' }[state.rangeLabel] || 'custom';
+    }
+    sel.value = v;
+  }
 
   var levelChosen = false;   // the user's explicit pick beats the default
   function renderAll() {
@@ -251,10 +273,8 @@
       state.level = state.board.ladder.default_level;
     }
     renderBanner(); renderHeadline(); renderScorecard(); renderHygiene(); renderScoreboard(); renderRows(true);
-    // #133: the ACTIVE CLOCK is part of the table label — "Activity · 3–9 Aug",
-    // never an implicit clock on a date box
-    $('#adx-table-window').textContent = '· ' + clockStamp() + ' · ' + windowStamp() +
-      (state.range ? '' : ' window') +
+    // #134: the resolved state, always — "{Clock} · {label} · {start} → {end}"
+    $('#adx-table-window').textContent = '· ' + headerLine() +
       (state.gq ? ' · FILTERED VIEW (aggregates unchanged)' : '') +
       (state.market !== 'all' ? ' · market: ' + state.market.toUpperCase() : '');
   }
@@ -431,8 +451,6 @@
         (state.board.stale_reason ? ' · ' + esc(state.board.stale_reason) : '') +
         ') — refreshing…</span>' : '') +
       (state.board.range_note ? ' · <span class="adx-clock-note">' + esc(state.board.range_note) + '</span>' : '') +
-      (state.range && state.rangeLabel === 'Last 24h'
-        ? ' · <span class="adx-clock-note">daily-granular engine: “Last 24h” = yesterday + today as Sydney days</span>' : '') +
       (state.range && state.basis === 'cohort' && cohortIsYoung()
         ? ' · <span class="adx-clock-note">young cohort — leads this recent are still maturing (closes lag weeks); the activity clock answers “what happened in this box”</span>' : '') +
       (!state.range && state.days === 30 && state.basis === 'cohort' ? ' · <span class="adx-guide">30d cohort: closes still landing — 60/90d is the honest read for close-based verdicts</span>' : '');
@@ -695,6 +713,33 @@
         (c.provenance ? ' title="' + esc(c.provenance) + '"' : '') + '>' + esc(c.chip) + '</span>';
     }).join('');
   }
+  // #134 CONSULT DATETIME: the scheduled-for display (server-formatted by the
+  // ONE formatter — this renders verbatim, zero client date math). Every state
+  // is honest: a tracker-only set says so, a pending fetch says so, and a
+  // cancelled appointment never appears as "the consult".
+  function consultSlot(p) {
+    var c = p.consult;
+    if (!c) return '';
+    if (c.state === 'scheduled') {
+      return ' <span class="adx-consult' + (c.upcoming ? ' adx-consult-up' : '') +
+        '" title="' + esc(c.provenance || '') + '">consult: <strong>' + esc(c.formatted) + '</strong>' +
+        (c.tz_label ? ' <span class="adx-consult-tz" title="US-market lead — this time is Sydney local">' + esc(c.tz_label) + '</span>' : '') +
+        (c.upcoming ? ' <span class="adx-consult-chip">upcoming</span>' : '') +
+        (c.rebooked ? ' <span class="adx-consult-chip adx-consult-rebook" title="' + c.rebooked + ' cancelled/invalid appointment(s) in the chain — the KEPT one is shown">rebooked ×' + c.rebooked + '</span>' : '') +
+        '</span>';
+    }
+    if (c.state === 'no_appointment') {
+      return ' <span class="adx-consult adx-consult-none" title="an honesty chip — no time is fabricated for a tracker-only set">' + esc(c.note) + '</span>';
+    }
+    if (c.state === 'unfetched') {
+      return ' <span class="adx-consult adx-consult-none" title="' + esc(c.note) + '">consult: fetch pending</span>';
+    }
+    if (c.state === 'tracker_only') {
+      return ' <span class="adx-consult adx-consult-none">' + esc(c.note) + '</span>';
+    }
+    return '';
+  }
+
   function personCard(p) {
     var rev = p.revenue || {};
     var revLine = rev.state === 'unknown' ? '<span class="adx-rev-unknown">revenue not captured</span>'
@@ -714,7 +759,8 @@
       (p.business && p.business !== p.name ? ' · ' + esc(p.business) : '') +
       ' ' + identityChip(p) +
       (p.ghl_link ? ' <a class="adx-ghl" href="' + esc(p.ghl_link) + '" target="_blank" rel="noopener">GHL ↗</a>' : '') +
-      (p.tracker_link ? ' <a class="adx-ghl" href="' + esc(p.tracker_link) + '" target="_blank" rel="noopener" title="Lead-to-Cash tracker (find the row by name — row anchors are unsafe under the clean view)">tracker ↗</a>' : '') + '</div>' +
+      (p.tracker_link ? ' <a class="adx-ghl" href="' + esc(p.tracker_link) + '" target="_blank" rel="noopener" title="Lead-to-Cash tracker (find the row by name — row anchors are unsafe under the clean view)">tracker ↗</a>' : '') +
+      consultSlot(p) + '</div>' +
       evLine +
       (p.tier_reason ? '<div class="adx-warnline">' + esc(p.tier_reason) + '</div>' : '') +
       '<div class="adx-person-chips">' + funnelChips(p) + '</div>' +
@@ -969,6 +1015,10 @@
             (v.cash != null && v.close_date ? ' · ' + money(v.cash) : '') +
             (v.ghl_link ? ' <a class="adx-ghl" href="' + esc(v.ghl_link) + '" target="_blank" rel="noopener">GHL ↗</a>' : '') +
             (v.tracker_link ? ' <a class="adx-ghl" href="' + esc(v.tracker_link) + '" target="_blank" rel="noopener">tracker ↗</a>' : '') +
+            // the deep view carries BOTH dates, labelled (#134): booked-on
+            // (the windowing clock) and the scheduled-for consult (display)
+            (v.booked_date ? ' · <span class="adx-prov" title="booked-on — the setter action; the Sets windowing clock (#128)">booked ' + esc(v.booked_date) + '</span>' : '') +
+            consultSlot(v) +
             '</div>';
         }).join('');
         $('#adx-drill-body').innerHTML = degradedStrip(d.degraded) +
@@ -1101,28 +1151,25 @@
     if (vParam) state.verdict = decodeURIComponent(vParam);
     var cParam = (location.search.match(/[?&]creative=([^&]+)/) || [])[1];
     if (cParam) state.creative = decodeURIComponent(cParam);
-    document.querySelectorAll('.adx-win').forEach(function (b) {
-      b.addEventListener('click', function () {
-        // a standard window restores the RULED cohort default unless the user
-        // explicitly chose a clock (the picker's activity default is box-scoped)
-        if (!state.clockChosen) state.basis = 'cohort';
-        loadBoard(b.dataset.days === 'all' ? 'all' : +b.dataset.days);
-      });
-    });
-
-    // ── #133 META-STYLE DATE CONTROL: presets + custom calendar range ────────
+    // ── THE date control (#133/#134): ONE control, in the card header ────────
+    // Short/recent boxes default ACTIVITY (Meta-native); Last 30/60/90 days and
+    // Maximum are the ruled standard windows (cohort default; rollup-backed).
+    // An explicit clock pick always wins over either default.
     function applyPreset(v) {
       var t = sydToday();
       var r = null, label = null;
       if (v === 'today') { r = t + '..' + t; label = 'Today'; }
-      else if (v === '24h') {
-        // daily-granular engine: 'Last 24h' = yesterday + today as Sydney days —
-        // stated, never fake hour-granularity
-        r = isoShift(t, -1) + '..' + t; label = 'Last 24h';
+      else if (v === 'yesterday') {
+        r = isoShift(t, -1) + '..' + isoShift(t, -1); label = 'Yesterday';
       }
       else if (v === '7d') { r = isoShift(t, -6) + '..' + t; label = 'Last 7 days'; }
       else if (v === '14d') { r = isoShift(t, -13) + '..' + t; label = 'Last 14 days'; }
-      else if (v === '30d') { r = isoShift(t, -29) + '..' + t; label = 'Last 30 days'; }
+      else if (v === '30d' || v === '60d' || v === '90d') {
+        $('#adx-range-custom').style.display = 'none';
+        if (!state.clockChosen) state.basis = 'cohort';
+        loadBoard(parseInt(v, 10));
+        return;
+      }
       else if (v === 'thismonth') { r = t.slice(0, 8) + '01..' + t; label = 'This month'; }
       else if (v === 'lastmonth') {
         var prevEnd = isoShift(t.slice(0, 8) + '01', -1);
@@ -1144,8 +1191,6 @@
       if (r) {
         $('#adx-range-custom').style.display = 'none';
         state.rangeLabel = label;
-        // the Meta-native reading for a date box: ACTIVITY, unless the user
-        // explicitly chose a clock (their pick always wins)
         if (!state.clockChosen) state.basis = 'activity';
         loadBoard(null, null, null, r);
       }
@@ -1154,7 +1199,6 @@
     if (presetSel) {
       presetSel.addEventListener('change', function () {
         if (presetSel.value) applyPreset(presetSel.value);
-        if (presetSel.value !== 'custom') presetSel.value = '';
       });
     }
     var applyBtn = $('#adx-range-apply');
@@ -1171,17 +1215,9 @@
           applyBtn.insertAdjacentHTML('afterend', '<span class="adx-range-err">' + esc(err) + '</span>');
           return;
         }
-        state.rangeLabel = null;
+        state.rangeLabel = 'Custom';
         if (!state.clockChosen) state.basis = 'activity';
         loadBoard(null, null, null, s + '..' + e);   // server re-validates + clamps
-      });
-    }
-    var clearBtn2 = $('#adx-range-clear');
-    if (clearBtn2) {
-      clearBtn2.addEventListener('click', function () {
-        $('#adx-range-custom').style.display = 'none';
-        if (!state.clockChosen) state.basis = 'cohort';
-        loadBoard(state.days === 'all' ? 'all' : +state.days || 30);
       });
     }
     // #133 hover wiring: any campaign/creative NAME cell shows the lineage card

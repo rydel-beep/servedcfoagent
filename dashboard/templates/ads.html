@@ -13,45 +13,14 @@
     <span class="adx-tag">creative → lead → qualified → close → cash</span>
   </div>
   <div class="adx-top-right">
-    <div class="adx-windows" id="adx-windows">
-      <button class="adx-win" data-days="30">30d</button>
-      <button class="adx-win" data-days="60">60d</button>
-      <button class="adx-win" data-days="90">90d</button>
-      <button class="adx-win" data-days="all" title="Full tracker history">All</button>
-    </div>
-    <!-- META-STYLE DATE CONTROL (#133): a window PARAMETER over the one engine.
-         The clock toggle beside it declares the question (activity ⇄ cohort);
-         presets default to the activity reading, the standard windows keep the
-         ruled cohort default. All boundaries are SYDNEY days. -->
-    <div class="adx-range" id="adx-range" title="Pick a date box (Sydney days). Presets ask the ACTIVITY question by default — what happened inside the box; flip the clock beside this control for the cohort reading.">
-      <select id="adx-range-preset" class="adx-range-preset">
-        <option value="">date range…</option>
-        <option value="today">Today</option>
-        <option value="24h">Last 24h</option>
-        <option value="7d">Last 7 days</option>
-        <option value="14d">Last 14 days</option>
-        <option value="30d">Last 30 days</option>
-        <option value="thismonth">This month</option>
-        <option value="lastmonth">Last month</option>
-        <option value="max">Maximum</option>
-        <option value="custom">Custom range…</option>
-      </select>
-      <span class="adx-range-custom" id="adx-range-custom" style="display:none">
-        <input type="date" id="adx-range-start"> <span class="adx-range-dash">–</span>
-        <input type="date" id="adx-range-end">
-        <button id="adx-range-apply" class="adx-range-apply">apply</button>
-      </span>
-      <button class="adx-range-clear" id="adx-range-clear" style="display:none" title="Back to the standard windows">✕ range</button>
-    </div>
+    <!-- THE UNBIND (#134 mission): the page-top window/range controls are GONE.
+         The ONE date control lives in the Ads card header below — one table,
+         one control, zero ambiguity. Market stays here (orthogonal filter). -->
     <div class="adx-markets" id="adx-markets" title="Engine-level market filter — AU + US + Unknown always sum to All (I15); spend is omitted under a filter (per-creative, not market-splittable)">
       <button class="adx-market active" data-market="all">All</button>
       <button class="adx-market" data-market="au">AU</button>
       <button class="adx-market" data-market="us">US</button>
       <button class="adx-market" data-market="unknown">Unknown</button>
-    </div>
-    <div class="adx-bases" id="adx-bases" title="One clock per view — never mixed">
-      <button class="adx-basis" data-basis="cohort" title="Leads that entered this window + everything that later happened to them (true conversion rates; closes lag)">Cohort</button>
-      <button class="adx-basis" data-basis="activity" title="Events that occurred in this window; closes from earlier leads are annotated">Activity</button>
     </div>
     <button class="adx-defs-btn" id="adx-defs-btn" title="How these numbers are counted">ⓘ definitions</button>
     <span class="adx-who" id="adx-who"></span>
@@ -80,6 +49,34 @@
   <section class="adx-panel">
     <div class="adx-table-head">
       <h2 id="adx-table-title">Creatives <span class="adx-h2-sub" id="adx-table-window"></span></h2>
+      <!-- THE date control (#133/#134): Meta-Ads-Manager-familiar, IN the card
+           header. The clock toggle beside it declares the question; the header
+           line above always renders the resolved state
+           "{Clock} · {label} · {start} → {end}". Sydney-day boundaries. -->
+      <div class="adx-range" id="adx-range" title="Pick the table's date box (Sydney days). Short/recent presets ask the ACTIVITY question by default; Last 30/60/90 days and Maximum keep the ruled cohort default. Your explicit clock pick always wins.">
+        <select id="adx-range-preset" class="adx-range-preset">
+          <option value="today">Today</option>
+          <option value="yesterday">Yesterday</option>
+          <option value="7d">Last 7 days</option>
+          <option value="14d">Last 14 days</option>
+          <option value="30d">Last 30 days</option>
+          <option value="60d">Last 60 days</option>
+          <option value="90d">Last 90 days</option>
+          <option value="thismonth">This month</option>
+          <option value="lastmonth">Last month</option>
+          <option value="max">Maximum</option>
+          <option value="custom">Custom range…</option>
+        </select>
+        <span class="adx-range-custom" id="adx-range-custom" style="display:none">
+          <input type="date" id="adx-range-start"> <span class="adx-range-dash">–</span>
+          <input type="date" id="adx-range-end">
+          <button id="adx-range-apply" class="adx-range-apply">apply</button>
+        </span>
+        <div class="adx-bases" id="adx-bases" title="One clock per view — never mixed. ACTIVITY: events inside the box. COHORT: what the box's arrivals became.">
+          <button class="adx-basis" data-basis="cohort" title="Leads that entered this box + everything that later happened to them (true conversion rates; closes lag)">Cohort</button>
+          <button class="adx-basis" data-basis="activity" title="Events that occurred inside this box; closes from earlier leads are annotated">Activity</button>
+        </div>
+      </div>
       <div class="adx-grid-tools">
         <input type="search" id="adx-grid-find" class="adx-grid-find" placeholder="find creative / campaign / batch…" title="Presentation-only row filter — aggregates unchanged">
         <select id="adx-preset" class="adx-preset" title="Preset sorts. ‘Lowest performing’ = the verdict engine’s ranking (KILL first), worst unit economics as tiebreak — no new math.">
