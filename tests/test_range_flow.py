@@ -188,3 +188,40 @@ def test_recover_by_name_negative_caches_misses(monkeypatch):
         time.time() - ME._NAME_MISS_TTL_S - 5
     ME.recover_by_name("Ghost Ad That Never Existed")
     assert len(calls) > n
+
+
+def test_interactive_compute_never_runs_name_recovery():
+    """The historical-name insights sweep is nightly-only: compute()'s resolver
+    passes allow_recovery=False (a first-ever old box paid 79s of first-time
+    name sweeps inline before this)."""
+    src = open(os.path.join(_REPO, "attribution_engine.py")).read()
+    seg = src.split("def resolve_fn(ref, kind):")[1].split("def ")[0]
+    assert "allow_recovery=False" in seg
+    ats = open(os.path.join(_REPO, "ads_truth.py")).read()
+    assert "def name_recovery_pass" in ats
+    assert 'out["name_recovery"] = name_recovery_pass()' in ats
+
+
+def test_name_recovery_pass_learns_and_caches(monkeypatch):
+    import ads_truth
+    import attribution_join
+    import kv_store
+    store = {}
+    monkeypatch.setattr(kv_store, "get", lambda k, default=None: store.get(k, default))
+    monkeypatch.setattr(kv_store, "put", lambda k, v: store.__setitem__(k, v))
+    monkeypatch.setattr(ME, "configured", lambda: True)
+    monkeypatch.setattr(ME, "refresh_entity_map",
+                        lambda force=False: {"ads": {}, "extras": {}})
+    monkeypatch.setattr(ME, "candidates_by_name", lambda name, store=None: [])
+    recovered = []
+    monkeypatch.setattr(ME, "recover_by_name",
+                        lambda name: recovered.append(name) or (
+                            {"ad_id": "1"} if "Known" in name else None))
+    monkeypatch.setattr(attribution_join, "load_contacts", lambda: [
+        {"tier": "ad", "ft_ref_kind": "name", "ft_ad_ref": "Known Old Ad"},
+        {"tier": "ad", "ft_ref_kind": "name", "ft_ad_ref": "Ghost Ad"},
+        {"tier": "ad", "ft_ref_kind": "id", "ft_ad_ref": "123"},   # ids skipped
+    ])
+    out = ads_truth.name_recovery_pass(max_names=10)
+    assert out["checked"] == 2 and out["learned"] == 1 and out["cached_miss"] == 1
+    assert recovered == ["Known Old Ad", "Ghost Ad"]

@@ -874,6 +874,46 @@ def bucket_drift_check(out: dict, sample_ads: int = 2, days_per_ad: int = 5) -> 
         out["bucket_drift"] = {"error": str(e)[:80]}
 
 
+def name_recovery_pass(max_names: int = 25) -> dict:
+    """RANGE SPEED: historical-name → ad-id recovery moved OFF the interactive
+    path (compute resolves with allow_recovery=False). This nightly pass walks
+    distinct unresolved name-refs, letting recover_by_name learn aliases or
+    negative-cache misses — bounded, so resolution quality converges without
+    any range change ever paying an insights sweep."""
+    import kv_store
+    import meta_entities
+    out = {"checked": 0, "learned": 0, "cached_miss": 0}
+    try:
+        import attribution_join
+        if not meta_entities.configured():
+            out["skipped"] = "Meta not configured"
+            return out
+        es = meta_entities.refresh_entity_map()
+        aliases = kv_store.get(meta_entities._ALIAS_KEY) or {}
+        misses = kv_store.get(meta_entities._NAME_MISS_KEY) or {}
+        seen: set = set()
+        for c in attribution_join.load_contacts():
+            if out["checked"] >= max_names:
+                break
+            if c.get("tier") != "ad" or c.get("ft_ref_kind") != "name":
+                continue
+            key = meta_entities.norm_name(c.get("ft_ad_ref"))
+            if not key or key in seen or key in aliases or key in misses:
+                continue
+            if meta_entities.candidates_by_name(c.get("ft_ad_ref"), store=es):
+                continue                       # resolvable without recovery
+            seen.add(key)
+            out["checked"] += 1
+            hit = meta_entities.recover_by_name(c.get("ft_ad_ref"))
+            if hit:
+                out["learned"] += 1
+            else:
+                out["cached_miss"] += 1
+    except Exception as e:
+        out["error"] = str(e)[:80]
+    return out
+
+
 # ── THE NIGHTLY SWEEP ────────────────────────────────────────────────────────
 
 def integrity_sweep() -> dict:
@@ -998,6 +1038,7 @@ def integrity_sweep() -> dict:
     clock_label_check(out)
     consult_freshness_check(out)
     bucket_drift_check(out)
+    out["name_recovery"] = name_recovery_pass()
 
     # NEW cause classes → auto-file a PROPOSED regression-test skeleton
     causes = kv_store.get(_KV_CAUSES) or {}

@@ -1086,8 +1086,13 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
     spend = meta_entities.spend_by_ad_in_range(str(w0), str(w1))
 
     def resolve_fn(ref, kind):
+        # RANGE SPEED: allow_recovery=False — the historical-name insights sweep
+        # NEVER runs on the interactive path (a first-ever 2025 box paid 79s of
+        # first-time name sweeps). The nightly name_recovery_pass learns aliases
+        # / negative-caches misses; until it runs, an unrecovered name renders
+        # Unattributed — honest, and identical to the post-sweep miss outcome.
         return attribution_join.resolve_ref(ref, kind, entity_store=entity_store,
-                                            allow_recovery=True)
+                                            allow_recovery=False)
 
     def ad_label_fn(ad_id, spend_name):
         hit = ((entity_store.get("ads") or {}).get(ad_id)
