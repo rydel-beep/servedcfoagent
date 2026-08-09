@@ -53,3 +53,37 @@ loads and parsed inputs. I13 is strengthened: zero new aggregation code.
 
 Fallback plan for non-decomposables: none needed — the engine keeps computing
 box-relative annotations from member facts exactly as today.
+
+## Post-build results (deployed e300820, 2026-08-10)
+
+**Perf, measured in prod (worst realistic case = fresh worker process):**
+
+| Interaction | Before | After | Budget |
+|---|---|---|---|
+| Preset switch (30/60/90) | 103ms–17.5s (first build/process) | **26–113ms** | ≤150ms ✅ |
+| Maximum | 117–187ms | **48–155ms** | — ✅ |
+| Custom box, first-ever | 1.5–7s (once 79s) | **140–283ms** (2024-era one-time 3.6s, pre-converged — now 130–400ms) | ≤300ms ✅ |
+| Custom box, repeat | 22–173ms | **22ms** | — ✅ |
+| Same box, other clock | 1.3s | **283ms** | — ✅ |
+| Roster under a custom box | 199–317ms | **73–180ms** | <500ms ✅ |
+
+**Where the seconds went (all fixed):** ad-spend trailing refresh with no TTL
+(2–7s/compute) → TTL + background · entity-map TTL lapse (4.2s) → background ·
+`recover_by_name` historical sweeps (12.8s/serve profiled) → negative-cached +
+nightly-only · 33 fresh Postgres connections/serve (0.70s) → per-thread reuse ·
+store file re-reads (0.77s) → mtime memos · account+ad spend history lost per
+deploy → kv mirrors + full backfill (588 Sydney-day buckets to 2024-11-01,
+one-time 24.6s ad-level + 1.1s account; kv-mirror survival proven across a
+live deploy).
+
+**Correctness:** 11 boxes × both clocks: 88 serving-vs-forced-recompute total
+compares, 0 drift · fresh-Meta per-box spend, 0 mismatches · I17 3,468 cells 0
+drift · DST-spanning box (Oct 2026) and single-day box exact · recon green
+everywhere · F6 live-proven: epoch bump → the open range view recomputes
+(2ms cached → 126ms rebuild, recon green).
+
+**Flow:** dim overlay deleted (grep + structural tests); pending header claims
+the TARGET state in the same frame numeric cells skeleton; superseded fetches
+aborted (AbortController) atop the token + server-echo guards; failures revert
+controls to the last-good board. Sentinel: bucket_drift (nightly closed-day
+sample vs fresh Meta, ACTION-promoted) + name_recovery_pass live.
