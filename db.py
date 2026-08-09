@@ -45,21 +45,50 @@ def last_error() -> str | None:
     return _last_error
 
 
+import threading
+
+_local = threading.local()   # RANGE SPEED: one serve opened 33 fresh Postgres
+                             # connections (~0.70s of TLS/handshake). Each
+                             # thread now REUSES its connection; a broken one
+                             # is discarded and reopened (semantics unchanged:
+                             # autocommit, dict rows, raises when unreachable).
+
+
+def _thread_conn():
+    conn = getattr(_local, "conn", None)
+    if conn is not None and not conn.closed:
+        return conn, True
+    conn = psycopg.connect(DATABASE_URL, connect_timeout=10, autocommit=True,
+                           row_factory=dict_row)
+    _local.conn = conn
+    return conn, False
+
+
 @contextmanager
 def get_conn():
-    """Yield a short-lived autocommit connection. Raises on failure (callers guard)."""
+    """Yield a pooled (per-thread, reused) autocommit connection. Raises on
+    failure (callers guard). A connection that errors mid-use is closed and
+    discarded so the next call reconnects cleanly."""
     global _last_error
     if not db_configured():
         raise RuntimeError("DB not configured")
-    conn = psycopg.connect(DATABASE_URL, connect_timeout=10, autocommit=True, row_factory=dict_row)
+    try:
+        conn, reused = _thread_conn()
+    except Exception:
+        _local.conn = None
+        raise
     try:
         _last_error = None
         yield conn
-    finally:
+    except Exception:
+        # a failed statement may mean a dead connection — drop it; if it was a
+        # reused socket that died idle, the caller's retry path reconnects
         try:
             conn.close()
         except Exception:
             pass
+        _local.conn = None
+        raise
 
 
 def memory_online() -> bool:

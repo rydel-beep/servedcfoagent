@@ -127,6 +127,10 @@ _store_memo: dict = {}   # (mtime, obj) — RANGE SPEED: the canonical-spend leg
                          # re-read this file on every compute (368ms measured)
 
 
+_KV_SPEND = "meta:spend_daily"   # durable mirror — deploys wiped the account-level
+                                 # history too, sending old boxes back to live calls
+
+
 def _load_store() -> dict:
     """Load the persisted per-day spend store: {date: {spend, impressions, clicks, last_fetched}}."""
     try:
@@ -136,12 +140,19 @@ def _load_store() -> dict:
                 return _store_memo["obj"]
             with open(META_SPEND_STORE) as f:
                 d = json.load(f)
-            if isinstance(d, dict):
+            if isinstance(d, dict) and d:
                 _store_memo.update({"mt": mt, "obj": d})
                 return d
-            return {}
     except (OSError, json.JSONDecodeError) as e:
         logger.warning("Meta spend store unreadable: %s", e)
+    try:
+        import kv_store
+        mirrored = kv_store.get(_KV_SPEND)
+        if isinstance(mirrored, dict) and mirrored:
+            _save_store(mirrored)          # reseed the local file post-deploy
+            return mirrored
+    except Exception as e:
+        logger.info("meta spend kv seed failed: %s", e)
     return {}
 
 
@@ -153,6 +164,11 @@ def _save_store(store: dict) -> None:
         _store_memo.update({"mt": os.path.getmtime(META_SPEND_STORE), "obj": store})
     except OSError as e:
         logger.warning("Meta spend store not persisted: %s", e)
+    try:
+        import kv_store
+        kv_store.put(_KV_SPEND, store)
+    except Exception as e:
+        logger.info("meta spend kv mirror failed: %s", e)
 
 
 def backfill_history(since: str) -> dict:
