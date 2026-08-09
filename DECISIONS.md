@@ -1718,7 +1718,8 @@
      report — it moves to the right place, it does not vanish.
 
 133. **LAUNCH LINEAGE + META-STYLE DATE CONTROL (2026-08-09).** ENCODED
-     CONVENTION (veto-able): "launched" = the FIRST-DELIVERY date — the first
+     CONVENTION — **RYDEL-APPROVED 2026-08-10, no veto; the convention is now
+     RULED**: "launched" = the FIRST-DELIVERY date — the first
      day Meta insights records impressions for the ad — never created_time
      (the object's birthday; secondary display only when it differs) and never
      the ad-set start_time (probe: ad sets are reused, start_times up to ~1yr
@@ -1748,7 +1749,8 @@
      unlabelled Meta metric. D1/D2/D3 in dashboard/LAUNCH_DATE_DIAGNOSIS.md.
 
 134. **CONSULT SCHEDULED-DATETIME — THE DISPLAY CONVENTION + THE APPOINTMENT-TZ
-     TRUTH (2026-08-09).** ENCODED (veto-able): two dates exist per set and BOTH
+     TRUTH (2026-08-09).** ENCODED — **RYDEL-APPROVED 2026-08-10, no veto; the
+     convention is now RULED**: two dates exist per set and BOTH
      stay with distinct jobs — BOOKED-ON (setter action; appointment dateAdded /
      tracker Set Date) remains the WINDOWING clock for Sets (#128, unchanged);
      SCHEDULED-FOR (appointment startTime — when the consult happens) is the
