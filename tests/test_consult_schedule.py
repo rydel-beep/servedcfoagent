@@ -261,3 +261,29 @@ def test_event_sweep_derives_appointment_days_source_aware():
     seg2 = rsrc.split("def rederive_ghl_dates_sydney")[1].split("def rederive_appointment_local_days")[0]
     assert "appt_day(raw)" in seg2
     assert "def rederive_appointment_local_days" in rsrc
+
+
+def test_upcoming_appointment_cache_expires_daily(monkeypatch):
+    """The Matt Annenberg catch (triple sweep): a cancelled-after-caching
+    upcoming consult must not render 'upcoming' for a week — upcoming-bearing
+    entries expire daily; past-only entries keep the 7d TTL."""
+    import ads_truth
+    import kv_store
+    import datetime as dt
+    from helpers import today_sydney
+    store = {}
+    monkeypatch.setattr(kv_store, "get", lambda k, default=None: store.get(k, default))
+    monkeypatch.setattr(kv_store, "put", lambda k, v: store.__setitem__(k, v))
+    t = today_sydney()
+    monkeypatch.setattr(ads_truth, "contact_appointments",
+                        lambda cid: [{"id": "up1",
+                                      "startTime": f"{t + dt.timedelta(days=3)} 11:30:00",
+                                      "appointmentStatus": "confirmed"}])
+    ads_truth._cached_appointments("cA")
+    assert store["ghl:appt_cache"]["cA"]["expires"] == str(t + dt.timedelta(days=1))
+    monkeypatch.setattr(ads_truth, "contact_appointments",
+                        lambda cid: [{"id": "old1",
+                                      "startTime": f"{t - dt.timedelta(days=30)} 14:00:00",
+                                      "appointmentStatus": "showed"}])
+    ads_truth._cached_appointments("cB")
+    assert store["ghl:appt_cache"]["cB"]["expires"] == str(t + dt.timedelta(days=7))

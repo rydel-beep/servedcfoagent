@@ -312,10 +312,19 @@ def _cached_appointments(contact_id: str) -> list[dict]:
         return hit.get("appts") or []
     appts = contact_appointments(contact_id)
     import datetime as dt
-    cache[contact_id] = {"expires": str(today_sydney() + dt.timedelta(days=_APPT_TTL_DAYS)),
-                         "appts": [{k: a.get(k) for k in
-                                    ("id", "dateAdded", "startTime", "appointmentStatus",
-                                     "status", "calendarId")} for a in appts[:6]]}
+    kept = [{k: a.get(k) for k in
+             ("id", "dateAdded", "startTime", "appointmentStatus",
+              "status", "calendarId")} for a in appts[:6]]
+    # #134 (triple-sweep, the Matt Annenberg catch): an UPCOMING appointment is
+    # the mutable class — it can be cancelled/rebooked after caching, and a 7d
+    # TTL let a cancelled consult render as "upcoming" for days. Entries
+    # carrying any not-yet-past startTime expire DAILY; past-only entries keep
+    # the 7d TTL (history doesn't change). startTime is location-local — the
+    # ISO-prefix string compare against the Sydney day is exact.
+    has_upcoming = any(str(a.get("startTime") or "")[:10] >= today for a in kept)
+    ttl = 1 if has_upcoming else _APPT_TTL_DAYS
+    cache[contact_id] = {"expires": str(today_sydney() + dt.timedelta(days=ttl)),
+                         "appts": kept}
     # cap the cache footprint
     if len(cache) > 800:
         cache = dict(list(cache.items())[-600:])
