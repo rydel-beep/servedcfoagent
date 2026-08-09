@@ -37,3 +37,11 @@ from sydney_day()'s naive=UTC assumption applied to local stamps. Stripe (10)
 and contact-created (4) classes verified correct and unmoved. Rollback data:
 each entry's `rederived.old` + journal lines. Fix + re-derivation: follow-up
 session (SEV1), registered in AUDIT_FINDINGS_REGISTER.md F8 correction note.
+
+## RESOLUTION (2026-08-10, #134 — commit 2b77b03)
+Corrective migration ran live: 22/22 appointment dates re-derived back (−1 day,
+0 crossings), journaled "appt-local-tz (#134)", idempotent (0/72 on re-run),
+epoch → 6. Post-migration full I17: 5,052 cells, 0 drift; recon green. Plus the
+F2 backfill: +38 evidence-class entries (all 12 pre-partition ruling
+conversions now durable in resolution:journal). Detail:
+dashboard/TRIPLE_SWEEP_REPORT.md (#134 session).

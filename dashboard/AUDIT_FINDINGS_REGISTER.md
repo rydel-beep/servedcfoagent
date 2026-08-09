@@ -112,8 +112,14 @@ re-checked green after. DST pinned: Oct 2026 transition cases in
 > accidentally right for THIS endpoint. The F8 fix remains CORRECT for Z/offset
 > wire stamps and Postgres datetimes (contacts, GHL-won, Stripe epochs — all
 > verified unmoved). Rollback data intact (rederived{old} blocks + journal).
-> Source-aware re-fix + journaled re-derivation owned by the follow-up session's
-> sweep; this entry stays honest until its artifact lands.
+> **RESOLVED by DECISIONS #134 (commit `2b77b03`, live 2026-08-10):**
+> source-aware appointment-day parsing shipped; the corrective migration
+> re-derived all 22 dates back (−1 day each, 0 window crossings), journaled
+> reason "appt-local-tz (#134)" in both streams, idempotent (re-run: 0/72),
+> epoch bumped. Post-migration: full I17 5,052 cells 0 drift, reconciliation
+> green. F8's net standing state: Sydney-day discipline holds for Z/offset
+> stamps, Postgres datetimes, and Stripe epochs; appointment stamps parse as
+> Sydney-LOCAL at the source.
 
 **F9 · Stripe pagination partial-failure absorbed silently — CLEARED (drill
 B13 re-run).** A page error after partial data now STOPS the pull and marks
