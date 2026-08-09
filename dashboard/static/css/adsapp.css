@@ -243,3 +243,50 @@ button.adx-deal-open { color: var(--accent, #7aa2ff); }
 .adx-roster-sort { background: none; border: 1px solid var(--line); color: var(--muted);
   border-radius: 4px; padding: 2px 7px; font-size: 11px; cursor: pointer; }
 .adx-roster-sort.active { color: var(--fg); border-color: var(--good); }
+
+/* F5 — LOUD DEGRADATION (audit F5): a dead upstream is unmistakable from a true zero */
+.adx-degraded { display: inline-block; background: #7a1f1f; color: #ffd9d9;
+  border: 1px solid #b33; border-radius: 4px; padding: 1px 6px; font-size: 10px;
+  font-weight: 700; letter-spacing: .5px; cursor: help; }
+.adx-degraded-strip { background: #3a1414; color: #ffb4b4; border: 1px solid #b33;
+  border-radius: 6px; padding: 6px 10px; margin: 4px 0 8px; font-size: 12px; }
+.adx-degraded-strip strong { color: #ff8a8a; }
+
+/* #133 — META-STYLE DATE CONTROL (a window parameter; the clock is beside it) */
+.adx-range { display: flex; align-items: center; gap: 4px; }
+.adx-range-preset { background: #10151f; color: var(--fg, #dfe6f2); border: 1px solid var(--line, #2a3448);
+  border-radius: 6px; padding: 3px 6px; font-size: 12px; }
+.adx-range-custom { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; }
+.adx-range-custom input[type="date"] { background: #10151f; color: var(--fg, #dfe6f2);
+  border: 1px solid var(--line, #2a3448); border-radius: 5px; padding: 2px 4px; font-size: 11px; }
+.adx-range-dash { color: var(--muted, #7b8598); }
+.adx-range-apply { background: none; border: 1px solid var(--good, #43c774); color: var(--good, #43c774);
+  border-radius: 5px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+.adx-range-clear { background: none; border: 1px solid var(--line, #2a3448); color: var(--muted, #7b8598);
+  border-radius: 5px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+.adx-range-clear.on { color: var(--fg, #dfe6f2); border-color: var(--warn, #e0b653); }
+.adx-range-err { color: #ff8a8a; font-size: 11px; margin-left: 4px; }
+.adx-clock-note { display: inline-block; color: var(--warn, #e0b653); font-size: 11px; }
+
+/* #133 — source chips: Meta-sourced vs hybrid columns are labelled EVERYWHERE */
+.adx-src-chip { display: inline-block; margin-left: 3px; padding: 0 4px; border-radius: 3px;
+  font-size: 8.5px; font-weight: 700; letter-spacing: .4px; vertical-align: 2px; cursor: help; }
+.adx-src-meta { background: #1c2c4a; color: #8fb4ff; border: 1px solid #33507f; }
+.adx-src-hybrid { background: #3a2c14; color: #e0b653; border: 1px solid #7f6733; }
+
+/* #133 — LAUNCH LINEAGE hover card: fixed-position, no layout shift, zero fetch */
+.adx-hover { position: fixed; z-index: 60; max-width: 340px; background: #0d1220;
+  border: 1px solid var(--line, #2a3448); border-radius: 8px; padding: 9px 12px;
+  font-size: 12px; color: var(--fg, #dfe6f2); box-shadow: 0 6px 24px rgba(0,0,0,.5);
+  pointer-events: none; line-height: 1.45; }
+.adx-hover .adx-hover-title { font-weight: 700; margin-bottom: 3px; }
+.adx-hover .adx-hover-line { color: var(--muted, #9aa4b8); }
+.adx-hover .adx-hover-launch { color: var(--fg, #dfe6f2); }
+.adx-hover .adx-hover-degraded { color: #ff8a8a; }
+.adx-hover .adx-prov { font-size: 10px; }
+
+/* #133 — dossier delivery timeline: exact days only, gaps = pauses, never interpolated */
+.adx-timeline { display: flex; flex-wrap: wrap; gap: 1px; margin: 6px 0; max-width: 640px; }
+.adx-tl-day { width: 4px; height: 12px; border-radius: 1px; background: #22304a; }
+.adx-tl-day.on { background: var(--good, #43c774); }
+.adx-tl-cap { font-size: 10px; color: var(--muted, #7b8598); width: 100%; }

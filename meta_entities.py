@@ -158,7 +158,7 @@ def refresh_entity_map(force: bool = False) -> dict:
     rows, err = _get_all(f"{_account_id()}/ads", {
         "access_token": META_ACCESS_TOKEN,
         "fields": "id,name,status,effective_status,created_time,"
-                  "adset{id,name},campaign{id,name}",
+                  "adset{id,name,start_time},campaign{id,name}",
         "filtering": json.dumps([{"field": "ad.effective_status",
                                   "operator": "IN", "value": _ALL_STATUSES}]),
         "limit": 200,
@@ -176,8 +176,13 @@ def refresh_entity_map(force: bool = False) -> dict:
             "name": a.get("name") or "",
             "name_norm": norm_name(a.get("name")),
             "effective_status": a.get("effective_status"),
+            # LAUNCH LINEAGE (#133): created_time was REQUESTED but dropped here
+            # before 2026-08-09 — the dossier's "created" line silently never
+            # rendered. Kept now, with the ad set's (reused!) scheduled start.
+            "created_time": a.get("created_time"),
             "adset_id": (a.get("adset") or {}).get("id"),
             "adset_name": (a.get("adset") or {}).get("name"),
+            "adset_start_time": (a.get("adset") or {}).get("start_time"),
             "campaign_id": (a.get("campaign") or {}).get("id"),
             "campaign_name": (a.get("campaign") or {}).get("name"),
         }
@@ -196,8 +201,10 @@ def _remember_extra(store: dict, ad: dict) -> None:
         "name": ad.get("name") or "",
         "name_norm": norm_name(ad.get("name")),
         "effective_status": ad.get("effective_status"),
+        "created_time": ad.get("created_time"),
         "adset_id": (ad.get("adset") or {}).get("id"),
         "adset_name": (ad.get("adset") or {}).get("name"),
+        "adset_start_time": (ad.get("adset") or {}).get("start_time"),
         "campaign_id": (ad.get("campaign") or {}).get("id"),
         "campaign_name": (ad.get("campaign") or {}).get("name"),
     }
@@ -221,7 +228,8 @@ def lookup_ad_id(ad_id: str, store: dict | None = None) -> dict | None:
     if not configured():
         return None
     j, err = _get(ad_id, {"access_token": META_ACCESS_TOKEN,
-                          "fields": "id,name,effective_status,adset{id,name},campaign{id,name}"})
+                          "fields": "id,name,effective_status,created_time,"
+                                    "adset{id,name,start_time},campaign{id,name}"})
     if j and j.get("id"):
         _remember_extra(store, j)
         return {"ad_id": j["id"], **(store.get("extras") or {}).get(j["id"], {})}

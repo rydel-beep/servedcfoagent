@@ -13,7 +13,33 @@
 
   var state = { days: 30, sort: 'spend', sortDir: -1, verdict: null, creative: null,
                 q: '', gq: '', board: null, shown: 0, reqToken: 0, level: 'creative',
-                basis: 'cohort', market: 'all', rows: 70 };
+                basis: 'cohort', market: 'all', rows: 70,
+                // #133 META-STYLE DATE CONTROL: range = 'YYYY-MM-DD..YYYY-MM-DD' or
+                // null (standard windows). clockChosen: the user's explicit clock
+                // pick survives preset switches; otherwise presets default to
+                // ACTIVITY (the Meta-native reading) and the standard windows keep
+                // the ruled cohort default.
+                range: null, rangeLabel: null, clockChosen: false };
+
+  // Sydney "today" — the date control's boundaries are SYDNEY days (F8
+  // discipline), never the browser's local day.
+  function sydToday() {
+    try {
+      return new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' });
+    } catch (e) { return new Date().toISOString().slice(0, 10); }
+  }
+  function isoShift(iso, days) {
+    var d = new Date(iso + 'T12:00:00Z');       // noon UTC — immune to date rollover
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+  var RANGE_RE = /^\d{4}-\d{2}-\d{2}\.\.\d{4}-\d{2}-\d{2}$/;
+  // the window part of every engine query — board, roster, dossier, anomaly
+  // panels all inherit the SAME box + clock (drills inherit the exact box)
+  function windowQS() {
+    return (state.range ? 'range=' + state.range : 'days=' + state.days) +
+      '&clock=' + state.basis + '&market=' + state.market;
+  }
   // ROW CONTROL: 70/150/300/'all' — a RENDER window only. Sort and find always
   // run over the FULL dataset before the slice; tier rows stay pinned outside it.
   try {
@@ -30,6 +56,35 @@
   }
   function money(v) { return v == null ? '—' : '$' + Math.round(v).toLocaleString(); }
   function num(v) { return v == null ? '—' : String(v); }
+
+  // ── F5: LOUD DEGRADATION (audit F5 — the loud-fallback doctrine on the money
+  // columns). A dead upstream must be UNMISTAKABLE from a true zero: any metric
+  // whose source is degraded renders a DEGRADED chip carrying the source + reason
+  // — never $0, never a '—' that reads as real-zero.
+  var SPEND_COLS = { spend: 1, cost_per_lead: 1, cost_per_qualified: 1, cost_per_set: 1,
+                     cost_per_close: 1, cost_per_close_loaded: 1, ltgp_cac: 1 };
+  function degradedEntryFor(colKey, list) {
+    list = list || (state.board && state.board.degraded) || [];
+    for (var i = 0; i < list.length; i++) {
+      var m = String(list[i].metric || '');
+      // Meta spend/entity failure poisons every spend-derived column
+      if (SPEND_COLS[colKey] && m.indexOf('meta') === 0) return list[i];
+      if (colKey === 'cost_per_close_loaded' && m === 'attribution_loaded_inputs') return list[i];
+      if (colKey === 'ltgp_cac' && m === 'attribution_ltgp_cac') return list[i];
+    }
+    return null;
+  }
+  function degradedChip(d) {
+    return '<span class="adx-degraded" title="' + esc((d.metric || 'source') + ': ' +
+      (d.reason || 'upstream degraded')) + '">DEGRADED</span>';
+  }
+  function degradedStrip(list) {
+    if (!list || !list.length) return '';
+    return '<div class="adx-degraded-strip">⚠ DEGRADED SOURCE' + (list.length > 1 ? 'S' : '') +
+      ' (' + list.length + '): ' + list.map(function (d) {
+        return '<strong>' + esc(d.metric || 'source') + '</strong> — ' + esc(d.reason || '');
+      }).join(' · ') + ' · affected cells are marked DEGRADED, not rendered as $0</div>';
+  }
 
   // plain-language tooltips — Romano lives here (AD_DASHBOARD_REPORT Phase 5)
   var TIPS = {
@@ -64,6 +119,17 @@
     { k: 'ltgp_cac', label: 'LTGP:CAC' },
   ];
   var DRILLABLE = { leads: 1, qualified: 1, reached: 1, sets: 1, shows: 1, closes: 1 };
+  // #133 D3 SOURCE MAP: Meta-sourced columns and hybrids (Meta ÷ engine) are
+  // LABELLED on the header everywhere — no range view may render a Meta-sourced
+  // metric as an unlabelled plain number (grep-asserted in tests).
+  var SRC_META = { spend: 1 };            // pure Meta insights (impressions/clicks too, if shown)
+  var SRC_HYBRID = { cost_per_lead: 1, cost_per_qualified: 1, cost_per_set: 1,
+                     cost_per_close: 1, cost_per_close_loaded: 1, ltgp_cac: 1 };
+  function srcChip(k) {
+    if (SRC_META[k]) return ' <span class="adx-src-chip adx-src-meta" title="source: Meta insights — Meta’s number for this box, not engine-recomputable; degrades loudly if the Meta source dies">META</span>';
+    if (SRC_HYBRID[k]) return ' <span class="adx-src-chip adx-src-hybrid" title="hybrid: Meta spend ÷ engine count — degrades if EITHER side degrades">HYB</span>';
+    return '';
+  }
   // column visibility (persisted per user) — hiding is PRESENTATION only
   var hiddenCols = [];
   try { hiddenCols = JSON.parse(localStorage.getItem('adx-cols-hidden') || '[]'); } catch (e) {}
@@ -76,13 +142,31 @@
   // ── the atomic window fetch (latest-wins + echo guard) ─────────────────────
   var stalePoll = null;
   function expectedDays() { return state.days === 'all' ? 3650 : +state.days; }
-  function loadBoard(days, basis, market) {
-    state.days = days;
+  function writeUrl() {
+    try {
+      var qs = (state.range ? '?range=' + state.range : '?window=' + state.days) +
+        '&clock=' + state.basis + '&market=' + state.market +
+        '&sort=' + state.sort + '.' + (state.sortDir === -1 ? 'desc' : 'asc') +
+        '&rows=' + state.rows;
+      history.replaceState(null, '', qs);
+    } catch (e) {}
+  }
+  function loadBoard(days, basis, market, range) {
+    // Semantics: a non-null `days` is a STANDARD-window pick (clears any range);
+    // a non-null `range` ('A..B') activates the date box; null/undefined args
+    // keep current state (clock/market toggles preserve the active box).
+    if (range != null) {
+      state.range = range;
+    } else if (days != null) {
+      state.range = null;
+      state.rangeLabel = null;
+      state.days = days;
+    }
     if (basis) state.basis = basis;
     if (market) state.market = market;
     var token = ++state.reqToken;
     document.querySelectorAll('.adx-win').forEach(function (b) {
-      b.classList.toggle('active', String(b.dataset.days) === String(days));
+      b.classList.toggle('active', !state.range && String(b.dataset.days) === String(state.days));
     });
     document.querySelectorAll('.adx-basis').forEach(function (b) {
       b.classList.toggle('active', b.dataset.basis === state.basis);
@@ -90,31 +174,41 @@
     document.querySelectorAll('.adx-market').forEach(function (b) {
       b.classList.toggle('active', b.dataset.market === state.market);
     });
-    try { history.replaceState(null, '', '?window=' + days + '&basis=' + state.basis +
-      '&market=' + state.market + '&sort=' + state.sort + '.' + (state.sortDir === -1 ? 'desc' : 'asc') +
-      '&rows=' + state.rows); } catch (e) {}
-    $('#adx-banner').innerHTML = '<span class="adx-skel">Loading ' + days + (days === 'all' ? '' : 'd') + ' · ' + state.basis +
+    var clearBtn = $('#adx-range-clear');
+    if (clearBtn) {
+      clearBtn.style.display = state.range ? '' : 'none';
+      clearBtn.classList.toggle('on', !!state.range);
+    }
+    writeUrl();
+    $('#adx-banner').innerHTML = '<span class="adx-skel">Loading ' +
+      (state.range ? esc(state.range) : state.days + (state.days === 'all' ? '' : 'd')) +
+      ' · ' + state.basis +
       (state.market !== 'all' ? ' · ' + state.market.toUpperCase() : '') + '…</span>';
     document.body.classList.add('adx-loading');
     clearTimeout(stalePoll);
-    fetch('/ads/api/board?days=' + days + '&basis=' + state.basis + '&market=' + state.market,
-          { credentials: 'same-origin' })
-      .then(function (r) { return r.ok ? r.json() : null; })
+    fetch('/ads/api/board?' + windowQS(), { credentials: 'same-origin' })
+      .then(function (r) {
+        if (r.ok) return r.json();
+        return r.json().then(function (j) { return { _httpError: true, error: j.error }; })
+                       .catch(function () { return null; });
+      })
       .then(function (data) {
         if (token !== state.reqToken) return;              // latest wins — stale dropped
         document.body.classList.remove('adx-loading');
         if (!data) { $('#adx-banner').textContent = 'Engine unreachable — nothing rendered rather than stale numbers.'; return; }
-        if (!data.window || data.window.days !== expectedDays() ||
-            (data.basis && data.basis !== state.basis) ||
-            (data.market && data.market !== state.market)) {
+        if (data._httpError) {       // the server's friendly range refusal, verbatim
+          $('#adx-banner').innerHTML = '<span class="adx-range-err">' + esc(data.error || 'bad request') + '</span>';
+          return;
+        }
+        if (!echoMatches(data)) {
           console.error('STALE-MIX GUARD: response (window/basis)', data.window, data.basis,
-                        'does not match state', state.days, state.basis, '— discarded');
+                        'does not match state', state.range || state.days, state.basis, '— discarded');
           return;
         }
         state.board = data;
         renderAll();
         if (data.stale) {           // a labelled rollup — poll for the fresh build
-          stalePoll = setTimeout(function () { loadBoard(state.days); }, 8000);
+          stalePoll = setTimeout(function () { loadBoard(null); }, 8000);
         }
       })
       .catch(function () {
@@ -124,9 +218,31 @@
       });
   }
 
+  function echoMatches(data) {
+    // the stale-mix guard, range-aware: a range response must echo the requested
+    // box (a server-clamped end is legitimate ONLY when the clamp note says so)
+    if (!data.window) return false;
+    if ((data.basis && data.basis !== state.basis) ||
+        (data.market && data.market !== state.market)) return false;
+    if (state.range) {
+      var parts = state.range.split('..');
+      if (String(data.window.start) !== parts[0]) return false;
+      return String(data.window.end) === (parts[1] || parts[0]) || !!data.range_note;
+    }
+    return data.window.days === expectedDays();
+  }
+
   function windowStamp() {
-    var d = state.board.window.days;
+    var w = state.board.window || {};
+    if (state.range) {
+      var lbl = w.start === w.end ? w.start : w.start + ' → ' + w.end;
+      return (state.rangeLabel ? state.rangeLabel + ' · ' : '') + lbl;
+    }
+    var d = w.days;
     return d >= 3650 ? 'All time' : d + 'd';
+  }
+  function clockStamp() {
+    return state.basis === 'activity' ? 'Activity' : 'Cohort';
   }
 
   var levelChosen = false;   // the user's explicit pick beats the default
@@ -135,13 +251,25 @@
       state.level = state.board.ladder.default_level;
     }
     renderBanner(); renderHeadline(); renderScorecard(); renderHygiene(); renderScoreboard(); renderRows(true);
-    $('#adx-table-window').textContent = '· ' + windowStamp() + ' window' + (state.gq ? ' · FILTERED VIEW (aggregates unchanged)' : '') + (state.market !== 'all' ? ' · market: ' + state.market.toUpperCase() : '');
+    // #133: the ACTIVE CLOCK is part of the table label — "Activity · 3–9 Aug",
+    // never an implicit clock on a date box
+    $('#adx-table-window').textContent = '· ' + clockStamp() + ' · ' + windowStamp() +
+      (state.range ? '' : ' window') +
+      (state.gq ? ' · FILTERED VIEW (aggregates unchanged)' : '') +
+      (state.market !== 'all' ? ' · market: ' + state.market.toUpperCase() : '');
   }
 
   function renderHygiene() {
     var h = state.board.hygiene;
     var sec = $('#adx-hygiene');
-    if (!h) { sec.style.display = 'none'; return; }
+    if (!h) {
+      // F5 family: a dead integrity sweep must not silently vanish the section
+      sec.style.display = '';
+      $('#adx-hygiene-body').innerHTML =
+        '<div class="adx-degraded-strip">⚠ integrity/hygiene block unavailable this build — ' +
+        'the close-integrity sweep did not return; treat agreement state as UNKNOWN, not clean</div>';
+      return;
+    }
     sec.style.display = '';
     var ag = h.agreement || {};
     var line = 'Tracker (authority): <strong>' + h.tracker_closes + '</strong> close(s) in ' +
@@ -223,6 +351,9 @@
       ['Verdicts + min-n', 'DOUBLE DOWN needs LTGP:CAC ≥ ' + floorLine + 'x with margin at 3+ closes. KILL needs 30+ leads below the floor. Below those: TRENDING labels are provisional signal, never decisions.'],
       ['Windows', 'Leads/qualified/sets/shows are counted by Input Date in the window (cohort). Closes and cash are counted by Close Date in the window. Closes trail leads by weeks — 60/90d is the honest read for close-based verdicts.'],
       ['Cost bases', 'CPL/C-Qual/C-Set/C-Close (ad) use ad spend only. C/Close (loaded) adds closer + setter commissions. Contracted = contract value; Cash = money actually collected (Stripe-validated).'],
+      ['Launched + days running', 'Launched = the first day Meta recorded impressions for the ad (first delivery, #133) — never the created date (the object’s birthday, shown as secondary when it differs) and never the ad-set schedule (ad sets are reused). Days running = days with actual delivery; a paused ad does not accrue runtime.'],
+      ['Sources', 'Spend/impressions carry the META chip — Meta’s own numbers for the box, not recomputable from the tracker. CPL and every C/* carry the HYB chip: Meta spend ÷ engine counts — they degrade if EITHER side degrades. Funnel counts (leads → closes) are engine-authoritative from the tracker and stay live when Meta dies.'],
+      ['The date box + clock', 'The range picker sets a Sydney-day box and asks ONE of two questions: ACTIVITY (events that happened inside the box) or COHORT (what the box’s arrivals went on to become). The toggle beside the picker declares which; every label carries the active clock; the engine refuses cross-clock math (I11).'],
     ].map(function (d) {
       return '<div class="adx-def"><div class="adx-def-t">' + d[0] + '</div><div class="adx-def-b">' + d[1] + '</div></div>';
     }).join('');
@@ -247,8 +378,10 @@
       '<div class="adx-head-tile"><div class="adx-head-num">' + money(h.cash_total) + '</div>' +
       '<div class="adx-head-label">CASH COLLECTED</div>' +
       '<div class="adx-head-tiers">' + tiers(h.cash_tiers) + '</div></div>' +
-      '<div class="adx-head-tile"><div class="adx-head-num">' + money(h.spend_total) + '</div>' +
-      '<div class="adx-head-label">SPEND</div><div class="adx-head-tiers">Meta engine, reconciled</div></div>';
+      '<div class="adx-head-tile"><div class="adx-head-num">' +
+      (degradedEntryFor('spend') ? degradedChip(degradedEntryFor('spend')) : money(h.spend_total)) + '</div>' +
+      '<div class="adx-head-label">SPEND</div><div class="adx-head-tiers">' +
+      (degradedEntryFor('spend') ? 'Meta source degraded — see banner' : 'Meta engine, reconciled') + '</div></div>';
     // HEADLINE DELTAS: vs the prior equal-length window — same engine, second
     // invocation, clearly labelled (numbers arrive computed; nothing derived here).
     var cmp = state.board.compare;
@@ -273,11 +406,19 @@
       : '';
   }
 
+  function cohortIsYoung() {
+    // a cohort view on a short/recent box carries the maturity note (#133 §2.2)
+    var w = (state.board || {}).window || {};
+    if (!w.end) return false;
+    var ageDays = Math.round((new Date(sydToday()) - new Date(String(w.end))) / 864e5);
+    return ageDays <= 21;
+  }
+
   function renderBanner() {
     var b = state.board.scoreboard.banner || {};
     var fr = b.freshness || {};
     var qr = state.board.qualified_rule || {};
-    $('#adx-banner').innerHTML =
+    $('#adx-banner').innerHTML = degradedStrip(state.board.degraded) +
       '<strong>' + (b.attribution_rate_pct != null ? b.attribution_rate_pct + '%' : '—') +
       '</strong> of window leads ad-attributed (' + (b.attributed_leads || 0) + '/' + (b.leads || 0) + ')' +
       ' · window <strong>' + windowStamp() + '</strong>' +
@@ -286,10 +427,18 @@
       ' · sheet mirror ~90s' +
       ' · <span class="adx-basis-label">' + esc(state.board.basis_label || state.basis) + '</span>' +
       (state.board.stale ? ' · <span class="adx-stale">showing the last rollup (' +
-        Math.round((state.board.stale_age_s || 0) / 60) + 'm old) — refreshing…</span>' : '') +
-      (state.days === 30 && state.basis === 'cohort' ? ' · <span class="adx-guide">30d cohort: closes still landing — 60/90d is the honest read for close-based verdicts</span>' : '');
+        Math.round((state.board.stale_age_s || 0) / 60) + 'm old' +
+        (state.board.stale_reason ? ' · ' + esc(state.board.stale_reason) : '') +
+        ') — refreshing…</span>' : '') +
+      (state.board.range_note ? ' · <span class="adx-clock-note">' + esc(state.board.range_note) + '</span>' : '') +
+      (state.range && state.rangeLabel === 'Last 24h'
+        ? ' · <span class="adx-clock-note">daily-granular engine: “Last 24h” = yesterday + today as Sydney days</span>' : '') +
+      (state.range && state.basis === 'cohort' && cohortIsYoung()
+        ? ' · <span class="adx-clock-note">young cohort — leads this recent are still maturing (closes lag weeks); the activity clock answers “what happened in this box”</span>' : '') +
+      (!state.range && state.days === 30 && state.basis === 'cohort' ? ' · <span class="adx-guide">30d cohort: closes still landing — 60/90d is the honest read for close-based verdicts</span>' : '');
     if (!(b.leads)) {
-      $('#adx-banner').innerHTML = 'No leads in this ' + windowStamp() + ' window. ' +
+      $('#adx-banner').innerHTML = degradedStrip(state.board.degraded) +
+        'No leads in this ' + windowStamp() + ' window. ' +
         '<button class="adx-win-inline" onclick="AdsApp.setWindow(90)">view 90d instead</button>';
     }
   }
@@ -333,6 +482,18 @@
              : (b.provisional && b.provisional.trend === 'weak' ? 0.5 : 2);
         if (av !== bv) return av - bv;
         return (b.cost_per_lead || 0) - (a.cost_per_lead || 0);
+      }
+      if (k === 'launch' || k === 'active_days') {
+        // #133: launch sorts read the ONE engine lineage field (the same value
+        // the hover card and dossier show) — never a client-side recompute
+        av = (a.lineage || {})[k === 'launch' ? 'launch' : 'active_days'];
+        bv = (b.lineage || {})[k === 'launch' ? 'launch' : 'active_days'];
+        if (av == null && bv == null) return (b.spend || 0) - (a.spend || 0);
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        if (av < bv) return -dir;
+        if (av > bv) return dir;
+        return (b.spend || 0) - (a.spend || 0);
       }
       av = a[k]; bv = b[k];
       if (av == null && bv == null) { }
@@ -387,7 +548,7 @@
     var VCOLS = activeCols();
     thead.innerHTML = '<tr>' + VCOLS.map(function (c) {
       var cls = c.k === state.sort ? (state.sortDir === -1 ? 'sorted desc' : 'sorted asc') : '';
-      return '<th data-sort="' + c.k + '" class="' + cls + '" title="' + esc(TIPS[c.k] || '') + '">' + c.label + '</th>';
+      return '<th data-sort="' + c.k + '" class="' + cls + '" title="' + esc(TIPS[c.k] || '') + '">' + c.label + srcChip(c.k) + '</th>';
     }).join('') + '</tr>';
     var rows = levelRows().filter(function (r) {
       if (r.tier !== 'ad') return true;
@@ -449,6 +610,11 @@
           if (c.k === 'shows' && r.shows_src) {
             extra += ' <span class="adx-prov" title="provenance">' + r.shows_src.tracker + ' tracker · ' + r.shows_src.derived + ' derived</span>';
           }
+          // F5: a degraded upstream renders DEGRADED on ad-tier rows — a dead
+          // Meta token must never read as a real $0 spend / $0 CPL. Channel
+          // rows keep their by-design '—' (no ads → no spend, not degradation).
+          var dgd = (r.tier === 'ad' && (c.money || c.k === 'ltgp_cac')) ? degradedEntryFor(c.k) : null;
+          if (dgd) return '<td' + drill + '>' + degradedChip(dgd) + '</td>';
           return '<td' + drill + '>' + (c.money ? money(v) : num(v)) + extra + '</td>';
         }).join('') + '</tr>';
     }).join('') + (cut > 0 ? '<tr class="adx-rowcut"><td colspan="' + VCOLS.length + '">' +
@@ -562,6 +728,83 @@
       notes + '</div>';
   }
 
+  // ── #133 LAUNCH LINEAGE HOVER: board-payload-fed (zero fetch — the <150ms
+  // budget is structural), position:fixed (zero layout shift). The values ARE
+  // the engine row's lineage field — identical to the dossier and the sorts.
+  function daysBetween(a, b) {
+    try { return Math.round(Math.abs(new Date(a) - new Date(b)) / 864e5); }
+    catch (e) { return 0; }
+  }
+  function lineageCard(r) {
+    var title = '<div class="adx-hover-title">' + esc(String(r.creative || '').slice(0, 60)) + '</div>';
+    var lin = r.lineage;
+    if (r.tier && r.tier !== 'ad') {
+      return title + '<div class="adx-hover-line">channel row — no ad identity exists, so no launch date exists (not a data gap)</div>';
+    }
+    if (!lin) {
+      return title + '<div class="adx-hover-line adx-hover-degraded">launch lineage unavailable — lineage engine returned nothing for this row (degraded, not zero)</div>';
+    }
+    if (lin.degraded) {
+      return title + '<div class="adx-hover-line adx-hover-degraded">DEGRADED: ' + esc(lin.degraded) + '</div>';
+    }
+    var html = title;
+    if (lin.never_delivered) {
+      html += '<div class="adx-hover-line">never delivered — lifetime impressions 0 (spend without delivery is impossible; this ad simply never ran)</div>';
+      return html;
+    }
+    html += '<div class="adx-hover-line">launched <span class="adx-hover-launch">' + esc(lin.launch || '?') + '</span>' +
+      (lin.launch_approx ? ' <em>(on or before — lifetime probe pending)</em>' : '') +
+      (lin.status ? ' · ' + esc(lin.status) : '') + '</div>';
+    if (lin.active_days != null) {
+      html += '<div class="adx-hover-line"><strong>' + lin.active_days + ' active day' +
+        (lin.active_days === 1 ? '' : 's') + '</strong> running' +
+        (lin.calendar_days != null && lin.calendar_days !== lin.active_days
+          ? ' · ' + lin.calendar_days + ' calendar days since launch (gaps = paused)' : '') +
+        (lin.last_delivery && !lin.delivered_recently
+          ? ' · last delivered ' + esc(lin.last_delivery) : '') + '</div>';
+    }
+    // window-aware money off the SAME row the grid shows (F5 degradation honoured)
+    var dgd = degradedEntryFor('spend');
+    html += '<div class="adx-hover-line">' + clockStamp() + ' · ' + windowStamp() + ': ' +
+      (dgd ? degradedChip(dgd) : ('spend ' + money(r.spend) +
+        (r.cost_per_lead != null ? ' · CPL ' + money(r.cost_per_lead) : ''))) + '</div>';
+    // created shown as SECONDARY, only when it materially differs (>1 day) —
+    // created_time is the object's birthday, never "launched" (#133)
+    if (lin.created_time && lin.launch && daysBetween(lin.created_time, lin.launch) > 1) {
+      html += '<div class="adx-hover-line adx-prov">created ' + esc(lin.created_time) +
+        ' (object created — not first delivery)</div>';
+    }
+    html += '<div class="adx-hover-line adx-prov">source: Meta insights (first-impression day; account-timezone Sydney days)</div>';
+    return html;
+  }
+  var hoverTimer = null;
+  function findLevelRow(key) {
+    var rows = levelRows();
+    for (var i = 0; i < rows.length; i++) if (rows[i].creative_key === key) return rows[i];
+    return null;
+  }
+  function positionHover(e) {
+    var el = $('#adx-hover');
+    var x = e.clientX + 14, y = e.clientY + 12;
+    var w = el.offsetWidth || 320, h = el.offsetHeight || 100;
+    if (x + w > window.innerWidth - 8) x = e.clientX - w - 10;
+    if (y + h > window.innerHeight - 8) y = e.clientY - h - 10;
+    el.style.left = Math.max(4, x) + 'px';
+    el.style.top = Math.max(4, y) + 'px';
+  }
+  function showHover(e, key) {
+    var r = findLevelRow(key);
+    var el = $('#adx-hover');
+    if (!r || !el) return;
+    el.innerHTML = lineageCard(r);
+    el.style.display = '';
+    positionHover(e);
+  }
+  function hideHover() {
+    var el = $('#adx-hover');
+    if (el) el.style.display = 'none';
+  }
+
   // ── EVERY NUMBER IS A DOOR: anomaly panel → deal panel → dossier ──────────
   var ANOM_COPY = {
     earlier_closes: 'close(s) from leads that entered before this window — true on the activity clock, annotated never phantom',
@@ -579,8 +822,7 @@
               ' · ' + state.basis + ' clock',
               '<div class="adx-skel">Loading the deals…</div>');
     var note = '<div class="adx-roster-note">' + esc(ANOM_COPY[kind] || kind) + '</div>';
-    fetch('/ads/api/roster?days=' + state.days + '&basis=' + encodeURIComponent(state.basis) +
-          '&market=' + encodeURIComponent(state.market) +
+    fetch('/ads/api/roster?' + windowQS() +
           '&level=' + encodeURIComponent(state.level) +
           '&key=' + encodeURIComponent(creativeKey) + '&metric=' + encodeURIComponent(kind),
           { credentials: 'same-origin' })
@@ -588,7 +830,10 @@
       .then(function (d) {
         if (!d || d.error) { $('#adx-drill-body').innerHTML = note + '<div class="adx-roster-note">' + esc((d && d.error) || 'fetch failed') + '</div>'; return; }
         rosterState.people = d.people || [];
-        rosterState.head = note + (d.empty_reason ? '<div class="adx-roster-note">' + esc(d.empty_reason) + '</div>' : '');
+        rosterState.head = note +
+          (d.stale ? '<div class="adx-roster-note adx-stale">served from the rollup (' +
+            esc(d.stale_reason || '') + ') — a fresh build is warming</div>' : '') +
+          (d.empty_reason ? '<div class="adx-roster-note">' + esc(d.empty_reason) + '</div>' : '');
         renderRosterPeople();
       })
       .catch(function () { $('#adx-drill-body').innerHTML = note + 'fetch failed'; });
@@ -619,24 +864,97 @@
       })
       .catch(function () { $('#adx-drill-body').textContent = 'Deal fetch failed.'; });
   }
+  // #133: the dossier's full lineage — the three dates DISTINGUISHED (launch =
+  // first delivery; created = the object's birthday; ad-set scheduled start =
+  // context only, ad sets are reused), active vs calendar days, and the exact
+  // delivery timeline (gaps = pauses; omitted where daily data was never
+  // fetched — never interpolated).
+  function timelineHtml(lin, days) {
+    if (!days || !days.length || !lin || !lin.launch) return '';
+    var set = {};
+    days.forEach(function (d) { set[d] = 1; });
+    var start = lin.launch, end = sydToday();
+    var span = daysBetween(start, end) + 1;
+    var step = span > 240 ? 7 : 1;
+    var cells = '';
+    for (var i = 0; i < span; i += step) {
+      var on = false;
+      for (var j = i; j < Math.min(i + step, span); j++) {
+        if (set[isoShift(start, j)]) { on = true; break; }
+      }
+      cells += '<span class="adx-tl-day' + (on ? ' on' : '') + '"></span>';
+    }
+    return '<div class="adx-timeline">' + cells +
+      '<span class="adx-tl-cap">' + esc(start) + ' → ' + esc(end) +
+      ' · green = delivery' + (step > 1 ? ' (weekly buckets)' : '') +
+      ' · gaps = paused / not delivering · exact days from Meta insights, never interpolated</span></div>';
+  }
+  function lineageSection(d) {
+    if (d.tier && d.tier !== 'ad') return '';
+    var lin = d.lineage;
+    var head = '<div class="adx-dossier-sec"><h3>Launch lineage <span class="adx-h2-sub">launched = first delivery (#133) · source: Meta insights</span></h3>';
+    if (!lin) {
+      return head + '<div class="adx-roster-note">lineage unavailable for this creative — treat launch/runtime as UNKNOWN, not zero</div></div>';
+    }
+    if (lin.degraded) {
+      return head + '<div class="adx-warnline">DEGRADED: ' + esc(lin.degraded) + '</div></div>';
+    }
+    if (lin.never_delivered) {
+      return head + '<div class="adx-person-meta">never delivered — lifetime impressions 0</div></div>';
+    }
+    var id = d.identity || {};
+    var lines = '<div class="adx-person-meta"><strong>launched ' + esc(lin.launch || '?') + '</strong>' +
+      (lin.launch_approx ? ' <em>(on or before — the lifetime probe hasn’t pinned the exact day yet)</em>' : '') +
+      ' — first day Meta recorded impressions</div>';
+    var created = lin.created_time || (id.created_time ? String(id.created_time).slice(0, 10) : null);
+    if (created) {
+      var cdiff = lin.launch ? daysBetween(created, lin.launch) : 0;
+      lines += '<div class="adx-person-meta">created ' + esc(created) +
+        ' — the ad OBJECT’s birthday' +
+        (cdiff >= 1 ? ' (' + cdiff + ' day' + (cdiff === 1 ? '' : 's') + ' before first delivery)'
+                    : ' (same day as launch)') + '</div>';
+    }
+    if (lin.scheduled_start) {
+      lines += '<div class="adx-person-meta">ad-set scheduled start ' + esc(lin.scheduled_start) +
+        ' — the AD SET’s schedule; ad sets are reused here, so this is NOT this ad’s launch (context only)</div>';
+    }
+    if (lin.active_days != null) {
+      lines += '<div class="adx-person-meta"><strong>' + lin.active_days + ' active delivery day' +
+        (lin.active_days === 1 ? '' : 's') + '</strong>' +
+        (lin.calendar_days != null ? ' vs ' + lin.calendar_days + ' calendar days since launch' +
+          (lin.calendar_days !== lin.active_days ? ' — the difference is paused/not-delivering time' : '') : '') +
+        (lin.last_delivery ? ' · last delivered ' + esc(lin.last_delivery) : '') +
+        (lin.status ? ' · status ' + esc(lin.status) : '') + '</div>';
+    }
+    if (d.lineage_window_note) {
+      lines += '<div class="adx-warnline">' + esc(d.lineage_window_note) + '</div>';
+    }
+    return head + lines + timelineHtml(lin, d.delivery_days) + '</div>';
+  }
+
   function openDossier(creativeKey) {
     openDrill('Creative dossier · ' + windowStamp() + ' · ' + state.basis + ' clock',
               '<div class="adx-skel">Assembling the dossier…</div>');
     try { history.replaceState(null, '', location.search.replace(/&?dossier=[^&]*/, '') + '&dossier=' + encodeURIComponent(creativeKey)); } catch (e) {}
-    fetch('/ads/api/dossier?days=' + state.days + '&basis=' + state.basis + '&market=' + state.market +
+    fetch('/ads/api/dossier?' + windowQS() +
           '&creative=' + encodeURIComponent(creativeKey), { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
         if (!d || d.error) { $('#adx-drill-body').innerHTML = '<div class="adx-roster-note">' + esc((d && d.error) || 'fetch failed') + '</div>'; return; }
         var id = d.identity || {};
+        // F5: the dossier's money legs honour the same degradation contract
+        function dmoney(colKey, v) {
+          var dg = degradedEntryFor(colKey, d.degraded);
+          return dg ? degradedChip(dg) : money(v);
+        }
         function econRow(label, e) {
           if (!e) return '<div class="adx-dossier-econ"><strong>' + label + '</strong>: no leads in this scope (honest zero — not an error)</div>';
           return '<div class="adx-dossier-econ"><strong>' + label + '</strong>: ' +
             'leads ' + num(e.leads) + ' · qual ' + num(e.qualified) + ' · reached ' + num(e.reached) +
             ' · sets ' + num(e.sets) + ' · shows ' + num(e.shows) + ' · closes ' + num(e.closes) +
-            ' · cash ' + money(e.cash) + ' · spend ' + money(e.spend) +
-            ' · CPL ' + money(e.cost_per_lead) + ' · C/Qual ' + money(e.cost_per_qualified) +
-            ' · C/Set ' + money(e.cost_per_set) + ' · C/Close ' + money(e.cost_per_close) +
+            ' · cash ' + money(e.cash) + ' · spend ' + dmoney('spend', e.spend) +
+            ' · CPL ' + dmoney('cost_per_lead', e.cost_per_lead) + ' · C/Qual ' + dmoney('cost_per_qualified', e.cost_per_qualified) +
+            ' · C/Set ' + dmoney('cost_per_set', e.cost_per_set) + ' · C/Close ' + dmoney('cost_per_close', e.cost_per_close) +
             (e.verdict ? ' · verdict ' + esc(e.verdict) : '') +
             (e.provisional ? ' <span class="adx-prov">' + esc(e.provisional.label || 'provisional') + '</span>' : '') +
             '</div>';
@@ -653,14 +971,18 @@
             (v.tracker_link ? ' <a class="adx-ghl" href="' + esc(v.tracker_link) + '" target="_blank" rel="noopener">tracker ↗</a>' : '') +
             '</div>';
         }).join('');
-        $('#adx-drill-body').innerHTML =
+        $('#adx-drill-body').innerHTML = degradedStrip(d.degraded) +
+          (d.stale ? '<div class="adx-roster-note adx-stale">served from the rollup (' +
+            esc(d.stale_reason || '') + ') — a fresh build is warming</div>' : '') +
           '<div class="adx-dossier-sec"><h3>Identity & delivery</h3>' +
           '<div class="adx-person-meta">' + esc(d.label) + ' · tier ' + esc(d.tier) +
           (d.campaigns && d.campaigns.length ? ' · ' + d.campaigns.map(esc).join(', ') : '') +
           (id.status ? ' · status ' + esc(id.status) : '') +
           (id.created_time ? ' · created ' + esc(String(id.created_time).slice(0, 10)) + ' <em>(' + esc(id.created_time_note || '') + ')</em>' : '') +
           (d.history ? ' · <span class="adx-prov">(archived history)</span>' : '') + '</div></div>' +
-          '<div class="adx-dossier-sec"><h3>Unit economics <span class="adx-h2-sub">one engine · min-n labels intact</span></h3>' +
+          (d.range_note ? '<div class="adx-clock-note">' + esc(d.range_note) + '</div>' : '') +
+          lineageSection(d) +
+          '<div class="adx-dossier-sec"><h3>Unit economics <span class="adx-h2-sub">one engine · min-n labels intact · clock: ' + esc(d.clock || d.basis || state.basis) + '</span></h3>' +
           econRow(windowStamp(), d.econ_window) + econRow('All time', d.econ_all_time) +
           (state.board.market_note ? '<div class="adx-market-note">' + esc(state.board.market_note) + '</div>' : '') + '</div>' +
           '<div class="adx-dossier-sec"><h3>Lead ledger <span class="adx-h2-sub">' + d.ledger_count + ' lead(s) · newest first · window-scoped (switch window to All for history)</span></h3>' +
@@ -668,6 +990,15 @@
       })
       .catch(function () { $('#adx-drill-body').textContent = 'Dossier fetch failed.'; });
   }
+
+  // F12 (audit): the ?roster= deep link is ATTACKER-CONTROLLABLE input. level and
+  // metric are whitelisted client-side BEFORE any render, and every URL-derived
+  // string is esc()'d into the drill title — the reflected-XSS vector is closed
+  // at the boundary, before server validation can even be consulted.
+  var VALID_LEVELS = { creative: 1, name: 1, batch: 1, campaign: 1, account: 1 };
+  var VALID_METRICS = { leads: 1, qualified: 1, reached: 1, sets: 1, shows: 1, closes: 1,
+                        earlier_closes: 1, earlier_sets: 1, earlier_shows: 1,
+                        undated_sets: 1, shows_unverified: 1 };
 
   var rosterState = { people: [], sort: 'event', head: '', title: '' };
   function rosterSortBtns() {
@@ -689,21 +1020,29 @@
       (ppl.length ? rosterSortBtns() : '') + ppl.map(personCard).join('');
   }
   function loadRoster(level, key, label, metric, expected) {
-    // the drill INHERITS the clicked cell's clock (I11) and states it in the header
-    openDrill(esc(String(label || key).slice(0, 50)) + ' · ' + metric + ' · ' + windowStamp() +
+    // the drill INHERITS the clicked cell's clock (I11) and states it in the header.
+    // F12: metric/level arrive from the URL on deep links — whitelist + escape.
+    if (!VALID_METRICS[metric] || !VALID_LEVELS[level]) {
+      console.error('F12 guard: invalid roster spec discarded', level, metric);
+      return;
+    }
+    openDrill(esc(String(label || key).slice(0, 50)) + ' · ' + esc(metric) + ' · ' + windowStamp() +
               ' · ' + state.basis + ' clock',
               '<div class="adx-skel">Loading the humans…</div>');
     var spec = 'level=' + encodeURIComponent(level) + '&key=' + encodeURIComponent(key) +
                '&metric=' + encodeURIComponent(metric);
     try { history.replaceState(null, '', location.search.replace(/&?roster=[^&]*/, '') +
       '&roster=' + encodeURIComponent(level + '~' + key + '~' + metric)); } catch (e) {}
-    fetch('/ads/api/roster?days=' + state.days + '&basis=' + encodeURIComponent(state.basis) +
-          '&market=' + encodeURIComponent(state.market) + '&' + spec,
+    fetch('/ads/api/roster?' + windowQS() + '&' + spec,
           { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : r.json().then(function (j) { return j; }).catch(function () { return null; }); })
       .then(function (d) {
         if (!d || d.error) { $('#adx-drill-body').innerHTML = '<div class="adx-roster-note">' + esc((d && d.error) || 'Roster fetch failed.') + '</div>'; return; }
-        var head = '<div class="adx-roster-note">' + esc(d.clock_note || '') + '</div>';
+        var head = degradedStrip(d.degraded) +
+          (d.stale ? '<div class="adx-roster-note adx-stale">served from the rollup (' +
+            Math.round((d.stale_age_s || 0) / 60) + 'm old · ' + esc(d.stale_reason || '') +
+            ') — a fresh build is warming</div>' : '') +
+          '<div class="adx-roster-note">' + esc(d.clock_note || '') + '</div>';
         var i17 = d.i17 || {};
         if (i17.ok === false) {
           head += '<div class="adx-roster-count">I17 DRIFT: the cell reads ' + i17.cell +
@@ -743,16 +1082,123 @@
     if (so[1]) { state.sort = so[1]; state.sortDir = so[2] === 'asc' ? 1 : -1; }
     var bParam = (location.search.match(/[?&]basis=(cohort|activity)/) || [])[1];
     if (bParam) state.basis = bParam;
+    // #133: URL-stated range + clock (?range=A..B&clock=activity) — shareable,
+    // refresh-proof. The range is STRICTLY validated before any use (F12 class).
+    var ckParam = (location.search.match(/[?&]clock=(cohort|activity)/) || [])[1];
+    if (ckParam) { state.basis = ckParam; state.clockChosen = true; }
+    var rgParam = (location.search.match(/[?&]range=([0-9.\-]{10,25})/) || [])[1];
+    if (rgParam && RANGE_RE.test(rgParam)) {
+      state.range = rgParam;
+      if (!ckParam && !bParam) state.basis = 'activity';   // box default
+    }
     document.querySelectorAll('.adx-basis').forEach(function (b) {
-      b.addEventListener('click', function () { loadBoard(state.days, b.dataset.basis); });
+      b.addEventListener('click', function () {
+        state.clockChosen = true;              // an explicit pick survives presets
+        loadBoard(null, b.dataset.basis);      // clock flip keeps the active box
+      });
     });
     var vParam = (location.search.match(/[?&]verdict=([^&]+)/) || [])[1];
     if (vParam) state.verdict = decodeURIComponent(vParam);
     var cParam = (location.search.match(/[?&]creative=([^&]+)/) || [])[1];
     if (cParam) state.creative = decodeURIComponent(cParam);
     document.querySelectorAll('.adx-win').forEach(function (b) {
-      b.addEventListener('click', function () { loadBoard(+b.dataset.days); });
+      b.addEventListener('click', function () {
+        // a standard window restores the RULED cohort default unless the user
+        // explicitly chose a clock (the picker's activity default is box-scoped)
+        if (!state.clockChosen) state.basis = 'cohort';
+        loadBoard(b.dataset.days === 'all' ? 'all' : +b.dataset.days);
+      });
     });
+
+    // ── #133 META-STYLE DATE CONTROL: presets + custom calendar range ────────
+    function applyPreset(v) {
+      var t = sydToday();
+      var r = null, label = null;
+      if (v === 'today') { r = t + '..' + t; label = 'Today'; }
+      else if (v === '24h') {
+        // daily-granular engine: 'Last 24h' = yesterday + today as Sydney days —
+        // stated, never fake hour-granularity
+        r = isoShift(t, -1) + '..' + t; label = 'Last 24h';
+      }
+      else if (v === '7d') { r = isoShift(t, -6) + '..' + t; label = 'Last 7 days'; }
+      else if (v === '14d') { r = isoShift(t, -13) + '..' + t; label = 'Last 14 days'; }
+      else if (v === '30d') { r = isoShift(t, -29) + '..' + t; label = 'Last 30 days'; }
+      else if (v === 'thismonth') { r = t.slice(0, 8) + '01..' + t; label = 'This month'; }
+      else if (v === 'lastmonth') {
+        var prevEnd = isoShift(t.slice(0, 8) + '01', -1);
+        r = prevEnd.slice(0, 8) + '01..' + prevEnd; label = 'Last month';
+      }
+      else if (v === 'max') {
+        $('#adx-range-custom').style.display = 'none';
+        if (!state.clockChosen) state.basis = 'cohort';
+        loadBoard('all');
+        return;
+      }
+      else if (v === 'custom') {
+        var c = $('#adx-range-custom');
+        c.style.display = '';
+        $('#adx-range-end').value = t;
+        $('#adx-range-start').value = isoShift(t, -6);
+        return;
+      }
+      if (r) {
+        $('#adx-range-custom').style.display = 'none';
+        state.rangeLabel = label;
+        // the Meta-native reading for a date box: ACTIVITY, unless the user
+        // explicitly chose a clock (their pick always wins)
+        if (!state.clockChosen) state.basis = 'activity';
+        loadBoard(null, null, null, r);
+      }
+    }
+    var presetSel = $('#adx-range-preset');
+    if (presetSel) {
+      presetSel.addEventListener('change', function () {
+        if (presetSel.value) applyPreset(presetSel.value);
+        if (presetSel.value !== 'custom') presetSel.value = '';
+      });
+    }
+    var applyBtn = $('#adx-range-apply');
+    if (applyBtn) {
+      applyBtn.addEventListener('click', function () {
+        var s = $('#adx-range-start').value, e = $('#adx-range-end').value;
+        var err = null;
+        if (!s || !e) err = 'pick both dates';
+        else if (s > e) err = 'start is after end — swap them';
+        else if (s > sydToday()) err = 'starts in the future (Sydney) — nothing to show yet';
+        var old = $('#adx-range .adx-range-err');
+        if (old) old.remove();
+        if (err) {
+          applyBtn.insertAdjacentHTML('afterend', '<span class="adx-range-err">' + esc(err) + '</span>');
+          return;
+        }
+        state.rangeLabel = null;
+        if (!state.clockChosen) state.basis = 'activity';
+        loadBoard(null, null, null, s + '..' + e);   // server re-validates + clamps
+      });
+    }
+    var clearBtn2 = $('#adx-range-clear');
+    if (clearBtn2) {
+      clearBtn2.addEventListener('click', function () {
+        $('#adx-range-custom').style.display = 'none';
+        if (!state.clockChosen) state.basis = 'cohort';
+        loadBoard(state.days === 'all' ? 'all' : +state.days || 30);
+      });
+    }
+    // #133 hover wiring: any campaign/creative NAME cell shows the lineage card
+    var sbEl = $('#adx-scoreboard');
+    sbEl.addEventListener('mouseover', function (e) {
+      var nameCell = e.target.closest('td.adx-name');
+      var tr = e.target.closest('tr[data-key]');
+      if (nameCell && tr && state.board) showHover(e, tr.dataset.key);
+      else hideHover();
+    });
+    sbEl.addEventListener('mousemove', function (e) {
+      if ($('#adx-hover').style.display !== 'none') positionHover(e);
+    });
+    sbEl.addEventListener('mouseleave', hideHover);
+    document.addEventListener('click', hideHover);
+    document.addEventListener('scroll', hideHover, true);
+
     $('#adx-scoreboard').addEventListener('click', function (e) {
       var door = e.target.closest('.adx-door[data-anom]');
       if (door) { anomalyPanel(door.dataset.key, door.dataset.anom); return; }
@@ -790,7 +1236,7 @@
       if (rsort) { rosterState.sort = rsort.dataset.rsort; renderRosterPeople(); }
     });
     document.querySelectorAll('.adx-market').forEach(function (b) {
-      b.addEventListener('click', function () { loadBoard(state.days, null, b.dataset.market); });
+      b.addEventListener('click', function () { loadBoard(null, null, b.dataset.market); });
     });
     $('#adx-preset').addEventListener('change', function () {
       var v = $('#adx-preset').value;
@@ -832,7 +1278,7 @@
       if (!r) return;
       openDrill(esc(r.name), '<div class="adx-skel">Loading…</div>');
       // one person: reuse the roster endpoint for their stage cohort, filter client-side
-      fetch('/ads/api/roster?days=' + state.days + '&stage=leads&creative=' +
+      fetch('/ads/api/roster?' + windowQS() + '&stage=leads&creative=' +
             encodeURIComponent(r.creative.key), { credentials: 'same-origin' })
         .then(function (x) { return x.ok ? x.json() : null; })
         .then(function (d) {
@@ -869,7 +1315,7 @@
     var dossierParam = (location.search.match(/[?&]dossier=([^&]+)/) || [])[1];
     var dealParam = (location.search.match(/[?&]deal=([^&]+)/) || [])[1];
     var rosterParam = (location.search.match(/[?&]roster=([^&]+)/) || [])[1];
-    loadBoard(days);
+    if (state.range) loadBoard(null); else loadBoard(days);
     if (dossierParam) setTimeout(function () { openDossier(decodeURIComponent(dossierParam)); }, 600);
     else if (dealParam) setTimeout(function () { dealPanel(decodeURIComponent(dealParam)); }, 600);
     else if (rosterParam) setTimeout(function () {

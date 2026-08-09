@@ -19,6 +19,30 @@
       <button class="adx-win" data-days="90">90d</button>
       <button class="adx-win" data-days="all" title="Full tracker history">All</button>
     </div>
+    <!-- META-STYLE DATE CONTROL (#133): a window PARAMETER over the one engine.
+         The clock toggle beside it declares the question (activity ⇄ cohort);
+         presets default to the activity reading, the standard windows keep the
+         ruled cohort default. All boundaries are SYDNEY days. -->
+    <div class="adx-range" id="adx-range" title="Pick a date box (Sydney days). Presets ask the ACTIVITY question by default — what happened inside the box; flip the clock beside this control for the cohort reading.">
+      <select id="adx-range-preset" class="adx-range-preset">
+        <option value="">date range…</option>
+        <option value="today">Today</option>
+        <option value="24h">Last 24h</option>
+        <option value="7d">Last 7 days</option>
+        <option value="14d">Last 14 days</option>
+        <option value="30d">Last 30 days</option>
+        <option value="thismonth">This month</option>
+        <option value="lastmonth">Last month</option>
+        <option value="max">Maximum</option>
+        <option value="custom">Custom range…</option>
+      </select>
+      <span class="adx-range-custom" id="adx-range-custom" style="display:none">
+        <input type="date" id="adx-range-start"> <span class="adx-range-dash">–</span>
+        <input type="date" id="adx-range-end">
+        <button id="adx-range-apply" class="adx-range-apply">apply</button>
+      </span>
+      <button class="adx-range-clear" id="adx-range-clear" style="display:none" title="Back to the standard windows">✕ range</button>
+    </div>
     <div class="adx-markets" id="adx-markets" title="Engine-level market filter — AU + US + Unknown always sum to All (I15); spend is omitted under a filter (per-creative, not market-splittable)">
       <button class="adx-market active" data-market="all">All</button>
       <button class="adx-market" data-market="au">AU</button>
@@ -68,6 +92,9 @@
           <option value="spend.desc">Highest spend</option>
           <option value="cost_per_lead.desc">Highest CPL</option>
           <option value="worst.asc">Lowest performing</option>
+          <option value="launch.desc">Newest (first delivery)</option>
+          <option value="launch.asc">Oldest (first delivery)</option>
+          <option value="active_days.desc">Longest running (active days)</option>
         </select>
         <details class="adx-colpick" id="adx-colpick"><summary>columns ▾</summary>
           <div class="adx-colpick-body" id="adx-colpick-body"></div>
@@ -107,6 +134,10 @@
 
   <footer class="adx-footer">reads the Lead-to-Cash mirror + the attribution engine · figures reconcile to the dashboard · read-only</footer>
 </main>
+
+<!-- LAUNCH LINEAGE HOVER (#133): fed from the board payload already in memory —
+     zero fetch, position:fixed (no layout shift) -->
+<div class="adx-hover" id="adx-hover" style="display:none"></div>
 
 <!-- THE DRILL (overlay panel — never loses your place) -->
 <div class="adx-drill-scrim" id="adx-drill-scrim" style="display:none">

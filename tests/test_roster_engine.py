@@ -387,8 +387,10 @@ def test_i17_nightly_sampling_wired():
     body = src.split("def integrity_sweep()")[1]
     assert "i17_sample" in body and "random.sample" in body
     assert "i17_roster_drift" in body
-    # drift is ACTION-lane loud, not hygiene-quiet
-    assert '"i17_roster_drift")' in src.split("big = ")[1][:200]
+    # drift is ACTION-lane loud, not hygiene-quiet (#133 appended clock_label
+    # to the same promotion tuple — assert membership, not tuple tail)
+    promo = src.split("big = ")[1][:260]
+    assert '"i17_roster_drift"' in promo and '"clock_label")' in promo
 
 
 def test_dedup_proposed_kills_duplicate_ids():

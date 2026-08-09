@@ -46,7 +46,10 @@ def test_case_a_roster_inherits_the_cell_clock():
     assert '"clock_note"' in eng_src
     js = open(os.path.join(os.path.dirname(__file__), "..", "dashboard", "static",
                            "js", "adsapp.js")).read()
-    assert "'&basis=' + encodeURIComponent(state.basis)" in js
+    # #133 renamed the wire param: every drill fetch inherits the box + clock
+    # via the ONE windowQS() builder ('&clock=' + state.basis)
+    assert "'&clock=' + state.basis" in js
+    assert "'/ads/api/roster?' + windowQS()" in js
     # the bare "mismatch, report this" message class is DEAD — legible cause or nothing
     assert "mismatch, report this" not in js
     assert "I17 DRIFT" in js and "render/engine skew" in js

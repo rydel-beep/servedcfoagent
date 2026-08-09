@@ -324,6 +324,14 @@ def _aggregate(rows: list[dict], key: str, label: str) -> dict:
         if ltgp:
             agg["ltgp"] = round(ltgp, 2)
             agg["ltgp_cac"] = round(ltgp / loaded_total, 2)
+    # LAUNCH LINEAGE (#133) at the group grain: engine-side union over member
+    # ad ids (earliest member launch; active days = union of delivery days) —
+    # the group-name hover reads THIS field, never client math (I16).
+    try:
+        import launch_lineage
+        agg["lineage"] = launch_lineage.aggregate_rows(rows)
+    except Exception:
+        agg["lineage"] = None
     agg["gates"] = {
         "n_leads": agg["leads"], "n_closes": closes,
         "sufficient_for_scale": closes >= MIN_N_CLOSES_SCALE,

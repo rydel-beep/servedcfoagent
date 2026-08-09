@@ -12,7 +12,8 @@ atomic payload per window (the toggle fix — one fetch, one render, the window 
 back for the stale-mix guard). /api/roster filters the SAME engine rows/deals the
 counts were built from — roster length == the count, structurally and test-enforced.
 
-Read-only everywhere. GHL notes are fetched live per roster (≤30 contacts, throttled),
+Read-only everywhere. GHL notes are fetched live per roster (first 8 contacts,
+throttled — the rest stay tracker-only; audit F14 corrected the stale "≤30" claim),
 labelled with source + stamp; tracker notes come from the mirror with the sheet stamp.
 """
 from __future__ import annotations
@@ -35,19 +36,66 @@ bp = Blueprint("ads", __name__)
 ALL_DAYS = 3650   # the "All" window (the tracker's full history fits comfortably)
 
 
+_RANGE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})(?:\.\.(\d{4}-\d{2}-\d{2}))?$")
+
+
+def _range_args():
+    """META-STYLE DATE CONTROL (#133): ?range=YYYY-MM-DD..YYYY-MM-DD (or a single
+    day). STRICTLY validated — the value is either two real Sydney dates or a
+    friendly 400; nothing else ever reaches the engine or an HTML surface (the
+    F12 taint class is structurally excluded for this param).
+    Returns (start, end, note, error): boundaries are SYDNEY days (F8 discipline —
+    today_sydney(), never a UTC day); a future end is CLAMPED to today and noted;
+    start > end and future starts are refused with the reason."""
+    raw = (request.args.get("range") or "").strip()
+    if not raw:
+        return None, None, None, None
+    m = _RANGE_RE.match(raw)
+    if not m:
+        return None, None, None, "bad range — use YYYY-MM-DD..YYYY-MM-DD (Sydney days)"
+    import datetime as dt
+    from helpers import today_sydney
+    try:
+        s = dt.date.fromisoformat(m.group(1))
+        e = dt.date.fromisoformat(m.group(2) or m.group(1))
+    except ValueError:
+        return None, None, None, "bad range — those aren't real calendar dates"
+    if s > e:
+        return None, None, None, f"range start {s} is after end {e} — swap them"
+    today = today_sydney()
+    if s > today:
+        return None, None, None, (f"range starts {s}, in the future (today is "
+                                  f"{today} in Sydney) — nothing to show yet")
+    note = None
+    if e > today:
+        note = f"end {e} clamped to today ({today}, Sydney) — future days don't exist yet"
+        e = today
+    return str(s), str(e), note, None
+
+
 def _window_args():
+    """Window resolution. A validated ?range= wins; else ?days= (30/60/90/all) with
+    optional legacy start/end passthrough. Returns (days, start, end, note, error)."""
+    r_start, r_end, r_note, r_err = _range_args()
+    if r_err:
+        return None, None, None, None, r_err
+    if r_start:
+        return 30, r_start, r_end, r_note, None    # days ignored when start/end given
     raw = request.args.get("days", 30)
     if str(raw).lower() == "all":
-        return ALL_DAYS, request.args.get("start"), request.args.get("end")
+        return ALL_DAYS, request.args.get("start"), request.args.get("end"), None, None
     try:
         days = min(max(int(raw), 1), 365)
     except ValueError:
-        return None, None, None
-    return days, request.args.get("start"), request.args.get("end")
+        return None, None, None, None, "bad days"
+    return days, request.args.get("start"), request.args.get("end"), None, None
 
 
 def _basis_arg():
-    b = request.args.get("basis", "cohort")
+    """The CLOCK param (#133): ?clock= is the declared name (activity ⇄ cohort);
+    ?basis= remains as the legacy alias. The active clock is ALWAYS echoed in the
+    payload — a range view may never leave its clock implicit."""
+    b = request.args.get("clock") or request.args.get("basis") or "cohort"
     return b if b in ("cohort", "activity") else "cohort"
 
 
@@ -156,8 +204,14 @@ def _build_board(days, start, end, basis, force=False, market=None):
     except Exception:
         pass
     return {
+        "_engine": _engine_slice(result),   # popped by _serve_board — NEVER client-sent
         "unverified_shows": unverified_shows,
         "derived_dates": derived_map,
+        # F5 (LOUD DEGRADATION): the engine's degraded[] + ok ride in the board
+        # payload so the client can mark every dependent cell — a dead Meta token
+        # must be UNMISTAKABLE from a true $0 (audit F5; doctrine: loud fallback).
+        "degraded": result.get("degraded") or [],
+        "ok": result.get("ok"),
         "hygiene": hygiene, "identity": identity, "ladder": ladder,
         "window": result.get("window"), "basis": result.get("basis"),
         "basis_label": result.get("basis_label"),
@@ -174,6 +228,26 @@ def _build_board(days, start, end, basis, force=False, market=None):
     }
 
 
+def _engine_slice(result: dict) -> dict:
+    """F1 (rollup-backed rosters): the slice of the engine result the roster
+    engine needs — creatives WITH their I17 member lists + trimmed view rows —
+    persisted beside the board rollup so a COLD worker serves any roster/drill
+    from the rollup layer (<500ms budget) instead of a 5–15s engine build.
+    Trimmed to the fields roster_engine actually reads (size discipline)."""
+    rows = []
+    for v in (result.get("rows") or []):
+        r = {k: v.get(k) for k in ("name", "name_norm", "business", "qualified",
+                                   "reached", "revenue", "joined_via")}
+        cands = (v.get("creative") or {}).get("candidates")
+        if cands:
+            r["creative"] = {"candidates": cands}
+        rows.append(r)
+    return {"creatives": result.get("creatives"), "rows": rows,
+            "window": result.get("window"), "basis": result.get("basis"),
+            "market": result.get("market"), "market_note": result.get("market_note"),
+            "degraded": result.get("degraded") or []}
+
+
 def _rollup_key(basis, days):
     return f"attr:rollup:{basis}:{days}"
 
@@ -181,12 +255,21 @@ def _rollup_key(basis, days):
 def _serve_board(days, start, end, basis, force, market=None):
     """Rollup-backed serve: fresh when the engine is warm; a persisted rollup served
     STALE-LABELLED (never as fresh) while a background refresh runs; prefetch of the
-    adjacent windows after any fresh build."""
+    adjacent windows after any fresh build.
+
+    F6: rollups are EPOCH-STAMPED. A derivation write bumps the derived epoch, so
+    a stored rollup from before the write serves STALE-LABELLED (with the reason)
+    and a refresh is kicked — a freshness label on post-write data is a lie.
+    The warm check uses AE.cache_fresh() (the pre-F6 code probed AE._cache with a
+    stale hand-built 3-tuple key and never hit — the warm path was dead)."""
     import attribution_engine as AE
-    import kv_store, threading, time as _t
+    import resolution
+    import kv_store, time as _t
     custom = bool(start or end)
+    epoch = resolution.derived_epoch()
     if market is not None:
         payload = _build_board(days, start, end, basis, force=force, market=market)
+        payload.pop("_engine", None)
         payload["stale"] = False
         return payload
     w_cached = False
@@ -194,13 +277,15 @@ def _serve_board(days, start, end, basis, force, market=None):
         import datetime as dt
         from helpers import today_sydney
         w1 = today_sydney(); w0 = w1 - dt.timedelta(days=days - 1)
-        hit = AE._cache.get((str(w0), str(w1), basis))
-        w_cached = bool(hit and _t.time() - hit[0] < AE._CACHE_TTL_S)
+        w_cached = AE.cache_fresh(w0, w1, basis)
     if custom or w_cached or force:
         payload = _build_board(days, start, end, basis, force=force)
+        engine_slice = payload.pop("_engine", None)
         payload["stale"] = False
         if not custom:
-            kv_store.put(_rollup_key(basis, days), {"at": _t.time(), "board": payload})
+            kv_store.put(_rollup_key(basis, days),
+                         {"at": _t.time(), "epoch": epoch, "board": payload,
+                          "engine": engine_slice})
             _prefetch_adjacent(days, basis)
         return payload
     stored = kv_store.get(_rollup_key(basis, days))
@@ -208,11 +293,17 @@ def _serve_board(days, start, end, basis, force, market=None):
         board = stored["board"]
         board["stale"] = True
         board["stale_age_s"] = int(_t.time() - (stored.get("at") or 0))
+        if int(stored.get("epoch") or 0) != epoch:
+            board["stale_reason"] = ("superseded by a derivation write — "
+                                     "refreshing now")
         _refresh_async(days, basis)
         return board
     payload = _build_board(days, start, end, basis)     # cold, no rollup — build now
+    engine_slice = payload.pop("_engine", None)
     payload["stale"] = False
-    kv_store.put(_rollup_key(basis, days), {"at": _t.time(), "board": payload})
+    kv_store.put(_rollup_key(basis, days),
+                 {"at": _t.time(), "epoch": epoch, "board": payload,
+                  "engine": engine_slice})
     _prefetch_adjacent(days, basis)
     return payload
 
@@ -227,11 +318,15 @@ def _refresh_async(days, basis):
     _refreshing.add(key)
 
     def _run():
-        import kv_store, time as _t
+        import kv_store, resolution, time as _t
         try:
+            epoch = resolution.derived_epoch()   # stamped BEFORE the build (F6)
             payload = _build_board(days, None, None, basis, force=True)
+            engine_slice = payload.pop("_engine", None)
             payload["stale"] = False
-            kv_store.put(_rollup_key(basis, days), {"at": _t.time(), "board": payload})
+            kv_store.put(_rollup_key(basis, days),
+                         {"at": _t.time(), "epoch": epoch, "board": payload,
+                          "engine": engine_slice})
         except Exception as e:
             logger.warning("rollup refresh failed (%s,%s): %s", basis, days, e)
         finally:
@@ -269,12 +364,15 @@ def page():
 def board():
     """ONE atomic payload per (window, basis) — served from the rollup layer: fresh when
     warm, stale-LABELLED with a background refresh when not (never silently stale)."""
-    days, start, end = _window_args()
-    if days is None:
-        return jsonify({"error": "bad days"}), 400
+    days, start, end, note, err = _window_args()
+    if err:
+        return jsonify({"error": err}), 400
     basis = _basis_arg()
     payload = _serve_board(days, start, end, basis, force=request.args.get("force") == "1",
                            market=_market_arg())
+    if note:
+        payload["range_note"] = note
+    payload["clock"] = payload.get("basis")   # the declared name — never implicit
     resp = jsonify(payload)
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     return resp
@@ -397,17 +495,23 @@ def dossier():
     """THE CREATIVE DOSSIER (?creative=<key>): identity & delivery · unit economics
     (window + all-time, one engine, min-n labels intact) · the lead ledger with
     funnel-state chips + provenance + links. Linkable/bookmarkable via URL params."""
-    days, start, end = _window_args()
-    if days is None:
-        return jsonify({"error": "bad days"}), 400
+    days, start, end, range_note, w_err = _window_args()
+    if w_err:
+        return jsonify({"error": w_err}), 400
     key = request.args.get("creative")
     if not key:
         return jsonify({"error": "creative required"}), 400
     basis, market = _basis_arg(), _market_arg()
-    result = _compute(days, start, end, basis=basis, market=market)
+    # F1: both dossier legs ride the roster engine's rollup fast path — a cold
+    # worker serves the dossier from the persisted slice instead of two 5–15s
+    # engine builds (the all-time leg was the worst offender)
+    import roster_engine
+    result, _meta_w = roster_engine.load_result(days, start, end, basis=basis,
+                                                market=market)
     row = next((c for c in (result.get("creatives") or [])
                 if c["creative_key"] == key), None)
-    r_all = _compute(ALL_DAYS, None, None, basis=basis, market=market)
+    r_all, _meta_a = roster_engine.load_result(ALL_DAYS, None, None, basis=basis,
+                                               market=market)
     row_all = next((c for c in (r_all.get("creatives") or [])
                     if c["creative_key"] == key), None)
     if row is None and row_all is None:
@@ -431,6 +535,45 @@ def dossier():
     except Exception as e:
         logger.info("dossier identity degraded: %s", e)
 
+    # LAUNCH LINEAGE (#133): the SAME engine field the hover card and the launch
+    # sorts read (hover == dossier == sort key, test-enforced) + the exact
+    # delivery-day list for the timeline (same store, full resolution — where
+    # daily data was never fetched the timeline is OMITTED, never interpolated).
+    lineage = (row or row_all or {}).get("lineage")
+    timeline = None
+    try:
+        import launch_lineage
+        dd = launch_lineage.delivery_days((row or row_all).get("ad_ids") or [])
+        if dd:
+            timeline = dd
+    except Exception as e:
+        logger.info("dossier delivery timeline degraded: %s", e)
+
+    # RANGE vs LAUNCH honesty (#133 date-math cases): a box entirely before the
+    # launch is an honest "not yet launched", never a real-looking 0; a box that
+    # straddles the launch states how much of it pre-dates delivery.
+    lineage_window_note = None
+    try:
+        import datetime as _dt
+        w = result.get("window") or {}
+        launch = (lineage or {}).get("launch")
+        if launch and w.get("start") and w.get("end"):
+            _w0 = _dt.date.fromisoformat(str(w["start"]))
+            _w1 = _dt.date.fromisoformat(str(w["end"]))
+            _ld = _dt.date.fromisoformat(launch)
+            approx = " (on or before — probe pending)" if (lineage or {}).get("launch_approx") else ""
+            if _ld > _w1:
+                lineage_window_note = (f"not yet launched in this range — first delivery "
+                                       f"{launch}{approx}; zeros here mean 'did not exist "
+                                       f"yet', not 'ran and produced nothing'")
+            elif _ld > _w0:
+                pre = (_ld - _w0).days
+                lineage_window_note = (f"launched {launch}{approx} — the first {pre} day(s) "
+                                       f"of this range pre-date launch; only the active "
+                                       f"portion counts")
+    except (ValueError, TypeError) as e:
+        logger.info("lineage window note skipped: %s", e)
+
     def econ(c):
         if not c:
             return None
@@ -449,15 +592,32 @@ def dossier():
     ledger = ledger_payload.get("people") or []
     ledger.sort(key=lambda v: v.get("input_date") or "", reverse=True)
 
+    # F5: the dossier's econ legs must carry their degradation too (both windows,
+    # deduped) — a dead spend source renders DEGRADED, never a plausible $0
+    dossier_degraded = []
+    seen_dg = set()
+    for dg in (result.get("degraded") or []) + (r_all.get("degraded") or []):
+        k_dg = (dg.get("metric"), dg.get("reason"))
+        if k_dg not in seen_dg:
+            seen_dg.add(k_dg)
+            dossier_degraded.append(dg)
+
     resp = jsonify({
         "creative_key": key,
+        "degraded": dossier_degraded,
+        "stale": bool(_meta_w.get("stale") or _meta_a.get("stale")),
+        "stale_reason": _meta_w.get("stale_reason") or _meta_a.get("stale_reason"),
         "label": (row or row_all).get("label"),
         "tier": (row or row_all).get("tier"),
         "campaigns": (row or row_all).get("campaigns"),
         "ad_ids": (row or row_all).get("ad_ids"),
         "history": (row or row_all).get("history"),
         "identity": ident,
-        "window": result.get("window"), "basis": basis,
+        "lineage": lineage,
+        "delivery_days": timeline,
+        "lineage_window_note": lineage_window_note,
+        "range_note": range_note,
+        "window": result.get("window"), "basis": basis, "clock": basis,
         "market": result.get("market"), "market_note": result.get("market_note"),
         "econ_window": econ(row), "econ_all_time": econ(row_all),
         "min_n": result.get("min_n"),
@@ -513,9 +673,9 @@ def roster():
     cell on every tab (?level=&key=&metric=), tier rows included. Legacy params
     (?creative=&stage=) map onto the same cell-spec. len(people) == the cell
     (I17); drift is stated in the payload and flagged loudly, never hidden."""
-    days, start, end = _window_args()
-    if days is None:
-        return jsonify({"error": "bad days"}), 400
+    days, start, end, range_note, w_err = _window_args()
+    if w_err:
+        return jsonify({"error": w_err}), 400
     import roster_engine
     metric = request.args.get("metric") or request.args.get("stage") or "leads"
     level = request.args.get("level") or "creative"
@@ -531,6 +691,9 @@ def roster():
                                   level=level, key=key, metric=metric)
     if payload.get("error"):
         return jsonify(payload), 404 if "unknown" in payload["error"] else 400
+    if range_note:
+        payload["range_note"] = range_note
+    payload["clock"] = payload.get("basis")   # the declared name — never implicit
     try:
         _roster_notes_enrich(payload["people"])
     except Exception as e:
