@@ -1,0 +1,22 @@
+GATE-CLOSE ARTIFACT 06 — fix-wave suite run (2026-08-09)
+Merged tree: audit fix wave (this session) + launch-lineage/date-control (peer session f5484278)
+
+FULL SUITE: 800 passed, 0 failed (217.68s)   [baseline at gate: 707]
+Deploy gate (#112): python -m compileall -q . CLEAN · python -c "import app" OK
+
+New regression files (this wave), all green:
+  test_ads_degradation.py     8  — F5 loud degradation (payloads + JS/CSS contract + export)
+  test_cache_invalidation.py  4  — F6 derived:epoch invalidation (engine cache + rollups)
+  test_evidence_horizon.py    5  — F2 evidence partition survives sweep floods
+  test_rollup_rosters.py      5  — F1 rollup-served rosters <500ms + rollup-path FULL I17
+  test_sydney_day.py          9  — F8 sydney_day + DST Oct-2026 + journaled re-derivation
+  test_refund_ruling.py       4  — R1 refund ruling (close date survives, refund reports)
+  test_hardening_wave.py     10  — F3 retire · F9 partial LOUD (B13 re-run) · F16 single-flight
+  test_polish_wave.py         5  — F7 merge prune · F10 journal-first (B14) · F11 orphan census
+  test_xss_roster.py          4  — F12 taint-regression set (whitelist + esc + server 400)
+  test_sentinel.py           11  — Phase H proof pack (layers, escalation, heal, kill switch)
+
+Sandbox perf measurement (F1): cold roster via rollup slice, engine build mocked
+at 6s (would blow the assert if on the serve path): median 0.0ms, p95 0.0ms,
+max 0.3ms (n=20). Live projection: + one kv read (~33ms live) + enrichment
+(~0.2s, warm-measured at audit) ≈ 0.25s. Budget: 500ms.

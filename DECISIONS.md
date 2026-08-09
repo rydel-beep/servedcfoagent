@@ -1701,3 +1701,48 @@
      resolve_dates pass carries the rung forward for future dateless closes.
      Live at encode: 15 P1 cards → 11 Stripe-backed eligible, 4 stage-only stay
      (Tommy Lê, Neri Roth Herrmann, Julieta Pablo Tadiaman, Jenny Bui).
+
+132. **REFUND SEMANTICS — RULING R1 (2026-08-09, Rydel, audit gate close).**
+     A fully-refunded Stripe charge STILL auto-derives / retains the close date
+     (option (a) of drill B6 — keep as-is, zero derivation code changed).
+     Rationale (encoded verbatim from the ruling): the payment cleared and the
+     deal closed; a later refund is POST-CLOSE ECONOMICS — it belongs in
+     churn/refund reporting, not grounds to erase a real close from the funnel.
+     Cash remains tracker-authority throughout (no dollar was ever at risk in
+     this lane — the Stripe rung supplies DATE evidence only). What shipped with
+     the ruling: `cash_truth.refund_report()` — the lane the refund MOVES TO
+     (charge id, date, amounts, fully_refunded flag; INCLUDES fully-refunded
+     charges the cash view rightly drops at $0) — riding `unified_cash_view` as
+     `refunds`; regression test `tests/test_refund_ruling.py` proves (1) the
+     derived close date survives a full refund, (2) the refund is visible in the
+     report — it moves to the right place, it does not vanish.
+
+133. **LAUNCH LINEAGE + META-STYLE DATE CONTROL (2026-08-09).** ENCODED
+     CONVENTION (veto-able): "launched" = the FIRST-DELIVERY date — the first
+     day Meta insights records impressions for the ad — never created_time
+     (the object's birthday; secondary display only when it differs) and never
+     the ad-set start_time (probe: ad sets are reused, start_times up to ~1yr
+     before the ad existed). "Days running" = ACTIVE DELIVERY DAYS (days with
+     delivery), never calendar days (probe: B008_A04 ran 30 active/36
+     calendar; ADS 36 Rydel B 54 active/143 calendar). D1 on live data:
+     created≈first-delivery on this account (24/25 identical, max 1d) — the
+     REAL trap was the 90d spend-store horizon (15/25 sampled ads would
+     misstate launch by 5–52d) → launch_lineage.py keeps a durable store
+     (state file + kv mirror "launch:lineage"): store-censored ads get a
+     ONE-TIME lifetime probe (monthly maximum sweep → daily zoom → daily
+     backfill; 15/15 probed live, 0 errors); unprobed = "on or before", never
+     guessed. Lineage computed ONCE in the engine (compute() attach + ladder
+     _aggregate union) — hover card, dossier, and launch/active-days sorts
+     read the same field (equality test-enforced); tier rows carry None.
+     DATE CONTROL: ?range=YYYY-MM-DD..YYYY-MM-DD + ?clock=activity|cohort
+     (basis alias kept) — a window PARAMETER over the one engine; strict
+     validation (F12-immune), future end clamped to today_sydney + noted,
+     start>end/future-start refused friendly; presets (Today/24h/7d/14d/30d/
+     this-month/last-month/Maximum) default to the ACTIVITY clock
+     (Meta-native), standard windows keep the ruled cohort default, explicit
+     clock picks always win; the active clock is in every label; drills/
+     rosters/dossier inherit the exact box+clock (I17 pinned on custom ranges
+     both clocks); box-before-launch renders "not yet launched in this range"
+     honesty notes. Sourcing: META chips on Meta-sourced columns, HYB chips on
+     Meta÷engine hybrids (degrade if either side degrades) — grep-asserted no
+     unlabelled Meta metric. D1/D2/D3 in dashboard/LAUNCH_DATE_DIAGNOSIS.md.

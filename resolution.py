@@ -29,6 +29,34 @@ logger = logging.getLogger(__name__)
 
 _KV_AUTOFIX_LOG = "integrity:autofix_log"     # capped list of {rule, detail, ts}
 _KV_PROPOSED = "integrity:proposed_fixes"     # current P1/P2 cards (rebuilt per refresh)
+_KV_DERIVED_EPOCH = "derived:epoch"           # monotone counter — bumped on EVERY
+                                              # derivation-class write (F6)
+
+
+def derived_epoch() -> int:
+    """The derivation epoch. Folded into the engine cache key + rollup records so
+    a derivation write INVALIDATES every cached board/roster instantly — a
+    freshness label on post-write stale data is a lie (audit F6)."""
+    try:
+        import kv_store
+        return int(kv_store.get(_KV_DERIVED_EPOCH) or 0)
+    except Exception:
+        return 0
+
+
+def bump_derived_epoch(reason: str) -> int:
+    """Every write that changes what the engine derives calls this: derivations,
+    supersessions, show-verification changes, spine events, reached evidence.
+    Global by design (correctness first — a scoped key map can come later)."""
+    try:
+        import kv_store
+        n = int(kv_store.get(_KV_DERIVED_EPOCH) or 0) + 1
+        kv_store.put(_KV_DERIVED_EPOCH, n)
+        logger.info("derived epoch → %s (%s)", n, reason)
+        return n
+    except Exception as e:
+        logger.warning("derived epoch bump failed: %s", e)
+        return 0
 
 DOCTRINE = ("AUTO-FIX derives, never invents (A1 normalization, A2 id re-key, A3 "
             "confirmed-alias reuse, A4 clock annotations, A5 self-retiring flags — all "
@@ -36,14 +64,50 @@ DOCTRINE = ("AUTO-FIX derives, never invents (A1 normalization, A2 id re-key, A3
             "routed to a named owner. Nothing ever writes to the tracker, GHL, or Stripe.")
 
 
+# F2 (extreme audit): THE EVIDENCE HORIZON. The 200-cap rolling log floods in
+# ~2 days of sweep traffic — but derivation provenance, ruling conversions
+# (charge ids), supersessions, and verifications ARE the trust chain and must
+# not age out. Evidence-class entries are duplicated into a durable partition
+# (`resolution:journal`, cap 1000 ≫ the total derivation population, which is
+# bounded by the lead universe — durable without unbounded growth). The rolling
+# log stays the recent-activity view; the partition is the evidence archive.
+_KV_EVIDENCE_JOURNAL = "resolution:journal"
+_EVIDENCE_CAP = 1000
+EVIDENCE_RULE_PREFIXES = (
+    "date derived", "date superseded", "date rederived", "ruling-conversion",
+    "T2 spine derivation", "show verified", "reached derivation",
+    "A3 alias learned", "heal",
+)
+
+
+def _is_evidence_rule(rule: str) -> bool:
+    r = (rule or "").lower()
+    return any(r.startswith(p.lower()) for p in EVIDENCE_RULE_PREFIXES)
+
+
+def evidence_journal() -> list[dict]:
+    """The durable evidence stream — survives any amount of sweep noise."""
+    try:
+        import kv_store
+        return kv_store.get(_KV_EVIDENCE_JOURNAL) or []
+    except Exception:
+        return []
+
+
 def log_autofix(rule: str, detail: str) -> None:
-    """Every silent application is auditable — the log IS the trust."""
+    """Every silent application is auditable — the log IS the trust.
+    Evidence-class rules ALSO land in the durable partition (F2)."""
     try:
         import kv_store
         from helpers import today_sydney
+        entry = {"rule": rule, "detail": detail[:160], "ts": str(today_sydney())}
         lg = kv_store.get(_KV_AUTOFIX_LOG) or []
-        lg.append({"rule": rule, "detail": detail[:160], "ts": str(today_sydney())})
+        lg.append(entry)
         kv_store.put(_KV_AUTOFIX_LOG, lg[-200:])
+        if _is_evidence_rule(rule):
+            ej = kv_store.get(_KV_EVIDENCE_JOURNAL) or []
+            ej.append(entry)
+            kv_store.put(_KV_EVIDENCE_JOURNAL, ej[-_EVIDENCE_CAP:])
     except Exception as e:
         logger.info("autofix log failed: %s", e)
 
@@ -64,9 +128,10 @@ def _ghl_won_dates() -> dict:
                 "SELECT o.contact_id, o.last_status_change_at, c.email, c.name "
                 "FROM ghl_opportunities o LEFT JOIN attr_contacts c ON c.id = o.contact_id "
                 "WHERE o.status = 'won' AND o.deleted = FALSE").fetchall()
+        from helpers import sydney_day
         for r in rows:
             if r.get("last_status_change_at"):
-                d = r["last_status_change_at"].date()
+                d = sydney_day(r["last_status_change_at"])   # F8: Sydney day, not UTC
                 if r.get("email"):
                     out[_norm(r["email"])] = {"date": d, "via": "email"}
                 if r.get("name"):
@@ -114,6 +179,18 @@ def propose_fixes() -> list[dict]:
 
     ghl_dates = _ghl_won_dates()
     stripe_dates = _stripe_first_payment_dates()
+    # F9: the guard runs AFTER the fresh pull — checking a previous run's marker
+    # before pulling let the run in which the partial actually happened build
+    # cards from the fragment (review finding 2). A partial charge list can
+    # offer a WRONG "first payment" candidate — keep the persisted cards.
+    try:
+        import cash_truth
+        if cash_truth.stripe_pull_partial():
+            logger.warning("propose_fixes: stripe pull partial (F9) — keeping "
+                           "existing cards, no rebuild from a fragment")
+            return (latest_proposed() or {}).get("cards") or []
+    except Exception:
+        pass
     derived = derived_dates()
 
     for t in blanks:
@@ -239,13 +316,18 @@ def record_derived_date(name_norm: str, field: str, date_iso: str, provenance: s
     cur = store.get(name_norm, {}).get(field)
     if cur and cur.get("date") == date_iso:
         return True   # idempotent — no re-derivation churn
+    # F10 — JOURNAL-FIRST ordering (drill B14): a crash between the two writes
+    # must leave a journaled-but-unapplied entry (detectable, re-runnable), never
+    # an applied-but-unjournaled derivation (invisible forever). A duplicate
+    # journal line on retry is noise; a silent derivation is a trust hole.
+    log_autofix(f"date derived ({field})",
+                f"{name_norm}: {field} = {date_iso} via {provenance} "
+                f"(evidence {str(evidence)[:80]})")
     store.setdefault(name_norm, {})[field] = {
         "date": date_iso, "provenance": provenance, "evidence": evidence,
         "ts": str(today_sydney())}
     _put_derived(store)
-    log_autofix(f"date derived ({field})",
-                f"{name_norm}: {field} = {date_iso} via {provenance} "
-                f"(evidence {str(evidence)[:80]})")
+    bump_derived_epoch(f"derived {field} for {name_norm}")   # F6: caches invalidate NOW
     return True
 
 
@@ -256,15 +338,17 @@ def supersede_derived(name_norm: str, field: str, source_date_iso: str) -> dict 
     cur = (store.get(name_norm) or {}).get(field)
     if not cur:
         return None
-    del store[name_norm][field]
-    if not store[name_norm]:
-        del store[name_norm]
-    _put_derived(store)
     agree = cur.get("date") == source_date_iso
+    # F10: journal-first — see record_derived_date
     log_autofix(f"date superseded ({field})",
                 f"{name_norm}: source {source_date_iso} supersedes derived "
                 f"{cur.get('date')} ({cur.get('provenance')}) — "
                 f"{'agrees' if agree else 'DISAGREES'}")
+    del store[name_norm][field]
+    if not store[name_norm]:
+        del store[name_norm]
+    _put_derived(store)
+    bump_derived_epoch(f"superseded {field} for {name_norm}")   # F6
     if not agree:
         try:
             import kv_store
@@ -312,7 +396,8 @@ def resolve_dates() -> dict:
             c = contacts_by_norm.get(nm)
             da = c and c.get("date_added")
             if c and da:
-                date_iso = str(da.date() if hasattr(da, "date") else da)[:10]
+                from helpers import sydney_day
+                date_iso = str(sydney_day(da))               # F8: Sydney day, not UTC
                 if record_derived_date(nm, "input_date", date_iso,
                                        "derived:ghl-contact-created",
                                        {"contact_id": c["id"]}):
@@ -348,6 +433,25 @@ def apply_payment_class_ruling() -> dict:
     import close_integrity as CI
     out = {"converted": [], "skipped_name_only": [], "already_derived": 0,
            "cash_placed": 0.0}
+    # F9: a PARTIAL Stripe pull can mis-rank "first payment" — the ruling pass
+    # SKIPS the run loudly rather than derive from an incomplete charge list.
+    try:
+        import cash_truth
+        partial = cash_truth.stripe_pull_partial()
+        if partial:
+            try:
+                import kv_store
+                flags = kv_store.get("ads_truth:flags") or []
+                flags.append({"metric": "ads_truth_action",
+                              "reason": (f"#131 ruling pass SKIPPED: Stripe pull partial "
+                                         f"({partial.get('error')}) — deriving from an "
+                                         f"incomplete charge list is refused (F9)")})
+                kv_store.put("ads_truth:flags", flags[-60:])
+            except Exception:
+                pass
+            return {"skipped": f"stripe pull partial (F9): {partial.get('error')}"}
+    except Exception:
+        pass
     try:
         won = CI._tracker_won_rows()
     except Exception as e:
@@ -368,6 +472,26 @@ def apply_payment_class_ruling() -> dict:
                     dated_idents.add(ident)
     out["skipped_duplicate_dated"] = []
     stripe_dates = _stripe_first_payment_dates()
+    # F9 (review finding 2): re-check AFTER the fresh pull — the run in which
+    # the partial happens must itself refuse to derive from the fragment.
+    try:
+        import cash_truth
+        partial2 = cash_truth.stripe_pull_partial()
+        if partial2:
+            try:
+                import kv_store
+                flags = kv_store.get("ads_truth:flags") or []
+                flags.append({"metric": "ads_truth_action",
+                              "reason": (f"#131 ruling pass SKIPPED mid-run: this pull "
+                                         f"came back PARTIAL ({partial2.get('error')}) "
+                                         f"— deriving from a fragment is refused (F9)")})
+                kv_store.put("ads_truth:flags", flags[-60:])
+            except Exception:
+                pass
+            return {"skipped": f"stripe pull partial (F9, post-pull): "
+                               f"{partial2.get('error')}"}
+    except Exception:
+        pass
     store = derived_dates()
     for t in blanks:
         nm, email_n = _norm(t["name"]), _norm(t.get("email"))
@@ -409,6 +533,135 @@ def apply_payment_class_ruling() -> dict:
             kv_store.put("ads_truth:flags", flags[-60:])
         except Exception:
             pass
+    return out
+
+
+def rederive_ghl_dates_sydney(dry_run: bool = False) -> dict:
+    """F8 ONE-OFF (journaled, reversible): re-derive every GHL-derived date with
+    the Sydney-day helper. The pre-F8 derivations sliced the UTC day — any
+    appointment/contact event before ~10–11am Sydney sat on the previous day.
+
+    Covers both derived classes:
+      · set_date / show_date with provenance derived:ghl-appt (re-read from the
+        appointment evidence — dateAdded booked / startTime scheduled);
+      · input_date with provenance derived:ghl-contact-created (re-read from the
+        contact's date_added).
+    Each change journals old→new + the evidence id + reason 'F8-sydney-day';
+    unchanged dates journal nothing (idempotent). Window-boundary crossings
+    (30/60/90d membership flips) are called out in the return. The epoch bumps
+    once at the end so every cache/rollup refreshes."""
+    from helpers import sydney_day, today_sydney
+    out = {"checked": 0, "changed": [], "unchanged": 0, "no_evidence": [],
+           "crossed_window": [], "dry_run": dry_run}
+    store = derived_dates()
+    today = today_sydney()
+
+    def _crossings(old_iso, new_iso):
+        import datetime as _dt
+        crossed = []
+        try:
+            o = _dt.date.fromisoformat(old_iso); n = _dt.date.fromisoformat(new_iso)
+        except Exception:
+            return crossed
+        for w in (30, 60, 90):
+            w0 = today - _dt.timedelta(days=w - 1)
+            if (w0 <= o <= today) != (w0 <= n <= today):
+                crossed.append(w)
+        return crossed
+
+    contacts_added = {}
+    try:
+        import attribution_join
+        for c in attribution_join.load_contacts():
+            if c.get("id"):
+                contacts_added[c["id"]] = c.get("date_added")
+    except Exception:
+        pass
+
+    changed_any = False
+    for nm, fields in list(store.items()):
+        for field, entry in list(fields.items()):
+            prov = str(entry.get("provenance") or "")
+            ev = entry.get("evidence") or {}
+            new_iso = None
+            ev_id = None
+            if field in ("set_date", "show_date") and prov.startswith("derived:ghl-appt"):
+                out["checked"] += 1
+                cid, aid = ev.get("contact_id"), ev.get("appointment_id")
+                ev_id = aid
+                if not (cid and aid):
+                    out["no_evidence"].append({"name": nm, "field": field})
+                    continue
+                try:
+                    import ads_truth
+                    appt = next((a for a in ads_truth._cached_appointments(cid)
+                                 if a.get("id") == aid), None)
+                except Exception:
+                    appt = None
+                if not appt:
+                    out["no_evidence"].append({"name": nm, "field": field,
+                                               "appointment_id": aid})
+                    continue
+                raw = appt.get("dateAdded") if field == "set_date" else appt.get("startTime")
+                d = sydney_day(raw)
+                new_iso = str(d) if d else None
+            elif field == "input_date" and prov.startswith("derived:ghl-contact-created"):
+                out["checked"] += 1
+                cid = ev.get("contact_id")
+                ev_id = cid
+                da = contacts_added.get(cid)
+                if da is None:
+                    out["no_evidence"].append({"name": nm, "field": field,
+                                               "contact_id": cid})
+                    continue
+                d = sydney_day(da)
+                new_iso = str(d) if d else None
+            elif field == "close_date" and prov.startswith("derived:stripe") \
+                    and ev.get("charge_id"):
+                # review finding 3: charge epochs were sliced with the SERVER-
+                # LOCAL day (UTC on Railway) — re-derive the Sydney day from the
+                # charge's created epoch (read-only fetch by id, ≤ the #131
+                # conversion population).
+                out["checked"] += 1
+                ev_id = ev["charge_id"]
+                created = None
+                try:
+                    from payback_reconciliation import _sget
+                    r = _sget(f"/v1/charges/{ev['charge_id']}", {})
+                    if r.get("error") is None:
+                        created = r.get("created")
+                except Exception:
+                    created = None
+                if not created:
+                    out["no_evidence"].append({"name": nm, "field": field,
+                                               "charge_id": ev_id})
+                    continue
+                import datetime as _dt
+                import pytz as _pytz
+                d = sydney_day(_dt.datetime.fromtimestamp(created, tz=_pytz.utc))
+                new_iso = str(d) if d else None
+            else:
+                continue
+            if not new_iso or new_iso == entry.get("date"):
+                out["unchanged"] += 1
+                continue
+            change = {"name": nm, "field": field, "old": entry["date"],
+                      "new": new_iso, "evidence_id": ev_id,
+                      "crossed_window": _crossings(entry["date"], new_iso)}
+            out["changed"].append(change)
+            if change["crossed_window"]:
+                out["crossed_window"].append(change)
+            if not dry_run:
+                entry["date"] = new_iso
+                entry["rederived"] = {"reason": "F8-sydney-day", "old": change["old"],
+                                      "ts": str(today)}
+                changed_any = True
+                log_autofix(f"date rederived ({field})",
+                            f"{nm}: {change['old']} → {new_iso} via {prov} "
+                            f"(evidence {ev_id}, reason F8-sydney-day)")
+    if changed_any:
+        _put_derived(store)
+        bump_derived_epoch("F8 sydney-day re-derivation")
     return out
 
 
@@ -487,7 +740,12 @@ def handle_autofix_log_command(text: str) -> tuple[str | None, bool]:
     lg = kv_store.get(_KV_AUTOFIX_LOG) or []
     if not lg:
         return ("No auto-fix applications logged yet. The standing rules: " + DOCTRINE), True
-    parts = [f"Auto-fix log — {len(lg)} application(s), newest first:"]
+    parts = [f"Auto-fix log — {len(lg)} recent application(s), newest first:"]
     for e in reversed(lg[-12:]):
         parts.append(f"• [{e['ts']}] {e['rule']}: {e['detail']}")
+    ej = evidence_journal()
+    if ej:
+        parts.append(f"Evidence archive: {len(ej)} durable entr(ies) — derivations, "
+                     f"ruling conversions, supersessions, verifications (never aged "
+                     f"out by sweep noise).")
     return "\n".join(parts), True

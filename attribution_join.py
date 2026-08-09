@@ -333,7 +333,28 @@ def sync_contacts(force: bool = False) -> dict:
         except Exception as e:
             logger.error("attr_contacts upsert failed: %s", e)
             return {"skipped": True, "reason": f"upsert failed: {type(e).__name__}"}
+        # F7 (review finding 4): a merged/deleted GHL contact simply STOPS
+        # appearing in the sync feed — upsert-only left its row deleted=FALSE
+        # forever, so ghost reached-evidence kept vouching. On a COMPLETE fetch,
+        # tombstone rows absent from the feed (reversible — the upsert's
+        # deleted=FALSE resurrects a contact that reappears).
+        tombstoned = 0
+        if complete:
+            try:
+                fetched_ids = [c.get("id") for c in contacts if c.get("id")]
+                with db.get_conn() as conn:
+                    cur = conn.execute(
+                        "UPDATE attr_contacts SET deleted = TRUE, synced_at = %s "
+                        "WHERE deleted = FALSE AND id != ALL(%s)",
+                        (now_sydney(), fetched_ids))
+                    tombstoned = cur.rowcount or 0
+                if tombstoned:
+                    logger.info("attr_contacts: %d row(s) tombstoned (absent from "
+                                "a complete sync — merge/delete upstream)", tombstoned)
+            except Exception as e:
+                logger.warning("attr_contacts tombstone pass failed: %s", e)
         state = {"at": time.time(), "synced": n, "total": len(contacts),
+                 "tombstoned": tombstoned,
                  "complete": complete, "reason": reason}
         kv_store.put("attr:sync_state", state)
         logger.info("attr_contacts synced: %d/%d complete=%s", n, len(contacts), complete)

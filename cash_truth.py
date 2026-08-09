@@ -76,9 +76,33 @@ def _norm(s: str) -> str:
 
 # ── Stripe charges (read-only, direct API — same pattern as payback_reconciliation) ──
 
-def _recent_charges(days: int = _LOOKBACK_DAYS) -> list[dict] | None:
-    """Succeeded charges in the window, newest first, with customer + balance_transaction
-    expanded. None = no key / API failure (callers degrade loudly, never fabricate)."""
+_KV_STRIPE_PARTIAL = "stripe:partial_pull"
+
+
+def stripe_pull_partial() -> dict | None:
+    """F9: the last charge pull's partial-failure marker, or None when clean.
+    Consumers that DERIVE from the charge list (the #131 ruling pass, the P1
+    card builder) must check this and skip — a first-payment date derived from
+    an incomplete list is a plausible-looking lie."""
+    import kv_store
+    return kv_store.get(_KV_STRIPE_PARTIAL)
+
+
+def _mark_partial(err: str | None) -> None:
+    import kv_store
+    if err:
+        from helpers import today_sydney
+        kv_store.put(_KV_STRIPE_PARTIAL, {"date": str(today_sydney()),
+                                          "error": str(err)[:140]})
+    else:
+        kv_store.delete(_KV_STRIPE_PARTIAL)
+
+
+def _raw_recent_charges(days: int = _LOOKBACK_DAYS) -> list[dict] | None:
+    """The raw succeeded-charge objects (paginated). None = no key / total API
+    failure. F9: a page error AFTER data has landed is a PARTIAL pull — the
+    old code fell out of the loop and returned the fragment as if complete
+    (drill B13). Partials are marked LOUD via kv and stripe_pull_partial()."""
     from config import STRIPE_SECRET_KEY
     if not STRIPE_SECRET_KEY:
         return None
@@ -87,19 +111,45 @@ def _recent_charges(days: int = _LOOKBACK_DAYS) -> list[dict] | None:
     from helpers import today_sydney
     since = today_sydney() - dt.timedelta(days=days)
     created_gte = calendar.timegm(since.timetuple())
-    out, after = [], None
+    out, after, partial_err = [], None, None
     for _ in range(10):
         params = {"limit": 100, "created[gte]": created_gte,
                   "expand[]": ["data.customer", "data.balance_transaction"]}
         if after:
             params["starting_after"] = after
         r = _sget("/v1/charges", params)
-        if r.get("error") is not None and not r.get("data"):
-            return None
+        if r.get("error") is not None:
+            if not out and not r.get("data"):
+                return None                      # total failure — callers degrade
+            partial_err = str(r.get("error"))[:140]
+            out.extend(r.get("data") or [])
+            break                                # PARTIAL — stop and mark, never absorb
         out.extend(r.get("data") or [])
         if not r.get("has_more"):
             break
         after = out[-1]["id"]
+    else:
+        # 10 pages exhausted with has_more still true — the window is truncated
+        partial_err = "pagination cap hit with has_more=true — window truncated"
+    _mark_partial(partial_err)
+    return out
+
+
+def _recent_charges(days: int = _LOOKBACK_DAYS) -> list[dict] | None:
+    """Succeeded charges in the window, newest first, with customer + balance_transaction
+    expanded. None = no key / API failure (callers degrade loudly, never fabricate)."""
+    out = _raw_recent_charges(days)
+    if out is None:
+        return None
+    return _filter_succeeded(out)
+
+
+def _filter_succeeded(out: list[dict]) -> list[dict]:
+    """Raw charge objects → the clean succeeded-charge view (netted of refunds).
+    Dates are the SYDNEY day of the charge epoch (F8 discipline — an explicit
+    tz conversion, never the server-local day: on a UTC host a pre-10am-Sydney
+    charge would land on the previous day)."""
+    from helpers import SYDNEY_TZ
     charges = []
     for c in out:
         if not (c.get("paid") and c.get("status") == "succeeded"):
@@ -110,7 +160,7 @@ def _recent_charges(days: int = _LOOKBACK_DAYS) -> list[dict] | None:
         avail_on = bt.get("available_on")
         charges.append({
             "id": c.get("id"),
-            "date": dt.date.fromtimestamp(c["created"]),
+            "date": dt.datetime.fromtimestamp(c["created"], tz=SYDNEY_TZ).date(),
             "amount": round((c.get("amount", 0) - c.get("amount_refunded", 0)) / 100.0, 2),
             "currency": (c.get("currency") or "aud").upper(),
             "customer_name": (cust.get("name") or bd.get("name") or "").strip(),
@@ -121,6 +171,50 @@ def _recent_charges(days: int = _LOOKBACK_DAYS) -> list[dict] | None:
     charges = [c for c in charges if c["amount"] > 0]
     charges.sort(key=lambda c: (c["date"], c["id"]), reverse=True)
     return charges
+
+
+def refund_report(days: int = _LOOKBACK_DAYS, raw: list[dict] | None = None) -> dict | None:
+    """RULING R1 (DECISIONS): refunds are POST-CLOSE ECONOMICS. A refunded charge
+    never erases a close from the funnel (the payment cleared → the deal closed;
+    a later refund belongs in churn/refund reporting, not in close-date
+    evidence). This report is where the refund GOES — it moves to the right
+    place, it does not vanish. Fully-refunded charges (which the cash view
+    rightly drops at amount 0) are included HERE. None = Stripe unreachable.
+    `raw` lets a caller reuse an existing pull; otherwise this pulls and
+    snapshots its OWN partial state into the report (review finding 1)."""
+    own_pull = raw is None
+    if raw is None:
+        raw = _raw_recent_charges(days)
+    if raw is None:
+        return None
+    partial = stripe_pull_partial() if own_pull else None
+    refunds = []
+    for c in raw:
+        if not (c.get("paid") and c.get("status") == "succeeded"):
+            continue
+        refunded = (c.get("amount_refunded") or 0) / 100.0
+        if refunded <= 0:
+            continue
+        cust = c.get("customer") if isinstance(c.get("customer"), dict) else {}
+        bd = c.get("billing_details") or {}
+        from helpers import SYDNEY_TZ
+        refunds.append({
+            "charge_id": c.get("id"),
+            "date": str(dt.datetime.fromtimestamp(c["created"], tz=SYDNEY_TZ).date()),
+            "amount": round((c.get("amount") or 0) / 100.0, 2),
+            "refunded": round(refunded, 2),
+            "fully_refunded": bool(c.get("refunded")
+                                   or (c.get("amount_refunded") or 0) >= (c.get("amount") or 0)),
+            "customer": (cust.get("name") or bd.get("name") or "").strip()
+                        or "(unnamed Stripe customer)",
+        })
+    refunds.sort(key=lambda r: r["date"], reverse=True)
+    return {"window_days": days, "count": len(refunds),
+            "total_refunded": round(sum(r["refunded"] for r in refunds), 2),
+            "partial_pull": partial,
+            "refunds": refunds,
+            "note": ("post-close economics (R1): refunds report HERE; close dates "
+                     "and funnel counts are untouched — cash stays tracker-authority")}
 
 
 def _charge_state(ch: dict) -> str:
@@ -240,7 +334,12 @@ def _match_charge(ch: dict, idx: dict) -> tuple[dict | None, str | None]:
 def unified_cash_view(days: int = _LOOKBACK_DAYS) -> dict:
     """Stripe payment events joined to tracker rows. The single engine behind
     latest-cash answers, the needs-logging list, and the snapshot summary."""
+    # SNAPSHOT-AFTER-OWN-PULL (review finding 1): the kv marker reflects the
+    # LATEST pull — the refund leg's (or another worker's) later clean pull may
+    # clear it. The view's honesty is about THE PULL THAT BUILT payments, so
+    # its state is captured here, immediately, and used for the payload.
     charges = _recent_charges(days)
+    partial = stripe_pull_partial() if charges is not None else None
     if charges is None:
         return {"available": False,
                 "degraded": [{"metric": "cash_truth",
@@ -305,15 +404,27 @@ def unified_cash_view(days: int = _LOOKBACK_DAYS) -> dict:
     for n in needs_logging:
         n.pop("_charge_ids", None)
 
+    refunds = None
+    try:
+        refunds = refund_report(days)   # R1 lane — snapshots its OWN pull state
+    except Exception as e:
+        logger.info("refund report unavailable: %s", e)
     out = {"available": True, "window_days": days,
            "payments": payments, "unmatched": unmatched,
+           "refunds": refunds,
+           "partial_pull": partial,
            "needs_logging": needs_logging, "lag": lag,
            "sync_label": idx["sync_label"],
            "basis": "Stripe-actual cash (payment events), reconciled to tracker-logged cash",
-           "degraded": ([{"metric": "cash_needs_logging",
-                          "reason": f"{len(needs_logging)} deal(s) have Stripe money ahead of the "
-                                    f"tracker cash cell — needs logging by the team.",
-                          "severity": "optional"}] if needs_logging else [])}
+           "degraded": (([{"metric": "stripe_partial_pull",
+                           "reason": (f"Stripe charge pull PARTIAL on {partial.get('date')}: "
+                                      f"{partial.get('error')} — cash view may be missing "
+                                      f"charges; derivation passes are skipping this run"),
+                           "severity": "core"}] if partial else []) +
+                        ([{"metric": "cash_needs_logging",
+                           "reason": f"{len(needs_logging)} deal(s) have Stripe money ahead of the "
+                                     f"tracker cash cell — needs logging by the team.",
+                           "severity": "optional"}] if needs_logging else []))}
     assert "@" not in str(out), "cash_truth output must not contain emails"
     return out
 

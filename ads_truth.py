@@ -171,6 +171,8 @@ def spine_census(days: int = 90) -> dict:
                            for e in derived):
                     derived.append(ev)
                     derived.append({**ev, "kind": "show"})
+                    import resolution as _res
+                    _res.bump_derived_epoch(f"spine set+show for {nm}")   # F6
                     _journal("T2 spine derivation",
                              f"set+show derived for close '{dl['name']}' from GHL "
                              f"appointment {kept[0].get('id')} (status "
@@ -242,13 +244,29 @@ def reached_sweep(max_contacts: int = 30) -> dict:
     r = AE.compute(days=3650, basis="cohort")
     todo = []
     contacts_by_norm = {}
+    valid_ids: set = set()
     try:
         import attribution_join
         for c in attribution_join.load_contacts():
+            if c.get("id"):
+                valid_ids.add(c["id"])
             if c.get("name"):
                 contacts_by_norm.setdefault(_norm(c["name"]), c)
     except Exception:
         return {"checked": 0, "found": 0, "reason": "contacts unavailable"}
+    # F7 — CONTACT-MERGE DROOP: a GHL merge deletes the old contact id; its
+    # cached reached-evidence entry then vouches for a ghost while the NEW id
+    # waits its turn in the 40/night queue. Prune ids no longer in the contact
+    # table (journaled) so the re-check happens THIS sweep, not eventually.
+    pruned = [cid for cid in list(cache) if cid not in valid_ids] if valid_ids else []
+    for cid in pruned:
+        cache.pop(cid, None)
+    for cid in ([c for c in list(swept_none) if c not in valid_ids] if valid_ids else []):
+        swept_none.pop(cid, None)
+    if pruned:
+        _journal("reached derivation prune (F7)",
+                 f"{len(pruned)} cached reached id(s) no longer exist in GHL "
+                 f"(contact merge/delete) — pruned; evidence re-checks this sweep")
     for row in (r.get("rows") or []):
         if not row.get("qualified") or row.get("set") or row.get("show") \
                 or row.get("close_date") or row.get("reached"):
@@ -271,6 +289,9 @@ def reached_sweep(max_contacts: int = 30) -> dict:
             swept_none[cid] = {"ts": str(today_sydney())}
     kv_store.put(_KV_REACHED, cache)                 # engine reads keys = positives only
     kv_store.put(_KV_REACHED + ":none", swept_none)
+    if found or pruned:
+        import resolution as _res
+        _res.bump_derived_epoch(f"reached evidence ×{found}, pruned ×{len(pruned)}")  # F6/F7
     return {"checked": checked, "found": found, "remaining": max(0, len(todo) - checked)}
 
 
@@ -303,8 +324,12 @@ def _cached_appointments(contact_id: str) -> list[dict]:
 
 
 def _date_of(v) -> str | None:
-    s = str(v or "")
-    return s[:10] if len(s) >= 10 and s[4:5] == "-" else None
+    """F8: the SYDNEY day of a GHL timestamp — never the UTC slice. The old
+    `str(v)[:10]` derived a booking before ~10am Sydney onto the previous day
+    (today_sydney doctrine violation at the derivation boundary, drill B9)."""
+    from helpers import sydney_day
+    d = sydney_day(v)
+    return str(d) if d else None
 
 
 def event_sweep(max_contacts: int = 40) -> dict:
@@ -413,7 +438,7 @@ def contact_calls(contact_id: str) -> list[dict]:
                         calls.append({"id": m.get("id"),
                                       "duration": meta.get("duration"),
                                       "status": meta.get("status"),
-                                      "date": str(m.get("dateAdded") or "")[:10]})
+                                      "date": _date_of(m.get("dateAdded"))})  # F8: Sydney day
     except Exception as e:
         logger.info("contact_calls failed: %s", e)
     cache[contact_id] = {"expires": str(today_sydney() + dt.timedelta(days=7)),
@@ -518,6 +543,7 @@ def show_verification_pass(max_contacts: int = 40) -> dict:
     if changed:
         import kv_store as _kv
         _kv.put("derived:dates", store)
+        resolution.bump_derived_epoch("show verification pass")   # F6
     kv_store.put(_KV_PROPOSED, _dedup_proposed(proposed)[-80:])
     return out
 
@@ -555,6 +581,7 @@ def handle_confirm_attendance(text: str) -> tuple[str | None, bool]:
     store[nm]["show_date"]["verification"] = {"state": "verified",
                                               "via": "show:rydel-confirmed"}
     kv_store.put("derived:dates", store)
+    resolution.bump_derived_epoch(f"attendance confirmed for {nm}")   # F6
     _journal("show verified (Rydel)", f"{nm}: attendance confirmed by Rydel")
     proposed = [p for p in (kv_store.get(_KV_PROPOSED) or [])
                 if p.get("id") != f"attendance:{nm}"]
@@ -639,17 +666,109 @@ def quad_check(days: int = 90, sample_cells: int = 0) -> dict:
             "hard_disagreements": disagreements, "table": facts}
 
 
+# ── #133 SENTINEL WATCHES: launch-field freshness + clock-label integrity ────
+
+def launch_freshness_check(out: dict) -> None:
+    """The durable lineage store must keep up with the spend store (a lagging
+    merge silently ages every "launched / N active days" surface), and pending
+    lifetime probes must not persist across nights (an unprobed censored ad
+    shows "on or before" forever — honest but unfinished). Appends
+    kind=launch_freshness disagreements; never raises."""
+    import kv_store
+    try:
+        import launch_lineage
+        import meta_entities
+        st_ads = (launch_lineage._load().get("ads")) or {}
+        pend = sum(1 for r2 in st_ads.values()
+                   if r2.get("censored") and not r2.get("lifetime_probed"))
+        missing_days = 0
+        for dday, admap in ((meta_entities._load_json(meta_entities.AD_SPEND_STORE)
+                             .get("days")) or {}).items():
+            for aid, rrow in (admap or {}).items():
+                if launch_lineage._delivered(rrow):
+                    rec = st_ads.get(aid)
+                    if not rec or dday not in (rec.get("delivery_days") or []):
+                        missing_days += 1
+        out["launch_lineage"] = {"ads": len(st_ads), "pending_probes": pend,
+                                 "missing_day_entries": missing_days}
+        if missing_days:
+            out["disagreements"].append({
+                "kind": "launch_freshness",
+                "cause": (f"launch lineage store lags the spend store by "
+                          f"{missing_days} delivered day-entr"
+                          f"{'y' if missing_days == 1 else 'ies'} — refresh() is "
+                          f"not keeping up; launched/active-days surfaces are ageing"),
+                "where": "launch_lineage vs meta_ad_spend_daily"})
+        prev = kv_store.get("launch:pending_prev") or {}
+        if pend and prev.get("count") and prev.get("date") != out.get("date"):
+            out["disagreements"].append({
+                "kind": "launch_freshness",
+                "cause": (f"{pend} lifetime launch probe(s) still pending since "
+                          f"{prev.get('date')} — those ads show 'launched on or "
+                          f"before' instead of an exact day (probe blocked?)"),
+                "where": "launch_lineage pending probes"})
+        kv_store.put("launch:pending_prev", {"date": out.get("date"), "count": pend})
+    except Exception as e:
+        out["launch_lineage"] = {"error": str(e)[:80]}
+
+
+def clock_label_check(out: dict) -> None:
+    """A sampled custom range must echo its clock (basis), carry the human label
+    the UI renders, echo its exact box, and the I11 guard must still refuse
+    cross-clock math. Drift here = the date control could render a mislabelled
+    clock (the two-clock contamination class). Appends kind=clock_label
+    disagreements (ACTION-promoted); never raises."""
+    import attribution_engine as AE
+    from helpers import today_sydney
+    try:
+        import datetime as _dt
+        cw1 = today_sydney() - _dt.timedelta(days=1)
+        cw0 = cw1 - _dt.timedelta(days=6)
+        probs = []
+        legs = {}
+        for basis in ("cohort", "activity"):
+            rr = AE.compute(start=str(cw0), end=str(cw1), basis=basis)
+            legs[basis] = rr
+            if rr.get("basis") != basis:
+                probs.append(f"{basis}: engine echoed basis={rr.get('basis')!r}")
+            if not rr.get("basis_label"):
+                probs.append(f"{basis}: basis_label missing — the UI would render "
+                             f"an unlabelled clock")
+            ww = rr.get("window") or {}
+            if str(ww.get("start")) != str(cw0) or str(ww.get("end")) != str(cw1):
+                probs.append(f"{basis}: window echo {ww.get('start')}..{ww.get('end')} "
+                             f"!= requested {cw0}..{cw1}")
+        try:
+            AE.assert_same_basis(legs["cohort"], legs["activity"])
+            probs.append("I11 guard FAILED to raise on a cross-clock mix")
+        except ValueError:
+            pass
+        out["clock_label"] = {"ok": not probs, "range": f"{cw0}..{cw1}",
+                              "problems": probs}
+        for p in probs:
+            out["disagreements"].append({"kind": "clock_label",
+                                         "cause": f"range clock-label integrity: {p}",
+                                         "where": f"{cw0}..{cw1}"})
+    except Exception as e:
+        out["clock_label"] = {"error": str(e)[:80]}
+
+
 # ── THE NIGHTLY SWEEP ────────────────────────────────────────────────────────
 
 def integrity_sweep() -> dict:
     """Invariants + spine + quad-check + accuracy row. Called nightly (kv-stamped);
-    a sweep failure is itself LOUD (kv flag → action feed)."""
+    a sweep failure is itself LOUD (kv flag → action feed). PHASE H: the sweep is
+    the sentinel's L2 detection leg — it times itself and its accuracy row
+    carries a SENTINEL COST block (runtime + API calls vs budget, auditable)."""
+    import time as _time
+    _t0 = _time.time()
     import attribution_engine as AE
     import kv_store
     from helpers import today_sydney
     out = {"date": str(today_sydney()), "checks": 0, "agreements": 0,
            "disagreements": [], "invariant_violations": 0}
     # invariants across both clocks × windows (the engine computes them per row)
+    live_invariant_ids: set = set()
     for basis in ("cohort", "activity"):
         for d in (30, 60, 90):
             r = AE.compute(days=d, basis=basis)
@@ -657,8 +776,28 @@ def integrity_sweep() -> dict:
             out["checks"] += 1
             out["invariant_violations"] += len(bad)
             for b in bad:
+                live_invariant_ids.add(b.get("id"))
                 out["disagreements"].append({"kind": "invariant", "cause": b["detail"],
                                              "where": f"{basis} {d}d"})
+    # F3 — SELF-RETIRING INVARIANT ALERTS (the A5 doctrine applied to this class):
+    # an integrity:pending entry born from a past transient violation retires
+    # (journaled) once no swept clock×window still fails it — the feed shows
+    # LIVE state, not history. Mirrors the phantom prune below.
+    try:
+        pending = kv_store.get("integrity:pending") or []
+        stale = [p for p in pending
+                 if str(p.get("id", "")).startswith("invariant:")
+                 and p["id"] not in live_invariant_ids]
+        if stale:
+            kv_store.put("integrity:pending",
+                         [p for p in pending if p not in stale])
+            for p in stale:
+                _journal("invariant alert retired (F3)",
+                         f"{p['id']}: condition clear on every swept clock×window "
+                         f"— self-retired")
+            out["invariant_alerts_retired"] = len(stale)
+    except Exception as e:
+        logger.info("invariant retire pass failed: %s", e)
     # undated sets (the 2026-08-07 class): tracker hygiene rollup, one line
     try:
         r_act90 = AE.compute(days=90, basis="activity")
@@ -734,6 +873,9 @@ def integrity_sweep() -> dict:
     except Exception as e:
         out["i17_sample"] = {"error": str(e)[:80]}
 
+    launch_freshness_check(out)
+    clock_label_check(out)
+
     # NEW cause classes → auto-file a PROPOSED regression-test skeleton
     causes = kv_store.get(_KV_CAUSES) or {}
     proposed = kv_store.get(_KV_PROPOSED) or []
@@ -768,7 +910,8 @@ def integrity_sweep() -> dict:
     flags = [f for f in (kv_store.get("ads_truth:flags") or []) if _keep(f)]
     for dgg in out["disagreements"]:
         big = (dgg.get("cash") or 0) >= 1000 or dgg["kind"] in ("phantom_close", "quad",
-                                                               "i17_roster_drift")
+                                                               "i17_roster_drift",
+                                                               "clock_label")
         flags.append({"metric": "ads_truth_action" if big else "ads_truth",
                       "reason": f"ads truth sweep: {dgg['kind']} — {dgg['cause'][:110]}"})
     _publish_flags(flags)
@@ -780,6 +923,33 @@ def integrity_sweep() -> dict:
                if not str(p.get("id", "")).startswith("integrity:phantom_close:")
                or p["id"] in live_phantoms]
     kv_store.put("integrity:pending", pending)
+
+    # F11 — ORPHAN DERIVATION CENSUS (drill B15): a derivation whose tracker row
+    # was deleted is inert but was immortal + invisible. Counted nightly into a
+    # visible bucket (excluded ≠ deleted — nothing is auto-removed; a deliberate
+    # tracker deletion is a human's call to mirror).
+    try:
+        import resolution
+        _leads_all = AE.parse_tracker(AE._tracker_rows_clean())[0]
+        # BOTH normal forms (review finding 7): resolution._norm strips '@'/'.'
+        # while the engine's keeps them — a live "St. Ali"-style lead's derived
+        # key would otherwise read as an orphan and invite a wrongful delete.
+        tracker_norms = ({l["name_norm"] for l in _leads_all}
+                         | {resolution._norm(l["name"]) for l in _leads_all})
+        orphans = [nm for nm in (resolution.derived_dates() or {})
+                   if nm not in tracker_norms]
+        out["orphan_derivations"] = {"count": len(orphans), "names": orphans[:20]}
+        if orphans:
+            flags = kv_store.get("ads_truth:flags") or []
+            flags.append({"metric": "ads_truth",
+                          "reason": (f"{len(orphans)} orphan derivation(s) — derived "
+                                     f"dates whose tracker row no longer exists "
+                                     f"({', '.join(orphans[:5])}) — inert; delete from "
+                                     f"the derived store only if the row removal was "
+                                     f"deliberate (F11 census)")})
+            kv_store.put("ads_truth:flags", flags[-60:])
+    except Exception as e:
+        out["orphan_derivations"] = {"error": str(e)[:80]}
 
     # verified-show ratio — the honesty metric for attendance itself
     vsr = None
@@ -793,29 +963,115 @@ def integrity_sweep() -> dict:
             vsr = round(v_n / len(shows), 3)
     except Exception:
         pass
+    # SENTINEL COST (Phase H): runtime + external API calls this sweep actually
+    # spent, against the L2 budget — cost is auditable data, not a feeling.
+    api_calls = 0
+    for leg, keys in (("reached_sweep", ("checked",)),
+                      ("event_sweep", ("ghl_calls",)),
+                      ("show_verification", ("ghl_calls",))):
+        for k in keys:
+            v = (out.get(leg) or {}).get(k)
+            if isinstance(v, (int, float)):
+                api_calls += int(v)
+    runtime_s = round(_time.time() - _t0, 2)
+    sentinel_cost = None
+    try:
+        from ad_sentinel import BUDGETS
+        b = BUDGETS["L2"]
+        sentinel_cost = {"layer": "L2", "runtime_s": runtime_s,
+                         "api_calls": api_calls, "budget": b,
+                         "over_budget": (runtime_s > b["runtime_s"]
+                                         or api_calls > b["api_calls"])}
+        if sentinel_cost["over_budget"]:
+            flags = kv_store.get("ads_truth:flags") or []
+            flags.append({"metric": "ads_truth_action",
+                          "reason": (f"sentinel: L2 BUDGET BREACH — sweep took "
+                                     f"{runtime_s}s / {api_calls} API calls "
+                                     f"(budget {b['runtime_s']}s / {b['api_calls']})")})
+            kv_store.put("ads_truth:flags", flags[-60:])
+        rows_cost = kv_store.get("sentinel:cost") or []
+        rows_cost.append({**sentinel_cost, "at": out["date"]})
+        kv_store.put("sentinel:cost", rows_cost[-200:])
+    except Exception:
+        pass
+    out["sentinel_cost"] = sentinel_cost
     acc = kv_store.get(_KV_ACCURACY) or []
-    acc.append({"date": out["date"], "facts_checked": out["checks"],
-                "agreements": out["agreements"],
-                "disagreements": len(out["disagreements"]),
-                "invariant_violations": out["invariant_violations"],
-                "verified_show_ratio": vsr,
-                "spine": out.get("spine")})
+    row = {"date": out["date"], "facts_checked": out["checks"],
+           "agreements": out["agreements"],
+           "disagreements": len(out["disagreements"]),
+           "invariant_violations": out["invariant_violations"],
+           "verified_show_ratio": vsr,
+           "sentinel_cost": sentinel_cost,
+           "spine": out.get("spine")}
+    # F16 idempotent guard: ONE accuracy row per day, last write wins — a retry
+    # (or any residual race) can never double the history again
+    acc = [r for r in acc if r.get("date") != out["date"]] + [row]
     kv_store.put(_KV_ACCURACY, acc[-90:])
     kv_store.delete(_KV_SWEEP_ERROR)
     return out
 
 
+def dedupe_accuracy_history() -> dict:
+    """F16 one-off (journaled): the pre-fix race left TWO accuracy rows per day
+    (08-07, 08-08 at audit). Keep the LAST row per date — the later run reflects
+    the settled state a single nightly run would have recorded. Idempotent."""
+    import kv_store
+    acc = kv_store.get(_KV_ACCURACY) or []
+    seen: dict = {}
+    for r in acc:
+        seen[r.get("date")] = r          # last write per date wins
+    deduped = list(seen.values())
+    removed = len(acc) - len(deduped)
+    if removed:
+        kv_store.put(_KV_ACCURACY, deduped[-90:])
+        _journal("F16 accuracy de-dupe",
+                 f"removed {removed} doubled accuracy row(s) from the nightly "
+                 f"double-run race; one row per date retained (last wins)")
+    return {"before": len(acc), "after": len(deduped), "removed": removed}
+
+
 def nightly_tick() -> bool:
+    import datetime as _dt
+    import os
     import kv_store
     from helpers import today_sydney
-    if kv_store.get(_KV_TICK) == str(today_sydney()):
+    today = str(today_sydney())
+    if kv_store.get(_KV_TICK) == today:
         return False
+    # F16 SINGLE-FLIGHT: claim the day BEFORE the 76s sweep (atomic set-if-
+    # absent). The old code stamped AFTER the sweep — two workers hitting their
+    # 6h timers near-simultaneously both passed the gate and doubled the run
+    # (cost + duplicate accuracy rows). Loser of the claim walks away.
+    import time as _time
+    claim_key = f"{_KV_TICK}:claim:{today}"
+    if not kv_store.put_if_absent(claim_key, {"pid": os.getpid(),
+                                              "at_epoch": _time.time()}):
+        # Review finding 9a: a worker killed MID-SWEEP (deploy/restart) leaves
+        # the claim set with no tick stamp — the sweep would silently skip the
+        # rest of the day. A claim older than 2h with the day still unswept is
+        # STALE: reclaim it (loudly) and retry.
+        held = kv_store.get(claim_key) or {}
+        age = _time.time() - float(held.get("at_epoch") or _time.time())
+        if age > 2 * 3600 and kv_store.get(_KV_TICK) != today:
+            logger.warning("F16: stale sweep claim (%.0fs old, day unswept) — "
+                           "reclaiming", age)
+            kv_store.delete(claim_key)
+            if not kv_store.put_if_absent(claim_key, {"pid": os.getpid(),
+                                                      "at_epoch": _time.time()}):
+                return False
+        else:
+            return False
+    kv_store.delete(f"{_KV_TICK}:claim:"
+                    f"{today_sydney() - _dt.timedelta(days=1)}")   # yesterday's claim GC
     try:
         integrity_sweep()
-        kv_store.put(_KV_TICK, str(today_sydney()))
+        kv_store.put(_KV_TICK, today)
         return True
     except Exception as e:
-        # LOUD-FAILURE RULE: a silent watchdog is worse than none
+        # LOUD-FAILURE RULE: a silent watchdog is worse than none.
+        # F16: release the claim so a later tick can RETRY the day — a failed
+        # sweep must not burn the date.
+        kv_store.delete(claim_key)
         logger.warning("ads truth sweep FAILED: %s", e)
         try:
             kv_store.put(_KV_SWEEP_ERROR, {"date": str(today_sydney()),

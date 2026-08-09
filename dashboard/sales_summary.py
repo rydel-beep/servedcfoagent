@@ -93,6 +93,15 @@ def build_sales_summary(snap: dict, window_days: int = 30) -> str:
     lines = []
     lines.append("# Served Marketing — Sales Performance Summary")
     lines.append(f"**Period:** Trailing {window_days} days (as of {today})")
+    # F5 family (loud degradation): an exported summary built from a degraded
+    # snapshot must SAY so — otherwise the export reads as clean truth.
+    degraded = snap.get("degraded") or []
+    if degraded:
+        lines.append("")
+        lines.append(f"> ⚠ **DEGRADED SOURCES ({len(degraded)})** — treat affected "
+                     f"figures as incomplete, not zero: "
+                     + " · ".join(f"{d.get('metric', 'source')}: {d.get('reason', '')}"
+                                  for d in degraded[:6]))
     if not window_available and window_days != 30:
         lines.append(f"\n> **Note:** {window_days}-day window data not available in current snapshot. Showing 30-day data.")
     lines.append("")

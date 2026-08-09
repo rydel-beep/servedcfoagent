@@ -77,8 +77,12 @@ def _cached_result(days: int = 30):
         import datetime as dt
         w1 = today_sydney()
         w0 = w1 - dt.timedelta(days=days - 1)
-        hit = AE._cache.get((str(w0), str(w1)))
-        return hit[1] if hit else None
+        # F6 discipline: warmth is probed via cache_fresh (the old hand-built
+        # 2-tuple probe could never hit the current key shape — dead path);
+        # when warm, compute() returns the cached result instantly.
+        if AE.cache_fresh(w0, w1, "cohort"):
+            return AE.compute(days=days)
+        return None
     except Exception:
         return None
 

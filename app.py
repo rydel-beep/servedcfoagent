@@ -843,6 +843,13 @@ def _deferred_startup():
             attribution_engine.start_loop()
         except Exception as _e:
             logger.error("Attribution boot skipped: %s", _e)
+        # Phase H — THE SENTINEL: L1 hourly / L2 nightly extras / L3 weekly,
+        # single-flight across workers; kill switch AD_SENTINEL_PAUSE_HEALS.
+        try:
+            import ad_sentinel
+            ad_sentinel.start_loop()
+        except Exception as _e:
+            logger.error("Sentinel boot skipped: %s", _e)
         # BAS/PAYG estimate: kv-stamped once-a-day tick at boot (read-only Xero),
         # so the card has an estimate without waiting for the loop interval.
         # Staggered by worker pid — two workers must not race the single-use

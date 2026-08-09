@@ -1,11 +1,11 @@
 # ADS_SYSTEM_STATE — the canonical ad-tracking system doc
 
-**Read this FIRST in any ads session.** Everything below is AS-VERIFIED on
-2026-08-08 (extreme audit; artifacts in `dashboard/audit_artifacts/`). Nothing
-is inherited from old reports unre-proven. Old *_REPORT.md files are history,
+**Read this FIRST in any ads session.** AS-SHIPPED at the audit GATE CLOSE
+(2026-08-09): the fix wave (F1–F16 per AUDIT_FINDINGS_REGISTER.md), ruling R1
+(DECISIONS #132), and the Phase H sentinel are in the tree. Nothing below is
+inherited unre-proven — every claim traces to a wave test or a gate-close
+artifact (`dashboard/audit_artifacts/06+`). Old *_REPORT.md files are history,
 not truth — where they conflict with this doc, this doc wins.
-Status: audit discovery complete; fix wave AT THE GATE (see
-AUDIT_FINDINGS_REGISTER.md — F-numbers below refer to it).
 
 ## Architecture (one engine per metric AND per roster)
 
@@ -17,95 +17,148 @@ Stripe charges (read-only) ──┘    + invariants + reconciliation)
         ↓ consumers (zero new math anywhere)
   scoreboard_view · attribution_verdicts.ladder/ladder_groups · roster_engine
   · dashboard/ads.py routes · ads_truth sweeps · resolution derivations
+  · ad_sentinel (Phase H — the standing watcher)
 ```
 
 - `attribution_engine.py` — parse_tracker → dedupe_won → derived-date merge →
-  tier bucketing (ad / __ig_dm__ / __unattributed__ / __ambiguous__) →
-  per-metric counters WITH member lists recorded at the increment (I17) →
-  invariants I1/I2/I8/I10/I17 → reconciliation vs canonical anchors.
-  In-process cache: 30-min TTL, keyed (w0,w1,basis,market), PER WORKER (×2
-  gunicorn) — the root of F1/F6 staleness findings.
-- `roster_engine.py` — THE cellspec→roster path (level×key×metric×window×clock
-  ×market). Every people-list surface consumes it. I17: len(people)==cell.
-- `attribution_verdicts.py` — verdicts + `ladder_groups()` = the ONE grouping
-  path for Names/Batches/Campaigns/Account (rosters + ladder share it).
-- `resolution.py` — derive-never-invent date engine: journaled
-  `record_derived_date` / `supersede_derived` (source wins, disagreement
-  surfaces) / P1-P2 cards / `apply_payment_class_ruling` (#131).
-- `ads_truth.py` — spine census, reached sweep, event sweep, show verification,
-  quad-check, nightly `integrity_sweep` (+I17 20-cell sampling), Edith accuracy.
-- `dashboard/ads.py` + `adsapp.js` — render + drill only (I16 view purity).
+  tier bucketing → per-metric counters WITH member lists (I17) → invariants →
+  reconciliation. In-process cache 30-min TTL keyed
+  **(w0, w1, basis, market, derived_epoch)** — the F6 epoch means a derivation
+  write invalidates every cached result at once; consumers probe warmth ONLY
+  via `cache_fresh()` (never a hand-built tuple — the old 3-tuple probe was a
+  dead warm path). degraded[] folds spend + entity-map + contact signals,
+  deduped (F5).
+- **Rollup layer** (`dashboard/ads.py`): `attr:rollup:<basis>:<days>` records
+  are `{at, epoch, board, engine}` — `engine` is the F1 slice (creatives WITH
+  members + trimmed rows) that serves COLD rosters/dossiers via
+  `roster_engine.load_result()` in <500ms, stale-LABELLED with age + reason;
+  an epoch-mismatched rollup states "superseded by a derivation write" and
+  auto-refreshes. Board payloads carry `degraded[]` + `ok` (F5).
+- `roster_engine.py` — THE cellspec→roster path; payload states served_from /
+  stale / stale_reason; I17 len(people)==cell checked at build.
+- `resolution.py` — derive-never-invent engine. JOURNAL-FIRST writes (F10);
+  every derivation-class write bumps `derived:epoch` (F6); evidence-class
+  journal entries persist in durable `resolution:journal` cap 1000 (F2) while
+  sweep noise rolls in the 200-cap log; `rederive_ghl_dates_sydney()` is the
+  journaled F8 migration (idempotent, dry-run, boundary-crossing callouts).
+- `helpers.sydney_day()` — THE derivation-boundary day conversion (F8): every
+  GHL/Postgres timestamp converts to the Sydney calendar day (DST-correct);
+  UTC slicing at a derivation boundary is a doctrine violation.
+- `cash_truth.py` — charge pulls mark PARTIAL failures loudly
+  (`stripe:partial_pull`, F9): the cash view degrades core, the #131 ruling
+  pass skips the run, the card builder keeps existing cards.
+  `refund_report()` (R1/DECISIONS #132): refunds are post-close economics —
+  they report here (incl. fully-refunded charges), never erase closes.
+- `ads_truth.py` — spine census, reached sweep (now prunes merged-away ids —
+  F7), event sweep, show verification, quad-check, nightly `integrity_sweep`
+  (self-timing, SENTINEL COST block in its accuracy row; F3 self-retiring
+  invariant alerts; F11 orphan-derivation census; ONE accuracy row per date).
+  `nightly_tick` is SINGLE-FLIGHT via an atomic day claim (F16;
+  `kv_store.put_if_absent`), claim released on failure so the day retries.
+- `dashboard/ads.py` + `adsapp.js` — render + drill only (I16). DEGRADED
+  chips/strips on every spend-derived surface (F5); ?roster= deep links
+  whitelist level/metric + esc() before render (F12).
 
-## Conventions (DECISIONS refs — all re-verified live)
+## Conventions (DECISIONS refs)
 
-- #111 first-touch attribution; last-touch counted, never blended (drill B3:
-  the FT creative owns rows AND closes; LT gets no row).
-- #118/#120 tracker authority · one clock per view (I11).
-- #126 ads-truth loop · #127 market filter I15 + interaction layer ·
-  #128 date conventions (set=booked, show=scheduled+evidence, input=created,
-  close=signed) · #129 show tiers (verified/unverified) ·
-  #131 payment-class close-date auto-derivation (Stripe email-exact AUTO; GHL
-  stage PROPOSED forever; 10 live conversions, $30,983, charge ids journaled;
-  duplicate-dated guard `9db5b7d`).
+- #111 first-touch · #118/#120 tracker authority + one clock per view ·
+  #126 ads-truth loop · #127 market filter I15 · #128 date conventions ·
+  #129 show tiers · #131 payment-class close-date auto-derivation ·
+  **#132 refund semantics (R1): a refund is post-close economics — close
+  dates/funnel counts untouched; the refund reports in
+  `cash_truth.refund_report` (it moves, it doesn't vanish).**
 
-## Integrations + scopes (live-probed 2026-08-08)
+## Integrations + scopes
 
 | Source | State |
 |---|---|
-| GHL | contacts/appointments/conversations readable; **payments/orders, payments/transactions, invoices → 401** (no payment rung exists) |
-| Stripe | read-only rk_ key on Railway; charges readable (pagination partial-failure = F9) |
-| Meta | entities + spend live; degradation currently invisible on /ads (F5) |
-| Xero | report scopes only; Invoices 401 — **re-consent still pending on Rydel** |
-| Postgres | kv_store + mirrors + attr_contacts; Railway-internal (local runs CANNOT reach it — probe via `railway ssh`, `/opt/venv/bin/python`) |
+| GHL | contacts/appointments/conversations readable; payments/invoices 401 (no rung) |
+| Stripe | read-only rk_ key; partial pulls marked LOUD (F9) |
+| Meta | entities + spend live; a dead token renders DEGRADED, never $0 (F5) |
+| Xero | report scopes only; Invoices 401 — re-consent pending on Rydel (queued) |
+| Postgres | kv_store + mirrors + attr_contacts; Railway-internal (probe via `railway ssh`) |
 
 ## Invariants
 
 I1/I2/I8 funnel coherence · I10 tier partition · I11 clock purity · I13 single
 computation path · I14 no orphan badges · I15 market partition · I16 view
-purity · **I17 roster-cell equality** (members at increment; suite sweep +
-build check + nightly 20-cell sample; live full sweep 2026-08-08: 18,744 cells,
-0 drift).
+purity · **I17 roster-cell equality** — enforced at increment; sampled n=5
+hourly (L1), n=20 nightly (L2), FULL weekly (L3) + suite sweeps.
 
-## Jobs + cadences (verified wiring)
+## Jobs + cadences
 
-- `attribution_engine.start_loop()` (app.py:834): every 6h — compute refresh +
-  close_integrity/bas/voice/memory/convo ticks + `ads_truth.nightly_tick()`
-  (kv-stamped daily; **stamp written after the 76s sweep → double-run race =
-  F16**). Boot does NOT tick immediately (first tick = boot+6h).
-- Rollup layer: `attr:rollup:<basis>:<days>` persisted boards; stale-labelled
-  serves + background refresh + adjacent-window prefetch (incl. All).
-- Nightly sweep duties: invariants both clocks × 3 windows · spine census ·
-  quad-check 90d closes · reached sweep (≤30) · date resolution + #131 rung ·
-  event sweep (≤40) · show verification (≤40) · I17 sample (20) · accuracy row.
+- `attribution_engine.start_loop()` — every 6h: compute refresh + module ticks
+  + `ads_truth.nightly_tick()` (**single-flight day claim BEFORE the sweep —
+  F16**; boot does not tick immediately).
+- `ad_sentinel.start_loop()` — hourly heartbeat: **L1** every hour (recon ·
+  I10 · I17 n=5 · delta-anomaly band incl. verified-show-ratio decline, F15);
+  **L2 extras** once the nightly sweep stamps (drift diff vs previous accuracy
+  row + the heal pass); **L3** weekly (full I17 · full 90d quad-check ·
+  5-claim re-proof · security replay [/debug 401 + roster taint 400] · perf
+  regression vs budgets). All single-flight via kv claims — safe across both
+  workers.
 
-## Known limits (honest, current)
+## The sentinel (Phase H — SHIPPED)
 
-- F1: roster/drill cold path 5.7–15.8s (cache TTL/worker split) — wave fix.
-- F5: `degraded[]` not rendered on /ads → $0-spend illusion under Meta failure.
-- F6: derivation writes don't invalidate caches → ≤30min stale-as-fresh after
-  a card apply.
-- F2: autofix journal horizon ≈2 days (200 cap) — evidence retention at risk.
-- F8: GHL-derived set/show dates use the UTC day (morning-Sydney bookings derive
-  a day early).
-- Date coverage: sets 156/245 dated (63.7%) · closes 58/67 (86.6%) · inputs
-  1113/1114. Queue: 4 stage-only P1 + 4 H1 + 1 P2 + 37 set-multi + 3 attendance.
-- verified_show_ratio 0.857 and falling as status-only shows derive — needs the
-  sentinel trend watch (F15).
-- All 4 supersessions to date DISAGREED with the source (n small; watch).
-- Cross-service note (NOT touched): the timeline repo consumes some of the same
-  GHL data — any ID-semantics change must be coordinated, own session.
+- **Escalation**: an L0/L1 signal buys a TARGETED deep pass on its domain only
+  (i17 → full I17 now; recon/partition → quad-check now; metric anomaly →
+  drift diff; security → probe replay). Spend follows signal.
+- **Budgets** (per run): L1 15s/0 calls · L2 240s/130 calls · L3 600s/20
+  calls. Breach = LOUD action-feed alert; every run appends an auditable cost
+  row (kv `sentinel:cost`); the nightly accuracy row carries the L2 cost
+  block (runtime + API calls vs budget).
+- **Self-heal boundary (HARD)**: deterministic data-layer ONLY — rebuild
+  stale/epoch-superseded rollup · clear invalidated engine cache · re-sync
+  stale contact table · re-derive on new evidence / process supersessions ·
+  regenerate failing-test skeletons. Each heal journaled (durable evidence
+  stream) + ONE quiet feed line. The sentinel NEVER edits code, definitions,
+  conventions, or thresholds, and never invents data. Judgment-/code-shaped
+  findings → `SENTINEL_QUEUE.md` (ranked) + an action-feed item.
+- **KILL SWITCH**: env `AD_SENTINEL_PAUSE_HEALS` (any truthy value) pauses all
+  heals; detection keeps running and states the pause in the feed. Proven:
+  `tests/test_sentinel.py::test_kill_switch_halts_heals_detection_continues`.
+
+## Launch lineage + date control (#133, 2026-08-09)
+
+- `launch_lineage.py` — THE launch/active-days source: launched = FIRST-DELIVERY
+  day from insights (never created_time — secondary; never ad-set start_time —
+  reused), days running = ACTIVE delivery days. Durable store (state file + kv
+  mirror `launch:lineage`); store-censored ads get a one-time lifetime probe
+  (2–3 GETs, 15/15 succeeded at build); unprobed = "on or before", degraded ≠
+  zero. Attached ONCE in compute() + ladder _aggregate — hover card, dossier
+  lineage section (three dates + exact delivery timeline), and launch/active-
+  days sorts read the same field (equality test-enforced).
+- Date control: ?range=YYYY-MM-DD..YYYY-MM-DD + ?clock=activity|cohort — a
+  window PARAMETER over the one engine (no second path). Strict validation
+  (F12-immune), future end clamped to today_sydney + noted; presets default
+  ACTIVITY, standard windows keep ruled cohort; every label carries the active
+  clock; drills/rosters/dossier inherit box+clock via one JS windowQS()
+  builder; I17 pinned on custom ranges both clocks. Sourcing: META/HYB header
+  chips on all Meta-sourced/hybrid columns (hybrids degrade if either side
+  degrades) — grep-enforced. Nightly sweep watches: launch_freshness +
+  clock_label (ACTION-promoted).
+
+## Known open findings
+
+- **F17 (register)**: normalization split — `resolution._norm` strips '@'/'.'
+  while the engine's `_norm` keeps them; derived keys for such names never
+  match engine name_norms, so the derived-date merge silently skips them.
+  Queued P1 (SENTINEL_QUEUE) — needs a keyed-migration session; do NOT
+  hot-patch either normalizer. Census mislabel already fixed (dual-norm).
 
 ## Security posture
 
-All /ads + /cfo surfaces auth-walled (matrix in artifact 05); sales fail-closed
-allowlist; media_buyer shipped-disabled (live env probe); **/debug/* fully
-X-CFO-KEY-gated as of `45670b7`** (F4 hotfix — anon MRR exposure closed,
-permanent sweep test). Open: F12 reflected-XSS via ?roster= (wave).
+All /ads + /cfo surfaces auth-walled; sales fail-closed; media_buyer
+shipped-disabled; /debug/* X-CFO-KEY-gated (`45670b7`, sweep test). F12
+reflected-XSS via ?roster= CLOSED (whitelist + esc at the boundary, taint
+tests, weekly sentinel replay). No open security findings.
 
-## Sentinel (designed, NOT yet built — post-gate Phase H)
+## Data state (post-migration items — run at deploy, artifact 08)
 
-L0 inline guards → L1 hourly (recon identities + I17 n=5 + delta-anomaly) →
-L2 nightly (existing sweep + drift diff + cost row) → L3 weekly (full I17 +
-claims sample + security replay + perf regression). Self-heal boundary:
-deterministic data-layer only, journaled; kill switch env
-`AD_SENTINEL_PAUSE_HEALS`; escalations + judgment items → SENTINEL-QUEUE.md.
+- F8: `rederive_ghl_dates_sydney()` — journaled old→new over every ghl-appt /
+  contact-created derivation; reconciliation re-checked green after.
+- F16: `dedupe_accuracy_history()` — the doubled 08-07/08-08 rows collapsed
+  (journaled), one row per date thereafter by construction.
+- Standing judgment queue (never auto-fixed): see SENTINEL_QUEUE.md seed —
+  4 stage-only P1 · 37 set-multi · 3 attendance · 1 P2 link · 4 H1 blanks ·
+  Xero re-consent.

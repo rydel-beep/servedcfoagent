@@ -47,8 +47,32 @@ _INQUIRY_RE = re.compile(
     r"influencer|photographer|videographer|vendor|collab|supplier|partnership|"
     r"content creator|ugc|media kit|sponsor", re.I)
 
-_cache: dict = {}          # {(start,end): (built_epoch, result)} — in-process, 30 min
+_cache: dict = {}   # {(w0,w1,basis,market,derived_epoch): (built_at, result)} — 30 min
 _CACHE_TTL_S = 1800
+
+
+def _derived_epoch() -> int:
+    """F6: the derivation epoch is part of the cache key — a derivation write
+    (card apply, ruling conversion, supersession, show verification, spine,
+    reached evidence) bumps it, so every cached result is invalidated at once.
+    Correctness first; scoping invalidation to touched keys is a later narrowing."""
+    try:
+        import resolution
+        return resolution.derived_epoch()
+    except Exception:
+        return 0
+
+
+def cache_key(w0, w1, basis, market=None) -> tuple:
+    return (str(w0), str(w1), basis, market, _derived_epoch())
+
+
+def cache_fresh(w0, w1, basis, market=None) -> bool:
+    """Is the engine warm for this window ON THE CURRENT KEY SHAPE? Consumers
+    (the rollup layer) must call THIS, never poke _cache with a hand-built
+    tuple — the pre-F6 serve path checked a stale 3-tuple and never hit."""
+    hit = _cache.get(cache_key(w0, w1, basis, market))
+    return bool(hit and time.time() - hit[0] < _CACHE_TTL_S)
 
 
 # ── Tracker parsing (header-name detection, the proven repo pattern) ─────────
@@ -906,6 +930,7 @@ def scoreboard_view(result: dict) -> dict:
                   "closes": (c.get("gates") or {}).get("n_closes", 0)},
             "earlier_closes": c.get("earlier_closes", 0),
             "integrity_error": c.get("integrity_error"),
+            "lineage": c.get("lineage"),   # #133 — the ONE launch/active-days read
         })
     t = result.get("totals") or {}
     vl = result.get("verdict_layer") or {}
@@ -957,11 +982,12 @@ def ig_non_lead_inquiries(contacts: list[dict], leads: list[dict],
     tracker_names = {l["name_norm"] for l in leads}
     n = 0
     borderline = []
+    from helpers import sydney_day
     for c in contacts:
         if c.get("tier") != "ig_dm":
             continue
         da = c.get("date_added")
-        d = da.date() if hasattr(da, "date") else _date(da)
+        d = sydney_day(da) if hasattr(da, "date") else _date(da)   # F8: Sydney day
         if d is None or not (w0 <= d <= w1):
             continue
         in_tracker = (c.get("email") and c["email"] in tracker_emails) or \
@@ -1014,7 +1040,7 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
     else:
         w1 = today_sydney()
         w0 = w1 - dt.timedelta(days=int(days) - 1)
-    ck = (str(w0), str(w1), basis, market)
+    ck = cache_key(w0, w1, basis, market)
     hit = _cache.get(ck)
     if hit and not force and time.time() - hit[0] < _CACHE_TTL_S:
         return hit[1]
@@ -1025,6 +1051,17 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
     contacts = attribution_join.load_contacts()
     entity_store = meta_entities.refresh_entity_map()
     meta_entities.refresh_ad_spend_daily()
+    # LAUNCH LINEAGE (#133): keep the durable first-delivery/active-days store
+    # current (merge is idempotent; lifetime probes fire once per censored ad).
+    lineage_degraded: list[dict] = []
+    try:
+        import launch_lineage
+        lineage_degraded = (launch_lineage.refresh() or {}).get("degraded") or []
+    except Exception as e:
+        logger.warning("launch lineage refresh failed: %s", e)
+        lineage_degraded = [{"metric": "launch_lineage",
+                             "reason": f"lineage refresh failed ({type(e).__name__}) — "
+                                       "launch fields may lag"}]
     spend = meta_entities.spend_by_ad_in_range(str(w0), str(w1))
 
     def resolve_fn(ref, kind):
@@ -1124,6 +1161,20 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
                                  setter_comm=setter_comm, canonical=canonical,
                                  qualified_floor=q_floor, ad_label_fn=ad_label_fn,
                                  basis=basis, market=market)
+    # LAUNCH LINEAGE attaches HERE, once — hover card, dossier, ladder groups and
+    # every launch/runtime sort read this one field (hover == dossier == sort key,
+    # test-enforced). Tier rows carry None (no ad identity exists for them).
+    try:
+        import launch_lineage
+        for c in result.get("creatives") or []:
+            c["lineage"] = (launch_lineage.lineage_for(c.get("ad_ids") or [],
+                                                       entity_store=entity_store)
+                            if c.get("tier") == "ad" else None)
+    except Exception as e:
+        logger.warning("lineage attach failed: %s", e)
+        lineage_degraded.append({"metric": "launch_lineage",
+                                 "reason": f"lineage attach failed ({type(e).__name__}) "
+                                           "— launch fields omitted, never guessed"})
     # invariant violations are salience-worthy once (the custodian pattern)
     try:
         import kv_store
@@ -1173,12 +1224,27 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
             {"metric": "attribution_verdicts", "reason": f"verdict layer failed ({type(e).__name__})"})
     _publish_data_quality_flags(result)
 
-    degraded = list(spend.get("degraded") or []) + input_degraded
+    # F5 family: the entity-map store carries its own degraded[] — fold it in
+    # (deduped: the stale-store fallback path accumulates repeats) so a dead
+    # entity fetch is never a silently unlabelled board.
+    degraded = list(spend.get("degraded") or []) + input_degraded + lineage_degraded
+    seen_dg = {(d.get("metric"), d.get("reason")) for d in degraded}
+    for d in (entity_store.get("degraded") or []):
+        k_dg = (d.get("metric"), d.get("reason"))
+        if k_dg not in seen_dg:
+            seen_dg.add(k_dg)
+            degraded.append(d)
     if not contacts:
         degraded.append({"metric": "attribution", "reason": "attr_contacts empty — sync pending"})
     result["degraded"] = degraded
     result["ok"] = result["reconciliation"]["ok"] and not degraded
-    _cache[ck] = (time.time(), result)
+    # F6: epoch-superseded and TTL-dead entries are pruned on write (the epoch in
+    # the key means old-epoch entries can never be served; don't let them pile up)
+    now = time.time()
+    for k in [k for k, v in list(_cache.items())     # snapshot — other threads insert
+              if now - v[0] >= _CACHE_TTL_S or k[4] != ck[4]]:
+        _cache.pop(k, None)
+    _cache[ck] = (now, result)
     return result
 
 

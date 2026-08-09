@@ -204,6 +204,67 @@ def _quarantine_reason(view_row: dict | None, lead: dict | None, tier_key: str) 
     return None
 
 
+_warming: set = set()
+
+
+def _warm_async(days: int, basis: str) -> None:
+    """Kick a background engine build so the NEXT drill on this window is fresh
+    (the rollup serve stays labelled meanwhile). Stampede-guarded."""
+    key = (days, basis)
+    if key in _warming:
+        return
+    _warming.add(key)
+
+    def _run():
+        try:
+            import attribution_engine as AE
+            AE.compute(days=days, basis=basis, force=True)
+        except Exception as e:
+            logger.info("roster warm build failed (%s,%s): %s", basis, days, e)
+        finally:
+            _warming.discard(key)
+    import threading
+    threading.Thread(target=_run, daemon=True, name=f"roster-warm-{basis}-{days}").start()
+
+
+def load_result(days=30, start=None, end=None, basis="cohort", market=None):
+    """F1 (rollup-backed rosters): THE window result for roster/drill surfaces.
+    Warm engine → the fresh result (0.2s). Cold engine → the persisted rollup's
+    engine slice (creatives WITH members + trimmed rows — written by the board
+    layer beside every rollup), STALE-LABELLED, background warm kicked; the cold
+    path meets the <500ms drill budget. No slice → live compute (the old cold
+    path — first boot only). Returns (result, serve_meta)."""
+    import attribution_engine as AE
+    meta = {"served_from": "engine", "stale": False,
+            "stale_age_s": None, "stale_reason": None}
+    custom = bool(start or end)
+    if not custom and market is None:
+        import datetime as _dt
+        from helpers import today_sydney
+        w1 = today_sydney(); w0 = w1 - _dt.timedelta(days=int(days) - 1)
+        if not AE.cache_fresh(w0, w1, basis):
+            try:
+                import kv_store
+                import resolution
+                import time as _t
+                stored = kv_store.get(f"attr:rollup:{basis}:{days}") or {}
+                sl = stored.get("engine")
+                if sl and sl.get("creatives") is not None:
+                    meta["served_from"] = "rollup"
+                    meta["stale"] = True    # any stored serve is labelled, like the grid
+                    meta["stale_age_s"] = int(_t.time() - (stored.get("at") or 0))
+                    meta["stale_reason"] = (
+                        "superseded by a derivation write — refreshing"
+                        if int(stored.get("epoch") or 0) != resolution.derived_epoch()
+                        else "engine cold on this worker — served from the rollup")
+                    _warm_async(int(days), basis)
+                    return sl, meta
+            except Exception as e:
+                logger.info("roster rollup fast-path unavailable: %s", e)
+    result = AE.compute(days=days, start=start, end=end, basis=basis, market=market)
+    return result, meta
+
+
 def build(days=30, start=None, end=None, basis="cohort", market=None,
           level="creative", key=None, metric="leads") -> dict:
     """Cell-spec → roster. Deterministic, engine-side, no UI arithmetic."""
@@ -217,7 +278,8 @@ def build(days=30, start=None, end=None, basis="cohort", market=None,
         return {"error": "key required"}
 
     import attribution_engine as AE
-    result = AE.compute(days=days, start=start, end=end, basis=basis, market=market)
+    result, serve_meta = load_result(days=days, start=start, end=end,
+                                     basis=basis, market=market)
     AE.assert_same_basis(result)     # I11: the roster inherits the cell's clock
     member_rows, err = _member_rows(result, level, key)
     if err and not member_rows:
@@ -358,6 +420,14 @@ def build(days=30, start=None, end=None, basis="cohort", market=None,
         "cellspec": {"level": level, "key": key, "metric": metric,
                      "days": days, "start": start, "end": end,
                      "basis": basis, "market": market or "all"},
+        # F5: degradation rides with the roster payload (the drill states it)
+        "degraded": result.get("degraded") or [],
+        # F1: how this roster was served — a rollup serve is stale-LABELLED with
+        # its age + reason, exactly like the grid (never silently stale)
+        "served_from": serve_meta["served_from"],
+        "stale": serve_meta["stale"],
+        "stale_age_s": serve_meta["stale_age_s"],
+        "stale_reason": serve_meta["stale_reason"],
         "label": label,
         "window": result.get("window"), "basis": result.get("basis"),
         "count": cell_value, "people": people, "i17": i17,

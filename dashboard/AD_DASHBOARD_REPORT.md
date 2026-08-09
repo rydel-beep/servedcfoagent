@@ -1,5 +1,12 @@
 # SERVED AD TRACKING — the dedicated dashboard
 
+> **SUPERSEDED NOTE (2026-08-09, audit F14):** this report is HISTORY, not current
+> truth (ADS_SYSTEM_STATE.md is canonical). In particular: rosters are now served by
+> `roster_engine.py` (one cellspec→roster path, I17 roster==cell), NOT the route-side
+> mechanism described below, and live GHL notes are capped at the FIRST 8 contacts per
+> roster (not ≤30).
+
+
 ## PHASE 0 — DIAGNOSE + PROBE (2026-08-05)
 
 ### 1 · The 30/60/90 toggle — root cause (code-walk, `ltcboard.js`)
