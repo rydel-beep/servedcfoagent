@@ -248,13 +248,15 @@ def lineage_for(ad_ids: list[str], entity_store: dict | None = None,
         elif rec.get("no_delivery"):
             never += 1
     if not known:
-        return {"launch": None, "active_days": None, "calendar_days": None,
-                "status": _status(ad_ids, entity_store),
-                "created_time": _created(ad_ids, entity_store),
-                "scheduled_start": _sched(ad_ids, entity_store),
-                "source": "meta:insights",
-                "degraded": "no delivery record for this ad in Meta insights — "
-                            "launch unknown (not a zero)"}
+        nk = {"launch": None, "active_days": None, "calendar_days": None,
+              "status": _status(ad_ids, entity_store),
+              "created_time": _created(ad_ids, entity_store),
+              "scheduled_start": _sched(ad_ids, entity_store),
+              "source": "meta:insights",
+              "degraded": "no delivery record for this ad in Meta insights — "
+                          "launch unknown (not a zero)"}
+        nk.update(_preview(ad_ids, entity_store))
+        return nk
     launch, launch_approx = min(cands) if cands else (None, False)
     active = len([d for d in day_union if d <= str(today)])
     cal = None
@@ -264,7 +266,7 @@ def lineage_for(ad_ids: list[str], entity_store: dict | None = None,
         except ValueError:
             cal = None
     last = max(day_union) if day_union else None
-    return {
+    out = {
         "launch": launch,
         "launch_approx": launch_approx,   # True → "on or before" (probe pending)
         "never_delivered": bool(launch is None and never == known),
@@ -278,6 +280,29 @@ def lineage_for(ad_ids: list[str], entity_store: dict | None = None,
         "source": "meta:insights",
         "degraded": None,
     }
+    out.update(_preview(ad_ids, entity_store))
+    return out
+
+
+def _preview(ad_ids, entity_store) -> dict:
+    """PREVIEW LINKS: {preview_link, preview_state} where state is
+    'link' (live shareable link) · 'deleted' (the ad no longer exists in the
+    listing — an honest chip, never a dead link) · 'pending' (listed ad whose
+    link the next entity refresh will carry)."""
+    listed = deleted = 0
+    for a in ad_ids or []:
+        e = _entity(a, entity_store)
+        if not e:
+            deleted += 1
+            continue
+        listed += 1
+        if e.get("preview_link"):
+            return {"preview_link": e["preview_link"], "preview_state": "link"}
+    if listed:
+        return {"preview_link": None, "preview_state": "pending"}
+    if deleted:
+        return {"preview_link": None, "preview_state": "deleted"}
+    return {"preview_link": None, "preview_state": None}
 
 
 def delivery_days(ad_ids: list[str], today: date | None = None) -> list[str]:

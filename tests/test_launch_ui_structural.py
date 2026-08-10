@@ -44,8 +44,9 @@ def test_hover_card_reads_engine_lineage_only():
     assert "no launch date exists" in _JS
     # created_time renders as SECONDARY with the not-first-delivery label
     assert "not first delivery" in _JS
-    # no fetch inside the hover path (the card is memory-fed)
-    hover_src = _JS.split("function lineageCard")[1].split("// ── EVERY NUMBER IS A DOOR")[0]
+    # no fetch inside the hover path (the card is memory-fed) — the segment ends
+    # where the hover helpers do (the discussion block after it fetches by design)
+    hover_src = _JS.split("function lineageCard")[1].split("var hoverTimer")[0]
     assert "fetch(" not in hover_src
 
 

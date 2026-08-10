@@ -179,6 +179,7 @@ def refresh_entity_map(force: bool = False) -> dict:
     rows, err = _get_all(f"{_account_id()}/ads", {
         "access_token": META_ACCESS_TOKEN,
         "fields": "id,name,status,effective_status,created_time,"
+                  "preview_shareable_link,"
                   "adset{id,name,start_time},campaign{id,name}",
         "filtering": json.dumps([{"field": "ad.effective_status",
                                   "operator": "IN", "value": _ALL_STATUSES}]),
@@ -201,6 +202,9 @@ def refresh_entity_map(force: bool = False) -> dict:
             # before 2026-08-09 — the dossier's "created" line silently never
             # rendered. Kept now, with the ad set's (reused!) scheduled start.
             "created_time": a.get("created_time"),
+            # PREVIEW LINKS: refreshed with every entity cycle — an ad that
+            # leaves the listing loses its link, so rot self-heals to the chip
+            "preview_link": a.get("preview_shareable_link"),
             "adset_id": (a.get("adset") or {}).get("id"),
             "adset_name": (a.get("adset") or {}).get("name"),
             "adset_start_time": (a.get("adset") or {}).get("start_time"),
@@ -223,6 +227,7 @@ def _remember_extra(store: dict, ad: dict) -> None:
         "name_norm": norm_name(ad.get("name")),
         "effective_status": ad.get("effective_status"),
         "created_time": ad.get("created_time"),
+        "preview_link": ad.get("preview_shareable_link"),
         "adset_id": (ad.get("adset") or {}).get("id"),
         "adset_name": (ad.get("adset") or {}).get("name"),
         "adset_start_time": (ad.get("adset") or {}).get("start_time"),
@@ -250,6 +255,7 @@ def lookup_ad_id(ad_id: str, store: dict | None = None) -> dict | None:
         return None
     j, err = _get(ad_id, {"access_token": META_ACCESS_TOKEN,
                           "fields": "id,name,effective_status,created_time,"
+                                    "preview_shareable_link,"
                                     "adset{id,name,start_time},campaign{id,name}"})
     if j and j.get("id"):
         _remember_extra(store, j)

@@ -373,6 +373,13 @@ def board():
     if note:
         payload["range_note"] = note
     payload["clock"] = payload.get("basis")   # the declared name — never implicit
+    # DISCUSSION row badges: counts attach at SERVE time (fresh kv read) so a
+    # note posted seconds ago badges immediately even on a rollup-served board
+    try:
+        import ads_discussion
+        payload["discussion_counts"] = ads_discussion.counts_by_anchor()
+    except Exception as e:
+        logger.info("discussion counts unavailable: %s", e)
     resp = jsonify(payload)
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     return resp
@@ -701,3 +708,99 @@ def roster():
     resp = jsonify(payload)
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     return resp
+
+
+# ── DISCUSSION (#136): anchored, context-stamped team notes — the FIRST
+# non-owner WRITE surface on the CFO service. Rails: author = the SESSION
+# actor only (no author parameter exists); the context stamp is computed
+# SERVER-SIDE from the one engine for the view params the client names;
+# edits journal; deletes tombstone; role-gated server-side on every verb.
+
+_DISCUSSION_ROLES = ("owner", "coo", "ad_domain", "media_buyer")
+
+
+def _discussion_actor():
+    from dashboard.auth import current_actor
+    a = current_actor()
+    return a if a.get("role") in _DISCUSSION_ROLES else None
+
+
+@bp.route("/api/discussion", methods=["GET"])
+@require_auth
+def discussion_list():
+    """List (lazy panel/dossier fetch): ?creative=&author=&state=&limit=."""
+    import ads_discussion
+    if _discussion_actor() is None:
+        return jsonify({"error": "discussion is for the ad team", "scope": "ad_domain"}), 403
+    limit = min(max(int(request.args.get("limit", 200) or 200), 1), 500)
+    notes = ads_discussion.list_comments(
+        creative=(request.args.get("creative") or None),
+        author=(request.args.get("author") or None),
+        state=(request.args.get("state") or None),
+        limit=limit)
+    resp = jsonify({"notes": notes, "count": len(notes)})
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/discussion", methods=["POST"])
+@require_auth
+def discussion_post():
+    """Post / one-level reply. The VIEW (window+clock) rides as query params —
+    validated exactly like the board's — and the server computes the stamp."""
+    import ads_discussion
+    actor = _discussion_actor()
+    if actor is None:
+        return jsonify({"error": "discussion is for the ad team", "scope": "ad_domain"}), 403
+    days, start, end, _note, w_err = _window_args()
+    if w_err:
+        return jsonify({"error": w_err}), 400
+    j = request.get_json(silent=True) or {}
+    c, err = ads_discussion.post(actor, j.get("body"), j.get("anchor") or "board",
+                                 reply_to=j.get("reply_to"),
+                                 days=days, start=start, end=end, basis=_basis_arg())
+    if err:
+        return jsonify({"error": err}), 429 if "rate limit" in err else 400
+    return jsonify({"ok": True, "note": ads_discussion._render(c)})
+
+
+@bp.route("/api/discussion/edit", methods=["POST"])
+@require_auth
+def discussion_edit():
+    import ads_discussion
+    actor = _discussion_actor()
+    if actor is None:
+        return jsonify({"error": "discussion is for the ad team", "scope": "ad_domain"}), 403
+    j = request.get_json(silent=True) or {}
+    c, err = ads_discussion.edit(actor, j.get("id"), j.get("body"))
+    if err:
+        return jsonify({"error": err}), 403 if "own" in err else 400
+    return jsonify({"ok": True, "note": ads_discussion._render(c)})
+
+
+@bp.route("/api/discussion/delete", methods=["POST"])
+@require_auth
+def discussion_delete():
+    import ads_discussion
+    actor = _discussion_actor()
+    if actor is None:
+        return jsonify({"error": "discussion is for the ad team", "scope": "ad_domain"}), 403
+    j = request.get_json(silent=True) or {}
+    c, err = ads_discussion.delete(actor, j.get("id"))
+    if err:
+        return jsonify({"error": err}), 403 if "own" in err else 400
+    return jsonify({"ok": True, "note": ads_discussion._render(c)})
+
+
+@bp.route("/api/discussion/resolve", methods=["POST"])
+@require_auth
+def discussion_resolve():
+    import ads_discussion
+    actor = _discussion_actor()
+    if actor is None:
+        return jsonify({"error": "discussion is for the ad team", "scope": "ad_domain"}), 403
+    j = request.get_json(silent=True) or {}
+    c, err = ads_discussion.resolve(actor, j.get("id"), j.get("note"))
+    if err:
+        return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "note": ads_discussion._render(c)})

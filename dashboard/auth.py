@@ -56,13 +56,25 @@ def _accounts() -> dict:
     # Scoped sales-team login (Kalin + setters): leads/reactivation ONLY, never financials.
     if sp:
         accts["sales"] = {"role": "sales", "pw": sp, "display": "Sales Team"}
-    # media_buyer (Romano) — SHIPS DISABLED: no MEDIA_BUYER_PASSWORD env, no account.
-    # Enabling = setting the env var (the one-flip design, DECISIONS #113/#117). His
-    # session is fail-closed allowlisted to the AD DASHBOARD only (below).
-    mbp = os.environ.get("MEDIA_BUYER_PASSWORD", "")
-    if mbp:
-        accts["romano"] = {"role": "media_buyer", "pw": mbp, "display": "Romano"}
+    # ── ad_domain role (Rydel's word GIVEN 2026-08-10 — the #113/#117 standing
+    # "until his word" condition is satisfied; grant + scope in DECISIONS).
+    # ONE role, config-driven assignees: AD_DOMAIN_USERS (default the three
+    # named users), each enabled by their own {USER}_PASSWORD env — adding a
+    # user later is one env line, never a code change. Fail-closed allowlisted
+    # to the AD DASHBOARD only (below); zero finance surfaces, zero applies.
+    # MEDIA_BUYER_PASSWORD stays honoured as Romano's legacy credential env.
+    for u in _ad_domain_users():
+        pw = os.environ.get(f"{u.upper()}_PASSWORD", "")
+        if not pw and u == "romano":
+            pw = os.environ.get("MEDIA_BUYER_PASSWORD", "")
+        if pw and u not in accts:                 # core accounts always win the name
+            accts[u] = {"role": "ad_domain", "pw": pw, "display": u.capitalize()}
     return accts
+
+
+def _ad_domain_users() -> list[str]:
+    raw = os.environ.get("AD_DOMAIN_USERS", "romano,isaiah,inna")
+    return [u.strip().lower() for u in raw.split(",") if u.strip()]
 
 
 # The sales role is SCOPED (fail-closed): a sales session may reach ONLY these path fragments;
@@ -75,19 +87,33 @@ _SALES_ALLOWED_FRAGMENTS = (
 )
 
 
-# media_buyer is SCOPED the same fail-closed way: the ad dashboard and nothing else.
+# ad_domain is SCOPED the same fail-closed way: the ad dashboard and nothing else.
 # Every finance surface (snapshot, cash, payroll, quarterly, email, leads) is denied
-# BY DEFAULT — a new endpoint cannot leak to the role by omission.
-_MEDIA_BUYER_ALLOWED_FRAGMENTS = (
+# BY DEFAULT — a new endpoint cannot leak to the role by omission. Discussion
+# endpoints live under /ads/api/ so the role reaches them; card APPLIES and
+# every money-truth action live outside /ads and stay owner-side structurally.
+_AD_DOMAIN_ALLOWED_FRAGMENTS = (
     "/ads",                # the dedicated ad dashboard (pages + its /ads/api/*)
     "/api/whoami",
     "/logout",
 )
 
+_AD_DOMAIN_ROLES = ("ad_domain", "media_buyer")   # media_buyer = stale-session synonym
 
-def media_buyer_permitted(path: str) -> bool:
+
+def ad_domain_permitted(path: str) -> bool:
     p = path or ""
-    return any(frag in p for frag in _MEDIA_BUYER_ALLOWED_FRAGMENTS)
+    return any(frag in p for frag in _AD_DOMAIN_ALLOWED_FRAGMENTS)
+
+
+def is_ad_domain(role: str | None = None) -> bool:
+    r = role if role is not None else current_actor().get("role")
+    return r in _AD_DOMAIN_ROLES
+
+
+# legacy name kept — external references and tests predate the rename
+def media_buyer_permitted(path: str) -> bool:
+    return ad_domain_permitted(path)
 
 
 def is_sales() -> bool:
@@ -162,10 +188,10 @@ def require_auth(f):
                     return jsonify({"error": "This view is limited to lead reactivation.",
                                     "scope": "sales"}), 403
                 return redirect(url_for("dashboard.sales_page"))
-            if act.get("role") == "media_buyer" and not media_buyer_permitted(request.path):
+            if act.get("role") in _AD_DOMAIN_ROLES and not ad_domain_permitted(request.path):
                 if "/api/" in (request.path or ""):
                     return jsonify({"error": "This view is limited to the ad dashboard.",
-                                    "scope": "media_buyer"}), 403
+                                    "scope": "ad_domain"}), 403
                 return redirect("/ads")
             return f(*args, **kwargs)
 

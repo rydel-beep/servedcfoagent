@@ -661,8 +661,11 @@
           '<td colspan="' + (VCOLS.length - 1) + '">⚠ this row failed an integrity check — ' +
           esc(r.integrity_error) + ' — see the hygiene panel</td></tr>';
       }
+      var dn = (state.board.discussion_counts || {})[r.creative_key];
+      var discBadge = dn ? ' <span class="adx-disc-badge adx-door" data-disc="' + esc(r.creative_key) +
+        '" title="' + dn + ' open note(s) — click to read/reply">💬' + dn + '</span>' : '';
       return '<tr class="' + cls + '" data-key="' + esc(r.creative_key) + '" data-tier="' + r.tier + '" data-window="' + windowStamp() + '">' +
-        '<td class="adx-name">' + (r.tier === 'ad' ? esc(r.creative) : '<em>' + esc(r.creative) + '</em>') + '</td>' +
+        '<td class="adx-name">' + (r.tier === 'ad' ? esc(r.creative) : '<em>' + esc(r.creative) + '</em>') + discBadge + '</td>' +
         (VCOLS.some(function (c) { return c.k === 'verdict'; }) ? '<td>' + (r.tier === 'ad' ? badge(r) : '—') + '</td>' : '') +
         VCOLS.filter(function (c) { return c.k !== 'creative' && c.k !== 'verdict'; }).map(function (c) {
           var v = r[c.k];
@@ -887,8 +890,21 @@
       html += '<div class="adx-hover-line adx-prov">created ' + esc(lin.created_time) +
         ' (object created — not first delivery)</div>';
     }
+    html += previewLine(lin);
     html += '<div class="adx-hover-line adx-prov">source: Meta insights (first-impression day; account-timezone Sydney days)</div>';
     return html;
+  }
+  // PREVIEW LINKS: the live shareable link, or the HONEST chip — never a dead link
+  function previewLine(lin) {
+    if (!lin) return '';
+    if (lin.preview_state === 'link' && lin.preview_link) {
+      return '<div class="adx-hover-line"><a class="adx-preview" href="' + esc(lin.preview_link) +
+        '" target="_blank" rel="noopener" title="Meta ad preview — shareable link (needs any Facebook login to view)">Preview ↗</a></div>';
+    }
+    if (lin.preview_state === 'deleted') {
+      return '<div class="adx-hover-line"><span class="adx-preview-chip">ad deleted · no preview available</span></div>';
+    }
+    return '';
   }
   var hoverTimer = null;
   function findLevelRow(key) {
@@ -916,6 +932,110 @@
   function hideHover() {
     var el = $('#adx-hover');
     if (el) el.style.display = 'none';
+  }
+
+  // ── DISCUSSION (#136): one store, many renders. Bodies are UNTRUSTED —
+  // esc() at every render; identity comes from the session server-side (the
+  // client sends no author, ever); stamps arrive server-computed.
+  function stampChip(st) {
+    if (!st) return '';
+    var m = st.metrics || {};
+    var bits = [];
+    if (st.creative) bits.push(st.creative);
+    if (st.clock) bits.push(st.clock);
+    if (st.window) bits.push(st.window);
+    if (m.cpl != null) bits.push('CPL ' + money(m.cpl));
+    // display formatting only — String() concat, never arithmetic on metrics (I16)
+    if (m.leads != null && st.creative == null) bits.push(String(m.leads).concat(' leads'));
+    if (m.verdict) bits.push(m.verdict);
+    if (st.degraded) bits.push('stamp degraded');
+    if (!bits.length) return '';
+    return '<span class="adx-disc-stamp" title="what the author was viewing at post time — server-captured">viewing: ' +
+      bits.map(function (b) { return esc(String(b)); }).join(' · ') + '</span>';
+  }
+  function noteHtml(n, isReply) {
+    var mine = state.me && n.author && n.author.user === state.me;
+    if (n.state === 'tombstone') {
+      return '<div class="adx-disc-note adx-disc-tomb' + (isReply ? ' adx-disc-reply' : '') + '">' +
+        esc(n.tombstone_text || 'comment removed') + '</div>';
+    }
+    var h = '<div class="adx-disc-note' + (isReply ? ' adx-disc-reply' : '') +
+      (n.state === 'resolved' ? ' adx-disc-resolved' : '') + '" data-note="' + n.id + '">' +
+      '<div class="adx-disc-head"><strong>' + esc(n.author.display) + '</strong> · ' + esc(n.created) +
+      (n.was_edited ? ' <span class="adx-prov">edited</span>' : '') + ' ' + stampChip(n.context_stamp) + '</div>' +
+      '<div class="adx-disc-body">' + esc(n.body) + '</div>';
+    if (n.state === 'resolved') {
+      h += '<div class="adx-disc-resline">resolved by ' + esc(n.resolved_by || '') +
+        (n.resolution_note ? ' — ' + esc(n.resolution_note) : '') + '</div>';
+    }
+    h += '<div class="adx-disc-actions">' +
+      (!isReply && n.state === 'active' ? '<button class="adx-disc-act" data-dreply="' + n.id + '">reply</button>' +
+        '<button class="adx-disc-act" data-dresolve="' + n.id + '">resolve</button>' : '') +
+      (mine && n.state === 'active' ? '<button class="adx-disc-act" data-dedit="' + n.id + '">edit</button>' +
+        '<button class="adx-disc-act" data-ddelete="' + n.id + '">delete</button>' : '') + '</div>';
+    return h + '</div>';
+  }
+  var discState = { anchor: null, label: null };
+  function openDiscussion(anchor, label) {
+    discState.anchor = anchor || null;
+    discState.label = label || null;
+    openDrill('Discussion · ' + esc(String(label || 'the board').slice(0, 40)),
+              '<div class="adx-skel">Loading the notes…</div>');
+    var q = anchor ? '?creative=' + encodeURIComponent(anchor) : '';
+    fetch('/ads/api/discussion' + q, { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || d.error) { $('#adx-drill-body').innerHTML = '<div class="adx-roster-note">' + esc((d && d.error) || 'fetch failed') + '</div>'; return; }
+        renderDiscussion(d.notes || []);
+      })
+      .catch(function () { $('#adx-drill-body').textContent = 'Discussion fetch failed.'; });
+  }
+  function renderDiscussion(notes) {
+    var box = '<div class="adx-disc-post"><textarea id="adx-disc-input" rows="2" maxlength="2000" ' +
+      'placeholder="add a note' + (discState.label ? ' on ' + esc(discState.label) : ' (board-level)') + '…"></textarea>' +
+      '<button id="adx-disc-send" class="adx-range-apply">post</button>' +
+      '<span class="adx-prov">Ctrl+Enter posts · your view (window + clock + live numbers) is stamped server-side</span></div>';
+    var body = notes.length
+      ? notes.map(function (n) {
+          return noteHtml(n, false) + (n.replies || []).map(function (rp) { return noteHtml(rp, true); }).join('');
+        }).join('')
+      : '<div class="adx-roster-note">no notes yet' + (discState.label ? ' on this creative' : '') + ' — the first observation starts the thread</div>';
+    $('#adx-drill-body').innerHTML = box + body;
+    var inp = $('#adx-disc-input');
+    if (inp) {
+      inp.focus();
+      inp.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) postNote();
+      });
+    }
+    var send = $('#adx-disc-send');
+    if (send) send.addEventListener('click', postNote);
+  }
+  function postNote(replyTo) {
+    var inp = $('#adx-disc-input');
+    var body = inp && inp.value.trim();
+    if (!body) return;
+    fetch('/ads/api/discussion?' + windowQS(), {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body: body, anchor: discState.anchor || 'board',
+                             reply_to: replyTo || null })
+    }).then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.error) { alert(d.error); return; }
+        openDiscussion(discState.anchor, discState.label);   // re-render fresh
+        loadBoard(null);                                      // badge counts update
+      });
+  }
+  function discAction(url, payload) {
+    fetch(url, { method: 'POST', credentials: 'same-origin',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify(payload) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.error) { alert(d.error); return; }
+        openDiscussion(discState.anchor, discState.label);
+      });
   }
 
   // ── EVERY NUMBER IS A DOOR: anomaly panel → deal panel → dossier ──────────
@@ -1042,6 +1162,7 @@
     if (d.lineage_window_note) {
       lines += '<div class="adx-warnline">' + esc(d.lineage_window_note) + '</div>';
     }
+    lines += previewLine(lin).replace('adx-hover-line', 'adx-person-meta');
     return head + lines + timelineHtml(lin, d.delivery_days) + '</div>';
   }
 
@@ -1103,7 +1224,11 @@
           econRow(windowStamp(), d.econ_window) + econRow('All time', d.econ_all_time) +
           (state.board.market_note ? '<div class="adx-market-note">' + esc(state.board.market_note) + '</div>' : '') + '</div>' +
           '<div class="adx-dossier-sec"><h3>Lead ledger <span class="adx-h2-sub">' + d.ledger_count + ' lead(s) · newest first · window-scoped (switch window to All for history)</span></h3>' +
-          (ledger || '<div class="adx-roster-note">' + esc(d.ledger_empty_reason || 'no leads in this window for this creative — honest empty, not an error') + '</div>') + '</div>';
+          (ledger || '<div class="adx-roster-note">' + esc(d.ledger_empty_reason || 'no leads in this window for this creative — honest empty, not an error') + '</div>') + '</div>' +
+          '<div class="adx-dossier-sec"><h3>Notes (' +
+          ((state.board.discussion_counts || {})[creativeKey] || 0) + ')</h3>' +
+          '<button class="adx-disc-open adx-range-apply" data-danchor="' + esc(creativeKey) +
+          '" data-dlabel="' + esc(String(d.label || '').slice(0, 40)) + '">open the discussion</button></div>';
       })
       .catch(function () { $('#adx-drill-body').textContent = 'Dossier fetch failed.'; });
   }
@@ -1287,22 +1412,39 @@
         loadBoard(null, null, null, s + '..' + e);   // server re-validates + clamps
       });
     }
-    // #133 hover wiring: any campaign/creative NAME cell shows the lineage card
+    // #133 hover wiring: any campaign/creative NAME cell shows the lineage card.
+    // The card is INTERACTIVE (Preview ↗ is clickable): leaving the table toward
+    // the card keeps it open; leaving the card closes it.
     var sbEl = $('#adx-scoreboard');
+    function _intoHover(e) {
+      var rt = e.relatedTarget;
+      return !!(rt && rt.closest && rt.closest('#adx-hover'));
+    }
     sbEl.addEventListener('mouseover', function (e) {
       var nameCell = e.target.closest('td.adx-name');
       var tr = e.target.closest('tr[data-key]');
       if (nameCell && tr && state.board) showHover(e, tr.dataset.key);
-      else hideHover();
+      else if (!e.target.closest('#adx-hover')) hideHover();
     });
     sbEl.addEventListener('mousemove', function (e) {
-      if ($('#adx-hover').style.display !== 'none') positionHover(e);
+      if ($('#adx-hover').style.display !== 'none' && !e.target.closest('#adx-hover')) positionHover(e);
     });
-    sbEl.addEventListener('mouseleave', hideHover);
-    document.addEventListener('click', hideHover);
+    sbEl.addEventListener('mouseleave', function (e) {
+      if (!_intoHover(e)) hideHover();
+    });
+    $('#adx-hover').addEventListener('mouseleave', hideHover);
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('#adx-hover a')) hideHover();
+    });
     document.addEventListener('scroll', hideHover, true);
 
     $('#adx-scoreboard').addEventListener('click', function (e) {
+      var disc = e.target.closest('.adx-disc-badge[data-disc]');
+      if (disc) {
+        var drow = findLevelRow(disc.dataset.disc);
+        openDiscussion(disc.dataset.disc, drow ? drow.creative : disc.dataset.disc);
+        return;
+      }
       var door = e.target.closest('.adx-door[data-anom]');
       if (door) { anomalyPanel(door.dataset.key, door.dataset.anom); return; }
       var th = e.target.closest('th[data-sort]');
@@ -1331,6 +1473,44 @@
     });
     // deal-panel doors anywhere (hygiene rail, anomaly panels, dossier ledger)
     document.addEventListener('click', function (e) {
+      // discussion actions (inside the drill — delegated)
+      var dr = e.target.closest('.adx-disc-act');
+      if (dr) {
+        if (dr.dataset.dreply) {
+          var rb = prompt('Reply:');
+          if (rb && rb.trim()) {
+            fetch('/ads/api/discussion?' + windowQS(), {
+              method: 'POST', credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ body: rb.trim(), anchor: discState.anchor || 'board',
+                                     reply_to: +dr.dataset.dreply })
+            }).then(function (r) { return r.json(); })
+              .then(function (d) {
+                if (d && d.error) { alert(d.error); return; }
+                openDiscussion(discState.anchor, discState.label);
+              });
+          }
+        } else if (dr.dataset.dresolve) {
+          var note = prompt('Resolution note (optional):') || null;
+          discAction('/ads/api/discussion/resolve', { id: +dr.dataset.dresolve, note: note });
+        } else if (dr.dataset.dedit) {
+          var noteEl = dr.closest('.adx-disc-note');
+          var cur = noteEl ? noteEl.querySelector('.adx-disc-body').textContent : '';
+          var nb = prompt('Edit note:', cur);
+          if (nb && nb.trim()) discAction('/ads/api/discussion/edit', { id: +dr.dataset.dedit, body: nb.trim() });
+        } else if (dr.dataset.ddelete) {
+          if (confirm('Remove this note? (a tombstone stays — nothing vanishes)')) {
+            discAction('/ads/api/discussion/delete', { id: +dr.dataset.ddelete });
+          }
+        }
+        return;
+      }
+      var dopen = e.target.closest('.adx-disc-open[data-danchor]');
+      if (dopen) {
+        openDiscussion(dopen.dataset.danchor === 'board' ? null : dopen.dataset.danchor,
+                       dopen.dataset.dlabel || null);
+        return;
+      }
       var dbtn = e.target.closest('.adx-deal-open[data-deal]');
       if (dbtn) { dealPanel(dbtn.dataset.deal); return; }
       var lbtn = e.target.closest('.adx-deal-list[data-key]');
@@ -1414,7 +1594,9 @@
     $('#adx-more').addEventListener('click', function () { renderRows(false); });
     fetch('/dashboard/api/whoami', { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (w) { if (w) $('#adx-who').textContent = w.display || w.user || ''; });
+      .then(function (w) {
+        if (w) { $('#adx-who').textContent = w.display || w.user || ''; state.me = w.user || null; }
+      });
     var dossierParam = (location.search.match(/[?&]dossier=([^&]+)/) || [])[1];
     var dealParam = (location.search.match(/[?&]deal=([^&]+)/) || [])[1];
     var rosterParam = (location.search.match(/[?&]roster=([^&]+)/) || [])[1];

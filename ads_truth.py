@@ -914,6 +914,67 @@ def name_recovery_pass(max_names: int = 25) -> dict:
     return out
 
 
+def discussion_volume_check(out: dict, per_user_day: int = 40) -> None:
+    """#136 sentinel watch (abuse posture): comment volume per user per day —
+    the rate limiter bounds bursts; this catches sustained anomalies. Never
+    raises."""
+    try:
+        import time as _t
+        import ads_discussion
+        d = ads_discussion._store()
+        day_ago = _t.time() - 86400
+        per_user: dict = {}
+        for c in d.get("comments") or []:
+            if float(c.get("_ts", 0)) >= day_ago:
+                u = c.get("author", {}).get("user") or "?"
+                per_user[u] = per_user.get(u, 0) + 1
+        out["discussion_volume"] = {"last_24h": per_user}
+        for u, n in per_user.items():
+            if n > per_user_day:
+                out["disagreements"].append({
+                    "kind": "discussion_volume",
+                    "cause": (f"{u} posted {n} discussion notes in 24h "
+                              f"(threshold {per_user_day}) — spam/abuse posture check"),
+                    "where": "ads:discussion"})
+    except Exception as e:
+        out["discussion_volume"] = {"error": str(e)[:80]}
+
+
+def preview_rot_check(out: dict) -> None:
+    """#136 sentinel watch: preview-link rot — ad-tier creatives whose ads left
+    the listing render the honest chip; a SUDDEN rot jump (entity-map fetch
+    trouble, mass archive) flags. Never raises."""
+    try:
+        import kv_store
+        import launch_lineage
+        import meta_entities
+        import attribution_engine as AE
+        es = meta_entities._load_json(meta_entities.ENTITY_STORE)
+        r = AE.compute(days=30, basis="cohort")
+        rot = live = 0
+        for c in r.get("creatives") or []:
+            if c.get("tier") != "ad":
+                continue
+            pv = launch_lineage._preview(c.get("ad_ids") or [], es)
+            if pv.get("preview_state") == "deleted":
+                rot += 1
+            elif pv.get("preview_state") == "link":
+                live += 1
+        prev = kv_store.get("preview:rot_prev") or {}
+        out["preview_rot"] = {"deleted_chips": rot, "live_links": live,
+                              "prev": prev.get("count")}
+        if prev.get("count") is not None and rot - int(prev["count"]) > 5:
+            out["disagreements"].append({
+                "kind": "preview_rot",
+                "cause": (f"preview-link rot jumped {prev['count']} → {rot} on the "
+                          f"30d board — entity listing trouble or a mass archive; "
+                          f"chips render honestly meanwhile"),
+                "where": "entity map preview links"})
+        kv_store.put("preview:rot_prev", {"count": rot, "date": out.get("date")})
+    except Exception as e:
+        out["preview_rot"] = {"error": str(e)[:80]}
+
+
 # ── THE NIGHTLY SWEEP ────────────────────────────────────────────────────────
 
 def integrity_sweep() -> dict:
@@ -1038,6 +1099,8 @@ def integrity_sweep() -> dict:
     clock_label_check(out)
     consult_freshness_check(out)
     bucket_drift_check(out)
+    discussion_volume_check(out)
+    preview_rot_check(out)
     out["name_recovery"] = name_recovery_pass()
 
     # NEW cause classes → auto-file a PROPOSED regression-test skeleton
