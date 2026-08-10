@@ -398,7 +398,9 @@ def queue(snap: dict | None = None) -> list[dict]:
 
         # lane classification
         lane, lane_reason = "active", None
-        if srow.get("status") in ("resolved", "verified"):
+        # 'partial' = the PRE-FIX semantics (resolved, source unchanged, nagged
+        # forever) — those are dismissals too; they suppress like resolved.
+        if srow.get("status") in ("resolved", "verified", "partial"):
             lane = "done"
             lane_reason = ("resolved — source unchanged (suppressed; re-arms if "
                            "the state changes)")
@@ -427,9 +429,11 @@ def queue(snap: dict | None = None) -> list[dict]:
                     "still_present": True})
 
     # dismissals whose signature no longer reproduces → RESOLVED AT SOURCE
-    # (auto-verified, Done view) — never left hanging, never silently dropped
+    # (auto-verified, Done view); already-verified history stays viewable there
+    # too — never left hanging, never silently dropped
     for sig, srow in by_sig.items():
-        if sig in live_sigs or srow.get("status") not in ("resolved", "partial"):
+        if sig in live_sigs or srow.get("status") not in ("resolved", "partial",
+                                                          "verified"):
             continue
         if srow.get("status") != "verified":
             try:

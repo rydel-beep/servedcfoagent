@@ -308,3 +308,22 @@ def test_queue_admin_routes_owner_only(monkeypatch):
     # Piolo can still RESOLVE (it's his queue) — never 403'd from resolving
     r = c.post("/dashboard/api/collab/resolve", json={"flag_id": "nope", "note": "n"})
     assert r.status_code != 403          # (500 here = no test DB, not a gate)
+
+
+def test_legacy_partial_rows_suppress_and_verified_history_shows(monkeypatch):
+    """Pre-fix rows: 'partial' (resolved, source unchanged, nagged) must
+    suppress like a dismissal; dead 'verified' rows stay viewable in Done."""
+    fdb, holder, _ = _rig(monkeypatch, [MRR_OLD])
+    fid = collab._flag_id(MRR_OLD)
+    fdb.queue[fid] = {"flag_id": fid, "title": MRR_OLD["title"], "status": "partial",
+                      "resolution": "pre-fix done", "resolved_by": "piolo",
+                      "signature": None, "lane_override": None}
+    fdb.queue["old-verified"] = {"flag_id": "old-verified", "title": "an old fixed thing",
+                                 "status": "verified", "resolution": "fixed",
+                                 "resolved_by": "piolo",
+                                 "signature": "deadbeefdeadbeef", "lane_override": None}
+    q = collab.queue()
+    lanes = {i["flag_id"]: i["lane"] for i in q}
+    assert lanes[fid] == "done"                      # legacy partial suppresses
+    assert lanes.get("old-verified") == "done"       # history viewable in Done
+    assert collab.queue_count() == 0
