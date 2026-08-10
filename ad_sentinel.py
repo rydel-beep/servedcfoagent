@@ -365,6 +365,22 @@ def nightly_extras() -> dict | None:
         return None
     t0 = time.time()
     out = {"layer": "L2", "drift": drift_diff(), "heals": heal_pass()}
+    # RENEWAL & CHURN TRUTH LOOP (#135): the cheap nightly sheet scan (pull +
+    # diff + convergence) + its watches (scan staleness >7d · pending-sheet
+    # ageing >5d · conflicts → ACTION · schema-drift trip). Detection always
+    # runs; the scan's convergence marking is data-layer deterministic (a
+    # declaration the sheet now matches) — inside the heal boundary.
+    try:
+        import renewal_loop
+        sc = renewal_loop.nightly_scan()
+        out["renewal_scan"] = {k: sc.get(k) for k in
+                               ("ok", "verdict", "schema_drift")} | {
+            "converged": len(sc.get("converged") or []),
+            "conflicts": len(sc.get("conflicts") or []),
+            "pending": len(sc.get("pending") or [])}
+        out["renewal_watch"] = renewal_loop.sentinel_watch()
+    except Exception as e:
+        out["renewal_scan"] = {"ok": False, "error": str(e)[:100]}
     # cost: the sweep's own cost block is in its accuracy row; this adds extras
     out["cost"] = _cost_row("L2", time.time() - t0, 0, note="extras (sweep cost in accuracy row)")
     _mark_ran("L2")

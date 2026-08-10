@@ -120,6 +120,31 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
                                 f"{n.get('tracker_logged')} (gap ${(n.get('gap') or 0):,.0f})"),
                       "action": "Verify in Stripe and update the deal's Cash Collected cell."})
 
+    # PENDING-SHEET declarations + renewal-loop findings (#135): these ARE the
+    # Piolo queue items (category data_quality → collab.queue) carrying the
+    # EXACT sheet edit; they self-retire when a scan finds the sheet matching.
+    try:
+        import renewal_loop
+        items.extend(renewal_loop.feed_items())
+    except Exception as e:
+        logger.info("renewal feed items unavailable: %s", e)
+
+    # EXTRA-CHANNEL REGISTRY: fixed kv channels other modules publish through
+    # (each key is owned by exactly ONE publisher, replaced wholesale per
+    # publish — self-retiring per channel, no read-modify-write races).
+    _EXTRA_CHANNELS = ("feed:extra:ads_discussion",)
+    try:
+        import kv_store
+        for ch_key in _EXTRA_CHANNELS:
+            for it in (kv_store.get(ch_key) or []):
+                if isinstance(it, dict) and it.get("title"):
+                    items.append({"severity": it.get("severity", "S3"),
+                                  "category": it.get("category", "info"),
+                                  "title": str(it["title"])[:160],
+                                  "action": str(it.get("action") or "")[:240]})
+    except Exception as e:
+        logger.info("extra feed channels unavailable: %s", e)
+
     # rank S1 > S2 > S3, dedupe by FACT KEY (prefix-stripped — kills the
     # data_quality/data_integrity double-emit that flooded the zone to 72 lines)
     import triage

@@ -396,13 +396,16 @@ def pull_client_health() -> dict:
     # Renewal watch tracking — clients approaching contract renewal
     renewal_watch = []
 
-    # Chat-driven churn/downgrade overrides (dashboard-only; the sheet is untouched). Loaded once.
+    # Declared churn/downgrade/renewal overrides (dashboard-only; the sheet is
+    # untouched — DECISIONS #135 one-writer boundary). Loaded once, plus the
+    # recently-converged set for the "declared ✓ sheet" chip.
     try:
         import client_overrides
         _ovr = client_overrides.active_map()
         _ovr_norm = client_overrides._norm
+        _ovr_recon = client_overrides.reconciled_recent()
     except Exception:
-        _ovr, _ovr_norm = {}, (lambda s: s)
+        _ovr, _ovr_norm, _ovr_recon = {}, (lambda s: s), {}
 
     for row in data_rows:
         name = row[_H_NAME].strip() if len(row) > _H_NAME else ""
@@ -453,6 +456,20 @@ def pull_client_health() -> dict:
         if _ov and _ov.get("change_type") == "downgrade" and _ov.get("new_mrr") is not None:
             current_mrr = float(_ov["new_mrr"])
             next_mrr = float(_ov["new_mrr"])
+
+        # Declared RENEWAL (#135): the new term end overrides the sheet's End
+        # Date in the ONE engine — Churn Risk / Renewal Watch membership and
+        # days_to_end all recompute from it below (zero side-channel math);
+        # an MRR change at renewal applies like a downgrade/upsell.
+        if _ov and _ov.get("change_type") == "renewal":
+            if _ov.get("effective_date"):
+                try:
+                    contract_end = date.fromisoformat(str(_ov["effective_date"]))
+                except (ValueError, TypeError):
+                    pass
+            if _ov.get("new_mrr") is not None:
+                current_mrr = float(_ov["new_mrr"])
+                next_mrr = float(_ov["new_mrr"])
 
         # Web Sub is now a package type, not a status
         if package == "Web Sub":
@@ -514,6 +531,23 @@ def pull_client_health() -> dict:
             client_entry["contract_end"] = str(contract_end)
             if days_to_end is not None:
                 client_entry["days_to_end"] = max(days_to_end, 0)
+
+        # Declaration provenance chips (#135): a pending declaration renders
+        # "declared · pending sheet" EVERYWHERE this client shows; once the scan
+        # finds the sheet matching, the chip flips to "declared ✓ sheet".
+        if _ov and _ov.get("change_type") in ("renewal", "downgrade"):
+            client_entry["declared"] = {
+                "kind": _ov["change_type"],
+                "effective_date": str(_ov.get("effective_date") or ""),
+                "new_mrr": _ov.get("new_mrr"),
+                "state": "pending_sheet", "chip": "declared · pending sheet"}
+        else:
+            _rc = _ovr_recon.get(_ovr_norm(name))
+            if _rc:
+                client_entry["declared"] = {
+                    "kind": _rc["change_type"],
+                    "effective_date": str(_rc.get("effective_date") or ""),
+                    "state": "converged", "chip": "declared ✓ sheet"}
 
         clients.append(client_entry)
 

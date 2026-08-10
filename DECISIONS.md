@@ -1772,3 +1772,60 @@
      +1-day regressions and are corrected under the triple-sweep register
      (source-aware parse + journaled re-derivation; artifact 08 carries the
      changed list; the peer session amends its own F8 claims).
+
+135. **RENEWAL & CHURN TRUTH LOOP — THE NO-WRITE BOUNDARY (2026-08-10).**
+     ENCODED RULING: **EDITH never writes the MRR contract sheet** (the Finance
+     Sheet's Health tab). One writer per surface: the OWNER declares on the
+     dashboard (churned / renewed / downgraded — owner-only, confirmation-
+     gated, journaled, reversible); PIOLO maintains the sheet; the system's
+     job is CONVERGENCE WITH RECEIPTS. The boundary is architectural — two
+     writers on one document turns every disagreement into a clobber-war —
+     and holds even if a Sheets write capability exists or later appears.
+     Shipped: renewal_loop.py (scan engine — fresh pull, content-hash
+     freshness [no Drive metadata scope exists — stated, not faked], per-
+     client diffs, header-checksum SCHEMA-DRIFT guard that fails LOUD, verdict
+     lanes CONVERGED / SHEET-ORIGINATED [source:sheet chip] / CONFLICT [loud,
+     both values + provenance, Rydel resolves — never silently merged] /
+     UNLINKED); the declare flow EXTENDS client_overrides (the 2026-07-03
+     write-back — same tables, same pending-confirm contract) with the
+     RENEWAL kind (new term end + optional MRR change, old_end recorded for
+     conflict detection); pending declarations ride the action feed as
+     data_quality items (→ collab.queue, Piolo's queue) carrying the EXACT
+     sheet edit, self-retiring on convergence; declarations flow through the
+     ONE engine (pull_client_health override apply) into MRR headline,
+     Renewal Watch, Churn Risk, voice counts, and mrr_snapshots (forced
+     same-day row on declare); chips "declared · pending sheet" → "declared ✓
+     sheet". Sentinel (L2 nightly extras): nightly scan + watches (scan
+     staleness >7d · pending ageing >5d · conflicts → ACTION · schema-drift
+     trip). Linkage is NAME-anchored (the sheet has no ID column — D2: 40/40
+     matched at build); free text matching no roster client = "not a known
+     client", NO phantom clients. Extending declare rights to the piolo role
+     is a FUTURE ruling — noted, not built. Tests:
+     tests/test_renewal_loop.py (19, incl. the no-sheet-write grep).
+
+136. **AD-DOMAIN TEAM ACCESS + DISCUSSION + PREVIEW LINKS (2026-08-10).**
+     ACCESS — Rydel's word (the #113/#117 "until his word" condition) is GIVEN:
+     the shipped-disabled media_buyer role turns ON as **ad_domain** — ONE
+     role, config-driven assignees (AD_DOMAIN_USERS, default romano,isaiah,
+     inna; each enabled by {USER}_PASSWORD env; MEDIA_BUYER_PASSWORD honoured
+     as Romano's legacy env). Scope: every /ads surface incl. discussion
+     read/write and range/clock controls; fail-closed allowlist denies ALL
+     finance surfaces, card applies/PROPOSED confirms (owner-side money-truth
+     actions), EDITH voice/bridge, /debug — a new endpoint cannot leak to the
+     role by omission. Credentials are Rydel-issued env secrets — the agent
+     never mints them (enable steps in the session report). Veto-able.
+     DISCUSSION — the FIRST non-owner write surface: anchored comments (board
+     | creative), author = SESSION identity only (no author parameter exists),
+     CONTEXT STAMP captured server-side from the one engine for the view the
+     client names (window+clock+live metrics — the observation stays
+     interpretable after numbers move), one-level replies, journaled edits,
+     tombstoned deletes ("comment removed by X" — excluded ≠ deleted), resolve
+     collapses-not-removes, 10/user/10min rate limit, bodies escaped at every
+     render, EDITH reads (never posts) via handle_discussion_recall +
+     edith_context. Store: kv ads:discussion; owner feed via the
+     feed:extra:ads_discussion registry channel.
+     PREVIEW LINKS — preview_shareable_link rides the entity map (refreshed
+     each cycle; rot self-heals to the honest "ad deleted · no preview" chip);
+     shareability verified live: resolves publicly, viewing requires any
+     Facebook login (Meta's design), NOT token-holder-restricted. Sentinel:
+     discussion_volume + preview_rot watches in the nightly sweep.

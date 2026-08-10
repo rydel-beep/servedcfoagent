@@ -2048,10 +2048,13 @@
     // ── Renewal Watch Panel ──────────────────────────────────
     if (renewalWatch.length > 0) {
       const renewalHeader = document.createElement('div');
-      renewalHeader.style.cssText = 'margin-top:1.2rem;padding:0.6rem 0;border-top:1px solid var(--border);font-weight:600;font-size:0.95rem;color:var(--amber);';
-      renewalHeader.textContent = 'Renewal Watch';
+      renewalHeader.style.cssText = 'margin-top:1.2rem;padding:0.6rem 0;border-top:1px solid var(--border);font-weight:600;font-size:0.95rem;color:var(--amber);display:flex;align-items:center;gap:.6rem;';
+      renewalHeader.innerHTML = 'Renewal Watch ' +
+        '<button class="rw-btn renewal-scan-trigger" title="Scan the MRR contract sheet (#135)">Scan sheet</button>';
       list.appendChild(renewalHeader);
 
+      const declaredByName = {};
+      (ch.clients || []).forEach(c => { if (c.declared) declaredByName[c.name] = c.declared; });
       renewalWatch.forEach(c => {
         const row = document.createElement('div');
         const isUrgent = c.status === 'renewal_urgent';
@@ -2059,11 +2062,16 @@
         row.className = 'churn-row';
         row.style.borderLeft = '3px solid ' + color;
         const statusLabel = isUrgent ? 'URGENT' : 'PREP';
+        const dec = declaredByName[c.name];
+        const decChip = dec ? '<span class="rw-chip ' +
+          (dec.state === 'converged' ? 'rw-chip-good' : 'rw-chip-pend') + '">' +
+          esc(dec.chip) + '</span>' : '';
         row.innerHTML = `
           <span class="churn-client">${esc(c.name)}</span>
           <span class="churn-days" style="color:${color}">${c.months_elapsed}/${c.total_months} mo \u00b7 ${c.days_until_renewal}d left</span>
           <span class="churn-revenue">${fmt$(c.monthly_revenue)}/mo</span>
           <span style="font-size:0.7rem;padding:2px 6px;border-radius:4px;background:${isUrgent ? 'var(--red-dim)' : 'var(--amber-dim)'};color:${color};margin-left:0.4rem">${statusLabel}</span>
+          ${decChip}
         `;
         list.appendChild(row);
       });
@@ -4775,6 +4783,7 @@
     initForwardSlider();
     initMetricTips();
     initKeyboardShortcuts();
+    initRenewalLoop();
     var retry = document.getElementById('error-retry');
     if (retry) retry.addEventListener('click', function() { _showError(false); loadAll(); });
     // Instant paint: render the server-inlined snapshot before any fetch
@@ -4783,6 +4792,220 @@
     }
     await loadAll();
   })();
+
+  // ── RENEWAL & CHURN TRUTH LOOP (#135): scan · declare · converge ──────────
+  // The dashboard NEVER writes the sheet. Scan = fresh pull + diff + verdict
+  // lanes; Declare = owner-only, preview→confirm, spawns the exact Piolo edit.
+  let _rwOwner = false;
+
+  function _rwLane(title, cls, rows) {
+    if (!rows || !rows.length) return '';
+    return '<div class="rw-lane ' + cls + '"><div class="rw-lane-title">' + title +
+      ' (' + rows.length + ')</div>' + rows.join('') + '</div>';
+  }
+
+  function _rwChip(text, cls) {
+    return '<span class="rw-chip ' + (cls || '') + '">' + esc(text) + '</span>';
+  }
+
+  function renderScanResult(r) {
+    const el = $('#renewal-result');
+    el.style.display = '';
+    if (!r || (r.degraded && r.degraded.length)) {
+      el.innerHTML = '<div class="rw-degraded">⚠ SCAN DEGRADED — ' +
+        esc(((r || {}).degraded || [{}])[0].reason || 'scan failed') +
+        ' · no verdict rendered (a stale verdict labelled fresh is a lie)</div>';
+      return;
+    }
+    const f = r.freshness || {};
+    let html = '<div class="rw-fresh">' +
+      '<strong>' + esc(r.verdict || '') + '</strong> · scanned ' + esc(f.scanned_at || '—') +
+      (f.previous_scan_at ? ' · previous scan ' + esc(f.previous_scan_at) : '') +
+      ' · ' + esc(f.method || 'content-hash') + '</div>';
+    html += _rwLane('CONFLICTS — Rydel resolves (never silently merged)', 'rw-conflict',
+      (r.conflicts || []).map(c =>
+        '<div class="rw-row"><strong>' + esc(c.client) + '</strong> · ' + esc(c.detail) +
+        '<div class="rw-both">declared: ' + esc(JSON.stringify(c.declared)) +
+        ' &nbsp;vs&nbsp; sheet: ' + esc(JSON.stringify(c.sheet)) + '</div></div>'));
+    html += _rwLane('Converged — sheet caught up, Piolo item cleared', 'rw-good',
+      (r.converged || []).map(c =>
+        '<div class="rw-row">' + esc(c.client) + ' · ' + esc(c.kind) + ' ' +
+        _rwChip('declared ✓ sheet', 'rw-chip-good') + '</div>'));
+    html += _rwLane('Sheet-originated changes (Piolo edited first — legitimate)', 'rw-sheet',
+      (r.sheet_originated || []).map(d =>
+        '<div class="rw-row">' + esc(d.client) + ' · ' + esc(d.field) + ': ' +
+        esc(String(d.old ?? '—')) + ' → ' + esc(String(d.new ?? '—')) + ' ' +
+        _rwChip('source: sheet', 'rw-chip-sheet') + '</div>'));
+    html += _rwLane('Pending — awaiting the sheet edit', 'rw-pend',
+      (r.pending || []).map(p =>
+        '<div class="rw-row">' + esc(p.client) + ' · ' + esc(p.kind) +
+        (p.age_days != null ? ' · pending ' + p.age_days + 'd' : '') + ' ' +
+        _rwChip('declared · pending sheet', 'rw-chip-pend') +
+        '<div class="rw-edit">' + esc(p.edit) + '</div></div>'));
+    const ul = r.unlinked || {};
+    const unlinkedRows = (ul.sheet_rows_without_client || []).map(n =>
+        '<div class="rw-row">sheet row “' + esc(n) + '” matches no known client</div>')
+      .concat((ul.clients_without_sheet_row || []).map(n =>
+        '<div class="rw-row">client “' + esc(n) + '” has no sheet row</div>'));
+    html += _rwLane('Unlinked (quarantine — for Piolo)', 'rw-pend', unlinkedRows);
+    if ((r.diffs || []).length && !(r.conflicts || []).length &&
+        !(r.sheet_originated || []).length) {
+      html += '<div class="rw-note">' + r.diffs.length + ' raw diff(s) recorded in the journal.</div>';
+    }
+    if (!(r.conflicts || []).length && !(r.pending || []).length &&
+        !(r.sheet_originated || []).length && !unlinkedRows.length) {
+      html += '<div class="rw-note rw-good-note">Sheet and dashboard agree — nothing pending, no conflicts.</div>';
+    }
+    el.innerHTML = html;
+  }
+
+  async function runRenewalScan(btn) {
+    const buttons = document.querySelectorAll('.renewal-scan-trigger');
+    buttons.forEach(b => { b.disabled = true; b.textContent = 'Scanning…'; });
+    $('#renewal-result').style.display = '';
+    $('#renewal-result').innerHTML = '<div class="rw-note">Pulling the MRR contract sheet fresh…</div>';
+    try {
+      const resp = await fetch('/dashboard/api/renewal/scan', { method: 'POST' });
+      if (resp.status === 403) {
+        $('#renewal-result').innerHTML = '<div class="rw-degraded">Scan is owner-only.</div>';
+        return;
+      }
+      renderScanResult(await resp.json());
+      const snap = await fetchSnapshot();      // declarations/chips may have converged
+      if (snap) render(snap);
+    } catch (e) {
+      $('#renewal-result').innerHTML = '<div class="rw-degraded">⚠ scan failed: ' + esc(String(e)) + '</div>';
+    } finally {
+      buttons.forEach(b => { b.disabled = false; b.textContent = 'Scan sheet'; });
+    }
+  }
+
+  let _rwDeclare = { token: null, kind: 'churn', client: null };
+
+  function renderDeclarePanel() {
+    const el = $('#renewal-declare-panel');
+    el.style.display = '';
+    const k = _rwDeclare.kind;
+    el.innerHTML =
+      '<div class="rw-dec-head">Declare (owner) — the sheet stays Piolo’s; this creates his exact edit</div>' +
+      '<div class="rw-dec-row">' +
+        '<input id="rw-client-input" placeholder="type a current client…" autocomplete="off"' +
+        (_rwDeclare.client ? ' value="' + esc(_rwDeclare.client) + '"' : '') + '>' +
+        '<select id="rw-kind"><option value="churn"' + (k === 'churn' ? ' selected' : '') +
+        '>CHURNED</option><option value="renewal"' + (k === 'renewal' ? ' selected' : '') +
+        '>RENEWED</option></select></div>' +
+      '<div id="rw-suggest" class="rw-suggest"></div>' +
+      '<div class="rw-dec-row">' +
+        '<label>' + (k === 'churn' ? 'Effective date' : 'New renewal/term end') +
+        ' <input type="date" id="rw-date"></label>' +
+        (k === 'renewal'
+          ? '<label>New MRR (blank = unchanged) <input type="number" id="rw-mrr" placeholder="$/mo"></label>'
+          : '<label>Reason (optional) <input type="text" id="rw-reason"></label>') +
+      '</div>' +
+      '<div class="rw-dec-row"><button class="rw-btn" id="rw-preview-btn">Preview impact</button>' +
+      '<button class="rw-btn" id="rw-cancel-btn">Close</button></div>' +
+      '<div id="rw-preview" class="rw-preview"></div>';
+    const inp = $('#rw-client-input');
+    let deb = null;
+    inp.addEventListener('input', () => {
+      clearTimeout(deb);
+      deb = setTimeout(async () => {
+        const q = inp.value.trim();
+        const box = $('#rw-suggest');
+        if (!q) { box.innerHTML = ''; return; }
+        const resp = await fetch('/dashboard/api/renewal/clients?q=' + encodeURIComponent(q));
+        if (!resp.ok) { box.innerHTML = ''; return; }
+        const d = await resp.json();
+        if (!d.clients.length) {
+          box.innerHTML = '<div class="rw-none">not a known client — pick from the current client list</div>';
+          return;
+        }
+        box.innerHTML = d.clients.map(c =>
+          '<button class="rw-sg" data-name="' + esc(c.name) + '">' + esc(c.name) +
+          ' · $' + Math.round(c.current_mrr || 0).toLocaleString() + '/mo' +
+          (c.contract_end ? ' · ends ' + esc(c.contract_end) : '') + '</button>').join('');
+        box.querySelectorAll('.rw-sg').forEach(b => b.addEventListener('click', () => {
+          _rwDeclare.client = b.dataset.name;
+          inp.value = b.dataset.name;
+          box.innerHTML = '';
+        }));
+      }, 180);
+    });
+    $('#rw-kind').addEventListener('change', (e) => {
+      _rwDeclare.kind = e.target.value;
+      _rwDeclare.client = inp.value.trim() || _rwDeclare.client;
+      renderDeclarePanel();
+    });
+    $('#rw-cancel-btn').addEventListener('click', () => { el.style.display = 'none'; });
+    $('#rw-preview-btn').addEventListener('click', doDeclarePreview);
+  }
+
+  async function doDeclarePreview() {
+    const client = $('#rw-client-input').value.trim();
+    const kind = $('#rw-kind').value;
+    const dateEl = $('#rw-date');
+    const body = { stage: 'preview', client: client, kind: kind };
+    if (dateEl && dateEl.value) body.effective_date = dateEl.value;
+    const mrrEl = $('#rw-mrr');
+    if (mrrEl && mrrEl.value) body.new_mrr = parseFloat(mrrEl.value);
+    const reasonEl = $('#rw-reason');
+    if (reasonEl && reasonEl.value) body.reason = reasonEl.value;
+    const box = $('#rw-preview');
+    box.innerHTML = '<div class="rw-note">building the impact preview…</div>';
+    const resp = await fetch('/dashboard/api/renewal/declare', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body) });
+    const d = await resp.json();
+    if (!resp.ok) {
+      box.innerHTML = '<div class="rw-none">' + esc(d.error || 'preview failed') + '</div>';
+      return;
+    }
+    _rwDeclare.token = d.token;
+    box.innerHTML = '<div class="rw-preview-text">' + esc(d.preview) + '</div>' +
+      '<div class="rw-preview-delta">MRR impact: ' +
+      (d.mrr_delta ? (d.mrr_delta > 0 ? '+' : '−') + '$' +
+        Math.abs(Math.round(d.mrr_delta)).toLocaleString() + '/mo' : 'none') + '</div>' +
+      '<button class="rw-btn rw-confirm" id="rw-confirm-btn">Confirm declaration</button>';
+    $('#rw-confirm-btn').addEventListener('click', doDeclareConfirm);
+  }
+
+  async function doDeclareConfirm() {
+    const box = $('#rw-preview');
+    const resp = await fetch('/dashboard/api/renewal/declare', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage: 'confirm', token: _rwDeclare.token }) });
+    const d = await resp.json();
+    if (!resp.ok) {
+      box.innerHTML = '<div class="rw-none">' + esc(d.error || 'confirm failed') + '</div>';
+      return;
+    }
+    box.innerHTML = '<div class="rw-good-note">Declared ' + _rwChip('declared · pending sheet', 'rw-chip-pend') +
+      '</div><div class="rw-edit">Piolo item: ' + esc(d.piolo_item) + '</div>';
+    const snap = await fetchSnapshot();
+    if (snap) render(snap);
+  }
+
+  async function initRenewalLoop() {
+    document.addEventListener('click', (e) => {
+      const t = e.target.closest('.renewal-scan-trigger');
+      if (t) { runRenewalScan(t); return; }
+    });
+    const dbtn = $('#renewal-declare-btn');
+    if (dbtn) dbtn.addEventListener('click', () => {
+      if (!_rwOwner) {
+        $('#renewal-result').style.display = '';
+        $('#renewal-result').innerHTML =
+          '<div class="rw-degraded">Declarations are owner-only (money events).</div>';
+        return;
+      }
+      renderDeclarePanel();
+    });
+    try {
+      const w = await fetch('/dashboard/api/whoami').then(r => r.ok ? r.json() : null);
+      _rwOwner = !!(w && (w.role === 'owner' || !w.role));
+      if (!_rwOwner && dbtn) dbtn.style.display = 'none';
+    } catch (e) { /* server still enforces */ }
+  }
 
   // Auto-refresh every 10 minutes
   setInterval(async () => {

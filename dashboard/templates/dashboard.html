@@ -226,8 +226,16 @@
       <div class="panel-header">
         <h2 class="panel-title">Churn Risk <span class="win-badge live">LIVE</span></h2>
         <div class="panel-badge" id="churn-badge"></div>
+        <div class="renewal-toolbar">
+          <button class="rw-btn renewal-scan-trigger" id="renewal-scan-btn"
+                  title="Pull the MRR contract sheet fresh and reconcile it against dashboard declarations">Scan sheet</button>
+          <button class="rw-btn rw-btn-owner" id="renewal-declare-btn"
+                  title="Declare a client churned or renewed (owner only — the sheet stays Piolo's)">Declare…</button>
+        </div>
       </div>
       <div class="churn-summary" id="churn-summary"></div>
+      <div id="renewal-declare-panel" class="renewal-declare" style="display:none"></div>
+      <div id="renewal-result" class="renewal-result" style="display:none"></div>
       <div class="churn-list" id="churn-list"></div>
     </section>
 

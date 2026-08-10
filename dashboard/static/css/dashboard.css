@@ -2846,3 +2846,52 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .adlink-btn { display: inline-block; border: 1px solid var(--accent, #4f8cff); color: var(--accent, #4f8cff);
   border-radius: 8px; padding: 7px 14px; font-size: 13px; text-decoration: none; }
 .adlink-btn:hover { background: rgba(79,140,255,.12); }
+
+/* ── RENEWAL & CHURN TRUTH LOOP (#135) ── */
+.renewal-toolbar { display: flex; gap: .4rem; margin-left: auto; }
+.rw-btn { background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  color: var(--text); border-radius: 6px; padding: 4px 10px; font-size: .72rem;
+  cursor: pointer; }
+.rw-btn:hover { border-color: var(--amber); }
+.rw-btn:disabled { opacity: .55; cursor: wait; }
+.rw-confirm { border-color: var(--red); color: var(--red); font-weight: 600; }
+.renewal-result, .renewal-declare { border: 1px solid var(--border); border-radius: 8px;
+  padding: .6rem .8rem; margin: .5rem 0; font-size: .78rem; }
+.rw-fresh { color: var(--muted); margin-bottom: .4rem; }
+.rw-lane { margin: .45rem 0; padding: .4rem .55rem; border-radius: 6px;
+  border-left: 3px solid var(--border); background: rgba(255,255,255,0.02); }
+.rw-lane-title { font-weight: 600; font-size: .72rem; margin-bottom: .25rem; }
+.rw-conflict { border-left-color: var(--red); }
+.rw-conflict .rw-lane-title { color: var(--red); }
+.rw-good { border-left-color: var(--green); }
+.rw-good .rw-lane-title { color: var(--green); }
+.rw-sheet { border-left-color: var(--amber); }
+.rw-pend { border-left-color: var(--muted); }
+.rw-row { padding: .18rem 0; }
+.rw-both { font-size: .7rem; color: var(--muted); margin-top: .1rem; }
+.rw-edit { font-size: .7rem; color: var(--amber); margin-top: .1rem; }
+.rw-note { color: var(--muted); }
+.rw-good-note { color: var(--green); }
+.rw-degraded { background: rgba(180,40,40,.18); border: 1px solid var(--red);
+  border-radius: 6px; padding: .5rem .7rem; color: var(--red); }
+.rw-chip { display: inline-block; font-size: .64rem; border-radius: 4px;
+  padding: 1px 6px; margin-left: .35rem; border: 1px solid var(--border); }
+.rw-chip-pend { color: var(--amber); border-color: var(--amber); }
+.rw-chip-good { color: var(--green); border-color: var(--green); }
+.rw-chip-sheet { color: var(--muted); }
+.rw-dec-head { font-weight: 600; margin-bottom: .4rem; }
+.rw-dec-row { display: flex; gap: .5rem; margin: .35rem 0; flex-wrap: wrap;
+  align-items: center; }
+.rw-dec-row input, .rw-dec-row select { background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;
+  color: var(--text); font-size: .75rem; }
+.rw-dec-row label { font-size: .7rem; color: var(--muted); display: flex;
+  gap: .35rem; align-items: center; }
+.rw-suggest { display: flex; flex-direction: column; gap: 2px; }
+.rw-sg { text-align: left; background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px;
+  color: var(--text); font-size: .72rem; cursor: pointer; }
+.rw-sg:hover { border-color: var(--green); }
+.rw-none { color: var(--red); font-size: .74rem; padding: .25rem 0; }
+.rw-preview-text { margin-top: .4rem; }
+.rw-preview-delta { color: var(--amber); font-weight: 600; margin: .25rem 0; }

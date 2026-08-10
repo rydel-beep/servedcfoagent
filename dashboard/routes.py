@@ -815,6 +815,7 @@ def api_chat():
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
             (lambda m: __import__('open_loops').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # Pillar 1: 'remind me to X' / 'drop it' (internal reminders only)
+            (__import__('ads_discussion').handle_discussion_recall, False),  # 'what has Romano noticed' → real quotes + context stamps (read-only)
             (__import__('timeline_adapter').handle_timeline_client, False),   # Universal advisor P2: per-client delivery state (+finance join on 'overall')
             (__import__('timeline_adapter').handle_timeline_risk, False),     # 'what's overdue/stalled' → Timeline drill, verbatim
             (__import__('timeline_adapter').handle_timeline_signals, False),  # complaints/praise from the Timeline signals log
@@ -915,6 +916,14 @@ def api_chat():
         _tl_ctx = timeline_adapter.conversation_context()
         if _tl_ctx:
             _mem_block = _tl_ctx + "\n\n" + (_mem_block or "")
+    # Ad-domain discussion digest (#136): team observations ground EDITH's
+    # answers (read-only — EDITH never posts). Empty string when no notes.
+    try:
+        _disc_ctx = __import__('ads_discussion').edith_context()
+        if _disc_ctx:
+            _mem_block = _disc_ctx + "\n\n" + (_mem_block or "")
+    except Exception:
+        pass
 
     result = chat_fn(history, snapshot_json, token, voice=voice, memory_block=_mem_block, channel=channel)
 
@@ -1049,6 +1058,7 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
             (lambda m: __import__('open_loops').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # Pillar 1: 'remind me to X' / 'drop it' (internal reminders only)
+            (__import__('ads_discussion').handle_discussion_recall, False),  # 'what has Romano noticed' → real quotes + context stamps (read-only)
             (__import__('timeline_adapter').handle_timeline_client, False),   # Universal advisor P2: per-client delivery state (+finance join on 'overall')
             (__import__('timeline_adapter').handle_timeline_risk, False),     # 'what's overdue/stalled' → Timeline drill, verbatim
             (__import__('timeline_adapter').handle_timeline_signals, False),  # complaints/praise from the Timeline signals log
@@ -1151,6 +1161,14 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
         _tl_ctx = timeline_adapter.conversation_context()
         if _tl_ctx:
             _mem_block = _tl_ctx + "\n\n" + (_mem_block or "")
+    # Ad-domain discussion digest (#136): team observations ground EDITH's
+    # answers (read-only — EDITH never posts). Empty string when no notes.
+    try:
+        _disc_ctx = __import__('ads_discussion').edith_context()
+        if _disc_ctx:
+            _mem_block = _disc_ctx + "\n\n" + (_mem_block or "")
+    except Exception:
+        pass
 
     @stream_with_context
     def generate():
@@ -1640,3 +1658,113 @@ def api_quarterly_review():
     resp.headers["Content-Length"] = str(len(pdf_bytes))
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+# ── RENEWAL & CHURN TRUTH LOOP (#135) — scan · declare · converge ────────────
+# THE BOUNDARY: these routes NEVER write the MRR contract sheet. Declarations
+# are owner-only money events; the scan is owner-triggered; convergence happens
+# by Piolo editing the sheet and the next scan noticing.
+
+@bp.route("/api/renewal/scan", methods=["POST"])
+@require_owner
+def api_renewal_scan():
+    """On-demand sheet scan (both card buttons hit this). Sync server-side
+    (~1–3s: one CSV pull + diff); the client renders progress + result panel."""
+    import renewal_loop
+    from dashboard.auth import current_actor
+    result = renewal_loop.scan(trigger="button", actor=current_actor().get("user", "rydel"))
+    resp = jsonify(result)
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/renewal/state", methods=["GET"])
+@require_auth
+def api_renewal_state():
+    """Panel state without a fresh pull: last scan meta, pending declarations,
+    recent journal. Read-only; visible to owner+coo (Piolo sees his queue)."""
+    import client_overrides
+    import renewal_loop
+    pend = [renewal_loop._pend_view(o) for o in client_overrides.active_overrides()]
+    return jsonify({"last_scan": renewal_loop.last_scan_meta(),
+                    "pending": pend,
+                    "journal": renewal_loop.journal_entries()[-15:]})
+
+
+@bp.route("/api/renewal/clients", methods=["GET"])
+@require_owner
+def api_renewal_clients():
+    """Type-ahead over the CURRENT client set — selection binds to a roster
+    entry (IDs are truth); free text matching nothing is honestly empty."""
+    import client_overrides
+    q = (request.args.get("q") or "").strip().lower()
+    roster = client_overrides._roster()
+    out = []
+    for c in roster:
+        nm = c.get("name") or ""
+        if not q or q in nm.lower():
+            out.append({"name": nm, "current_mrr": c.get("current_mrr"),
+                        "contract_end": c.get("contract_end"),
+                        "status": c.get("status")})
+    return jsonify({"clients": out[:12], "total": len(roster)})
+
+
+@bp.route("/api/renewal/declare", methods=["POST"])
+@require_owner
+def api_renewal_declare():
+    """Two-phase, extending the existing confirmation-gated write-back contract:
+    stage=preview → impact preview + token; stage=confirm + token → applied
+    (journaled, one engine, snapshot refreshed, Piolo item spawned)."""
+    import secrets
+    import client_overrides
+    from dashboard.auth import current_actor
+    d = request.get_json(silent=True) or {}
+    stage = d.get("stage") or "preview"
+    if stage == "preview":
+        prev, err = client_overrides.preview_declaration(
+            d.get("client") or "", d.get("kind") or "",
+            effective_date=d.get("effective_date") or None,
+            new_mrr=d.get("new_mrr"),
+            reason=(d.get("reason") or "").strip() or None)
+        if err:
+            return jsonify({"error": err}), 400
+        token = secrets.token_urlsafe(16)
+        client_overrides._set_pending(token, prev["payload"])
+        return jsonify({"preview": prev["preview"], "mrr_delta": prev["mrr_delta"],
+                        "current_mrr": prev["current_mrr"], "old_end": prev["old_end"],
+                        "token": token})
+    if stage == "confirm":
+        token = d.get("token") or ""
+        payload = client_overrides._get_pending(token)
+        if not payload:
+            return jsonify({"error": "confirmation expired or unknown — preview again"}), 400
+        client_overrides._clear_pending(token)
+        oid, err = client_overrides.apply_declaration(payload, current_actor())
+        if err:
+            return jsonify({"error": err}), 500
+        import renewal_loop
+        return jsonify({"ok": True, "id": oid,
+                        "chip": "declared · pending sheet",
+                        "piolo_item": renewal_loop.piolo_edit_text(payload)})
+    return jsonify({"error": "stage must be preview|confirm"}), 400
+
+
+@bp.route("/api/renewal/reverse", methods=["POST"])
+@require_owner
+def api_renewal_reverse():
+    """Journaled reversal of a declaration by id (two-phase: confirm=true
+    required — the UI asks first). EXCLUDED ≠ DELETED: history stays."""
+    import client_overrides
+    from dashboard.auth import current_actor
+    d = request.get_json(silent=True) or {}
+    if not d.get("confirm"):
+        return jsonify({"error": "reversal needs confirm=true (the UI confirms first)"}), 400
+    try:
+        oid = int(d.get("id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "id required"}), 400
+    row, err = client_overrides.reverse_declaration(oid, current_actor())
+    if err:
+        return jsonify({"error": err}), 404
+    return jsonify({"ok": True, "reversed": {"client": row["client_name"],
+                                             "kind": row["change_type"]}})

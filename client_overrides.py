@@ -27,18 +27,19 @@ _DDL = """
 CREATE TABLE IF NOT EXISTS client_overrides (
   id             BIGSERIAL PRIMARY KEY,
   client_name    TEXT NOT NULL,
-  change_type    TEXT NOT NULL,          -- 'churn' | 'downgrade'
+  change_type    TEXT NOT NULL,          -- 'churn' | 'downgrade' | 'renewal' (#135)
   old_status     TEXT,
   new_status     TEXT,
   old_mrr        REAL,
   new_mrr        REAL,
-  effective_date DATE,
+  effective_date DATE,                   -- churn: exit date · renewal: NEW contract end
   reason         TEXT,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_by     TEXT NOT NULL DEFAULT 'Rydel',
   active         BOOLEAN NOT NULL DEFAULT TRUE,     -- FALSE = undone
   reconciled     BOOLEAN NOT NULL DEFAULT FALSE     -- TRUE = the sheet caught up
 );
+ALTER TABLE client_overrides ADD COLUMN IF NOT EXISTS old_end DATE;
 CREATE TABLE IF NOT EXISTS client_override_pending (
   token       TEXT PRIMARY KEY,
   payload     JSONB NOT NULL,
@@ -98,14 +99,16 @@ def active_map() -> dict[str, dict]:
 
 def _add(o: dict) -> int | None:
     migrate()
+    o = {"old_end": None, "reason": None, **o}
     try:
         with db.get_conn() as c:
             cur = c.execute(
                 """INSERT INTO client_overrides
                      (client_name, change_type, old_status, new_status, old_mrr, new_mrr,
-                      effective_date, reason, created_by)
+                      effective_date, reason, created_by, old_end)
                    VALUES (%(client_name)s,%(change_type)s,%(old_status)s,%(new_status)s,
-                           %(old_mrr)s,%(new_mrr)s,%(effective_date)s,%(reason)s,%(created_by)s)
+                           %(old_mrr)s,%(new_mrr)s,%(effective_date)s,%(reason)s,
+                           %(created_by)s,%(old_end)s)
                    RETURNING id""", o)
             return cur.fetchone()["id"]
     except Exception as e:
@@ -146,6 +149,166 @@ def undo_client(name: str) -> dict | None:
     except Exception as e:
         logger.warning("undo_client failed: %s", e)
         return None
+
+
+# ── THE DECLARE FLOW (#135 — dashboard routes call these; EXTENDS the chat
+# write-back, same tables, same confirmation contract, same no-sheet-write line) ──
+
+def preview_declaration(client_name: str, kind: str, effective_date: str | None = None,
+                        new_mrr: float | None = None,
+                        reason: str | None = None) -> tuple[dict | None, str | None]:
+    """Stage 1: bind the EXACT roster client (IDs-are-truth: the type-ahead sends
+    a roster name verbatim; anything not matching exactly one roster entry is
+    'not a known client' — NO phantom clients, ever) and build the impact
+    preview. Returns (payload+preview, None) or (None, honest_error)."""
+    if kind not in ("churn", "renewal", "downgrade"):
+        return None, f"unknown declaration kind '{kind}'"
+    roster = _roster()
+    exact = [c for c in roster if _norm(c.get("name", "")) == _norm(client_name)]
+    if not exact:
+        return None, (f"'{client_name}' is not a known client — pick from the "
+                      f"current client list (no phantom clients)")
+    if len(exact) > 1:
+        return None, (f"'{client_name}' matches {len(exact)} roster entries — "
+                      f"ambiguous, quarantined; fix the roster duplicate first")
+    c = exact[0]
+    nm = c.get("name")
+    cur_mrr = float(c.get("current_mrr") or 0)
+    old_end = c.get("contract_end")
+    eff = effective_date or str(today_sydney())
+    payload = {"client_name": nm, "change_type": kind, "old_status": "Active",
+               "old_mrr": cur_mrr, "effective_date": eff, "reason": reason,
+               "old_end": old_end, "created_by": "Rydel"}
+    if kind == "churn":
+        payload.update({"new_status": "Churned", "new_mrr": 0})
+        preview = (f"CHURN {nm}: removes ${cur_mrr:,.0f}/mo from MRR effective {eff}"
+                   + (f" — reason: {reason}" if reason else ""))
+    elif kind == "renewal":
+        if not effective_date:
+            return None, "a renewal needs the NEW renewal/term end date"
+        payload.update({"new_status": "Active",
+                        "new_mrr": float(new_mrr) if new_mrr is not None else None})
+        delta = ""
+        if new_mrr is not None and abs(float(new_mrr) - cur_mrr) > 0.005:
+            word = "up" if float(new_mrr) > cur_mrr else "down"
+            delta = (f", MRR {word} ${abs(float(new_mrr) - cur_mrr):,.0f}/mo "
+                     f"(${cur_mrr:,.0f} → ${float(new_mrr):,.0f})")
+        preview = (f"RENEW {nm}: contract end {old_end or '(none on file)'} → {eff}"
+                   f"{delta or ', MRR unchanged'} — leaves Renewal Watch until "
+                   f"{eff} approaches")
+    else:  # downgrade
+        if new_mrr is None or float(new_mrr) >= cur_mrr:
+            return None, (f"{nm} is at ${cur_mrr:,.0f}/mo — a downgrade needs a "
+                          f"lower figure")
+        payload.update({"new_status": "Active", "new_mrr": float(new_mrr)})
+        preview = (f"DOWNGRADE {nm}: ${cur_mrr:,.0f} → ${float(new_mrr):,.0f}/mo "
+                   f"effective {eff} (−${cur_mrr - float(new_mrr):,.0f}/mo MRR)")
+    mrr_delta = ((0 - cur_mrr) if kind == "churn"
+                 else (float(new_mrr) - cur_mrr) if new_mrr is not None else 0.0)
+    return {"payload": payload, "preview": preview,
+            "mrr_delta": round(mrr_delta, 2), "current_mrr": cur_mrr,
+            "old_end": old_end}, None
+
+
+def apply_declaration(payload: dict, actor: dict | None = None) -> tuple[int | None, str | None]:
+    """Stage 2 (post-confirm): record → journal → resync the one engine →
+    today's MRR snapshot refreshes → the Piolo feed item generates. Returns
+    (override_id, error)."""
+    oid = _add(payload)
+    if oid is None:
+        return None, "the declaration didn't record (db) — nothing changed"
+    try:
+        import renewal_loop
+        renewal_loop.journal(
+            f"declared ({payload['change_type']})",
+            f"{payload['client_name']}: {payload['change_type']} effective "
+            f"{payload.get('effective_date')}"
+            + (f", MRR → ${float(payload['new_mrr']):,.0f}"
+               if payload.get("new_mrr") is not None else "")
+            + f" — by {(actor or {}).get('user', 'rydel')} (owner declaration, "
+              f"pending sheet)")
+    except Exception:
+        pass
+    try:
+        import collab
+        collab.record_action(actor or {"user": "rydel", "role": "owner"},
+                             f"declared {payload['client_name']} "
+                             f"{payload['change_type']}",
+                             link_type="client", link_ref=payload["client_name"])
+    except Exception:
+        pass
+    _do_resync()
+    try:
+        import mrr_snapshot
+        mrr_snapshot.take_snapshot(force=True)   # today's row carries it NOW
+    except Exception as e:
+        logger.info("mrr snapshot refresh after declaration failed: %s", e)
+    return oid, None
+
+
+def reverse_declaration(override_id: int, actor: dict | None = None) -> tuple[dict | None, str | None]:
+    """Journaled reversal by id (EXCLUDED ≠ DELETED: the row stays, active=FALSE;
+    its Piolo feed item retires because it stops generating). Confirmation is
+    the caller's job (the routes gate it)."""
+    if not db.db_configured():
+        return None, "db unavailable"
+    try:
+        with db.get_conn() as c:
+            row = c.execute("SELECT * FROM client_overrides WHERE id=%s AND active "
+                            "AND NOT reconciled", (override_id,)).fetchone()
+            if not row:
+                return None, ("no active un-reconciled declaration with that id — "
+                              "already reversed, converged, or never existed")
+            c.execute("UPDATE client_overrides SET active=FALSE WHERE id=%s",
+                      (override_id,))
+        try:
+            import renewal_loop
+            renewal_loop.journal(
+                "declaration reversed",
+                f"{row['client_name']}: {row['change_type']} (id {override_id}) "
+                f"reversed by {(actor or {}).get('user', 'rydel')} — MRR/status "
+                f"restored; Piolo item retired (reason: reversal)")
+        except Exception:
+            pass
+        _do_resync()
+        try:
+            import mrr_snapshot
+            mrr_snapshot.take_snapshot(force=True)
+        except Exception:
+            pass
+        return dict(row), None
+    except Exception as e:
+        logger.warning("reverse_declaration failed: %s", e)
+        return None, str(e)[:120]
+
+
+def mark_reconciled(override_id: int) -> bool:
+    """The convergence write: the sheet now reflects this declaration."""
+    if not db.db_configured():
+        return False
+    try:
+        with db.get_conn() as c:
+            c.execute("UPDATE client_overrides SET reconciled=TRUE WHERE id=%s",
+                      (override_id,))
+        return True
+    except Exception as e:
+        logger.warning("mark_reconciled(%s) failed: %s", override_id, e)
+        return False
+
+
+def reconciled_recent(days: int = 14) -> dict[str, dict]:
+    """{norm name: override} for declarations the sheet has caught up on
+    recently — the 'declared ✓ sheet' chip window."""
+    if not db.db_configured():
+        return {}
+    try:
+        with db.get_conn() as c:
+            rows = c.execute(
+                "SELECT * FROM client_overrides WHERE active AND reconciled "
+                "AND created_at > now() - make_interval(days => %s)", (days,)).fetchall()
+        return {_norm(r["client_name"]): dict(r) for r in rows}
+    except Exception:
+        return {}
 
 
 def audit_log(limit: int = 20) -> list[dict]:
@@ -435,6 +598,11 @@ def handle_pending_updates_query(text: str, token: str = "") -> tuple[str | None
         if o["change_type"] == "churn":
             lines.append(f"• {o['client_name']}: Status → Churned, End Date → {o['effective_date']}, "
                          f"MRR → 0 (was ${o.get('old_mrr') or 0:,.0f})")
+        elif o["change_type"] == "renewal":
+            mrr_bit = (f", Monthly Recognized → ${o.get('new_mrr') or 0:,.0f}"
+                       if o.get("new_mrr") is not None else "")
+            lines.append(f"• {o['client_name']}: End Date → {o['effective_date']} "
+                         f"(renewal){mrr_bit}, keep Active")
         else:
             lines.append(f"• {o['client_name']}: MRR → ${o.get('new_mrr') or 0:,.0f} "
                          f"(was ${o.get('old_mrr') or 0:,.0f}), keep Active")
