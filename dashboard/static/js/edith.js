@@ -869,6 +869,32 @@
       var resp = await fetch('/dashboard/api/voice-status');
       if (resp.ok) voiceStatus = await resp.json();
     } catch (e) { voiceStatus = null; }
+    renderVoiceBanner();
+  }
+
+  // PERSISTENT DEGRADATION BANNER (voice fix 2026-08-10): the old loudness was
+  // a 6s toast + auto-hiding badge — between sessions the UI looked healthy
+  // while the voice was down for days. While health.degraded, a persistent
+  // banner names the CLASS, the reason, and the exact owner action; it clears
+  // itself only when the canary/live path goes green again.
+  var _voiceBannerEl = null;
+  function renderVoiceBanner() {
+    var h = voiceStatus && voiceStatus.health;
+    var degraded = !!(h && h.degraded);
+    if (!degraded) {
+      if (_voiceBannerEl) { _voiceBannerEl.remove(); _voiceBannerEl = null; }
+      return;
+    }
+    if (!_voiceBannerEl) {
+      _voiceBannerEl = document.createElement('div');
+      _voiceBannerEl.id = 'edith-voice-banner';
+      _voiceBannerEl.className = 'edith-voice-banner';
+      document.body.appendChild(_voiceBannerEl);
+    }
+    var cls = h.cls || 'unknown';
+    var action = h.rydel_action ? ' · FIX: ' + h.rydel_action : '';
+    _voiceBannerEl.textContent = '⚠ EDITH voice unavailable — using fallback · ' +
+      cls + ': ' + (h.reason || 'TTS failing') + action;
   }
 
   // LOUD FALLBACK (D1): silent degradation is impossible. The badge persists,
@@ -878,7 +904,13 @@
   function fallbackBadge(reason) {
     note('voice fallback (' + reason + ')', 6000);
     fxBadge('FALLBACK VOICE');
+    // pull the classified server-side reason so the PERSISTENT banner appears
+    // with the class + owner action the moment a fallback happens (2026-08-10)
+    setTimeout(refreshVoiceStatus, 800);
   }
+  // the banner also self-maintains between interactions (appears after a
+  // canary failure, clears when the voice is healthy again)
+  setInterval(refreshVoiceStatus, 5 * 60 * 1000);
   function fallbackAnnouncePrefix() {
     if (_fallbackAnnounced) return '';
     _fallbackAnnounced = true;

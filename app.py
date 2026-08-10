@@ -850,6 +850,13 @@ def _deferred_startup():
             ad_sentinel.start_loop()
         except Exception as _e:
             logger.error("Sentinel boot skipped: %s", _e)
+        # Voice boot canary (2026-08-10): a dead ElevenLabs key is caught at
+        # DEPLOY time, not boot+6h — the loud chain fires before anyone speaks.
+        try:
+            import voice_health
+            voice_health.boot_canary()
+        except Exception as _e:
+            logger.error("Voice boot canary skipped: %s", _e)
         # BAS/PAYG estimate: kv-stamped once-a-day tick at boot (read-only Xero),
         # so the card has an estimate without waiting for the loop interval.
         # Staggered by worker pid — two workers must not race the single-use

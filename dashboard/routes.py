@@ -278,14 +278,18 @@ def tts_response(text: str, voice_id=None):
         first = next(gen)
     except (RuntimeError, StopIteration) as e:
         reason = str(e) or "no audio"
-        # LOUD degradation: every failure is recorded — the widget announces the
-        # fallback, salience carries it, the registry shows FAILING (voice_health).
+        cls = getattr(e, "cls", "unknown")
+        rydel_action = getattr(e, "rydel_action", None)
+        # LOUD degradation (2026-08-10: now CLASSIFIED): every failure is
+        # recorded with its class + owner action — the widget announces it, the
+        # persistent banner shows it, the action feed carries the exact fix.
         try:
             import voice_health
-            voice_health.record_failure(reason)
+            voice_health.record_failure(reason, cls=cls, rydel_action=rydel_action)
         except Exception:
             pass
-        return jsonify({"fallback": True, "reason": reason}), 503
+        return jsonify({"fallback": True, "reason": reason, "cls": cls,
+                        "rydel_action": rydel_action}), 503
     try:
         import voice_health
         voice_health.record_ok()

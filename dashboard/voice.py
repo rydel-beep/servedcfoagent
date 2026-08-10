@@ -153,19 +153,41 @@ def _check_caps(text_len: int) -> str | None:
     return None
 
 
+class TTSFailure(RuntimeError):
+    """A CLASSIFIED TTS failure (voice fix 2026-08-10). Root cause of the
+    silent-by-specificity bug: the ElevenLabs error body was logged then
+    DISCARDED, so every surface said 'returned 400' instead of naming the
+    failure class + the owner action. Never carries key material."""
+
+    def __init__(self, human: str, cls: str = "unknown",
+                 rydel_action: str | None = None):
+        super().__init__(human)
+        self.cls = cls
+        self.rydel_action = rydel_action
+
+
+def _fail(status_code=None, body=None, context=None) -> TTSFailure:
+    import voice_health
+    c = voice_health.classify_failure(status_code, body, context)
+    return TTSFailure(c["human"], c["cls"], c["rydel_action"])
+
+
 def stream_tts(text: str, voice_id_override: str | None = None,
                model_override: str | None = None):
     """Yield MP3 chunks from ElevenLabs for the given text.
 
-    Raises RuntimeError with a human-readable reason on any failure —
-    the route turns that into a JSON fallback signal so the client can
-    drop to browser speechSynthesis. A TTS failure must never block the answer.
+    Raises TTSFailure (a RuntimeError) with a CLASSIFIED human-readable reason
+    on any failure — the route turns that into a JSON fallback signal so the
+    client can drop to browser speechSynthesis, and voice_health records the
+    class + owner action. A TTS failure must never block the answer.
 
     model_override lets the boot greeting opt into a higher-fidelity model;
     conversational turns use the fast default for lowest first-audio latency.
     """
     if not ELEVENLABS_API_KEY:
-        raise RuntimeError("ELEVENLABS_API_KEY not configured")
+        # a missing key is the SAME owner-action class as a bad one (auth) —
+        # classify it so the fallback names the exact env var to set
+        raise _fail(401, "invalid_api_key: ELEVENLABS_API_KEY not configured")
     text = (text or "").strip()
     if not text:
         raise RuntimeError("empty text")
@@ -174,28 +196,31 @@ def stream_tts(text: str, voice_id_override: str | None = None,
 
     cap_err = _check_caps(len(text))
     if cap_err:
-        raise RuntimeError(cap_err)
+        raise _fail(context=f"cap: {cap_err}")
 
     vid = (voice_id_override or active_voice_id()).strip()
     url = (
         f"https://api.elevenlabs.io/v1/text-to-speech/{vid}/stream"
         f"?optimize_streaming_latency=3&output_format=mp3_44100_64"
     )
-    resp = requests.post(
-        url,
-        headers={"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"},
-        json={
-            "text": text,
-            "model_id": model_override or ELEVENLABS_MODEL,
-            "voice_settings": active_voice_settings(),
-        },
-        stream=True,
-        timeout=(5, 30),
-    )
+    try:
+        resp = requests.post(
+            url,
+            headers={"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"},
+            json={
+                "text": text,
+                "model_id": model_override or ELEVENLABS_MODEL,
+                "voice_settings": active_voice_settings(),
+            },
+            stream=True,
+            timeout=(5, 30),
+        )
+    except requests.RequestException as e:
+        raise _fail(context=f"delivery: {type(e).__name__}")
     if resp.status_code != 200:
-        body = resp.text[:200]
+        body = resp.text[:300]
         logger.error("ElevenLabs TTS %d: %s", resp.status_code, body)
-        raise RuntimeError(f"ElevenLabs returned {resp.status_code}")
+        raise _fail(resp.status_code, body)
 
     _minute_hits.append(time.time())
     _daily_chars[str(today_sydney())] += len(text)

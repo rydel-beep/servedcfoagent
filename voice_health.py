@@ -17,14 +17,98 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-_KV_HEALTH = "voice:health"     # {last_fail:{ts,reason}, last_ok:{ts}, fails_today, day}
+_KV_HEALTH = "voice:health"     # {last_fail:{ts,reason,cls}, last_ok:{ts}, fails_today, day}
 _KV_CANARY = "voice:canary"     # {ts, ok, reason, quota:{used,limit,pct}}
+_KV_FEED = "feed:extra:voice"   # the action-feed registry channel (owner-facing)
 
 QUOTA_WARN_PCT = 85
 
 
-def record_failure(reason: str) -> None:
-    """Called by the TTS proxy on every ElevenLabs failure. Cheap, never raises."""
+# ── FAILURE CLASSIFICATION (2026-08-10 fix — the second bug's core) ──────────
+# Root cause of the silent-by-specificity failure: stream_tts logged the
+# ElevenLabs body then DISCARDED it, so every surface said "returned 400"
+# instead of "your API key is invalid — rotate it". Every failure now carries
+# a CLASS + a human message + the OWNER ACTION where one exists. The credits
+# class stays even while credits are fresh — the original failure mode must be
+# caught loudly next time too.
+
+FAILURE_CLASSES = ("auth", "voice_id", "model", "rate_limit", "credits",
+                   "caps", "delivery", "unknown")
+
+_RYDEL_ACTIONS = {
+    "auth": ("Re-set ELEVENLABS_API_KEY on the Railway CFOagent service with a "
+             "current API key from the ElevenLabs dashboard (Developers → API "
+             "Keys — it starts with 'sk_'), then redeploy."),
+    "credits": "Top up / upgrade the ElevenLabs plan — character quota exhausted.",
+    "voice_id": "The configured voice no longer exists in the ElevenLabs account "
+                "— pick the voice again in the voice panel (or restore it in "
+                "ElevenLabs).",
+}
+
+
+def classify_failure(status_code: int | None, body: str | None,
+                     context: str | None = None) -> dict:
+    """(status, response body, context) → {cls, human, rydel_action}. Built
+    from ElevenLabs' documented error codes + the live-captured 2026-08-10
+    body. NEVER includes key material."""
+    b = (body or "").lower()
+    ctx = (context or "").lower()
+    cls = "unknown"
+    if status_code in (401, 403) or "invalid_api_key" in b or "authentication_error" in b \
+            or "api key" in b:
+        cls = "auth"
+    elif "voice_not_found" in b or ("voice" in b and "not found" in b):
+        cls = "voice_id"
+    elif "model_not_found" in b or ("model" in b and ("not found" in b or "deprecated" in b)):
+        cls = "model"
+    elif status_code == 429 or "too_many" in b or "rate" in b:
+        cls = "rate_limit"
+    elif "quota" in b or "character_limit" in b or "credits" in b:
+        cls = "credits"
+    elif "cap" in ctx or "rate limit (" in ctx:
+        cls = "caps"
+    elif ctx.startswith("delivery") or "timeout" in ctx or "connection" in ctx:
+        cls = "delivery"
+    human = {
+        "auth": "the API key is invalid or expired (auth failure)",
+        "voice_id": "the configured voice ID no longer exists in the account",
+        "model": "the configured TTS model is unavailable/deprecated",
+        "rate_limit": "ElevenLabs is rate-limiting requests",
+        "credits": "ElevenLabs character credits are exhausted",
+        "caps": "the app's own TTS cost cap blocked the request",
+        "delivery": "the network/delivery path to ElevenLabs failed",
+        "unknown": f"ElevenLabs returned {status_code}" if status_code else "unknown TTS failure",
+    }[cls]
+    return {"cls": cls, "human": human, "rydel_action": _RYDEL_ACTIONS.get(cls)}
+
+
+def publish_feed_state() -> None:
+    """The action-feed item (owner-facing, via the feed:extra registry) —
+    REPLACED wholesale per call: degraded → one specific item naming the class
+    + the exact owner step; healthy → empty (self-retiring)."""
+    try:
+        import kv_store
+        s = status()
+        if s["degraded"]:
+            cls = (s.get("cls") or "unknown")
+            action = s.get("rydel_action") or "See dashboard/VOICE_DIAGNOSIS.md."
+            kv_store.put(_KV_FEED, [{
+                "severity": "S1",
+                "category": "voice",
+                "title": f"EDITH voice DOWN ({cls}): {s.get('reason') or 'TTS failing'}",
+                "action": action,
+            }])
+        else:
+            kv_store.put(_KV_FEED, [])
+    except Exception as e:
+        logger.info("voice feed publish failed: %s", e)
+
+
+def record_failure(reason: str, cls: str | None = None,
+                   rydel_action: str | None = None) -> None:
+    """Called by the TTS proxy on every ElevenLabs failure. Cheap, never raises.
+    Now CLASSIFIED (2026-08-10): the class + owner action ride the health state
+    and the action-feed item — never a bare status code again."""
     try:
         import kv_store
         from helpers import now_sydney, today_sydney
@@ -37,8 +121,10 @@ def record_failure(reason: str) -> None:
         # no-key-material contract, and this line gets read ALOUD by the fallback)
         clean = (reason or "unknown").replace("ELEVENLABS_API_KEY", "the ElevenLabs key")
         h["last_fail"] = {"ts": now_sydney().isoformat(timespec="seconds"),
-                          "reason": clean[:160]}
+                          "reason": clean[:160], "cls": cls or "unknown",
+                          "rydel_action": rydel_action}
         kv_store.put(_KV_HEALTH, h)
+        publish_feed_state()
     except Exception as e:
         logger.info("voice_health record_failure failed: %s", e)
 
@@ -50,6 +136,7 @@ def record_ok() -> None:
         h = kv_store.get(_KV_HEALTH) or {}
         h["last_ok"] = {"ts": now_sydney().isoformat(timespec="seconds")}
         kv_store.put(_KV_HEALTH, h)
+        publish_feed_state()          # healthy → the feed item self-retires
     except Exception:
         pass
 
@@ -64,6 +151,8 @@ def status() -> dict:
     degraded = bool(lf and (not lo or lf["ts"] > lo["ts"]))
     return {"degraded": degraded,
             "reason": (lf or {}).get("reason"),
+            "cls": (lf or {}).get("cls"),
+            "rydel_action": (lf or {}).get("rydel_action"),
             "fails_today": h.get("fails_today") or 0,
             "last_ok": (lo or {}).get("ts"), "last_fail": (lf or {}).get("ts"),
             "canary": c or None}
@@ -100,9 +189,23 @@ def run_canary() -> dict:
             pass
     except Exception as e:
         out["reason"] = str(e)[:160]
-        record_failure(out["reason"])
+        record_failure(out["reason"], cls=getattr(e, "cls", "unknown"),
+                       rydel_action=getattr(e, "rydel_action", None))
     kv_store.put(_KV_CANARY, out)
+    publish_feed_state()
     return out
+
+
+def boot_canary() -> None:
+    """Deploy-time canary (2026-08-10): the daily tick's first run is boot+6h —
+    today's failure sat undetected from deploy till 07:29. A boot-time run
+    closes that window; failures raise the loud chain immediately."""
+    try:
+        if not __import__("dashboard.voice", fromlist=["elevenlabs_configured"]).elevenlabs_configured():
+            return
+        run_canary()
+    except Exception as e:
+        logger.info("boot canary failed to run: %s", e)
 
 
 def automation_row() -> dict:
@@ -130,10 +233,12 @@ def salience_events() -> list[dict]:
     day = str(today_sydney())
     events = []
     if s["degraded"]:
+        act = s.get("rydel_action")
         events.append({"id": f"voice_fallback:{day}", "type": "voice_fallback",
-                       "salience": 78, "ago": 0,
-                       "spoken": (f"my ElevenLabs voice is failing ({s.get('reason') or 'unknown'}) "
-                                  f"— I'm on the fallback voice until it's fixed")})
+                       "salience": 82 if s.get("cls") == "auth" else 78, "ago": 0,
+                       "spoken": (f"my ElevenLabs voice is failing — {s.get('reason') or 'unknown'} "
+                                  f"— I'm on the fallback voice"
+                                  + (f". {act}" if act else " until it's fixed"))})
     q = ((s.get("canary") or {}).get("quota")) or {}
     if q.get("pct") is not None and q["pct"] >= QUOTA_WARN_PCT:
         events.append({"id": f"voice_quota:{day}", "type": "voice_quota",

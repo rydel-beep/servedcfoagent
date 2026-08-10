@@ -1936,3 +1936,28 @@
      with tracker links. Close-roster rows render contract beside cash the same
      way (scoped this wave; broader surfaces — dossier econ already shows
      contract, EDITH/PDF PROPOSED). Diagnosis: dashboard/SCOREBOARD_DIAGNOSIS.md.
+
+141. **EDITH VOICE — CLASSIFIED FALLBACK + LOUD-BY-SPECIFICITY (2026-08-10).**
+     Diagnosed (dashboard/VOICE_DIAGNOSIS.md, evidence-first, HARD STOP honored
+     — no pipeline rewrite before capture): ROOT CAUSE is the Railway
+     ELEVENLABS_API_KEY being a legacy 64-char key-ID; ElevenLabs 400s it
+     (`invalid_api_key`, "keys start with 'sk_'"). Fresh credits, dead voice —
+     as predicted, the failure is between the app and ElevenLabs. **RYDEL
+     ACTION (agent mints nothing):** rotate the key in the ElevenLabs dashboard
+     (Developers → API Keys, starts `sk_`) → set ELEVENLABS_API_KEY on the
+     Railway CFOagent service → redeploy; the boot canary confirms in seconds.
+     The delivery path (server proxy), request contract, and fallback triggers
+     were NOT implicated — the only agent-side code defect was that stream_tts
+     LOGGED the ElevenLabs error body then DISCARDED it, so every surface said
+     "returned 400" instead of the class + the fix. SECOND BUG (fixed
+     regardless — why Rydel found it by ear not by warning): the 2026-08-06
+     loudness was a 6s toast + auto-hiding badge + once-per-session spoken
+     prefix, unclassified, absent from the action feed. FIXES: TTSFailure
+     carries a CLASSIFIED reason (auth/voice_id/model/rate_limit/credits/caps/
+     delivery — credits kept for the original suspect); voice_health records
+     the class + owner action; a PERSISTENT UI banner names class+reason+fix
+     while degraded (self-clears on recovery); an S1 action-feed item via the
+     feed:extra:voice registry names the exact owner step; a DEPLOY-TIME boot
+     canary (was boot+6h); a sentinel voice_watch (L2). No key material in any
+     read/log/spoken path (grep-enforced). Tests:
+     tests/test_voice_loud_fallback.py (+ updated test_voice). Suite 945.

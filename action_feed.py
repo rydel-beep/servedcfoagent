@@ -132,7 +132,7 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
     # EXTRA-CHANNEL REGISTRY: fixed kv channels other modules publish through
     # (each key is owned by exactly ONE publisher, replaced wholesale per
     # publish — self-retiring per channel, no read-modify-write races).
-    _EXTRA_CHANNELS = ("feed:extra:ads_discussion",)
+    _EXTRA_CHANNELS = ("feed:extra:ads_discussion", "feed:extra:voice")
     try:
         import kv_store
         for ch_key in _EXTRA_CHANNELS:

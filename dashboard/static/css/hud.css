@@ -104,3 +104,9 @@
 
 /* reduced-motion gate removed per Rydel: the HUD always animates.
    Shift+S Focus mode is the off-switch. */
+
+/* voice fix 2026-08-10 — persistent degradation banner (loud, not a toast) */
+.edith-voice-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+  background: #5a1717; color: #ffd9d9; border-bottom: 1px solid #b33;
+  padding: 8px 14px; font: 600 12.5px/1.4 'Archivo', sans-serif;
+  text-align: center; }

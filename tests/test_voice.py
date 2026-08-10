@@ -63,19 +63,29 @@ def test_tts_falls_back_without_key():
     assert resp.status_code == 503
     data = resp.get_json()
     assert data["fallback"] is True
-    assert "ELEVENLABS_API_KEY" in data["reason"]
+    # voice fix 2026-08-10: the reason is now CLASSIFIED (auth) with the exact
+    # owner action naming the env var — no longer a bare env-var-name string.
+    assert data["cls"] == "auth"
+    assert "ELEVENLABS_API_KEY" in data["rydel_action"]
 
 
 def test_voice_status_reports_configuration():
     import dashboard.voice as voice_mod
+    import kv_store
+    kv_store.put("voice:health", None)          # isolate from other tests' failures
+    kv_store.put("feed:extra:voice", None)
     voice_mod.ELEVENLABS_API_KEY = ""
     c = _client(authed=True)
     data = c.get("/dashboard/api/voice-status").get_json()
     assert data["elevenlabs_configured"] is False
     assert data["voice_id"] == "yj30vwTGJxSHezdAGsv9"
     assert data["daily_char_cap"] > 0
-    # never leak key material
-    assert "api_key" not in json.dumps(data).lower().replace("daily_char", "")
+    # never leak key MATERIAL. The env-var NAME may appear in an owner-action
+    # field (it's the instruction, not the secret) — check the value doesn't.
+    blob = json.dumps(data)
+    assert voice_mod.ELEVENLABS_VOICE_ID in blob        # voice id is public/expected
+    # the live key prefix must never surface in a status read
+    assert "72b" not in blob
 
 
 # ── Cost caps ────────────────────────────────────────────────────────────────

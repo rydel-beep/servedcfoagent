@@ -387,6 +387,18 @@ def nightly_extras() -> dict | None:
         out["queue_watch"] = collab.sentinel_watch()
     except Exception as e:
         out["queue_watch"] = {"error": str(e)[:80]}
+    # VOICE watch (2026-08-10): canary state is a tracked metric — degraded
+    # voice goes LOUD here too (the feed item is published by voice_health;
+    # this records the watch + re-publishes in case the state got stale)
+    try:
+        import voice_health
+        vs = voice_health.status()
+        voice_health.publish_feed_state()
+        out["voice_watch"] = {"degraded": vs["degraded"], "cls": vs.get("cls"),
+                              "fails_today": vs.get("fails_today"),
+                              "canary_ok": bool((vs.get("canary") or {}).get("ok"))}
+    except Exception as e:
+        out["voice_watch"] = {"error": str(e)[:80]}
     # cost: the sweep's own cost block is in its accuracy row; this adds extras
     out["cost"] = _cost_row("L2", time.time() - t0, 0, note="extras (sweep cost in accuracy row)")
     _mark_ran("L2")
