@@ -4498,27 +4498,87 @@
     var who = $('#collab-log-who'); if (who) who.textContent = 'signed in as ' + (_actor.display || _actor.user);
   }
 
-  var _STATUS = { open: ['Open', 'cq-open'], resolved: ['Resolved — verifying', 'cq-resolved'],
-                  verified: ['✓ Verified', 'cq-verified'], partial: ['⚠ Still open', 'cq-partial'] };
+  // QUEUE FIX 2026-08-10: three lanes. ACTIVE = the queue (and the only count);
+  // AGED = demoted with reasons, collapsed, restorable; DONE = dismissals that
+  // STICK (evidence-signature suppression — re-arms only on a changed state).
+  var _cqShow = { aged: false, done: false };
   async function renderCollabQueue() {
     try {
       var r = await fetch('/dashboard/api/collab/queue');
       if (!r.ok) { if (r.status === 401) _setStatus('Session expired — refresh to sign back in.', 'err'); return; }
       var q = (await r.json()).queue || [];
-      var openN = q.filter(function (x) { return x.status === 'open' || x.status === 'partial'; }).length;
-      var badge = $('#collab-queue-badge'); if (badge) badge.textContent = openN ? (openN + ' open') : 'clear';
+      var act = q.filter(function (x) { return x.lane === 'active'; });
+      var aged = q.filter(function (x) { return x.lane === 'aged'; });
+      var done = q.filter(function (x) { return x.lane === 'done'; });
+      var badge = $('#collab-queue-badge');
+      if (badge) badge.textContent = act.length ? (act.length + ' active') : 'clear';
       var body = $('#collab-queue-body'); if (!body) return;
-      if (!q.length) { body.innerHTML = '<div class="cq-empty">Queue is clear — nothing to reconcile.</div>'; return; }
-      body.innerHTML = q.map(function (it) {
-        var st = _STATUS[it.status] || _STATUS.open;
+
+      function itemHtml(it, lane) {
+        var head = '';
+        if (lane === 'active') {
+          head = '<span class="cq-status cq-open">' + (it.lane_reason === 'restored by owner' ? 'Restored' : 'Open') + '</span>';
+        } else if (lane === 'aged') {
+          head = '<span class="cq-status cq-aged">Aged</span>';
+        } else {
+          head = '<span class="cq-status ' + (it.status === 'verified' ? 'cq-verified' : 'cq-resolved') + '">' +
+                 (it.status === 'verified' ? '✓ Verified' : 'Done — suppressed') + '</span>';
+        }
+        var reason = it.lane_reason ? '<div class="cq-lane-reason">' + esc(it.lane_reason) + '</div>' : '';
         var verif = it.verification ? '<div class="cq-verif ' + (it.status === 'verified' ? 'cq-ok' : 'cq-warn') + '">' + esc(it.verification) + '</div>' : '';
-        var note = (it.status === 'open' || it.status === 'partial')
-          ? '<div class="cq-resolve"><input class="cq-note" data-flag="' + esc(it.flag_id) + '" placeholder="Note what you did…"><button class="cq-btn" data-flag="' + esc(it.flag_id) + '">Mark done</button></div>'
-          : (it.resolution ? '<div class="cq-note-done">“' + esc(it.resolution) + '”' + (it.resolved_by ? ' — ' + esc(it.resolved_by) : '') + '</div>' : '');
-        return '<div class="cq-item"><div class="cq-top"><span class="cq-status ' + st[1] + '">' + st[0] + '</span>' +
-          '<span class="cq-title">' + esc(it.title) + '</span></div>' +
-          (it.detail ? '<div class="cq-detail">' + esc(it.detail) + '</div>' : '') + verif + note + '</div>';
-      }).join('');
+        var controls = '';
+        if (lane === 'active') {
+          controls = '<div class="cq-resolve"><input class="cq-note" data-flag="' + esc(it.flag_id) + '" placeholder="Note what you did…"><button class="cq-btn" data-flag="' + esc(it.flag_id) + '">Mark done</button></div>';
+        } else if (lane === 'aged') {
+          controls = '<button class="cq-btn cq-restore" data-sig="' + esc(it.signature) + '">Restore to active</button>';
+        } else {
+          controls = (it.resolution ? '<div class="cq-note-done">“' + esc(it.resolution) + '”' + (it.resolved_by ? ' — ' + esc(it.resolved_by) : '') + '</div>' : '') +
+            '<button class="cq-btn cq-undismiss" data-flag="' + esc(it.flag_id) + '">Un-dismiss</button>';
+        }
+        var matChip = it.material && lane === 'active' && (it.age_days || 0) > 90
+          ? ' <span class="cq-mat" title="material — never ages out">$</span>' : '';
+        return '<div class="cq-item"><div class="cq-top">' + head +
+          '<span class="cq-title">' + esc(it.title) + matChip + '</span></div>' +
+          (it.detail ? '<div class="cq-detail">' + esc(it.detail) + '</div>' : '') +
+          reason + verif + controls + '</div>';
+      }
+
+      var html = act.length
+        ? act.map(function (it) { return itemHtml(it, 'active'); }).join('')
+        : '<div class="cq-empty">Active queue is clear — nothing needs action soon.</div>';
+      if (aged.length) {
+        html += '<button class="cq-toggle" data-lane="aged">' + (_cqShow.aged ? '▾' : '▸') + ' ' +
+          aged.length + ' aged / irrelevant</button>';
+        if (_cqShow.aged) html += aged.map(function (it) { return itemHtml(it, 'aged'); }).join('');
+      }
+      if (done.length) {
+        html += '<button class="cq-toggle" data-lane="done">' + (_cqShow.done ? '▾' : '▸') + ' ' +
+          done.length + ' done</button>';
+        if (_cqShow.done) html += done.map(function (it) { return itemHtml(it, 'done'); }).join('');
+      }
+      body.innerHTML = html;
+      body.querySelectorAll('.cq-toggle').forEach(function (b) {
+        b.addEventListener('click', function () {
+          _cqShow[b.dataset.lane] = !_cqShow[b.dataset.lane];
+          renderCollabQueue();
+        });
+      });
+      body.querySelectorAll('.cq-restore').forEach(function (b) {
+        b.addEventListener('click', async function () {
+          await fetch('/dashboard/api/collab/restore', { method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ signature: b.dataset.sig }) });
+          renderCollabQueue();
+        });
+      });
+      body.querySelectorAll('.cq-undismiss').forEach(function (b) {
+        b.addEventListener('click', async function () {
+          await fetch('/dashboard/api/collab/undismiss', { method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ flag_id: b.dataset.flag }) });
+          renderCollabQueue();
+        });
+      });
     } catch (e) {}
   }
 

@@ -381,6 +381,12 @@ def nightly_extras() -> dict | None:
         out["renewal_watch"] = renewal_loop.sentinel_watch()
     except Exception as e:
         out["renewal_scan"] = {"ok": False, "error": str(e)[:100]}
+    # PIOLO QUEUE watch (queue fix 2026-08-10): lane sizes + aged-growth alert
+    try:
+        import collab
+        out["queue_watch"] = collab.sentinel_watch()
+    except Exception as e:
+        out["queue_watch"] = {"error": str(e)[:80]}
     # cost: the sweep's own cost block is in its accuracy row; this adds extras
     out["cost"] = _cost_row("L2", time.time() - t0, 0, note="extras (sweep cost in accuracy row)")
     _mark_ran("L2")

@@ -2895,3 +2895,13 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .rw-none { color: var(--red); font-size: .74rem; padding: .25rem 0; }
 .rw-preview-text { margin-top: .4rem; }
 .rw-preview-delta { color: var(--amber); font-weight: 600; margin: .25rem 0; }
+
+/* ── PIOLO QUEUE FIX (2026-08-10): lanes ── */
+.cq-aged { background: rgba(255,255,255,0.06); color: var(--muted); }
+.cq-toggle { display: block; width: 100%; text-align: left; background: none;
+  border: none; border-top: 1px dashed var(--border); color: var(--muted);
+  font-size: .74rem; padding: .45rem .2rem; cursor: pointer; margin-top: .4rem; }
+.cq-toggle:hover { color: var(--text); }
+.cq-lane-reason { font-size: .7rem; color: var(--amber); margin: .15rem 0; }
+.cq-restore, .cq-undismiss { margin-top: .25rem; }
+.cq-mat { color: var(--green); font-weight: 700; cursor: help; }

@@ -1768,3 +1768,27 @@ def api_renewal_reverse():
         return jsonify({"error": err}), 404
     return jsonify({"ok": True, "reversed": {"client": row["client_name"],
                                              "kind": row["change_type"]}})
+
+
+# ── PIOLO QUEUE FIX (2026-08-10) — un-dismiss + restore (owner-side admin) ───
+
+@bp.route("/api/collab/undismiss", methods=["POST"])
+@require_owner
+def api_collab_undismiss():
+    import collab
+    from dashboard.auth import current_actor
+    d = request.get_json(silent=True) or {}
+    if not d.get("flag_id"):
+        return jsonify({"error": "flag_id required"}), 400
+    return jsonify(collab.un_dismiss(d["flag_id"], current_actor()))
+
+
+@bp.route("/api/collab/restore", methods=["POST"])
+@require_owner
+def api_collab_restore():
+    import collab
+    from dashboard.auth import current_actor
+    d = request.get_json(silent=True) or {}
+    if not d.get("signature"):
+        return jsonify({"error": "signature required"}), 400
+    return jsonify(collab.restore_to_active(d["signature"], current_actor()))

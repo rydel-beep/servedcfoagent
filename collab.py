@@ -64,6 +64,13 @@ CREATE TABLE IF NOT EXISTS collab_read_marks (
   seen_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (reader, entry_id)
 );
+ALTER TABLE collab_queue ADD COLUMN IF NOT EXISTS signature TEXT;
+ALTER TABLE collab_queue ADD COLUMN IF NOT EXISTS lane_override TEXT;
+CREATE TABLE IF NOT EXISTS collab_item_state (
+  signature  TEXT PRIMARY KEY,
+  first_seen DATE NOT NULL,
+  last_lane  TEXT
+);
 """
 
 
@@ -218,53 +225,354 @@ def _flag_id(item: dict) -> str:
     return re.sub(r"[^a-z0-9]+", "-", (item.get("category", "") + ":" + item.get("title", ""))[:120].lower())
 
 
+# ── EVIDENCE SIGNATURES (queue fix 2026-08-10 — the done-that-sticks key) ────
+# The old identity was slug(category+title) — the DISPLAY TITLE with its live
+# numbers. Every metric drift (an MRR figure, a count, an age) re-opened
+# already-resolved items and orphaned their resolutions (diagnosed in
+# dashboard/PIOLO_QUEUE_DIAGNOSIS.md with prod evidence). The signature
+# normalizes VOLATILE tokens (numbers/money/ages) out of title+action, so:
+#   · routine drift (72,275 → 59,316; "1 deal" → still the same deal-set;
+#     "pending 3d" → "4d") keeps the SAME signature → a dismissal STICKS;
+#   · a genuinely new state (a new name joins the list, the fix path changes)
+#     changes the signature → the item RE-ARMS with its new reason.
+# "Done" means "I handled THIS state" — never "hide this subject forever".
+
+def _normalize_evidence(s: str) -> str:
+    """Volatile tokens (numbers, money, ages) are DROPPED, not replaced — a
+    blank cell ('contract —') and a filled one ('contract 12500.0') are the
+    same task-state; the stable words (names, fields, fix-paths) carry the
+    identity. Trade-off accepted: two items distinguished ONLY by a bare
+    number would collide — no queue category does that today."""
+    import re
+    s = (s or "").lower()
+    s = re.sub(r"\$?\s*\d[\d,\.]*\s*k?\b", " ", s)     # money/counts/ages dropped
+    s = re.sub(r"[^a-z]+", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def flag_signature(item: dict) -> str:
+    import hashlib
+    basis = (item.get("category", "") + "|" + _normalize_evidence(item.get("title", ""))
+             + "|" + _normalize_evidence(item.get("detail") or item.get("action") or ""))
+    return hashlib.sha1(basis.encode()).hexdigest()[:16]
+
+
+# ── CLIENT LIFECYCLE (relevance signal — IDs/lifecycle, not name guesses) ────
+
+def _churned_subjects() -> dict:
+    """{normalized-name: churn_context} from the lifecycle engines: owner churn
+    declarations (#135), the sheet's non-Active rows (renewal scan snapshot),
+    and the confirmed-churned constants. Read-only; best-effort per source."""
+    out: dict = {}
+    try:
+        import client_overrides as co
+        for o in co.audit_log(200):
+            if o.get("change_type") == "churn" and o.get("active", True):
+                out[co._norm(o["client_name"])] = (
+                    f"client churned {str(o.get('effective_date') or '')[:10]} (declared)")
+    except Exception:
+        pass
+    try:
+        import kv_store
+        import client_overrides as co
+        rows = (kv_store.get("renewal:last_scan") or {}).get("rows") or {}
+        for nm, r in rows.items():
+            st = (r.get("status") or "").strip().lower()
+            if st and st != "active":
+                out.setdefault(nm, f"client {st} per the MRR sheet")
+    except Exception:
+        pass
+    try:
+        import client_overrides as co
+        from forward_mrr import KNOWN_CHURNED
+        for n in KNOWN_CHURNED:
+            out.setdefault(co._norm(n), "known churned client")
+    except Exception:
+        pass
+    return {k: v for k, v in out.items() if len(k) >= 5}
+
+
+def _subject_churn(item: dict, churned: dict) -> str | None:
+    """The churn context if this item's subject is a churned client, else None."""
+    try:
+        import client_overrides as co
+        blob = co._norm((item.get("title") or "") + " " + (item.get("detail") or ""))
+    except Exception:
+        return None
+    for nm, ctx in churned.items():
+        if nm in blob:
+            return ctx
+    return None
+
+
+def _material(item: dict) -> bool:
+    """THE MATERIALITY GUARD: money-bearing / close-level items NEVER age out
+    quietly (the action-zone ruling — an $18k dateless close doesn't vanish
+    because it's old). Floor configurable via kv queue:materiality_floor."""
+    import re
+    floor = 1000.0
+    try:
+        import kv_store
+        floor = float(kv_store.get("queue:materiality_floor") or 1000.0)
+    except Exception:
+        pass
+    blob = (item.get("title") or "") + " " + (item.get("detail") or "")
+    for m in re.finditer(r"\$?\s*([\d][\d,]*(?:\.\d+)?)", blob):
+        try:
+            if float(m.group(1).replace(",", "")) >= floor:
+                return True
+        except ValueError:
+            continue
+    return bool(re.search(r"\bwon\b|\bclose\b|\bcontract\b", blob.lower()))
+
+
+_STALE_DAYS = 90   # low-materiality items unactioned this long → aged (config-able)
+
+
 def queue(snap: dict | None = None) -> list[dict]:
-    """Piolo's queue: the live flags, each overlaid with any resolution + verification state."""
+    """Piolo's queue — ONE generator, three lanes (queue fix 2026-08-10):
+      ACTIVE — act-soon; the only lane counts/badges/EDITH report.
+      AGED — demoted with a stamped reason (churned subject · stale+immaterial),
+        collapsed view, one-click restore. Excluded ≠ deleted.
+      DONE — dismissals keyed by EVIDENCE SIGNATURE: suppressed while the
+        state is unchanged; a changed state re-arms as a NEW item. Un-dismiss
+        restores. Resolved items whose flag stopped reproducing auto-verify
+        ("resolved at source").
+    Every lane transition is journaled once (collab_item_state.last_lane)."""
     migrate()
     live = _live_flags(snap)
-    live_ids = {f["flag_id"] for f in live}
-    states = {}
+    states: dict = {}
+    by_sig: dict = {}
     try:
         with db.get_conn() as c:
             for r in c.execute("SELECT * FROM collab_queue").fetchall():
                 states[r["flag_id"]] = dict(r)
+                if r.get("signature"):
+                    by_sig[r["signature"]] = dict(r)
     except Exception:
         pass
+
+    # persisted first-seen + last-lane per signature (age must be REAL — the
+    # old code stamped untouched items 'today' on every build)
+    today = today_sydney()
+    item_state: dict = {}
+    try:
+        with db.get_conn() as c:
+            for r in c.execute("SELECT * FROM collab_item_state").fetchall():
+                item_state[r["signature"]] = dict(r)
+    except Exception:
+        pass
+
+    churned = _churned_subjects()
     out = []
+    live_sigs = set()
+    transitions = []
     for f in live:
+        sig = flag_signature(f)
+        live_sigs.add(sig)
         st = states.get(f["flag_id"]) or {}
-        out.append({**f, "status": st.get("status", "open"),
-                    "resolution": st.get("resolution"), "resolved_by": st.get("resolved_by"),
-                    "verification": st.get("verification"),
-                    "first_seen": _iso(st.get("first_seen")) if st.get("first_seen") else str(today_sydney()),
+        # legacy rows matched by flag_id get their signature backfilled — the
+        # pre-fix 'partial' nag rows convert to proper suppressions
+        if st and not st.get("signature"):
+            try:
+                with db.get_conn() as c:
+                    c.execute("UPDATE collab_queue SET signature=%s WHERE flag_id=%s",
+                              (sig, f["flag_id"]))
+                st["signature"] = sig
+                by_sig[sig] = st
+            except Exception:
+                pass
+        srow = by_sig.get(sig) or st
+        ist = item_state.get(sig)
+        first_seen = (ist or {}).get("first_seen") or today
+        if ist is None:
+            try:
+                with db.get_conn() as c:
+                    c.execute("INSERT INTO collab_item_state (signature, first_seen) "
+                              "VALUES (%s,%s) ON CONFLICT (signature) DO NOTHING",
+                              (sig, today))
+            except Exception:
+                pass
+        age_days = (today - first_seen).days if hasattr(first_seen, "toordinal") else 0
+        material = _material(f)
+
+        # lane classification
+        lane, lane_reason = "active", None
+        if srow.get("status") in ("resolved", "verified"):
+            lane = "done"
+            lane_reason = ("resolved — source unchanged (suppressed; re-arms if "
+                           "the state changes)")
+        elif srow.get("lane_override") == "active":
+            lane, lane_reason = "active", "restored by owner"
+        else:
+            churn_ctx = _subject_churn(f, churned)
+            if churn_ctx:
+                lane, lane_reason = "aged", f"{churn_ctx} — archaeology, not a task"
+            elif age_days > _STALE_DAYS and not material:
+                lane, lane_reason = "aged", (f"unactioned {age_days}d and below the "
+                                             f"materiality floor")
+        if lane != "aged" and lane != "done" and material and age_days > _STALE_DAYS:
+            lane_reason = f"{age_days}d old but MATERIAL — stays active (money guard)"
+
+        prev_lane = (ist or {}).get("last_lane")
+        if prev_lane != lane:
+            transitions.append((sig, lane, lane_reason, f.get("title", "")[:80]))
+        out.append({**f, "signature": sig, "lane": lane, "lane_reason": lane_reason,
+                    "material": material, "age_days": age_days,
+                    "first_seen": str(first_seen),
+                    "status": srow.get("status", "open"),
+                    "resolution": srow.get("resolution"),
+                    "resolved_by": srow.get("resolved_by"),
+                    "verification": srow.get("verification"),
                     "still_present": True})
-    # resolved-but-still-verifying items no longer live → verified (data changed)
-    for fid, st in states.items():
-        if fid not in live_ids and st.get("status") in ("resolved", "partial"):
-            out.append({"flag_id": fid, "title": st.get("title", fid), "status": "verified",
-                        "resolution": st.get("resolution"), "resolved_by": st.get("resolved_by"),
-                        "verification": "✓ verified — the flag condition is gone", "still_present": False})
+
+    # dismissals whose signature no longer reproduces → RESOLVED AT SOURCE
+    # (auto-verified, Done view) — never left hanging, never silently dropped
+    for sig, srow in by_sig.items():
+        if sig in live_sigs or srow.get("status") not in ("resolved", "partial"):
+            continue
+        if srow.get("status") != "verified":
+            try:
+                with db.get_conn() as c:
+                    c.execute("UPDATE collab_queue SET status='verified', "
+                              "verification=%s, verified_at=now(), updated_at=now() "
+                              "WHERE flag_id=%s",
+                              ("✓ verified — resolved at source; the flag no longer "
+                               "reproduces", srow["flag_id"]))
+            except Exception:
+                pass
+        out.append({"flag_id": srow["flag_id"], "signature": sig,
+                    "title": srow.get("title", sig), "category": srow.get("category"),
+                    "lane": "done", "lane_reason": "resolved at source (auto-verified)",
+                    "status": "verified", "resolution": srow.get("resolution"),
+                    "resolved_by": srow.get("resolved_by"),
+                    "verification": "✓ verified — resolved at source; the flag no "
+                                    "longer reproduces",
+                    "still_present": False})
+
+    # journal lane transitions ONCE (not per build)
+    for sig, lane, reason, title in transitions:
+        try:
+            with db.get_conn() as c:
+                c.execute("UPDATE collab_item_state SET last_lane=%s WHERE signature=%s",
+                          (lane, sig))
+            if lane in ("aged", "done"):
+                record_action({"user": "edith", "role": "system"},
+                              f"queue: “{title}” → {lane}"
+                              + (f" ({reason})" if reason else ""),
+                              link_type="queue", link_ref=sig)
+        except Exception:
+            pass
     return out
 
 
+def queue_lanes(snap: dict | None = None) -> dict:
+    """The lane split every surface reads: active (the real count), aged, done."""
+    q = queue(snap)
+    return {"active": [i for i in q if i["lane"] == "active"],
+            "aged": [i for i in q if i["lane"] == "aged"],
+            "done": [i for i in q if i["lane"] == "done"]}
+
+
 def resolve_item(flag_id: str, note: str, actor: dict) -> dict:
-    """Piolo marks a queue item done with a note. Does NOT clear the flag — EDITH verifies next."""
+    """Piolo marks a queue item done. QUEUE FIX 2026-08-10: the dismissal keys
+    to the item's EVIDENCE SIGNATURE and the generator SUPPRESSES it into the
+    Done view — it clears NOW and stays cleared while the state is unchanged.
+    If the underlying facts change (new signature), the item re-arms as new.
+    EDITH's verification still runs: once the flag stops reproducing at source,
+    the dismissal upgrades to verified automatically (inside queue())."""
     migrate()
     who = (actor or {}).get("user", "piolo")
     live = {f["flag_id"]: f for f in _live_flags()}
-    title = (live.get(flag_id) or {}).get("title", flag_id)
+    item = live.get(flag_id)
+    title = (item or {}).get("title", flag_id)
+    sig = flag_signature(item) if item else None
     try:
         with db.get_conn() as c:
             c.execute(
-                "INSERT INTO collab_queue (flag_id, title, status, resolution, resolved_by, resolved_at) "
-                "VALUES (%s,%s,'resolved',%s,%s,now()) ON CONFLICT (flag_id) DO UPDATE SET "
+                "INSERT INTO collab_queue (flag_id, title, status, resolution, resolved_by, "
+                "resolved_at, signature, verification) "
+                "VALUES (%s,%s,'resolved',%s,%s,now(),%s,%s) ON CONFLICT (flag_id) DO UPDATE SET "
                 "status='resolved', resolution=EXCLUDED.resolution, resolved_by=EXCLUDED.resolved_by, "
-                "resolved_at=now(), updated_at=now()", (flag_id, title, note, who))
+                "resolved_at=now(), signature=EXCLUDED.signature, "
+                "verification=EXCLUDED.verification, lane_override=NULL, updated_at=now()",
+                (flag_id, title, note, who, sig,
+                 "resolved — suppressed while this state holds; EDITH verifies "
+                 "once the source changes"))
     except Exception as e:
         logger.warning("resolve_item failed: %s", e)
         return {"ok": False}
     record_action(actor, f"resolved queue item “{title}”: {note}", link_type="flag", link_ref=flag_id)
-    return verify_item(flag_id)
+    return {"ok": True, "flag_id": flag_id, "signature": sig, "status": "resolved",
+            "suppressed": True}
+
+
+def un_dismiss(flag_id: str, actor: dict) -> dict:
+    """Reverse a dismissal — the item returns to ACTIVE. Journaled. Owner-side
+    admin per the access matrix (the route gates it)."""
+    migrate()
+    try:
+        with db.get_conn() as c:
+            row = c.execute("SELECT * FROM collab_queue WHERE flag_id=%s",
+                            (flag_id,)).fetchone()
+            if not row:
+                return {"ok": False, "error": "no dismissal recorded for that item"}
+            c.execute("UPDATE collab_queue SET status='open', verification=NULL, "
+                      "updated_at=now() WHERE flag_id=%s", (flag_id,))
+    except Exception as e:
+        logger.warning("un_dismiss failed: %s", e)
+        return {"ok": False, "error": str(e)[:80]}
+    record_action(actor, f"un-dismissed queue item “{(dict(row).get('title') or flag_id)[:80]}”",
+                  link_type="queue", link_ref=flag_id)
+    return {"ok": True}
+
+
+def restore_to_active(signature: str, actor: dict) -> dict:
+    """Owner overrides an AGED demotion — 'the system judged wrong'. Journaled,
+    sticky (lane_override survives rebuilds)."""
+    migrate()
+    try:
+        with db.get_conn() as c:
+            r = c.execute("SELECT flag_id FROM collab_queue WHERE signature=%s",
+                          (signature,)).fetchone()
+            if r:
+                c.execute("UPDATE collab_queue SET lane_override='active', updated_at=now() "
+                          "WHERE signature=%s", (signature,))
+            else:
+                c.execute("INSERT INTO collab_queue (flag_id, title, status, signature, "
+                          "lane_override) VALUES (%s,%s,'open',%s,'active') "
+                          "ON CONFLICT (flag_id) DO UPDATE SET lane_override='active', "
+                          "signature=EXCLUDED.signature, updated_at=now()",
+                          (f"sig:{signature}", f"(restored item {signature})", signature))
+            c.execute("UPDATE collab_item_state SET last_lane='active' WHERE signature=%s",
+                      (signature,))
+    except Exception as e:
+        logger.warning("restore_to_active failed: %s", e)
+        return {"ok": False, "error": str(e)[:80]}
+    record_action(actor, f"restored queue item {signature} to ACTIVE (override)",
+                  link_type="queue", link_ref=signature)
+    return {"ok": True}
+
+
+def sentinel_watch() -> dict:
+    """Queue-health watch (rides ad_sentinel L2): lane sizes + aged growth."""
+    import kv_store
+    lanes = queue_lanes()
+    counts = {k: len(v) for k, v in lanes.items()}
+    prev = kv_store.get("collab:queue_watch") or {}
+    growth = counts["aged"] - int(prev.get("aged") or 0)
+    kv_store.put("collab:queue_watch", {**counts, "at": str(today_sydney())})
+    if growth >= 5:
+        try:
+            flags = kv_store.get("ads_truth:flags") or []
+            flags.append({"metric": "ads_truth",
+                          "reason": f"Piolo queue: aged lane grew by {growth} overnight "
+                                    f"(now {counts['aged']}) — worth a look at the "
+                                    f"demotion reasons"})
+            kv_store.put("ads_truth:flags", flags[-60:])
+        except Exception:
+            pass
+    return {**counts, "aged_growth": growth}
 
 
 def verify_item(flag_id: str, snap: dict | None = None) -> dict:
@@ -286,7 +594,9 @@ def verify_item(flag_id: str, snap: dict | None = None) -> dict:
 
 
 def queue_count(snap: dict | None = None) -> int:
-    return sum(1 for q in queue(snap) if q.get("status") in ("open", "partial"))
+    """ACTIVE items only — 'Piolo has 6 tasks' means 6 real ones, never
+    6 + 40 archaeology (queue fix 2026-08-10)."""
+    return sum(1 for q in queue(snap) if q.get("lane") == "active")
 
 
 # ── DIGEST (Rydel's "Piolo since you last looked" — watermarked) ─────────────
@@ -481,13 +791,27 @@ def handle_collab_command(text: str, actor: dict) -> tuple[str | None, bool]:
                 "It's logged and reloadable if the DB is ever lost." if d.get("json")
                 else "Export couldn't write the dump file — check the server."), True
 
-    # my queue / what's in my queue
+    # my queue / what's in my queue — ACTIVE lane only; aged named separately
     if _re.search(r"\b(my queue|what'?s in (my|the) queue|piolo'?s queue|the queue|open (flags|items))\b", low):
-        q = [x for x in queue() if x.get("status") in ("open", "partial")]
-        if not q:
-            return "Queue's clear — nothing open.", True
-        lines = [f"• {x['title']}" + (f" — {x['detail']}" if x.get("detail") else "") for x in q[:6]]
-        return f"{len(q)} open: \n" + "\n".join(lines), True
+        lanes = queue_lanes()
+        act, aged = lanes["active"], lanes["aged"]
+        if not act:
+            tail = (f" ({len(aged)} aged/irrelevant item(s) sit in the collapsed "
+                    f"view — ask for 'the aged queue' to hear them)") if aged else ""
+            return f"Queue's clear — nothing active.{tail}", True
+        lines = [f"• {x['title']}" + (f" — {x['detail']}" if x.get("detail") else "")
+                 for x in act[:6]]
+        tail = f"\n(+{len(aged)} aged/irrelevant, collapsed — not counted)" if aged else ""
+        return f"{len(act)} active: \n" + "\n".join(lines) + tail, True
+
+    # the aged / archaeology view on request
+    if _re.search(r"\b(aged|archived|irrelevant|archaeolog\w*) (queue|items|flags)\b", low):
+        aged = queue_lanes()["aged"]
+        if not aged:
+            return "Nothing in the aged view — every open item is live.", True
+        lines = [f"• {x['title'][:80]} — {x.get('lane_reason')}" for x in aged[:8]]
+        return (f"{len(aged)} aged/irrelevant (demoted with reasons, restorable):\n"
+                + "\n".join(lines)), True
 
     # what did Piolo do / concerns / questions (+ optional date range)
     if _re.search(r"\bwhat did piolo\b|\bpiolo('?s)? (work|activity|do|done|log)\b|"

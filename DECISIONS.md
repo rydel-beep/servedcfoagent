@@ -1829,3 +1829,29 @@
      shareability verified live: resolves publicly, viewing requires any
      Facebook login (Meta's design), NOT token-holder-restricted. Sentinel:
      discussion_volume + preview_rot watches in the nightly sweep.
+
+137. **PIOLO QUEUE — MARK-DONE THAT STICKS + RELEVANCE GATING (2026-08-10).**
+     Diagnosed (evidence in dashboard/PIOLO_QUEUE_DIAGNOSIS.md): the done-bug
+     was (B) RESURRECTION, not a dead handler — item identity was
+     slug(category+title) WITH live numbers, so metric drift re-opened
+     resolved items (prod: mrr-72,275 resolved → mrr-59,316 open; "1 won
+     deal…Butlers" resolved → "2 won deal…Butlers, Il Ritrovo" open) and
+     resolved rows never left the render ("Resolved — verifying" nags).
+     FIX — EVIDENCE-SIGNATURE DISMISSALS: signature = sha1(category +
+     normalized(title) + normalized(action)) with volatile tokens (numbers,
+     money, ages) DROPPED — routine drift keeps a dismissal; a genuinely new
+     state (name-set/fix-path change) re-arms as a new item. Done = "I handled
+     THIS state", never "hide this subject". The generator SUPPRESSES matched
+     dismissals into a reversible Done view (un-dismiss restores, owner-side);
+     dismissals whose flag stops reproducing auto-verify ("resolved at
+     source"). RELEVANCE LANES: ACTIVE (the only counted lane — badges, EDITH,
+     queue_count) · AGED (demoted, reason-stamped, collapsed, one-click
+     restore): churned-subject per the lifecycle engines (#135 declarations +
+     sheet non-Active + known-churned) or >90d unactioned AND immaterial ·
+     DONE. MATERIALITY GUARD: money-bearing/close-level items NEVER age out
+     (floor kv queue:materiality_floor). first_seen now PERSISTS per signature
+     (collab_item_state) — real ages, journaled lane transitions (once, not
+     per build). Excluded ≠ deleted throughout: every row retrievable, every
+     transition in the collab archive. Sentinel: queue lane watch + aged-
+     growth alert in L2. Tests: tests/test_piolo_queue.py (13, incl. the
+     witnessed failure re-run and both re-arm directions).
