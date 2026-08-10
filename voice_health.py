@@ -32,13 +32,21 @@ QUOTA_WARN_PCT = 85
 # class stays even while credits are fresh — the original failure mode must be
 # caught loudly next time too.
 
-FAILURE_CLASSES = ("auth", "voice_id", "model", "rate_limit", "credits",
-                   "caps", "delivery", "unknown")
+FAILURE_CLASSES = ("auth", "permission", "voice_id", "model", "rate_limit",
+                   "credits", "caps", "delivery", "unknown")
 
 _RYDEL_ACTIONS = {
     "auth": ("Re-set ELEVENLABS_API_KEY on the Railway CFOagent service with a "
              "current API key from the ElevenLabs dashboard (Developers → API "
              "Keys — it starts with 'sk_'), then redeploy."),
+    # a VALID but under-scoped key (2026-08-10: the restored key is a scoped key
+    # with text_to_speech + voices_read but not user_read — a missing
+    # text_to_speech scope would kill synthesis with THIS signature, and the
+    # fix is re-scoping, NOT rotating).
+    "permission": ("The ElevenLabs key authenticates but is missing a required "
+                   "permission for this call. In the ElevenLabs dashboard → API "
+                   "Keys, grant the key Text-to-Speech (and Voices read) scope, "
+                   "then it works without a rotation."),
     "credits": "Top up / upgrade the ElevenLabs plan — character quota exhausted.",
     "voice_id": "The configured voice no longer exists in the ElevenLabs account "
                 "— pick the voice again in the voice panel (or restore it in "
@@ -54,7 +62,14 @@ def classify_failure(status_code: int | None, body: str | None,
     b = (body or "").lower()
     ctx = (context or "").lower()
     cls = "unknown"
-    if status_code in (401, 403) or "invalid_api_key" in b or "authentication_error" in b \
+    # a VALID key lacking a scope 401/403s with missing_permissions — distinct
+    # from a bad key (the fix is re-scoping, not rotating). Checked FIRST so it
+    # doesn't get swallowed by the generic auth branch.
+    if "missing_permission" in b or "missing permission" in b or \
+            ("permission" in b and ("scope" in b or "user_read" in b
+                                    or "text_to_speech" in b or "voices_read" in b)):
+        cls = "permission"
+    elif status_code in (401, 403) or "invalid_api_key" in b or "authentication_error" in b \
             or "api key" in b:
         cls = "auth"
     elif "voice_not_found" in b or ("voice" in b and "not found" in b):
@@ -71,6 +86,7 @@ def classify_failure(status_code: int | None, body: str | None,
         cls = "delivery"
     human = {
         "auth": "the API key is invalid or expired (auth failure)",
+        "permission": "the API key is valid but missing a required permission/scope",
         "voice_id": "the configured voice ID no longer exists in the account",
         "model": "the configured TTS model is unavailable/deprecated",
         "rate_limit": "ElevenLabs is rate-limiting requests",

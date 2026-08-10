@@ -1961,3 +1961,20 @@
      canary (was boot+6h); a sentinel voice_watch (L2). No key material in any
      read/log/spoken path (grep-enforced). Tests:
      tests/test_voice_loud_fallback.py (+ updated test_voice). Suite 945.
+
+142. **EDITH VOICE — RESTORED + SCOPED-KEY CLASS (2026-08-10).** Rydel rotated
+     ELEVENLABS_API_KEY to a valid sk_ key; the CFOagent service restarted
+     cleanly (the boot canary re-ran and flipped health OK on its own).
+     VERIFIED END TO END (dashboard/VOICE_RESTORE.md): /v1/voices 200 with the
+     locked voice yj30vwTGJxSHezdAGsv9 present; a real TTS synth returned
+     7,777 bytes of valid MP3 in her voice (model eleven_flash_v2_5); the
+     17:42 live canary ok; feed/registry cleared to RUNNING. Nothing else was
+     broken behind the key — no voice_id/model/request/proxy fix needed.
+     ONE finding fixed this run: the new key is a SCOPED key (text_to_speech +
+     voices_read granted, user_read omitted), whose 401 missing_permissions
+     would have mis-classified as "auth → rotate the key" (thrashing a good
+     key). Added a `permission` class → fix is "grant the key Text-to-Speech
+     scope", never a rotation. Accepted limitation: the quota pre-warning
+     (needs user_read) won't fire for this scoped key — degrades gracefully;
+     credit exhaustion still caught loudly at synth time. Tests:
+     tests/test_voice_loud_fallback.py (scoped-key class). Suite 946.

@@ -50,6 +50,21 @@ def test_regression_captured_auth_body_classifies_with_owner_action():
     assert "Railway" in c["rydel_action"]
 
 
+def test_scoped_key_permission_class_not_auth():
+    """The 2026-08-10 restore exposed this: a VALID scoped key that 401s with
+    missing_permissions must classify as `permission` (fix = re-SCOPE), NOT
+    auth (fix = rotate) — telling Rydel to rotate a good key is thrashing."""
+    body = ('{"detail":{"type":"authentication_error","code":"unauthorized",'
+            '"message":"The API key you used is missing the permission '
+            'text_to_speech to execute this operation.","status":'
+            '"missing_permissions"}}')
+    c = vh.classify_failure(401, body)
+    assert c["cls"] == "permission"
+    assert "scope" in c["rydel_action"].lower() and "Text-to-Speech" in c["rydel_action"]
+    assert "without a rotation" in c["rydel_action"]     # the fix is re-scope, not rotate
+    assert "ELEVENLABS_API_KEY" not in c["rydel_action"]  # not the rotate-the-env-var step
+
+
 def test_classifier_all_classes():
     assert vh.classify_failure(401, "")["cls"] == "auth"
     assert vh.classify_failure(400, '{"detail":{"code":"voice_not_found"}}')["cls"] == "voice_id"
@@ -146,6 +161,7 @@ def test_salience_names_the_class_and_action():
 def test_every_failure_class_drills_loud():
     for status, body, ctx, want in [
         (401, "", None, "auth"),
+        (401, '{"detail":{"status":"missing_permissions"}}', None, "permission"),
         (400, '{"detail":{"code":"voice_not_found"}}', None, "voice_id"),
         (400, '{"detail":{"code":"model_not_found"}}', None, "model"),
         (429, "", None, "rate_limit"),
