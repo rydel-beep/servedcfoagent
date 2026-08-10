@@ -1294,6 +1294,11 @@ def compute(days: int = 30, start: str | None = None, end: str | None = None,
     if not contacts:
         degraded.append({"metric": "attribution", "reason": "attr_contacts empty — sync pending"})
     result["degraded"] = degraded
+    # #138: the honest clamp disclosure for THIS window's spend (a named API
+    # limit, not a red badge). Rides the result so board + dossier can render
+    # "Meta spend via API from {floor}; earlier from archive/pre-retention".
+    result["spend_clamp_note"] = spend.get("clamp_note")
+    result["spend_clamped_from"] = spend.get("clamped_from")
     result["ok"] = result["reconciliation"]["ok"] and not degraded
     # F6: epoch-superseded and TTL-dead entries are pruned on write (the epoch in
     # the key means old-epoch entries can never be served; don't let them pile up)

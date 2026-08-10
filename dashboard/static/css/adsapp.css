@@ -342,3 +342,7 @@ button.adx-deal-open { color: var(--accent, #7aa2ff); }
 .adx-disc-post textarea { flex: 1 1 260px; background: #10151f; color: var(--fg, #dfe6f2);
   border: 1px solid var(--line, #2a3448); border-radius: 6px; padding: 6px 8px;
   font-size: 12.5px; resize: vertical; }
+
+/* #138 — clamp disclosure: a NAMED API-retention limit, never a red badge */
+.adx-clamp-note { margin-top: 4px; font-size: 10.5px; color: var(--muted, #7b8598);
+  font-style: italic; border-left: 2px solid var(--line, #2a3448); padding-left: 6px; }

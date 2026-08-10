@@ -1176,21 +1176,26 @@
       .then(function (d) {
         if (!d || d.error) { $('#adx-drill-body').innerHTML = '<div class="adx-roster-note">' + esc((d && d.error) || 'fetch failed') + '</div>'; return; }
         var id = d.identity || {};
-        // F5: the dossier's money legs honour the same degradation contract
-        function dmoney(colKey, v) {
-          var dg = degradedEntryFor(colKey, d.degraded);
+        // #138: PER-LEG degradation scoping — each econ leg consults ITS OWN
+        // degraded list (e.degraded), so a failed all-time pull degrades only
+        // the all-time row while the window row stays live. A clamp truncation
+        // renders a NAMED note (not a red badge).
+        function dmoney(colKey, v, legDegraded) {
+          var dg = degradedEntryFor(colKey, legDegraded || []);
           return dg ? degradedChip(dg) : money(v);
         }
         function econRow(label, e) {
           if (!e) return '<div class="adx-dossier-econ"><strong>' + label + '</strong>: no leads in this scope (honest zero — not an error)</div>';
+          var ld = e.degraded || [];
           return '<div class="adx-dossier-econ"><strong>' + label + '</strong>: ' +
             'leads ' + num(e.leads) + ' · qual ' + num(e.qualified) + ' · reached ' + num(e.reached) +
             ' · sets ' + num(e.sets) + ' · shows ' + num(e.shows) + ' · closes ' + num(e.closes) +
-            ' · cash ' + money(e.cash) + ' · spend ' + dmoney('spend', e.spend) +
-            ' · CPL ' + dmoney('cost_per_lead', e.cost_per_lead) + ' · C/Qual ' + dmoney('cost_per_qualified', e.cost_per_qualified) +
-            ' · C/Set ' + dmoney('cost_per_set', e.cost_per_set) + ' · C/Close ' + dmoney('cost_per_close', e.cost_per_close) +
+            ' · cash ' + money(e.cash) + ' · spend ' + dmoney('spend', e.spend, ld) +
+            ' · CPL ' + dmoney('cost_per_lead', e.cost_per_lead, ld) + ' · C/Qual ' + dmoney('cost_per_qualified', e.cost_per_qualified, ld) +
+            ' · C/Set ' + dmoney('cost_per_set', e.cost_per_set, ld) + ' · C/Close ' + dmoney('cost_per_close', e.cost_per_close, ld) +
             (e.verdict ? ' · verdict ' + esc(e.verdict) : '') +
             (e.provisional ? ' <span class="adx-prov">' + esc(e.provisional.label || 'provisional') + '</span>' : '') +
+            (e.clamp_note ? '<div class="adx-clamp-note">' + esc(e.clamp_note) + '</div>' : '') +
             '</div>';
         }
         // the ledger arrives from THE roster engine (leads roster for this cell) —

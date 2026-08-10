@@ -1855,3 +1855,37 @@
      transition in the collab archive. Sentinel: queue lane watch + aged-
      growth alert in L2. Tests: tests/test_piolo_queue.py (13, incl. the
      witnessed failure re-run and both re-arm directions).
+
+138. **META RETENTION FIX — CLAMP, SCOPE, ARCHIVE (2026-08-10).** WITNESSED:
+     the creative dossier rendered spend/CPL/C-* DEGRADED across 60d AND
+     all-time because `meta_ad_spend_range` failed HTTP 400 #3018 ("start date
+     cannot be beyond 37 months") — the account's earliest data (~Jul 2023)
+     sits at Meta's rolling API boundary, so all-time/full-history requests were
+     rejected wholesale and coarse source-level propagation degraded even
+     retrievable windows. BOUNDARY pinned empirically (day-by-day probe, not
+     docs): the edge is EXACTLY calendar-37-months-before today_sydney and ROLLS
+     daily (2026-08-10 → 2023-07-10; 07-09 #3018s, 07-10 OK). THREE LAYERS:
+     (1.1) ONE range-builder `meta_range.py` for every insights call
+     (grep-asserted single call-site — 9 time_range sites routed; the 10th is
+     `date_preset=maximum` which carries no `since` and Meta self-clamps,
+     empirically verified non-#3018): CLAMP start=max(requested, api_floor),
+     api_floor = calendar_37mo(today_sydney)+3d margin computed FRESH per request
+     (never cached — the boundary rolls); SCOPE per-ad requests to the ad's
+     launch (an ad born 2026-07 never references 2023); CHUNK >90d ranges into
+     sequential requests merged deterministically, a failed chunk degrades ONLY
+     its own days; DISCLOSE a clamp via `clamped_from` → the UI reads "Meta spend
+     via API from {floor}; earlier from archive/pre-retention" (a NAMED limit,
+     never a red badge). (1.2) degraded[] entries carry (source, range, cause);
+     the dossier scopes per-leg — `econ_window` consults its own degraded,
+     `econ_all_time` its own — so a failed all-time pull leaves 60d cells LIVE
+     (the witnessed blunt-degrade cured). (1.3) the daily buckets are the
+     PERMANENT ARCHIVE: store-first + archive-authoritative (a day captured while
+     in-window is summed forever, even after Meta's window rolls past it);
+     backfill grows to the floor idempotently (source-stamped `captured`), the
+     nightly appends the front; pre-floor days with no archived capture render
+     "pre-API-retention" (named absence, never $0). F5 loudness for GENUINE
+     failures is UNTOUCHED (a non-#3018 chunk error still badges DEGRADED, no
+     fabricated $0). Sentinel: retention-heal (backfill to floor, journaled
+     failed-chunk retry) + archive-completeness (missing recent days >2 → hygiene)
+     join the nightly; F6 epoch bumps when the archive grows. Diagnosis:
+     dashboard/META_RETENTION_DIAGNOSIS.md.

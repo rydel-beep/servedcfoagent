@@ -175,6 +175,10 @@ def _lifetime_probe(ad_id: str, rec: dict, store_min: str | None) -> str | None:
     """One-time exact-launch probe: monthly lifetime sweep → daily zoom in the
     first active month → daily backfill up to the store edge. Returns error or None."""
     import meta_entities
+    # date_preset=maximum carries NO user `since` — Meta self-clamps it to the
+    # retrievable window, so it CANNOT raise #3018 (empirically verified: returns
+    # ~28 months, never the 37-month-boundary error). The time_range daily zoom
+    # below DOES carry a since, so it routes through the ONE builder (#138).
     j, err = meta_entities._get(f"{ad_id}/insights", {
         "access_token": _token(), "fields": "impressions,spend",
         "time_increment": "monthly", "date_preset": "maximum", "limit": 100})
@@ -189,13 +193,18 @@ def _lifetime_probe(ad_id: str, rec: dict, store_min: str | None) -> str | None:
         rec.pop("probe_error", None)
         return None
     first_month = months[0]
-    # daily backfill: first active month start → the store edge (exact day list;
-    # one paginated call — months of history fit one 500-row page)
+    # daily backfill: first active month start → the store edge (exact day list),
+    # routed through the ONE builder — the since clamps to the floor so an ad whose
+    # first active month predates retention never #3018s (#138).
+    import meta_range
     until = store_min or time.strftime("%Y-%m-%d")
-    rows, gerr = meta_entities._get_all(f"{ad_id}/insights", {
-        "access_token": _token(), "fields": "impressions,spend",
-        "time_increment": 1, "limit": 500,
-        "time_range": json.dumps({"since": first_month["date_start"], "until": until})})
+    _res = meta_range.insights(
+        f"{ad_id}/insights",
+        {"access_token": _token(), "fields": "impressions,spend",
+         "time_increment": 1, "limit": 500},
+        first_month["date_start"], until, meta_entities._get_all, source="launch_lineage")
+    rows = _res["rows"]
+    gerr = "; ".join(d["cause"] for d in _res["degraded"]) or None
     if gerr and not rows:
         rec["probe_error"] = gerr
         return gerr

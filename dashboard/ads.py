@@ -581,14 +581,20 @@ def dossier():
     except (ValueError, TypeError) as e:
         logger.info("lineage window note skipped: %s", e)
 
-    def econ(c):
+    def econ(c, src):
+        # #138: each econ leg carries ITS OWN spend degradation + clamp note, so a
+        # failed all-time pull degrades all-time cells while healthy window cells
+        # stay live (per-(source×range) scoping, not blunt source-global).
         if not c:
             return None
-        return {k: c.get(k) for k in
-                ("leads", "qualified", "reached", "sets", "shows", "closes", "cash",
-                 "spend", "cost_per_lead", "cost_per_qualified", "cost_per_set",
-                 "cost_per_close", "ltgp_cac", "verdict", "provisional",
-                 "earlier_closes", "undated_sets", "sets_src", "shows_src")}
+        d = {k: c.get(k) for k in
+             ("leads", "qualified", "reached", "sets", "shows", "closes", "cash",
+              "spend", "cost_per_lead", "cost_per_qualified", "cost_per_set",
+              "cost_per_close", "ltgp_cac", "verdict", "provisional",
+              "earlier_closes", "undated_sets", "sets_src", "shows_src")}
+        d["degraded"] = src.get("degraded") or []
+        d["clamp_note"] = src.get("spend_clamp_note")
+        return d
 
     # the lead ledger IS the roster engine's leads roster for this cell — the
     # dossier is a CONSUMER, not a second list (the old private join is deleted)
@@ -626,7 +632,7 @@ def dossier():
         "range_note": range_note,
         "window": result.get("window"), "basis": basis, "clock": basis,
         "market": result.get("market"), "market_note": result.get("market_note"),
-        "econ_window": econ(row), "econ_all_time": econ(row_all),
+        "econ_window": econ(row, result), "econ_all_time": econ(row_all, r_all),
         "min_n": result.get("min_n"),
         "ledger": ledger, "ledger_count": len(ledger),
         "ledger_i17": ledger_payload.get("i17"),

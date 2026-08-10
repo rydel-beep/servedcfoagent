@@ -171,14 +171,21 @@ def _save_store(store: dict) -> None:
         logger.info("meta spend kv mirror failed: %s", e)
 
 
-def backfill_history(since: str) -> dict:
-    """ONE-TIME account-level daily backfill to `since` — the canonical-spend
-    anchor must be store-served for Maximum/old boxes (a cold box paid a live
-    Meta call per compute otherwise). Idempotent once coverage reaches `since`."""
+def backfill_history(since: str | None = None) -> dict:
+    """Account-level daily backfill to the retention FLOOR (the archive grows at
+    the front as Meta's window rolls off the back — DECISIONS #138). `since`
+    defaults to the API floor; a caller may pass an earlier date but it clamps
+    (nothing before the floor is retrievable). Routed through the ONE builder →
+    #3018 impossible. Idempotent: days already archived are never re-fetched;
+    each captured day is source-stamped `captured` so archive-vs-API is legible.
+    A failed chunk degrades only its own days (loud, retryable) — not the run."""
     import datetime as _dt
+    import meta_range
     store = _load_store()
     if not META_ACCESS_TOKEN or not META_AD_ACCOUNT_ID:
         return {"error": "Meta not configured"}
+    floor = meta_range.api_floor()
+    s0 = max(_dt.date.fromisoformat(since), floor) if since else floor
     dates = []
     for ds in store:
         try:
@@ -186,36 +193,29 @@ def backfill_history(since: str) -> dict:
         except ValueError:
             pass
     oldest = min(dates) if dates else today_sydney()
-    s0 = _dt.date.fromisoformat(since)
     if oldest <= s0:
-        return {"fetched_days": 0, "note": "already covered"}
+        return {"fetched_days": 0, "note": "already covered to the floor",
+                "floor": str(floor)}
+    res = meta_range.insights(
+        f"{_account_id()}/insights",
+        {"fields": "spend,impressions,clicks", "level": "account",
+         "time_increment": 1, "limit": 500, "access_token": META_ACCESS_TOKEN},
+        str(s0), str(oldest - timedelta(days=1)), _graph_get_all,
+        source="meta_spend_account_backfill")
     fetched = 0
-    errs = []
-    cur_end = oldest - timedelta(days=1)
-    while cur_end >= s0:
-        cur_start = max(s0, cur_end - timedelta(days=364))
-        rows, err = _graph_get_all(f"{_account_id()}/insights", {
-            "fields": "spend,impressions,clicks", "level": "account",
-            "time_increment": 1, "limit": 500,
-            "time_range": json.dumps({"since": str(cur_start), "until": str(cur_end)}),
-            "access_token": META_ACCESS_TOKEN,
-        })
-        if rows is None:
-            errs.append(err)
-            break
-        for r in rows:
-            ds = r.get("date_start")
-            if ds and ds not in store:
-                store[ds] = {"spend": round(_f(r.get("spend")), 2),
-                             "impressions": int(_f(r.get("impressions"))),
-                             "clicks": int(_f(r.get("clicks"))),
-                             "last_fetched": str(today_sydney())}
-                fetched += 1
-        if err:
-            errs.append(err)
-        cur_end = cur_start - timedelta(days=1)
-    _save_store(store)
-    return {"fetched_days": fetched, "errors": errs[:3]}
+    stamp = str(today_sydney())
+    for r in res["rows"]:
+        ds = r.get("date_start")
+        if ds and ds not in store:
+            store[ds] = {"spend": round(_f(r.get("spend")), 2),
+                         "impressions": int(_f(r.get("impressions"))),
+                         "clicks": int(_f(r.get("clicks"))),
+                         "last_fetched": stamp, "captured": stamp}
+            fetched += 1
+    if fetched:
+        _save_store(store)
+    return {"fetched_days": fetched, "floor": str(floor),
+            "degraded_chunks": res["degraded"]}
 
 
 def _f(v) -> float:
@@ -226,61 +226,88 @@ def _f(v) -> float:
 
 
 def spend_in_range(start: str, end: str) -> dict:
-    """Meta ad spend for an arbitrary [start, end] window (ISO dates, inclusive).
+    """Meta ad spend for an arbitrary [start, end] window (ISO, inclusive).
 
-    Uses the persisted daily store when it fully covers the range (fast); otherwise
-    fetches that exact range live from Insights (one call). For the range-aware engine.
-    Returns {spend, days_covered, source, degraded}.
+    STORE-FIRST + ARCHIVE-AUTHORITATIVE (DECISIONS #138): the daily buckets are
+    the serving layer AND the permanent archive — a day we captured while it was
+    in-window is summed forever, even after Meta's 37-month API window rolls
+    past it. Only IN-WINDOW days the archive is still missing are fetched live,
+    via the ONE clamped/chunked builder (#3018 structurally impossible). A
+    request reaching before the API floor is DISCLOSED (clamped_from + note),
+    never rendered as the full period, never a red badge for a nameable limit.
+    Returns {spend, days_covered, source, degraded[(scoped)], clamped_from, note}.
     """
     import datetime as _dt
-    degraded = []
+    import meta_range
     try:
         s = _dt.date.fromisoformat(start)
         e = _dt.date.fromisoformat(end)
     except (TypeError, ValueError):
         return {"spend": None, "source": None,
-                "degraded": [{"metric": "meta_spend_range", "reason": "bad dates", "severity": "optional"}]}
+                "degraded": [{"metric": "meta_spend_range", "reason": "bad dates",
+                              "severity": "optional"}]}
 
     store = _load_store()
-    dates = []
-    for ds in store:
+    sd: dict = {}
+    for ds, row in store.items():
         try:
-            dates.append(_dt.date.fromisoformat(ds))
+            _dt.date.fromisoformat(ds)
         except ValueError:
-            pass
-    covers = dates and min(dates) <= s and max(dates) >= e
-    if covers:
-        total = 0.0
-        n = 0
-        for ds, row in store.items():
-            try:
-                d = _dt.date.fromisoformat(ds)
-            except ValueError:
-                continue
-            if s <= d <= e:
-                total += _f(row.get("spend"))
-                n += 1
-        return {"spend": round(total, 2), "days_covered": n, "source": "meta_daily_store",
-                "degraded": degraded}
+            continue
+        sd[ds] = _f(row.get("spend"))
 
-    # Out of the store's coverage → fetch this exact range live (one Insights call).
-    if not META_ACCESS_TOKEN or not META_AD_ACCOUNT_ID:
-        return {"spend": None, "source": None,
-                "degraded": [{"metric": "meta_spend_range",
-                              "reason": "range outside daily store and no Meta key", "severity": "optional"}]}
-    acct = _account_id()
-    rows, err = _graph_get_all(f"{acct}/insights", {
-        "fields": "spend", "level": "account", "time_increment": 1, "limit": 90,
-        "time_range": json.dumps({"since": start, "until": end}),
-        "access_token": META_ACCESS_TOKEN,
-    })
-    if rows is None:
-        return {"spend": None, "source": "meta_live_range",
-                "degraded": [{"metric": "meta_spend_range",
-                              "reason": f"live range fetch failed ({err})", "severity": "optional"}]}
-    total = sum(_f(r.get("spend")) for r in rows)
-    return {"spend": round(total, 2), "days_covered": len(rows), "source": "meta_live_range",
-            "degraded": degraded}
+    floor = meta_range.api_floor()
+    end_c = min(e, today_sydney())
+    # 1) sum what the ARCHIVE holds in-request (authoritative — incl. days now
+    #    past Meta's API floor that we captured earlier).
+    total = 0.0
+    covered: set = set()
+    d = s
+    while d <= end_c:
+        ds = str(d)
+        if ds in sd:
+            total += sd[ds]
+            covered.add(ds)
+        d += timedelta(days=1)
+
+    degraded: list = []
+    clamped_from = None
+    fetched = 0
+    # 2) fetch only the IN-WINDOW days the archive is still missing (via the builder).
+    win_start = max(s, floor)
+    if META_ACCESS_TOKEN and META_AD_ACCOUNT_ID and win_start <= end_c:
+        missing = []
+        d = win_start
+        while d <= end_c:
+            if str(d) not in sd:
+                missing.append(d)
+            d += timedelta(days=1)
+        if missing:
+            res = meta_range.insights(
+                f"{_account_id()}/insights",
+                {"fields": "spend", "level": "account", "time_increment": 1,
+                 "limit": 400, "access_token": META_ACCESS_TOKEN},
+                str(min(missing)), str(max(missing)), _graph_get_all,
+                source="meta_spend_account")
+            for r in res["rows"]:
+                ds = r.get("date_start")
+                if ds and ds not in covered and s <= _dt.date.fromisoformat(ds) <= end_c:
+                    total += _f(r.get("spend"))
+                    covered.add(ds)
+                    fetched += 1
+            for dg in res["degraded"]:
+                degraded.append({"metric": "meta_spend_range", "source": dg["source"],
+                                 "range": dg["range"], "reason": dg["cause"],
+                                 "severity": "optional"})
+            if res.get("clamped_from"):
+                clamped_from = res["clamped_from"]
+    # 3) pre-retention disclosure — the request reached before the API floor.
+    if s < floor:
+        clamped_from = clamped_from or start
+    note = meta_range.clamp_note(clamped_from, str(floor)) if clamped_from else None
+    source = "meta_daily_store" + ("+live" if fetched else "")
+    return {"spend": round(total, 2), "days_covered": len(covered), "source": source,
+            "degraded": degraded, "clamped_from": clamped_from, "clamp_note": note}
 
 
 def _window_sum(store: dict, today, days: int) -> dict:
@@ -342,16 +369,19 @@ def pull_meta_spend() -> dict:
         currency = acct_json.get("currency")
         tz_name = acct_json.get("timezone_name")
 
-    # Daily insights series (time_increment=1 → per-day rows). PAGINATED — Meta
-    # returns ~25 days/page oldest-first; we follow the cursor for the full range.
-    ins_rows, ins_err = _graph_get_all(f"{acct}/insights", {
-        "fields": "spend,impressions,clicks",
-        "level": "account",
-        "time_increment": 1,
-        "limit": 90,
-        "time_range": json.dumps({"since": str(since), "until": str(today)}),
-        "access_token": token,
-    })
+    # Daily insights series (time_increment=1 → per-day rows) via the ONE builder
+    # (#138): trailing 90d is always in-window so the clamp is a no-op here, but
+    # routing it keeps the single-call-site invariant (grep-asserted).
+    import meta_range
+    _res = meta_range.insights(
+        f"{acct}/insights",
+        {"fields": "spend,impressions,clicks", "level": "account",
+         "time_increment": 1, "limit": 90, "access_token": token},
+        str(since), str(today), _graph_get_all, source="meta_spend_account_series")
+    ins_rows = _res["rows"]
+    ins_err = ("; ".join(d["cause"] for d in _res["degraded"]) or None)
+    if _res["degraded"] and not ins_rows:
+        ins_rows = None            # total failure → last-good store path below
 
     store = _load_store()
 

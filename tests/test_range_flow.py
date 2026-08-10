@@ -102,8 +102,10 @@ def test_backfill_history_idempotent_once_covered(monkeypatch, tmp_path):
     def boom(*a, **k):
         raise AssertionError("covered history must not refetch")
     monkeypatch.setattr(ME, "_get_all", boom)
+    # #138: history_since 2026-01-01 already reaches past the API floor, so a
+    # backfill to 2026-01-01 (or the default floor) fetches nothing — idempotent.
     out = ME.backfill_history("2026-01-01")
-    assert out["fetched_days"] == 0 and out["note"] == "already covered"
+    assert out["fetched_days"] == 0 and "already covered" in out["note"]
 
 
 # ── frontend: the dim is dead; loading is per-cell and honest ────────────────

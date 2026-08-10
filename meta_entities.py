@@ -307,19 +307,24 @@ def recover_by_name(name: str) -> dict | None:
     miss_ts = misses.get(key)
     if miss_ts and time.time() - float(miss_ts) < _NAME_MISS_TTL_S:
         return None
+    import meta_range
     today = today_sydney()
+    floor = meta_range.api_floor(today)
     hits = {}
     for years_back in range(0, 3):     # sweep up to 3 yearly chunks of insights history
         until = date(today.year - years_back, 12, 31)
         since = date(today.year - years_back, 1, 1)
         if until > today:
             until = today
-        rows, _err = _get_all(f"{_account_id()}/insights", {
-            "access_token": META_ACCESS_TOKEN, "level": "ad",
-            "fields": "ad_id,ad_name", "limit": 500,
-            "time_range": json.dumps({"since": str(since), "until": str(until)}),
-        })
-        for r in rows:
+        if until < floor:              # the whole year is past the API floor — stop
+            break                      # (the oldest year is exactly what #3018'd here)
+        # the builder clamps `since` to the floor so the oldest in-range year never #3018s
+        res = meta_range.insights(
+            f"{_account_id()}/insights",
+            {"access_token": META_ACCESS_TOKEN, "level": "ad",
+             "fields": "ad_id,ad_name", "limit": 500},
+            str(since), str(until), _get_all, source="meta_name_recovery")
+        for r in res["rows"]:
             if norm_name(r.get("ad_name")) == key:
                 hits[r["ad_id"]] = r.get("ad_name")
         if hits:
@@ -424,12 +429,17 @@ def _refresh_ad_spend_sync() -> dict:
         since = today - timedelta(days=_BACKFILL_DAYS - 1)
     else:
         since = today - timedelta(days=_SERIES_DAYS - 1)
-    rows, err = _get_all(f"{_account_id()}/insights", {
-        "access_token": META_ACCESS_TOKEN, "level": "ad",
-        "fields": "ad_id,ad_name,spend,impressions,clicks",
-        "time_increment": 1, "limit": 500,
-        "time_range": json.dumps({"since": str(since), "until": str(today)}),
-    })
+    import meta_range
+    _res = meta_range.insights(
+        f"{_account_id()}/insights",
+        {"access_token": META_ACCESS_TOKEN, "level": "ad",
+         "fields": "ad_id,ad_name,spend,impressions,clicks",
+         "time_increment": 1, "limit": 500},
+        str(since), str(today), _get_all, source="meta_ad_spend")
+    rows = _res["rows"]
+    err = "; ".join(d["cause"] for d in _res["degraded"]) or None
+    if _res["degraded"] and not rows:
+        rows = None
     degraded = [{"metric": "meta_ad_spend", "reason": err}] if err else []
     if rows or not err:
         # wipe the refetched window first: an ad with $0 today must not keep yesterday's row
@@ -467,58 +477,58 @@ def _refresh_ad_spend_sync() -> dict:
     return store
 
 
-def backfill_history(since: str) -> dict:
-    """ONE-TIME full-history backfill of the daily buckets back to `since`
-    (Sydney days) — Maximum and old custom boxes must be store-served, never a
-    live Meta call on the interactive path. Fills only days OLDER than the
-    store's current oldest, in ~180-day chunks; idempotent (once history_since
-    <= since, re-runs fetch nothing). Closed days are stable — backfilled once,
-    they never refetch."""
+def backfill_history(since: str | None = None) -> dict:
+    """Per-ad daily backfill to the retention FLOOR — the permanent archive
+    (#138). `since` defaults to the API floor; earlier is clamped (nothing before
+    the floor is retrievable). Routed through the ONE builder (chunked, #3018
+    impossible); a failed chunk degrades only its own days. Idempotent — a day
+    already in the archive is never re-fetched; captured days are source-stamped
+    at the store level (`captured_since`). Closed days are stable."""
+    import meta_range
     store = _load_spend_store()
     days = store.get("days") or {}
     if not configured():
         return {"error": "Meta not configured"}
-    if store.get("history_since") and str(store["history_since"]) <= since:
-        return {"fetched_days": 0, "note": "already covered", "chunks": 0,
-                "history_since": store["history_since"]}
+    floor = meta_range.api_floor()
+    s0 = max(date.fromisoformat(since), floor) if since else floor
+    if store.get("history_since") and date.fromisoformat(str(store["history_since"])) <= s0:
+        return {"fetched_days": 0, "note": "already covered to the floor",
+                "floor": str(floor), "history_since": store["history_since"]}
     have = sorted(days.keys())
     oldest = date.fromisoformat(have[0]) if have else today_sydney()
-    s0 = date.fromisoformat(since)
-    fetched = chunks = 0
-    errs = []
-    cur_end = oldest - timedelta(days=1)
-    while cur_end >= s0:
-        # 59-day chunks: a 180-day level=ad page exceeded the 10s read timeout
-        cur_start = max(s0, cur_end - timedelta(days=59))
-        rows, err = _get_all(f"{_account_id()}/insights", {
-            "access_token": META_ACCESS_TOKEN, "level": "ad",
-            "fields": "ad_id,ad_name,spend,impressions,clicks",
-            "time_increment": 1, "limit": 500,
-            "time_range": json.dumps({"since": str(cur_start), "until": str(cur_end)}),
-        })
-        chunks += 1
-        if err:
-            errs.append(err)
-            if rows is None or not rows:
-                break                      # partial history is worse than honest absence
-        for r in rows or []:
-            ds, aid = r.get("date_start"), r.get("ad_id")
-            if not ds or not aid or ds in days and aid in (days.get(ds) or {}):
-                continue
-            days.setdefault(ds, {})[aid] = {
-                "name": r.get("ad_name") or "",
-                "spend": float(r.get("spend") or 0),
-                "impressions": int(float(r.get("impressions") or 0)),
-                "clicks": int(float(r.get("clicks") or 0)),
-            }
-            fetched += 1
-        cur_end = cur_start - timedelta(days=1)
+    if oldest <= s0:
+        store["history_since"] = str(s0)
+        _save_spend_store(store)
+        return {"fetched_days": 0, "note": "store already reaches the floor",
+                "floor": str(floor)}
+    res = meta_range.insights(
+        f"{_account_id()}/insights",
+        {"access_token": META_ACCESS_TOKEN, "level": "ad",
+         "fields": "ad_id,ad_name,spend,impressions,clicks",
+         "time_increment": 1, "limit": 500},
+        str(s0), str(oldest - timedelta(days=1)), _get_all,
+        source="meta_ad_spend_backfill")
+    fetched = 0
+    stamp = str(today_sydney())
+    for r in res["rows"]:
+        ds, aid = r.get("date_start"), r.get("ad_id")
+        if not ds or not aid or (ds in days and aid in (days.get(ds) or {})):
+            continue
+        days.setdefault(ds, {})[aid] = {
+            "name": r.get("ad_name") or "",
+            "spend": float(r.get("spend") or 0),
+            "impressions": int(float(r.get("impressions") or 0)),
+            "clicks": int(float(r.get("clicks") or 0)),
+            "captured": stamp,
+        }
+        fetched += 1
     store["days"] = days
-    if not errs:
-        store["history_since"] = since
+    if not res["degraded"]:                 # only claim coverage when every chunk landed
+        store["history_since"] = str(s0)
     _save_spend_store(store)
-    return {"fetched_days": fetched, "chunks": chunks,
-            "history_since": store.get("history_since"), "errors": errs[:3]}
+    return {"fetched_days": fetched, "floor": str(floor),
+            "history_since": store.get("history_since"),
+            "degraded_chunks": res["degraded"]}
 
 
 def spend_by_ad_in_range(start: str, end: str) -> dict:
@@ -539,46 +549,68 @@ def spend_by_ad_in_range(start: str, end: str) -> dict:
             ds_dates.append(date.fromisoformat(ds))
         except ValueError:
             pass
-    if ds_dates and min(ds_dates) <= s and max(ds_dates) >= e:
-        out: dict = {}
-        for ds, ads in days.items():
-            try:
-                d = date.fromisoformat(ds)
-            except ValueError:
-                continue
-            if not (s <= d <= e):
-                continue
-            for aid, row in ads.items():
-                agg = out.setdefault(aid, {"name": row.get("name") or "", "spend": 0.0,
-                                           "impressions": 0, "clicks": 0})
-                agg["spend"] += float(row.get("spend") or 0)
-                agg["impressions"] += int(row.get("impressions") or 0)
-                agg["clicks"] += int(row.get("clicks") or 0)
-                if row.get("name"):
-                    agg["name"] = row["name"]     # newest name wins (renames)
-        for a in out.values():
-            a["spend"] = round(a["spend"], 2)
-        return {"ads": out, "source": "meta_ad_daily_store", "degraded": []}
-    if not configured():
-        return {"ads": {}, "source": None,
-                "degraded": [{"metric": "meta_ad_spend_range",
-                              "reason": "range outside store and no Meta key"}]}
-    rows, err = _get_all(f"{_account_id()}/insights", {
-        "access_token": META_ACCESS_TOKEN, "level": "ad",
-        "fields": "ad_id,ad_name,spend,impressions,clicks", "limit": 500,
-        "time_range": json.dumps({"since": start, "until": end}),
-    })
-    out = {}
-    for r in rows:
-        aid = r.get("ad_id")
-        if not aid:
+    # STORE-FIRST + ARCHIVE-AUTHORITATIVE (#138): sum every archived day in the
+    # request (incl. days now past Meta's API floor we captured earlier), then
+    # fetch only the IN-WINDOW days the archive is still missing via the ONE
+    # builder (#3018 impossible; a failed chunk degrades only its own days).
+    import meta_range
+    end_c = min(e, today_sydney())
+    floor = meta_range.api_floor()
+    out: dict = {}
+    covered: set = set()
+
+    def _add(aid, row):
+        agg = out.setdefault(aid, {"name": row.get("name") or "", "spend": 0.0,
+                                   "impressions": 0, "clicks": 0})
+        agg["spend"] += float(row.get("spend") or 0)
+        agg["impressions"] += int(float(row.get("impressions") or 0))
+        agg["clicks"] += int(float(row.get("clicks") or 0))
+        if row.get("name"):
+            agg["name"] = row["name"]     # newest name wins (renames)
+
+    for ds, ads in days.items():
+        try:
+            d = date.fromisoformat(ds)
+        except ValueError:
             continue
-        out[aid] = {"name": r.get("ad_name") or "",
-                    "spend": round(float(r.get("spend") or 0), 2),
-                    "impressions": int(float(r.get("impressions") or 0)),
-                    "clicks": int(float(r.get("clicks") or 0))}
-    return {"ads": out, "source": "meta_live_range",
-            "degraded": [{"metric": "meta_ad_spend_range", "reason": err}] if err else []}
+        if s <= d <= end_c:
+            covered.add(ds)
+            for aid, row in ads.items():
+                _add(aid, row)
+
+    degraded: list = []
+    clamped_from = None
+    win_start = max(s, floor)
+    if configured() and win_start <= end_c:
+        missing = []
+        d = win_start
+        while d <= end_c:
+            if str(d) not in days:
+                missing.append(d)
+            d += timedelta(days=1)
+        if missing:
+            res = meta_range.insights(
+                f"{_account_id()}/insights",
+                {"access_token": META_ACCESS_TOKEN, "level": "ad",
+                 "fields": "ad_id,ad_name,spend,impressions,clicks", "limit": 500},
+                str(min(missing)), str(max(missing)), _get_all, source="meta_ad_spend_range")
+            for r in res["rows"]:
+                aid = r.get("ad_id")
+                rds = r.get("date_start")
+                if aid and rds and rds not in covered:
+                    _add(aid, r)
+            for dg in res["degraded"]:
+                degraded.append({"metric": "meta_ad_spend_range", "source": dg["source"],
+                                 "range": dg["range"], "reason": dg["cause"]})
+            if res.get("clamped_from"):
+                clamped_from = res["clamped_from"]
+    if s < floor:
+        clamped_from = clamped_from or start
+    for a in out.values():
+        a["spend"] = round(a["spend"], 2)
+    return {"ads": out, "source": "meta_ad_daily_store", "degraded": degraded,
+            "clamped_from": clamped_from,
+            "clamp_note": meta_range.clamp_note(clamped_from, str(floor)) if clamped_from else None}
 
 
 def reconcile_spend(start: str, end: str, tolerance_pct: float = 1.0) -> dict:

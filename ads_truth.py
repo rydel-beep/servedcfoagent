@@ -845,10 +845,14 @@ def bucket_drift_check(out: dict, sample_ads: int = 2, days_per_ad: int = 5) -> 
         for aid in picks:
             days = sorted(random.sample(candidates[aid],
                                         min(days_per_ad, len(candidates[aid]))))
-            rows, err = meta_entities._get_all(f"{aid}/insights", {
-                "access_token": __import__("config").META_ACCESS_TOKEN,
-                "fields": "spend,impressions", "time_increment": 1, "limit": 500,
-                "time_range": _json.dumps({"since": days[0], "until": days[-1]})})
+            import meta_range
+            _r = meta_range.insights(
+                f"{aid}/insights",
+                {"access_token": __import__("config").META_ACCESS_TOKEN,
+                 "fields": "spend,impressions", "time_increment": 1, "limit": 500},
+                days[0], days[-1], meta_entities._get_all, source="bucket_drift")
+            rows = _r["rows"]
+            err = "; ".join(d["cause"] for d in _r["degraded"]) or None
             if err and not rows:
                 out.setdefault("bucket_drift_errors", []).append(err)
                 continue
@@ -973,6 +977,53 @@ def preview_rot_check(out: dict) -> None:
         kv_store.put("preview:rot_prev", {"count": rot, "date": out.get("date")})
     except Exception as e:
         out["preview_rot"] = {"error": str(e)[:80]}
+
+
+def retention_archive_check(out: dict) -> None:
+    """#138 sentinel: (a) RETENTION HEAL — grow the permanent archive to today's
+    rolling API floor (idempotent; a failed chunk is journaled, retried next
+    night) so history captured while in-window survives Meta's window rolling
+    off. (b) ARCHIVE-COMPLETENESS — missing recent days (>2) in the daily
+    buckets is a HYGIENE item (the front of the archive should always be
+    current). Never raises."""
+    try:
+        import datetime as _dt
+        import meta_spend
+        import meta_entities
+        import meta_range
+        from helpers import today_sydney
+        t = today_sydney()
+        floor = str(meta_range.api_floor(t))
+        healed = {}
+        # (a) heal: extend account + per-ad archives to the floor (idempotent)
+        acct_bf = meta_spend.backfill_history()          # defaults to the floor
+        ad_bf = meta_entities.backfill_history()
+        healed = {"account_days": acct_bf.get("fetched_days"),
+                  "ad_days": ad_bf.get("fetched_days"), "floor": floor}
+        for bf, lbl in ((acct_bf, "account"), (ad_bf, "per-ad")):
+            for dg in (bf.get("degraded_chunks") or []):
+                out["disagreements"].append({
+                    "kind": "retention_heal",
+                    "cause": (f"archive backfill chunk failed ({lbl}) {dg['range']}: "
+                              f"{dg['cause'][:80]} — retries next sweep"),
+                    "where": "meta daily archive"})
+        if healed["account_days"] or healed["ad_days"]:
+            import resolution
+            resolution.bump_derived_epoch("retention archive grew (#138)")   # F6
+        # (b) completeness: recent days present in the account bucket store?
+        store_days = set((meta_spend._load_store() or {}).keys())
+        missing_recent = [str(t - _dt.timedelta(days=i)) for i in range(2, 8)
+                          if str(t - _dt.timedelta(days=i)) not in store_days]
+        out["retention_archive"] = {**healed, "missing_recent": missing_recent}
+        if len(missing_recent) > 2:
+            out["disagreements"].append({
+                "kind": "archive_completeness",
+                "cause": (f"{len(missing_recent)} recent day(s) absent from the spend "
+                          f"archive ({', '.join(missing_recent[:4])}) — the daily "
+                          f"append isn't keeping the archive front current"),
+                "where": "meta_spend_daily coverage"})
+    except Exception as e:
+        out["retention_archive"] = {"error": str(e)[:80]}
 
 
 # ── THE NIGHTLY SWEEP ────────────────────────────────────────────────────────
@@ -1101,6 +1152,7 @@ def integrity_sweep() -> dict:
     bucket_drift_check(out)
     discussion_volume_check(out)
     preview_rot_check(out)
+    retention_archive_check(out)
     out["name_recovery"] = name_recovery_pass()
 
     # NEW cause classes → auto-file a PROPOSED regression-test skeleton

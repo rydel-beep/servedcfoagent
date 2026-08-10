@@ -74,7 +74,8 @@ Stripe charges (read-only) ──┘    + invariants + reconciliation)
 |---|---|
 | GHL | contacts/appointments/conversations readable; payments/invoices 401 (no rung) |
 | Stripe | read-only rk_ key; partial pulls marked LOUD (F9) |
-| Meta | entities + spend live; a dead token renders DEGRADED, never $0 (F5) |
+| Meta | entities + spend live; a dead token renders DEGRADED, never $0 (F5). ALL insights calls route through the ONE `meta_range` builder — clamped to the rolling 37-month API floor (#3018 impossible), per-ad-scoped, chunked, clamp-disclosed (#138). |
+| Meta spend ARCHIVE | the daily buckets (`meta_ad_spend_daily`/`meta_spend_daily`, kv-mirrored) are AUTHORITATIVE for days the API can no longer serve — a day captured while in-window (source-stamped `captured`) is summed forever as Meta's 37-month window rolls off the back. Days before the earliest capture render "pre-API-retention" (named absence, never $0). Nightly retention-heal grows the archive to the floor; archive-completeness watches the front (#138). |
 | Xero | report scopes only; Invoices 401 — re-consent pending on Rydel (queued) |
 | Postgres | kv_store + mirrors + attr_contacts; Railway-internal (probe via `railway ssh`) |
 
