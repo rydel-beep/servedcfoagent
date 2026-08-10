@@ -4266,7 +4266,7 @@
     { n: 1, title: 'Am I safe', sub: 'Cash, runway, burn',
       ids: ['section-cash-position', 'section-bas', 'section-forecast-cash', 'section-forward'] },
     { n: 3, title: 'What needs action', sub: 'Alerts, data quality, follow-ups',
-      ids: ['section-action-feed', 'section-collab-queue', 'section-collab-log', 'section-actions',
+      ids: ['section-action-feed', 'section-ops-cards', 'section-actions',
             'section-verdicts', 'section-deficiency', 'section-dq-loss', 'section-churn',
             'section-stripe-health', 'section-reconciliation', 'section-quality'] },
     { n: 2, title: 'Is the machine working', sub: 'MRR, unit economics, funnel, capacity',
@@ -4496,6 +4496,43 @@
   async function loadActor() {
     try { var r = await fetch('/dashboard/api/whoami'); if (r.ok) _actor = await r.json(); } catch (e) {}
     var who = $('#collab-log-who'); if (who) who.textContent = 'signed in as ' + (_actor.display || _actor.user);
+  }
+
+  // FINANCE IA (2026-08-10): the two SUMMARY CARDS — live counts from
+  // /api/ops-summary, which reads the SAME generators the full pages use
+  // (one engine; card == page by construction). Zero counts render calm.
+  async function renderOpsCards() {
+    try {
+      var r = await fetch('/dashboard/api/ops-summary');
+      if (!r.ok) return;
+      var d = await r.json();
+      var wl = d.worklog || {}, bk = d.bookkeeping || {};
+      var wlNums = $('#ops-worklog-nums');
+      if (wlNums) {
+        wlNums.innerHTML = wl.active
+          ? '<strong>' + wl.active + ' awaiting an answer</strong>' +
+            (wl.overdue ? ' · <span class="ops-overdue">' + wl.overdue + ' overdue</span>' : '')
+          : '<span class="ops-clear">all answered — clear</span>';
+        var urg = $('#ops-worklog-urgent');
+        if (urg) {
+          urg.textContent = wl.most_urgent
+            ? (wl.most_urgent.kind + ' · ' + wl.most_urgent.author + ': “' +
+               wl.most_urgent.body + '”' +
+               (wl.most_urgent.age_days != null ? ' (' + wl.most_urgent.age_days + 'd)' : ''))
+            : (wl.completed ? wl.completed + ' completed entries in the archive' : '');
+        }
+      }
+      var bkNums = $('#ops-bk-nums');
+      if (bkNums) {
+        bkNums.innerHTML = bk.active
+          ? '<strong>' + bk.active + ' to action</strong>' +
+            (bk.aged ? ' · <span class="ops-aged">' + bk.aged + ' aged</span>' : '')
+          : '<span class="ops-clear">queue clear</span>' +
+            (bk.aged ? ' · <span class="ops-aged">' + bk.aged + ' aged</span>' : '');
+        var sub = $('#ops-bk-sub');
+        if (sub) sub.textContent = bk.done ? bk.done + ' done (suppressed until state changes)' : '';
+      }
+    } catch (e) { /* cards keep their skeletons; the pages remain reachable */ }
   }
 
   // QUEUE FIX 2026-08-10: three lanes. ACTIVE = the queue (and the only count);
@@ -4826,8 +4863,9 @@
     renderBas();             // Zone 1 — BAS & tax set-aside (estimates, labelled)
     renderForecast();        // Zone 1 cash + Zone 4 MRR projections
     loadActor();             // who's signed in (Rydel / Piolo)
-    renderCollabQueue();     // Zone 3 — bookkeeping queue with the verification loop
-    renderWorkLog();         // Zone 3 — the shared work log
+    renderOpsCards();        // Zone 3 — worklog + bookkeeping SUMMARY cards
+                             // (the full lists live on /dashboard/worklog and
+                             //  /dashboard/bookkeeping — finance IA 2026-08-10)
     renderCapital();         // The deciding layer — idle-cash bleed + allocation ritual
     if (hadSnap) _setUpdating(false);
     if (historyData && historyData.length > 1) {

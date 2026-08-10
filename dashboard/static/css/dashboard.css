@@ -2905,3 +2905,22 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .cq-lane-reason { font-size: .7rem; color: var(--amber); margin: .15rem 0; }
 .cq-restore, .cq-undismiss { margin-top: .25rem; }
 .cq-mat { color: var(--green); font-weight: 700; cursor: help; }
+
+/* ── FINANCE IA (2026-08-10): ops summary cards + page chrome ── */
+.ops-card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+@media (max-width: 700px) { .ops-card-grid { grid-template-columns: 1fr; } }
+.ops-card { display: block; border: 1px solid var(--border); border-radius: 10px;
+  padding: .8rem 1rem; text-decoration: none; color: var(--text);
+  background: rgba(255,255,255,0.02); transition: border-color .15s; }
+.ops-card:hover { border-color: var(--amber); }
+.ops-card-title { font-weight: 600; font-size: .85rem; margin-bottom: .3rem; }
+.ops-card-nums { font-size: .9rem; margin-bottom: .25rem; }
+.ops-card-urgent { font-size: .72rem; color: var(--muted); min-height: 1em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ops-card-go { font-size: .7rem; color: var(--amber); margin-top: .35rem; }
+.ops-overdue { color: var(--red); font-weight: 600; }
+.ops-aged { color: var(--muted); }
+.ops-clear { color: var(--green); }
+.ops-back { color: var(--muted); text-decoration: none; font-size: .8rem;
+  margin-right: 1rem; }
+.ops-back:hover { color: var(--text); }

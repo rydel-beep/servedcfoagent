@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Work Log — Served CFO</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/dashboard/static/css/dashboard.css">
+</head>
+<body>
+<header class="header">
+  <div class="header-left">
+    <a href="/dashboard/" class="ops-back" title="Back to dashboard">← Dashboard</a>
+    <h1 class="wordmark" style="font-size:1.1rem">Work Log</h1>
+    <span class="wordmark-sub" id="wl-who"></span>
+  </div>
+</header>
+<main class="main" style="max-width:860px;margin:0 auto;padding:1rem">
+  <section class="panel">
+    <div class="panel-header">
+      <h2 class="panel-title">Active <span class="panel-badge" id="wl-active-badge"></span></h2>
+      <span class="panel-sub">raises awaiting an answer — oldest &amp; overdue first</span>
+    </div>
+    <div class="collab-compose">
+      <select id="collab-kind" aria-label="Entry type">
+        <option value="done">Done</option><option value="concern">Concern</option>
+        <option value="question">Question</option><option value="suggestion">Suggestion</option>
+      </select>
+      <input id="collab-body" type="text" placeholder="What did you do, notice, or want to raise?" autocomplete="off">
+      <button id="collab-post" type="button">Post</button>
+    </div>
+    <div id="wl-status" class="collab-status" role="status" aria-live="polite"></div>
+    <div id="wl-active"><div class="skeleton skeleton-text"></div></div>
+  </section>
+  <section class="panel">
+    <button class="cq-toggle" id="wl-completed-toggle">▸ Show completed (…)</button>
+    <div id="wl-completed" style="display:none"></div>
+  </section>
+</main>
+<script>
+(function () {
+  'use strict';
+  var $ = function (s) { return document.querySelector(s); };
+  function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+  var showCompleted = /[?&]show=completed/.test(location.search);
+
+  function entryHtml(e, active) {
+    var over = e.overdue ? ' <span class="wl-overdue">overdue ' + e.age_days + 'd</span>' : '';
+    var replies = (e.replies || []).map(function (r) {
+      return '<div class="cl-entry cl-reply"><div class="cl-meta"><span class="cl-who">' + esc(r.author) +
+        '</span></div><div class="cl-body">' + esc(r.body) + '</div></div>';
+    }).join('');
+    return '<div class="cl-entry cl-' + esc(e.kind) + '"><div class="cl-meta">' +
+      '<span class="cl-kind">' + esc(e.kind) + '</span><span class="cl-who">' + esc(e.author) + '</span>' +
+      '<span class="cl-time">' + esc(String(e.created_at || '').slice(0, 16).replace('T', ' ')) + '</span>' + over + '</div>' +
+      '<div class="cl-body">' + esc(e.body) + '</div>' + replies + '</div>';
+  }
+
+  async function load() {
+    var r = await fetch('/dashboard/api/worklog');
+    if (r.status === 401) { location.href = '/dashboard/login'; return; }
+    if (!r.ok) { $('#wl-active').innerHTML = '<div class="cq-empty">Couldn’t load the log.</div>'; return; }
+    var d = await r.json();
+    $('#wl-active-badge').textContent = d.counts.active +
+      (d.counts.overdue ? ' · ' + d.counts.overdue + ' overdue' : '');
+    $('#wl-active').innerHTML = d.active.length
+      ? d.active.map(function (e) { return entryHtml(e, true); }).join('')
+      : '<div class="cq-empty">Nothing awaiting an answer — all clear.</div>';
+    var t = $('#wl-completed-toggle');
+    t.textContent = (showCompleted ? '▾' : '▸') + ' Show completed (' + d.counts.completed + ')';
+    $('#wl-completed').style.display = showCompleted ? '' : 'none';
+    if (showCompleted) {
+      $('#wl-completed').innerHTML = d.completed.length
+        ? d.completed.map(function (e) { return entryHtml(e, false); }).join('')
+        : '<div class="cq-empty">No completed entries yet.</div>';
+    }
+  }
+
+  $('#wl-completed-toggle').addEventListener('click', function () {
+    showCompleted = !showCompleted;
+    try { history.replaceState(null, '', showCompleted ? '?show=completed' : location.pathname); } catch (e) {}
+    load();
+  });
+  $('#collab-post').addEventListener('click', async function () {
+    var body = ($('#collab-body').value || '').trim();
+    if (!body) return;
+    var resp = await fetch('/dashboard/api/collab/log', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: $('#collab-kind').value, body: body }) });
+    $('#wl-status').textContent = resp.ok ? 'Posted ✓' : 'Post failed — try again.';
+    if (resp.ok) { $('#collab-body').value = ''; load(); }
+  });
+  fetch('/dashboard/api/whoami').then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (w) { if (w) $('#wl-who').textContent = 'signed in as ' + (w.display || w.user); });
+  load();
+})();
+</script>
+</body>
+</html>

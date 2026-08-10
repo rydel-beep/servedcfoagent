@@ -1889,3 +1889,24 @@
      failed-chunk retry) + archive-completeness (missing recent days >2 → hygiene)
      join the nightly; F6 epoch bumps when the archive grows. Diagnosis:
      dashboard/META_RETENTION_DIAGNOSIS.md.
+
+139. **FINANCE DASHBOARD IA — SUMMARIZE, DON'T DUMP (2026-08-10).**
+     The dashboard's two heavy operational lists (Work log — dominated by
+     completed 'done' entries — and the Bookkeeping/Piolo queue) left the main
+     scroll and became LIVE SUMMARY CARDS in Zone 3, each a door to a
+     dedicated URL-addressable page: /dashboard/worklog (active-first:
+     un-replied concerns/questions/suggestions with ages, overdue >3 Sydney
+     days first; completed + answered behind "Show completed (N)" — never the
+     default; compose moved here) and /dashboard/bookkeeping (the #137 queue:
+     active lane up top, aged/done collapsed toggles, mark-done/restore/
+     un-dismiss in place). ONE ENGINE: the cards read /api/ops-summary, which
+     calls the SAME generators the pages use (collab.worklog_page_data /
+     collab.queue_lanes) — card == page exactly, test-enforced; zero parallel
+     counting, zero metric-math changes. Auth INHERITED exactly (require_auth;
+     ad_domain + sales fail-closed OUT — re-proven 403/redirect; anon walled).
+     Excluded ≠ deleted: completed/aged work is collapsed, present, auditable.
+     Perf: the dashboard stopped rendering ~30 log entries + the full queue
+     inline (two heavy fetches → one small summary fetch). PROPOSED (noted,
+     not built): the single-page section count (~25 panels) invites the same
+     summarize-don't-dump treatment for other low-glance panels.
+     Tests: tests/test_finance_ia.py (7). Suite: 923.

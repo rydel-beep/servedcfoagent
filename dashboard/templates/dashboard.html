@@ -568,25 +568,24 @@
   </section>
 
   <!-- COLLABORATION — Piolo's queue (flag → resolve → EDITH verifies) + the work log -->
-  <section class="panel" id="section-collab-queue">
-    <div class="panel-header"><h2 class="panel-title">Bookkeeping queue</h2>
-      <div class="panel-badge" id="collab-queue-badge"></div></div>
-    <div id="collab-queue-body"><div class="skeleton skeleton-text"></div></div>
-  </section>
-
-  <section class="panel" id="section-collab-log">
-    <div class="panel-header"><h2 class="panel-title">Work log</h2>
-      <span class="panel-sub" id="collab-log-who"></span></div>
-    <div class="collab-compose">
-      <select id="collab-kind" aria-label="Entry type">
-        <option value="done">Done</option><option value="concern">Concern</option>
-        <option value="question">Question</option><option value="suggestion">Suggestion</option>
-      </select>
-      <input id="collab-body" type="text" placeholder="What did you do, notice, or want to raise?" autocomplete="off">
-      <button id="collab-post" type="button">Post</button>
+  <!-- FINANCE IA (2026-08-10): the worklog + bookkeeping DUMPS became summary
+       CARDS — live one-engine counts, whole card is a door to the full page.
+       The lists live at /dashboard/worklog and /dashboard/bookkeeping. -->
+  <section class="panel ops-cards" id="section-ops-cards">
+    <div class="ops-card-grid">
+      <a class="ops-card" id="ops-card-worklog" href="/dashboard/worklog">
+        <div class="ops-card-title">Work log</div>
+        <div class="ops-card-nums" id="ops-worklog-nums"><span class="skeleton skeleton-text"></span></div>
+        <div class="ops-card-urgent" id="ops-worklog-urgent"></div>
+        <div class="ops-card-go">open the log →</div>
+      </a>
+      <a class="ops-card" id="ops-card-bookkeeping" href="/dashboard/bookkeeping">
+        <div class="ops-card-title">Bookkeeping queue</div>
+        <div class="ops-card-nums" id="ops-bk-nums"><span class="skeleton skeleton-text"></span></div>
+        <div class="ops-card-urgent" id="ops-bk-sub"></div>
+        <div class="ops-card-go">open the queue →</div>
+      </a>
     </div>
-    <div id="collab-status" class="collab-status" role="status" aria-live="polite"></div>
-    <div id="collab-log-body"><div class="skeleton skeleton-text"></div></div>
   </section>
 
 

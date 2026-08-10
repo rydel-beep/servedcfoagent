@@ -558,6 +558,68 @@ def restore_to_active(signature: str, actor: dict) -> dict:
     return {"ok": True}
 
 
+# ── WORKLOG SUMMARY (finance-IA 2026-08-10): ONE engine for card AND page ────
+# "Active" = un-replied concern/question/suggestion entries (a raise nobody
+# answered is the open work); "completed" = kind=done entries (they dominated
+# the inline render — the IA fix collapses them behind a toggle). "Overdue" =
+# an open raise older than 3 Sydney days. No parallel counting anywhere: the
+# summary card and the /worklog page BOTH read these two functions.
+
+_WORKLOG_OVERDUE_DAYS = 3
+
+
+def worklog_page_data(limit: int = 200) -> dict:
+    """Active-first worklog: open raises (with ages + reply state) up top,
+    completed (done-kind) collapsed. The single source for card + page."""
+    import datetime as _dt
+    entries = list_entries(limit=limit)
+    by_parent: dict = {}
+    for e in entries:
+        if e.get("parent_id"):
+            by_parent.setdefault(e["parent_id"], []).append(e)
+    today = today_sydney()
+    active, completed = [], []
+    for e in entries:
+        if e.get("parent_id"):
+            continue                     # replies ride their parent
+        age = None
+        try:
+            age = (today - _dt.date.fromisoformat(str(e["created_at"])[:10])).days
+        except Exception:
+            pass
+        row = {**e, "replies": by_parent.get(e["id"], []), "age_days": age}
+        if e.get("kind") == "done":
+            completed.append(row)
+        elif e.get("kind") in ("concern", "question", "suggestion"):
+            row["replied"] = bool(row["replies"])
+            row["overdue"] = (not row["replied"]
+                              and age is not None and age > _WORKLOG_OVERDUE_DAYS)
+            if row["replied"]:
+                completed.append(row)    # answered raise = handled work
+            else:
+                active.append(row)
+        else:
+            completed.append(row)        # corrections/actions — audit trail
+    active.sort(key=lambda r: (not r.get("overdue"), -(r.get("age_days") or 0)))
+    return {"active": active, "completed": completed,
+            "counts": {"active": len(active),
+                       "overdue": sum(1 for r in active if r.get("overdue")),
+                       "completed": len(completed)}}
+
+
+def worklog_summary() -> dict:
+    """The summary card's numbers — derived from worklog_page_data (SAME
+    generator as the page; card == page by construction)."""
+    d = worklog_page_data()
+    most_urgent = None
+    if d["active"]:
+        e = d["active"][0]
+        most_urgent = {"kind": e.get("kind"), "body": (e.get("body") or "")[:90],
+                       "author": e.get("author"), "age_days": e.get("age_days"),
+                       "overdue": e.get("overdue", False)}
+    return {**d["counts"], "most_urgent": most_urgent}
+
+
 def sentinel_watch() -> dict:
     """Queue-health watch (rides ad_sentinel L2): lane sizes + aged growth."""
     import kv_store

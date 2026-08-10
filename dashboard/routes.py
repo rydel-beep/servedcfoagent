@@ -1792,3 +1792,48 @@ def api_collab_restore():
     if not d.get("signature"):
         return jsonify({"error": "signature required"}), 400
     return jsonify(collab.restore_to_active(d["signature"], current_actor()))
+
+
+# ── FINANCE DASHBOARD IA (2026-08-10) — summarize, don't dump ────────────────
+# The worklog + bookkeeping queue leave the main scroll and become compact
+# summary cards; each gets a dedicated, URL-addressable page. Auth INHERITED
+# exactly: same require_auth wall as the dashboard surfaces they replace; the
+# scoped roles (sales / ad_domain) stay excluded by their fail-closed
+# allowlists — a new endpoint cannot leak to them by omission.
+
+@bp.route("/worklog", methods=["GET"])
+@require_auth
+def page_worklog():
+    return render_template("worklog.html")
+
+
+@bp.route("/bookkeeping", methods=["GET"])
+@require_auth
+def page_bookkeeping():
+    return render_template("bookkeeping.html")
+
+
+@bp.route("/api/ops-summary", methods=["GET"])
+@require_auth
+def api_ops_summary():
+    """The two summary cards' numbers — read from the SAME generators the full
+    pages use (collab.worklog_page_data / collab.queue_lanes). One engine:
+    card == page count by construction, and tested."""
+    import collab
+    from snapshot import load_persisted
+    lanes = collab.queue_lanes(load_persisted() or {})
+    resp = jsonify({"worklog": collab.worklog_summary(),
+                    "bookkeeping": {"active": len(lanes["active"]),
+                                    "aged": len(lanes["aged"]),
+                                    "done": len(lanes["done"])}})
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/worklog", methods=["GET"])
+@require_auth
+def api_worklog():
+    import collab
+    resp = jsonify(collab.worklog_page_data())
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp

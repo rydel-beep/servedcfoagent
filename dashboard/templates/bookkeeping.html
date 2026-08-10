@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bookkeeping Queue — Served CFO</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/dashboard/static/css/dashboard.css">
+</head>
+<body>
+<header class="header">
+  <div class="header-left">
+    <a href="/dashboard/" class="ops-back" title="Back to dashboard">← Dashboard</a>
+    <h1 class="wordmark" style="font-size:1.1rem">Bookkeeping Queue</h1>
+    <span class="wordmark-sub">flag → Piolo resolves → EDITH verifies (#137: dones stick; aged collapsed)</span>
+  </div>
+</header>
+<main class="main" style="max-width:860px;margin:0 auto;padding:1rem">
+  <section class="panel">
+    <div class="panel-header">
+      <h2 class="panel-title">Active <span class="panel-badge" id="bk-badge"></span></h2>
+      <span class="panel-sub">act-soon items only — aged &amp; done are collapsed below</span>
+    </div>
+    <div id="bk-status" class="collab-status" role="status" aria-live="polite"></div>
+    <div id="bk-body"><div class="skeleton skeleton-text"></div></div>
+  </section>
+</main>
+<script>
+(function () {
+  'use strict';
+  var $ = function (s) { return document.querySelector(s); };
+  function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+  var show = { aged: /[?&]show=aged/.test(location.search), done: /[?&]show=done/.test(location.search) };
+
+  function itemHtml(it, lane) {
+    var head = lane === 'active'
+      ? '<span class="cq-status cq-open">' + (it.lane_reason === 'restored by owner' ? 'Restored' : 'Open') + '</span>'
+      : lane === 'aged'
+        ? '<span class="cq-status cq-aged">Aged</span>'
+        : '<span class="cq-status ' + (it.status === 'verified' ? 'cq-verified' : 'cq-resolved') + '">' +
+          (it.status === 'verified' ? '✓ Verified' : 'Done — suppressed') + '</span>';
+    var reason = it.lane_reason ? '<div class="cq-lane-reason">' + esc(it.lane_reason) + '</div>' : '';
+    var verif = it.verification ? '<div class="cq-verif ' + (it.status === 'verified' ? 'cq-ok' : 'cq-warn') + '">' + esc(it.verification) + '</div>' : '';
+    var controls = '';
+    if (lane === 'active') {
+      controls = '<div class="cq-resolve"><input class="cq-note" data-flag="' + esc(it.flag_id) + '" placeholder="Note what you did…"><button class="cq-btn bk-resolve" data-flag="' + esc(it.flag_id) + '">Mark done</button></div>';
+    } else if (lane === 'aged') {
+      controls = '<button class="cq-btn bk-restore" data-sig="' + esc(it.signature) + '">Restore to active</button>';
+    } else {
+      controls = (it.resolution ? '<div class="cq-note-done">“' + esc(it.resolution) + '”' + (it.resolved_by ? ' — ' + esc(it.resolved_by) : '') + '</div>' : '') +
+        '<button class="cq-btn bk-undismiss" data-flag="' + esc(it.flag_id) + '">Un-dismiss</button>';
+    }
+    return '<div class="cq-item"><div class="cq-top">' + head +
+      '<span class="cq-title">' + esc(it.title) + '</span></div>' +
+      (it.detail ? '<div class="cq-detail">' + esc(it.detail) + '</div>' : '') +
+      reason + verif + controls + '</div>';
+  }
+
+  async function load() {
+    var r = await fetch('/dashboard/api/collab/queue');
+    if (r.status === 401) { location.href = '/dashboard/login'; return; }
+    if (!r.ok) { $('#bk-body').innerHTML = '<div class="cq-empty">Couldn’t load the queue.</div>'; return; }
+    var q = (await r.json()).queue || [];
+    var act = q.filter(function (x) { return x.lane === 'active'; });
+    var aged = q.filter(function (x) { return x.lane === 'aged'; });
+    var done = q.filter(function (x) { return x.lane === 'done'; });
+    $('#bk-badge').textContent = act.length ? (act.length + ' to action') : 'clear';
+    var html = act.length
+      ? act.map(function (it) { return itemHtml(it, 'active'); }).join('')
+      : '<div class="cq-empty">Active queue is clear — nothing needs action soon.</div>';
+    if (aged.length) {
+      html += '<button class="cq-toggle" data-lane="aged">' + (show.aged ? '▾' : '▸') + ' ' + aged.length + ' aged / irrelevant</button>';
+      if (show.aged) html += aged.map(function (it) { return itemHtml(it, 'aged'); }).join('');
+    }
+    if (done.length) {
+      html += '<button class="cq-toggle" data-lane="done">' + (show.done ? '▾' : '▸') + ' ' + done.length + ' done</button>';
+      if (show.done) html += done.map(function (it) { return itemHtml(it, 'done'); }).join('');
+    }
+    $('#bk-body').innerHTML = html;
+    $('#bk-body').querySelectorAll('.cq-toggle').forEach(function (b) {
+      b.addEventListener('click', function () { show[b.dataset.lane] = !show[b.dataset.lane]; load(); });
+    });
+    $('#bk-body').querySelectorAll('.bk-resolve').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        var note = ($('#bk-body').querySelector('.cq-note[data-flag="' + b.dataset.flag.replace(/"/g, '\\"') + '"]') || {}).value || '';
+        b.disabled = true;
+        var resp = await fetch('/dashboard/api/collab/resolve', { method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ flag_id: b.dataset.flag, note: note }) });
+        $('#bk-status').textContent = resp.ok ? 'Marked done ✓ — suppressed until the state changes.' : 'Couldn’t save — try again.';
+        load();
+      });
+    });
+    $('#bk-body').querySelectorAll('.bk-restore').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        await fetch('/dashboard/api/collab/restore', { method: 'POST',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signature: b.dataset.sig }) });
+        load();
+      });
+    });
+    $('#bk-body').querySelectorAll('.bk-undismiss').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        await fetch('/dashboard/api/collab/undismiss', { method: 'POST',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ flag_id: b.dataset.flag }) });
+        load();
+      });
+    });
+  }
+  load();
+})();
+</script>
+</body>
+</html>
