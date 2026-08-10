@@ -346,3 +346,15 @@ button.adx-deal-open { color: var(--accent, #7aa2ff); }
 /* #138 — clamp disclosure: a NAMED API-retention limit, never a red badge */
 .adx-clamp-note { margin-top: 4px; font-size: 10.5px; color: var(--muted, #7b8598);
   font-style: italic; border-left: 2px solid var(--line, #2a3448); padding-left: 6px; }
+
+/* #140 — scoreboard cash + contract side by side (two truths, never swapped) */
+.adx-head-money .adx-money-line { display: flex; align-items: baseline; gap: 8px; margin: 2px 0; }
+.adx-head-num2 { font-size: 22px; font-weight: 800; color: var(--warn, #e0b653); }
+.adx-money-prov { font-size: 10px; letter-spacing: .3px; color: var(--good, #43c774);
+  border: 1px solid rgba(67,199,116,.4); border-radius: 4px; padding: 0 5px; cursor: help; white-space: nowrap; }
+.adx-money-prov-tracker { color: var(--warn, #e0b653); border-color: rgba(224,182,83,.4); }
+.adx-money-gap { font-size: 11px; color: var(--muted, #9aa4b8); margin: 3px 0; }
+.adx-money-gap strong { color: var(--warn, #e0b653); }
+.adx-money-missing { font-size: 11px; color: var(--warn, #e0b653); margin-top: 3px;
+  cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+.adx-head-num.adx-door, .adx-head-num2.adx-door { cursor: zoom-in; }

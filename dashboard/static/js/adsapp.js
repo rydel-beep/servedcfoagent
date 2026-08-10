@@ -446,6 +446,16 @@
     }).join('');
   }
 
+  // #140: the signed-vs-collected gap — signed value with collection still
+  // outstanding is a REAL signal, shown, never collapsed into one number.
+  function contractGap(h) {
+    if (h.contract_total == null || h.cash_total == null) return '';
+    var gap = Math.round(h.contract_total - h.cash_total);
+    if (gap <= 0) return '';
+    return '<div class="adx-money-gap">' + money(h.contract_total) + ' signed · ' +
+      money(h.cash_total) + ' collected · <strong>' + money(gap) + ' outstanding</strong></div>';
+  }
+
   function renderHeadline() {
     var h = (state.board.scoreboard || {}).headline;
     var el = $('#adx-headline');
@@ -462,9 +472,21 @@
       '<div class="adx-head-tile"><div class="adx-head-num">' + num(h.leads_total) + '</div>' +
       '<div class="adx-head-label">LEADS</div>' +
       '<div class="adx-head-tiers">' + tiers(h.leads_tiers) + '</div></div>' +
-      '<div class="adx-head-tile"><div class="adx-head-num">' + money(h.cash_total) + '</div>' +
-      '<div class="adx-head-label">CASH COLLECTED</div>' +
-      '<div class="adx-head-tiers">' + tiers(h.cash_tiers) + '</div></div>' +
+      // CASH + CONTRACT side by side (#140): two DIFFERENT truths at different
+      // trust levels — cash = reconciled (Stripe/Xero), contract = tracker
+      // (owner-entered). Never swapped; each provenance-chipped; the gap is the
+      // signal. Both drill to the closes behind them (every number is a door).
+      '<div class="adx-head-tile adx-head-money">' +
+      '<div class="adx-money-line"><span class="adx-head-num adx-door" data-headdrill="closes">' + money(h.cash_total) + '</span>' +
+      ' <span class="adx-money-prov" title="banked + Stripe/Xero-reconciled">cash · reconciled</span></div>' +
+      '<div class="adx-money-line"><span class="adx-head-num2 adx-door" data-headdrill="closes">' +
+      (h.contract_total != null ? money(h.contract_total) : '—') +
+      '</span> <span class="adx-money-prov adx-money-prov-tracker" title="signed value from the Lead-to-Cash tracker — owner-entered, NOT reconciled">contract · tracker</span></div>' +
+      contractGap(h) +
+      '<div class="adx-head-label">CASH COLLECTED · CONTRACT VALUE · ' + clockStamp() + '</div>' +
+      (h.contract_missing ? '<div class="adx-money-missing adx-door" data-headdrill="contract_missing" title="closes with a blank Contract Value cell — click to fix at source (blank ≠ $0)">' +
+        h.contract_missing + ' close' + (h.contract_missing === 1 ? '' : 's') + ' missing contract value</div>' : '') +
+      '</div>' +
       '<div class="adx-head-tile"><div class="adx-head-num">' +
       (degradedEntryFor('spend') ? degradedChip(degradedEntryFor('spend')) : money(h.spend_total)) + '</div>' +
       '<div class="adx-head-label">SPEND</div><div class="adx-head-tiers">' +
@@ -480,6 +502,7 @@
       };
       el.innerHTML += '<div class="adx-compare">' + esc(cmp.label) + ': leads ' + f(cmp.deltas.leads) +
         ' · closes ' + f(cmp.deltas.closes) + ' · cash ' + f(cmp.deltas.cash, 1) +
+        (cmp.deltas.contract != null ? ' · contract ' + f(cmp.deltas.contract, 1) : '') +
         ' · spend ' + f(cmp.deltas.spend, 1) + '</div>';
     }
     if (state.board.market_note) {
@@ -838,9 +861,12 @@
       ' · revenue ' + revLine +
       ' · setter: ' + esc(p.setter_outcome || '—') +
       (p.pipeline_stage ? ' · stage: ' + esc(p.pipeline_stage) : '') +
+      // #140: contract (tracker) beside cash (reconciled) on the close row —
+      // a blank contract cell reads "not recorded" (blank ≠ $0), never omitted.
       (p.close_date ? ' · <strong>closed ' + esc(p.close_date) + '</strong>' +
-        (p.contract != null ? ', contract ' + money(p.contract) : '') +
-        (p.cash != null ? ', cash ' + money(p.cash) : '') : '') + '</div>' +
+        ' · <span class="adx-money-prov-tracker" title="signed value — tracker, owner-entered">contract ' +
+        (p.contract != null ? money(p.contract) : '<em>not recorded</em>') + '</span>' +
+        (p.cash != null ? ' · <span title="banked — reconciled">cash ' + money(p.cash) + '</span>' : '') : '') + '</div>' +
       notes + '</div>';
   }
 
@@ -1245,7 +1271,7 @@
   var VALID_LEVELS = { creative: 1, name: 1, batch: 1, campaign: 1, account: 1 };
   var VALID_METRICS = { leads: 1, qualified: 1, reached: 1, sets: 1, shows: 1, closes: 1,
                         earlier_closes: 1, earlier_sets: 1, earlier_shows: 1,
-                        undated_sets: 1, shows_unverified: 1 };
+                        undated_sets: 1, shows_unverified: 1, contract_missing: 1 };
 
   var rosterState = { people: [], sort: 'event', head: '', title: '' };
   function rosterSortBtns() {
@@ -1443,6 +1469,16 @@
     });
     document.addEventListener('scroll', hideHover, true);
 
+    // #140: the scoreboard money tiles are doors — cash/contract → the closes
+    // roster (account level); the missing-contract note → the blank-contract
+    // closes. Every number opens its people.
+    $('#adx-headline').addEventListener('click', function (e) {
+      var hd = e.target.closest('.adx-door[data-headdrill]');
+      if (hd) {
+        loadRoster('account', '__account__', 'Account · closes',
+                   hd.dataset.headdrill, null);
+      }
+    });
     $('#adx-scoreboard').addEventListener('click', function (e) {
       var disc = e.target.closest('.adx-disc-badge[data-disc]');
       if (disc) {

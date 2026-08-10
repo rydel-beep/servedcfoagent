@@ -1910,3 +1910,29 @@
      not built): the single-page section count (~25 panels) invites the same
      summarize-don't-dump treatment for other low-glance panels.
      Tests: tests/test_finance_ia.py (7). Suite: 923.
+
+140. **SCOREBOARD — DATE-RANGE BINDING + CONTRACT VALUE (2026-08-10).** The
+     /ads top scoreboard (Closes/Leads/Cash/Spend tiles + the vs-prior delta)
+     gains two upgrades, ONE engine. BINDING: the four tiles already rode the
+     card-header window+clock (they read state.board.scoreboard.headline, fetched
+     via windowQS #133) — the gap was the DELTA, gated to standard 30/60/90 only
+     and omitting custom ranges. Now the "vs prior {N}d" delta follows the
+     SELECTED window's exact length on the same clock for custom ranges too
+     (Maximum/all-time skipped honestly — no period precedes "all time"), and
+     carries contract beside cash. No second date control (there never was one).
+     CONTRACT VALUE: tracker-authoritative signed value (column "Contract Value",
+     idx 28, lump $, 6% blank at build), already parsed per close in the one
+     engine — exposed now as contract_total/contract_tiers/contract_missing in
+     the headline, windowed the SAME as cash. RENDERED BESIDE cash, NEVER
+     swapped: "cash · reconciled" (Stripe/Xero) vs "contract · tracker"
+     (owner-entered, explicitly NOT reconciled — distinct provenance chips so
+     contract never borrows cash's credibility); the signed-vs-collected GAP
+     ("$X signed · $Y collected · $Z outstanding") is shown as the real signal.
+     BLANK ≠ ZERO: a blank contract cell adds 0 to the total AND is counted
+     (contract_missing) — a "N close(s) missing contract value" honest note
+     (Piolo-queue-able), never a real $0; per-close it reads "not recorded".
+     DRILLABLE: cash/contract tiles → the account closes roster;
+     contract_missing is a drillable anomaly metric → the blank-contract closes
+     with tracker links. Close-roster rows render contract beside cash the same
+     way (scoped this wave; broader surfaces — dossier econ already shows
+     contract, EDITH/PDF PROPOSED). Diagnosis: dashboard/SCOREBOARD_DIAGNOSIS.md.

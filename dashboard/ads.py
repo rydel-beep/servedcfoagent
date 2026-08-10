@@ -166,26 +166,34 @@ def _build_board(days, start, end, basis, force=False, market=None):
                                     f"{sb_act['headline']['closes_total']} close(s)")}
         except Exception as e:
             logger.info("cash strip unavailable: %s", e)
-    # HEADLINE DELTAS: vs the preceding equal-length window — the same engine with
-    # an explicit comparison window, clearly labelled, never mixed into the grid.
+    # HEADLINE DELTAS (#140): vs the preceding EQUAL-LENGTH window on the SAME
+    # clock — for the SELECTED window (standard, custom range, all follow), the
+    # one engine with an explicit comparison window, clearly labelled. Contract
+    # value joins the deltas beside cash. Maximum/all-time is skipped honestly
+    # (there is no period before "all time").
     compare = None
-    if not (start or end) and days in (30, 60, 90):
+    _cw = result.get("window") or {}
+    _METRICS = ("leads", "closes", "cash", "contract", "spend")
+    if _cw.get("start") and _cw.get("end") and (_cw.get("days") or 0) < ALL_DAYS:
         try:
             import datetime as _dt
-            from helpers import today_sydney as _ts
-            _w1 = _ts(); _w0 = _w1 - _dt.timedelta(days=days - 1)
+            _w0 = _dt.date.fromisoformat(str(_cw["start"]))
+            _w1 = _dt.date.fromisoformat(str(_cw["end"]))
+            _len = (_w1 - _w0).days + 1
             prev = attribution_engine.compute(
-                start=str(_w0 - _dt.timedelta(days=days)),
+                start=str(_w0 - _dt.timedelta(days=_len)),
                 end=str(_w0 - _dt.timedelta(days=1)), basis=basis, market=market)
             attribution_engine.assert_same_basis(result, prev)
             pt, ct = prev.get("totals") or {}, result.get("totals") or {}
-            compare = {"label": f"vs prior {days}d",
+            _lbl = (f"vs prior {_len}d" if not (start or end)
+                    else f"vs prior {_len}d (custom)")
+            compare = {"label": _lbl, "length_days": _len,
                        "window": prev.get("window"),
                        "deltas": {k: (round((ct.get(k) or 0) - (pt.get(k) or 0), 2)
                                       if ct.get(k) is not None or pt.get(k) is not None
                                       else None)
-                                  for k in ("leads", "closes", "cash", "spend")},
-                       "prior": {k: pt.get(k) for k in ("leads", "closes", "cash", "spend")}}
+                                  for k in _METRICS},
+                       "prior": {k: pt.get(k) for k in _METRICS}}
         except Exception as e:
             logger.info("headline compare unavailable: %s", e)
     unverified_shows = None

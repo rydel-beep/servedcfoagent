@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 METRICS = ("leads", "qualified", "reached", "sets", "shows", "closes")
 ANOMALY_METRICS = ("earlier_closes", "earlier_sets", "earlier_shows",
-                   "undated_sets", "shows_unverified")
+                   "undated_sets", "shows_unverified", "contract_missing")
 LEVELS = ("creative", "name", "batch", "campaign", "account")
 
 _TIER_KEYS = {"__ig_dm__", "__unattributed__", "__ambiguous__"}
@@ -136,10 +136,18 @@ def _event_for(metric: str, lead: dict | None, derived: dict,
             return {"kind": "showed", "date": None,
                     "provenance": sp["show"] + " (spine — appointment evidence, undated)"}
         return {"kind": "showed", "date": None, "provenance": "no show evidence recorded"}
-    if metric in ("closes", "earlier_closes"):
+    if metric in ("closes", "earlier_closes", "contract_missing"):
+        # contract_missing rides the close event — these ARE closes, flagged for a
+        # blank contract cell (#140): the door lands on the deal, tracker link and
+        # all, so Piolo can fill the value at source.
         if lead and lead.get("close_date"):
             prov = (d.get("close_date") or {}).get("provenance") or "tracker"
-            return {"kind": "closed", "date": str(lead["close_date"]), "provenance": prov}
+            note = ("contract value not recorded in the tracker"
+                    if metric == "contract_missing" else None)
+            r = {"kind": "closed", "date": str(lead["close_date"]), "provenance": prov}
+            if note:
+                r["note"] = note
+            return r
         cd = d.get("close_date") or {}
         if cd.get("date"):
             return {"kind": "closed", "date": cd["date"], "provenance": cd["provenance"]}

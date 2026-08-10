@@ -636,7 +636,14 @@ def compute_from_inputs(
                 # (found live 2026-08-07: 22 close rows across windows).
                 b["undated_sets"] = b.get("undated_sets", 0) + 1
                 _mem(b, "undated_sets", lead)
+        # CONTRACT VALUE (#140): TRACKER-authoritative signed value, per close,
+        # windowed the SAME as cash. BLANK ≠ ZERO — a blank contract cell adds
+        # nothing to the total (an unknown is not a zero) and is COUNTED as
+        # missing (a Piolo-queue-able hygiene item), never silently understating.
         b["contract"] += lead["contract"] or 0.0
+        if lead["contract"] is None:
+            b["contract_missing"] = b.get("contract_missing", 0) + 1
+            _mem(b, "contract_missing", lead)
         b["cash"] += lead["cash"] or 0.0
         deal = {"name": lead["name"], "close_date": str(lead["close_date"]),
                 "contract": lead["contract"], "cash": lead["cash"],
@@ -698,6 +705,7 @@ def compute_from_inputs(
             "revenue_unknown": b.get("revenue_unknown", 0), "sets": b["sets"],
             "shows": b["shows"], "closes_cohort": b["closes_cohort"],
             "closes": b["closes"], "contract": round(b["contract"], 2),
+            "contract_missing": b.get("contract_missing", 0),
             "cash": round(b["cash"], 2), "deals": b["deals"],
             "spend": spend, "impressions": b["impressions"], "clicks": b["clicks"],
             "cost_per_lead": ratio(spend, b["leads"]) if not is_channel else None,
@@ -740,6 +748,7 @@ def compute_from_inputs(
     sum_closes = sum(r["closes"] for r in rows_out)
     sum_cash = round(sum(r["cash"] for r in rows_out), 2)
     sum_contract = round(sum(r["contract"] for r in rows_out), 2)
+    sum_contract_missing = sum(r.get("contract_missing", 0) for r in rows_out)
     sum_spend = round(sum(r["spend"] for r in rows_out), 2)
     dup_n = len(dupes_in_window)
     checks = {}
@@ -856,6 +865,7 @@ def compute_from_inputs(
                    "ambiguous_leads": ambiguous_leads,
                    "attribution_rate_pct": round(100 * attributed_leads / sum_leads, 1) if sum_leads else None,
                    "closes": sum_closes, "contract": sum_contract, "cash": sum_cash,
+                   "contract_missing": sum_contract_missing,
                    "spend": sum_spend},
         "reconciliation": {"ok": recon_ok, "checks": checks},
         "invariants": invariants,
@@ -951,6 +961,11 @@ def scoreboard_view(result: dict) -> dict:
         "closes_tiers": tier_sum("closes"),
         "leads_total": t.get("leads"), "leads_tiers": tier_sum("leads"),
         "cash_total": t.get("cash"), "cash_tiers": tier_sum("cash"),
+        # CONTRACT VALUE (#140) — TRACKER-authoritative signed value, BESIDE
+        # cash (reconciled), NEVER swapped. contract_missing = closes with a
+        # blank contract cell (blank ≠ zero; a hygiene item, not $0).
+        "contract_total": t.get("contract"), "contract_tiers": tier_sum("contract"),
+        "contract_missing": t.get("contract_missing", 0),
         "spend_total": t.get("spend"),
     }
     return {
