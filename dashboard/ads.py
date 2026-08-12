@@ -211,7 +211,23 @@ def _build_board(days, start, end, basis, force=False, market=None):
                            for f in v} for k, v in list(dd.items())[:80]}
     except Exception:
         pass
+    # INTRADAY HONESTY (ground-truth sweep 2): a window that includes TODAY
+    # carries Meta numbers that are volatile by nature (Meta restates ~72h).
+    # The note is server-computed once and rendered verbatim — a today-number
+    # pretending to be a settled final is the plausible-lie class.
+    spend_intraday_note = None
+    try:
+        from helpers import today_sydney
+        _w = result.get("window") or {}
+        if str(_w.get("end")) == str(today_sydney()):
+            spend_intraday_note = (
+                "spend/impressions include TODAY — intraday (provisional): Meta "
+                "restates recent days for ~72h; treat today's Meta numbers as "
+                "live, not final. Funnel counts (tracker) are unaffected.")
+    except Exception as e:
+        logger.info("intraday note skipped: %s", e)
     return {
+        "spend_intraday_note": spend_intraday_note,
         "_engine": _engine_slice(result),   # popped by _serve_board — NEVER client-sent
         "unverified_shows": unverified_shows,
         "derived_dates": derived_map,

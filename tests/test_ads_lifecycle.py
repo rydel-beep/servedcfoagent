@@ -52,10 +52,13 @@ def mk_row(key="120000000000000001", leads=0, spend=0.0, closes=0, verdict=None,
             "lineage": lineage, "ad_ids": ad_ids or [key]}
 
 
-ST_LIVE = {"status": "delivering", "reason": "impressions", "layer": None,
-           "as_of": "x", "degraded": None}
-ST_PAUSED = {"status": "paused", "reason": "paused at the campaign layer",
-             "layer": "campaign", "as_of": "x", "degraded": None}
+ST_LIVE = {"status": "delivering", "label": "LIVE", "rank": 3,
+           "reason": "impressions", "layer": None, "as_of": "x",
+           "degraded": None, "blocked_by_parent": False}
+ST_PAUSED = {"status": "paused", "label": "PAUSED", "rank": 1,
+             "reason": "paused at the ad layer (deliberate park)",
+             "layer": "ad", "as_of": "x", "degraded": None,
+             "blocked_by_parent": False}
 RULES = dict(L.RULE_DEFAULTS)
 
 
@@ -172,21 +175,68 @@ def test_status_enabled_not_delivering_amber_honest_reason(monkeypatch):
     es, ss = _stores(effective="ACTIVE", impressions_today=0)
     st = L.status_for(["120000000000000001"], es, ss)
     assert st["status"] == "enabled_not_delivering"
-    assert "unknown" in st["reason"]          # honest when the cause isn't visible
+    assert "unknown" in st["label"]           # honest when the cause isn't visible
     es2, ss2 = _stores(effective="PENDING_REVIEW", impressions_today=0)
     st2 = L.status_for(["120000000000000001"], es2, ss2)
     assert st2["status"] == "enabled_not_delivering" and "review" in st2["reason"]
 
 
-def test_status_parent_layer_named(monkeypatch):
-    # ad enabled, campaign off → effective CAMPAIGN_PAUSED → grey, layer NAMED
+def test_status_parent_paused_is_amber_with_parent_named(monkeypatch):
+    # THE RULED TRIAD (status-clarity wave): ad enabled + campaign off →
+    # NOT DELIVERING (amber) with the parent IN THE LABEL — an enabled-but-
+    # dead ad is a different problem from a deliberately paused one.
     import meta_entities
     monkeypatch.setattr(meta_entities, "configured", lambda: True)
     es, ss = _stores(effective="CAMPAIGN_PAUSED", impressions_today=0)
     st = L.status_for(["120000000000000001"], es, ss)
-    assert st["status"] == "paused" and st["layer"] == "campaign"
+    assert st["status"] == "enabled_not_delivering"
+    assert st["label"] == "NOT DELIVERING · campaign paused"
+    assert st["blocked_by_parent"] is True
     es2, ss2 = _stores(effective="ADSET_PAUSED")
-    assert L.status_for(["120000000000000001"], es2, ss2)["layer"] == "ad set"
+    st2 = L.status_for(["120000000000000001"], es2, ss2)
+    assert st2["label"] == "NOT DELIVERING · ad set paused"
+    # own-layer paused stays grey PAUSED (the deliberate park)
+    es3, ss3 = _stores(effective="PAUSED")
+    st3 = L.status_for(["120000000000000001"], es3, ss3)
+    assert st3["status"] == "paused" and st3["label"] == "PAUSED" \
+        and st3["layer"] == "ad" and st3["blocked_by_parent"] is False
+
+
+def test_status_labels_and_ranks_no_unexplained_glyph(monkeypatch):
+    # every state carries a rendered LABEL + the sort ordinal
+    import meta_entities
+    monkeypatch.setattr(meta_entities, "configured", lambda: True)
+    es, ss = _stores(impressions_today=50)
+    live = L.status_for(["120000000000000001"], es, ss)
+    assert live["label"] == "LIVE" and live["rank"] == 3
+    es2, ss2 = _stores(effective="ACTIVE", impressions_today=0)
+    amber = L.status_for(["120000000000000001"], es2, ss2)
+    assert amber["label"] == "NOT DELIVERING · reason unknown" and amber["rank"] == 2
+    es3, ss3 = _stores(effective="ARCHIVED")
+    grey = L.status_for(["120000000000000001"], es3, ss3)
+    assert grey["label"] == "PAUSED" and grey["rank"] == 1
+    monkeypatch.setattr(meta_entities, "configured", lambda: False)
+    unk = L.status_for(["120000000000000001"], es, ss)
+    assert unk["label"].startswith("STATUS UNKNOWN") and unk["rank"] == 0
+    # the ordinal ordering IS the ruled sort: LIVE > NOT DELIVERING > PAUSED > unknown
+    assert live["rank"] > amber["rank"] > grey["rank"] > unk["rank"]
+
+
+def test_parent_blocked_archives_and_converges_kill(monkeypatch):
+    # lane: a parent-blocked ad is PARKED (archive) — the rotation lanes stay
+    # reserved for ads that could actually run; the amber status still shows.
+    _kv_reset(monkeypatch)
+    st_blocked = {"status": "enabled_not_delivering",
+                  "label": "NOT DELIVERING · campaign paused", "rank": 2,
+                  "reason": "campaign paused", "layer": None, "as_of": "x",
+                  "degraded": None, "blocked_by_parent": True}
+    row = _row_sufficient()
+    s = L.classify_stage(row, st_blocked, RULES)
+    assert s["lane"] == "archive" and "parked" in s["why"]
+    # a kill mark converges when Romano pauses the CAMPAIGN instead of the ad
+    L.move({"user": "romano"}, row["creative_key"], "kill", "r", row, "watch")
+    b = _block(monkeypatch, [row], st_blocked)
+    assert b["cards"][row["creative_key"]]["decision"]["executed"] is True
 
 
 def test_status_meta_dead_degraded_never_stale_green(monkeypatch):

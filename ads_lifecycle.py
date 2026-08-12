@@ -59,17 +59,29 @@ _RULE_BOUNDS = {"test_days": (1, 60), "test_spend": (10.0, 10000.0),
 
 DECISION_STATES = {"kill": "marked_to_kill", "scale": "marked_to_scale"}
 
-# statuses that mean "on" at the ad's own toggle but possibly not delivering
+# STATUS TRIAD (ruled 2026-08-12, status-clarity wave): PAUSED (grey) is the
+# ad paused AT ITS OWN LAYER — a deliberate park. Everything that leaves the
+# ad ENABLED while Meta doesn't deliver it is the AMBER class ("the dangerous
+# middle state"), with the reason IN THE LABEL: parent paused (campaign/ad
+# set), review/billing/issues, or the honest "reason unknown". Every state
+# carries a rendered `label` (no glyph needs decoding) and a sort `rank`.
 _AMBER_REASONS = {
-    "PENDING_REVIEW": "in review (Meta has not approved delivery yet)",
-    "PREAPPROVED": "pre-approved — not yet fully approved",
-    "PENDING_BILLING_INFO": "billing issue on the account",
-    "IN_PROCESS": "processing at Meta",
-    "WITH_ISSUES": "flagged WITH_ISSUES by Meta",
+    "PENDING_REVIEW": ("in review", "in Meta review — not approved for delivery yet"),
+    "PREAPPROVED": ("in review", "pre-approved — not yet fully approved"),
+    "PENDING_BILLING_INFO": ("billing issue", "billing issue on the ad account"),
+    "IN_PROCESS": ("processing", "processing at Meta"),
+    "WITH_ISSUES": ("has issues", "flagged WITH_ISSUES by Meta"),
+    "DISAPPROVED": ("disapproved", "disapproved by Meta review"),
+    # parent layers: the ad's own toggle is ON — enabled-but-dead, not parked
+    "CAMPAIGN_PAUSED": ("campaign paused", "the ad is enabled but its CAMPAIGN "
+                                           "is paused — nothing can deliver"),
+    "ADSET_PAUSED": ("ad set paused", "the ad is enabled but its AD SET is "
+                                      "paused — nothing can deliver"),
 }
-_PAUSE_LAYER = {"PAUSED": "ad", "CAMPAIGN_PAUSED": "campaign",
-                "ADSET_PAUSED": "ad set", "ARCHIVED": "ad (archived)",
-                "DISAPPROVED": "ad (disapproved)"}
+_PARENT_BLOCKED = ("CAMPAIGN_PAUSED", "ADSET_PAUSED")
+_PAUSE_LAYER = {"PAUSED": "ad", "ARCHIVED": "ad (archived)"}
+STATUS_RANK = {"delivering": 3, "enabled_not_delivering": 2, "paused": 1,
+               "unknown": 0}
 
 
 # ── rotation rules (R-A) ─────────────────────────────────────────────────────
@@ -159,14 +171,25 @@ def _recent_delivery_days(spend_store: dict, horizon_days: int) -> list[str]:
     return [str(t - timedelta(days=i)) for i in range(horizon_days)]
 
 
+def _st(status: str, label: str, reason: str, layer=None, as_of=None,
+        degraded=None, blocked_by_parent=False) -> dict:
+    """The one status shape: label is the RENDERED text (both views show it
+    verbatim — no glyph needs decoding); rank is the sort ordinal."""
+    return {"status": status, "label": label, "rank": STATUS_RANK[status],
+            "reason": reason, "layer": layer, "as_of": as_of,
+            "degraded": degraded, "blocked_by_parent": blocked_by_parent}
+
+
 def status_for(ad_ids: list[str], entity_store: dict, spend_store: dict,
                rl: dict | None = None) -> dict:
     """ONE status classification for a creative (its member ad ids).
-    Returns {status: delivering|enabled_not_delivering|paused|unknown,
-             reason, layer, as_of, degraded}. NEVER the ad's own toggle alone:
-    delivery truth comes from the daily buckets; the pausing layer is named
-    from effective_status (which folds parents). A dead Meta source returns
-    status 'unknown' with the reason — never a stale green (F5)."""
+    Returns {status, label, rank, reason, layer, as_of, degraded,
+    blocked_by_parent}. The ruled triad: LIVE (delivering per the daily
+    buckets) · NOT DELIVERING (the ad's own toggle is ON but Meta isn't
+    delivering it — reason in the label: campaign/ad-set paused, review,
+    billing, issues, or the honest 'reason unknown') · PAUSED (parked at the
+    ad's OWN layer). Never the toggle alone; a dead Meta source returns
+    'unknown' with the cause — never a stale green (F5)."""
     rl = rl or rules()
     ad_ids = [str(a) for a in (ad_ids or []) if a]
     import time as _t
@@ -189,8 +212,8 @@ def status_for(ad_ids: list[str], entity_store: dict, spend_store: dict,
         degraded = (f"delivery archive stale ({int((_t.time() - refreshed) / 3600)}h "
                     "since last Meta refresh) — status would be a guess")
     if degraded:
-        return {"status": "unknown", "reason": degraded, "layer": None,
-                "as_of": as_of, "degraded": degraded}
+        return _st("unknown", "STATUS UNKNOWN · Meta source degraded", degraded,
+                   as_of=as_of, degraded=degraded)
 
     days = spend_store.get("days") or {}
     recent = _recent_delivery_days(spend_store, int(rl.get("freshness_days", 2)))
@@ -212,33 +235,36 @@ def status_for(ad_ids: list[str], entity_store: dict, spend_store: dict,
     statuses = [s for s in (_ent(a).get("effective_status") for a in ad_ids) if s]
 
     if delivering:
-        return {"status": "delivering", "reason": "impressions within the "
-                f"last {rl.get('freshness_days', 2)} day(s) (daily-delivery archive)",
-                "layer": None, "as_of": as_of, "degraded": None}
-    # enabled-but-blocked states (review/billing/issues) are the AMBER class
-    # with their reason NAMED — the ad is on, Meta isn't delivering it
+        return _st("delivering", "LIVE",
+                   f"impressions within the last {rl.get('freshness_days', 2)} "
+                   "day(s) (daily-delivery archive)", as_of=as_of)
+    # AMBER: enabled at the ad's own layer, Meta not delivering — reason in
+    # the label. Parent-paused counts HERE (the ad itself is on): an
+    # enabled-but-dead ad is a different problem from a deliberately paused one.
     for s in statuses:
         if s in _AMBER_REASONS:
-            return {"status": "enabled_not_delivering", "reason": _AMBER_REASONS[s],
-                    "layer": None, "as_of": as_of, "degraded": None}
+            short, detail = _AMBER_REASONS[s]
+            return _st("enabled_not_delivering", f"NOT DELIVERING · {short}",
+                       detail, as_of=as_of,
+                       blocked_by_parent=s in _PARENT_BLOCKED)
     if any(s == "ACTIVE" for s in statuses):
-        # enabled at every layer, zero recent delivery — the dangerous middle
-        return {"status": "enabled_not_delivering",
-                "reason": ("reason unknown — commonly learning phase or "
-                           "budget-limited (not visible under ads_read)"),
-                "layer": None, "as_of": as_of, "degraded": None}
+        return _st("enabled_not_delivering", "NOT DELIVERING · reason unknown",
+                   "enabled at every layer with zero recent delivery — commonly "
+                   "learning phase or budget-limited (not visible under ads_read)",
+                   as_of=as_of)
     if statuses:
-        for s in statuses:            # name the pausing layer (parents first is
-            if s in _PAUSE_LAYER:     # how Meta orders effective_status anyway)
-                return {"status": "paused", "reason": f"paused at the {_PAUSE_LAYER[s]} layer",
-                        "layer": _PAUSE_LAYER[s], "as_of": as_of, "degraded": None}
-        return {"status": "enabled_not_delivering",
-                "reason": f"Meta status {statuses[0]} — no recent delivery",
-                "layer": None, "as_of": as_of, "degraded": None}
+        for s in statuses:
+            if s in _PAUSE_LAYER:
+                return _st("paused", "PAUSED",
+                           f"paused at the {_PAUSE_LAYER[s]} layer (deliberate park)",
+                           layer=_PAUSE_LAYER[s], as_of=as_of)
+        return _st("enabled_not_delivering",
+                   f"NOT DELIVERING · {statuses[0].lower().replace('_', ' ')}",
+                   f"Meta status {statuses[0]} — no recent delivery", as_of=as_of)
     # no entity record (deleted/unlisted ad), no recent delivery
-    return {"status": "paused", "reason": "not in the Meta ad listing (deleted or "
-            "archived out) and no recent delivery",
-            "layer": "ad (unlisted)", "as_of": as_of, "degraded": None}
+    return _st("paused", "PAUSED · unlisted",
+               "not in the Meta ad listing (deleted or archived out) and no "
+               "recent delivery", layer="ad (unlisted)", as_of=as_of)
 
 
 # ── the ONE stage classifier (Law 1) ─────────────────────────────────────────
@@ -284,9 +310,12 @@ def classify_stage(row_all: dict, status: dict, rl: dict) -> dict:
         return {"lane": lane, "why": why, "kill_basis": basis,
                 "rotation": rotation, "status": status}
 
-    # archive: verified-paused at any layer is terminal until Meta changes
-    if status.get("status") == "paused":
-        return out("archive", f"paused in Meta — {status.get('reason')}")
+    # archive: parked in Meta — at the ad's own layer (grey) OR via a paused
+    # parent (amber-blocked: the ad can't deliver until the parent resumes).
+    # The STATUS accent still distinguishes the two on the card; the rotation
+    # lanes stay reserved for ads that could actually run.
+    if status.get("status") == "paused" or status.get("blocked_by_parent"):
+        return out("archive", f"parked in Meta — {status.get('reason')}")
     if lin.get("never_delivered"):
         return out("testing", "never delivered — no rotation clock exists yet "
                               "(lifetime impressions 0)")
@@ -461,7 +490,8 @@ def _check_convergence(key: str, dec: dict, status: dict,
     detected). Returns True if the decision converged on this sync."""
     if dec.get("executed"):
         return False
-    if dec.get("state") == "marked_to_kill" and status.get("status") == "paused":
+    if dec.get("state") == "marked_to_kill" and (status.get("status") == "paused"
+                                                 or status.get("blocked_by_parent")):
         dec["executed"] = True
         dec["converged_at"] = _now()
         dec["convergence"] = f"verified in Meta — {status.get('reason')}"
@@ -598,7 +628,10 @@ def build_block(creatives_all: list[dict], record_render: bool = True) -> dict:
         else:
             card["lane"] = stage["lane"]
             if stage["lane"] == "archive":
-                card["archive_label"] = "paused (no decision recorded)"
+                card["archive_label"] = (
+                    ("blocked — " + st.get("label", "").replace("NOT DELIVERING · ", "")
+                     if st.get("blocked_by_parent") else "paused")
+                    + " (no decision recorded)")
         cards[key] = card
     if converged_any:
         _put_decisions(decisions)
@@ -631,6 +664,8 @@ def build_block(creatives_all: list[dict], record_render: bool = True) -> dict:
             kv_store.put(_KV_LAST_RENDER, {
                 "at": _t.time(),
                 "lanes": {k: c["lane"] for k, c in cards.items()},
+                "statuses": {k: (c.get("status") or {}).get("status")
+                             for k, c in cards.items()},
                 "hashes": {k: c["inputs_hash"] for k, c in cards.items()},
                 "stances": {a: {s: n for s, n in v.get("counts", {}).items()}
                             for a, v in stances.items()},
@@ -759,6 +794,48 @@ def sentinel_watch() -> dict:
                                    "mismatched_since_render": len(mism)}
     except Exception as e:
         out["stance_integrity"] = {"error": str(e)[:80]}
+    # 6 · STATUS-MISMATCH SAMPLING (ground-truth sweep 2): N random rendered
+    # ads/night — fresh per-ad effective_status from Meta (direct GETs, ≤8
+    # calls) re-classified vs the rendered state. Drift LOUD. A stale entity
+    # map self-heals on its next TTL refresh; this watch catches it lying
+    # in the meantime.
+    try:
+        import meta_entities
+        if meta_entities.configured():
+            import random
+            last = kv_store.get(_KV_LAST_RENDER) or {}
+            rendered = last.get("statuses") or {}
+            # id-keyed cards only: a name-keyed multi-candidate creative folds
+            # several ads — a single fresh lookup can't re-derive its state
+            pool = [k for k in rendered if re.match(r"^\d{10,20}$", str(k))]
+            keys = random.sample(pool, min(8, len(pool)))
+            rl2 = rules()
+            ss2 = _spend_store()
+            drifted = []
+            checked = 0
+            for key in keys:
+                j, err = meta_entities._get(key, {
+                    "access_token": meta_entities.META_ACCESS_TOKEN,
+                    "fields": "effective_status"})
+                if not j or not j.get("effective_status"):
+                    continue
+                checked += 1
+                fresh_es = {"ads": {key: {"effective_status": j["effective_status"]}}}
+                fresh = status_for([key], fresh_es, ss2, rl2)
+                if fresh["status"] != rendered.get(key):
+                    drifted.append({"ad": key, "rendered": rendered.get(key),
+                                    "fresh": fresh["status"],
+                                    "fresh_effective": j["effective_status"]})
+            out["status_sampling"] = {"checked": checked, "drift": drifted,
+                                      "api_calls": len(keys)}
+            if drifted:
+                _sentinel_feed(f"STATUS DRIFT vs fresh Meta: {len(drifted)}/{checked} "
+                               f"sampled ad(s) render a different state — {drifted[:2]}",
+                               loud=True)
+        else:
+            out["status_sampling"] = {"skipped": "Meta not configured"}
+    except Exception as e:
+        out["status_sampling"] = {"error": str(e)[:80]}
     return out
 
 

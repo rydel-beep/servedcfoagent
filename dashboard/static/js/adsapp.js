@@ -452,6 +452,8 @@
       ['Launched + days running', 'Launched = the first day Meta recorded impressions for the ad (first delivery, #133) — never the created date (the object’s birthday, shown as secondary when it differs) and never the ad-set schedule (ad sets are reused). Days running = days with actual delivery; a paused ad does not accrue runtime.'],
       ['Sources', 'Spend/impressions carry the META chip — Meta’s own numbers for the box, not recomputable from the tracker. CPL and every C/* carry the HYB chip: Meta spend ÷ engine counts — they degrade if EITHER side degrades. Funnel counts (leads → closes) are engine-authoritative from the tracker and stay live when Meta dies.'],
       ['The date box + clock', 'The range picker sets a Sydney-day box and asks ONE of two questions: ACTIVITY (events that happened inside the box) or COHORT (what the box’s arrivals went on to become). The toggle beside the picker declares which; every label carries the active clock; the engine refuses cross-clock math (I11).'],
+      ['Live status (the triad)', 'LIVE (green) = delivering — impressions within the freshness horizon per the daily-delivery archive, never the toggle alone. NOT DELIVERING (amber) = the ad itself is ENABLED but Meta isn’t delivering it — the reason is in the label (campaign paused / ad set paused / in review / billing / has issues / reason unknown); this is the dangerous middle state. PAUSED (grey) = parked at the ad’s own layer, deliberately. STATUS UNKNOWN = the Meta source is degraded — stated, never a stale green. Hover any status for the full detail + fetch time. Want just the live ads? The “Delivering” filter chip above the table does exactly that in one click.'],
+      ['Intraday numbers', 'A window that includes TODAY shows Meta spend/impressions that are still moving — Meta restates recent days for ~72h. They render with the intraday note and firm up as days close. Funnel counts (tracker) are unaffected.'],
     ].map(function (d) {
       return '<div class="adx-def"><div class="adx-def-t">' + d[0] + '</div><div class="adx-def-b">' + d[1] + '</div></div>';
     }).join('');
@@ -552,6 +554,7 @@
         (state.board.stale_reason ? ' · ' + esc(state.board.stale_reason) : '') +
         ') — refreshing…</span>' : '') +
       (state.board.range_note ? ' · <span class="adx-clock-note">' + esc(state.board.range_note) + '</span>' : '') +
+      (state.board.spend_intraday_note ? ' · <span class="adx-intraday" title="' + esc(state.board.spend_intraday_note) + '">⏳ spend includes today — intraday, not final</span>' : '') +
       (state.range && state.basis === 'cohort' && cohortIsYoung()
         ? ' · <span class="adx-clock-note">young cohort — leads this recent are still maturing (closes lag weeks); the activity clock answers “what happened in this box”</span>' : '') +
       (!state.range && state.days === 30 && state.basis === 'cohort' ? ' · <span class="adx-guide">30d cohort: closes still landing — 60/90d is the honest read for close-based verdicts</span>' : '');
@@ -609,6 +612,13 @@
         if (av !== bv) return av - bv;
         return (b.cost_per_lead || 0) - (a.cost_per_lead || 0);
       }
+      if (k === 'status') {
+        // the classifier's ordinal — desc = LIVE first, then NOT DELIVERING,
+        // then PAUSED, unknown last; spend desc as the stable tiebreak
+        av = statusRank(a.creative_key); bv = statusRank(b.creative_key);
+        if (av !== bv) return dir === -1 ? bv - av : av - bv;
+        return (b.spend || 0) - (a.spend || 0);
+      }
       if (k === 'launch' || k === 'active_days') {
         // #133: launch sorts read the ONE engine lineage field (the same value
         // the hover card and dossier show) — never a client-side recompute
@@ -656,20 +666,40 @@
   function stancesOf(key) { return (lifeBlock().stances || {})[key] || null; }
 
   var STATUS_META = {
-    delivering: { cls: 'adx-st-green', label: 'LIVE' },
-    enabled_not_delivering: { cls: 'adx-st-amber', label: 'ON · not delivering' },
-    paused: { cls: 'adx-st-grey', label: 'PAUSED' },
-    unknown: { cls: 'adx-st-unknown', label: 'DEGRADED' },
+    delivering: { cls: 'adx-st-green' },
+    enabled_not_delivering: { cls: 'adx-st-amber' },
+    paused: { cls: 'adx-st-grey' },
+    unknown: { cls: 'adx-st-unknown' },
   };
-  function statusDot(card, compact) {
+  // STATUS CLARITY (ruled): every state renders its server-built LABEL —
+  // "LIVE" / "NOT DELIVERING · {reason}" / "PAUSED" — no glyph needs
+  // decoding. Hover = the full detail (reason, layer, last delivery,
+  // status fetch time). The label text comes from the one classifier.
+  function statusDot(card, compact, row) {
     if (!card || !card.status) {
-      return '<span class="adx-st adx-st-unknown" title="no status computed for this row">—</span>';
+      // labeled, never a bare dash: this row has no lifecycle record —
+      // say so and say what it means
+      return '<span class="adx-st adx-st-unknown" title="no lifecycle/status record for this row — the lifetime engine leg has no card for this key (usually a stale rollup refreshing, or a name-keyed creative with no resolved ad id); status unknowable until it lands">NO STATUS · no lifecycle record</span>';
     }
     var st = card.status;
     var m = STATUS_META[st.status] || STATUS_META.unknown;
-    var tip = (st.reason || '') + (st.as_of ? ' · status as of ' + st.as_of : '');
+    var lin = (row && row.lineage) || {};
+    var tip = (st.reason || '') +
+      (st.layer ? ' · layer: ' + st.layer : '') +
+      (lin.last_delivery ? ' · last delivered ' + lin.last_delivery : '') +
+      (st.as_of ? ' · status as of ' + st.as_of : '');
+    var label = st.label || st.status;
     return '<span class="adx-st ' + m.cls + '" title="' + esc(tip) + '">' +
-      '<span class="adx-st-dot"></span>' + (compact ? '' : ' ' + m.label) + '</span>';
+      '<span class="adx-st-dot"></span>' + (compact ? '' : ' ' + esc(label)) + '</span>';
+  }
+  // LIVE SORT (bug fix): the header was wired to sortRows but keyed on
+  // r['status'] — a field that does not exist on engine rows, so every
+  // comparison was null==null and the order never changed. The real key is
+  // the classifier's ORDINAL (status.rank: LIVE 3 → NOT DELIVERING 2 →
+  // PAUSED 1 → unknown 0) — engine-computed, view-read.
+  function statusRank(key) {
+    var c = lifeCard(key);
+    return (c && c.status && typeof c.status.rank === 'number') ? c.status.rank : -1;
   }
   function statusMatches(key) {
     if (state.statusFilter === 'all') return true;
@@ -785,11 +815,14 @@
     var lin = row.lineage || {};
     var dgd = degradedEntryFor('spend');
     var h = '<div class="adx-card ' + accent + '" draggable="true" data-key="' + esc(key) + '">' +
-      '<div class="adx-card-head">' + statusDot(card, true) +
+      '<div class="adx-card-head">' + statusDot(card, true, row) +
       '<span class="adx-card-name" title="open the dossier">' + esc(String(row.creative || '').slice(0, 46)) + '</span>' +
       (lin.preview_link ? ' <a class="adx-preview" href="' + esc(lin.preview_link) + '" target="_blank" rel="noopener">↗</a>' : '') +
       '</div>' +
-      (st.status === 'enabled_not_delivering' ? '<div class="adx-card-amber" title="' + esc(st.reason || '') + '">⚠ ' + esc(String(st.reason || '').slice(0, 60)) + '</div>' : '') +
+      // every non-LIVE card states its label in words (no decoding a color)
+      (st.status && st.status !== 'delivering'
+        ? '<div class="adx-card-amber" title="' + esc((st.reason || '') + (st.as_of ? ' · status as of ' + st.as_of : '')) + '">' +
+          (st.status === 'enabled_not_delivering' ? '⚠ ' : '') + esc(st.label || st.status) + '</div>' : '') +
       rotationLine(card) +
       // WINDOW-scoped funnel line — the SAME engine row the table renders,
       // labelled with the table's clock+window (two clocks, each named).
@@ -1095,7 +1128,8 @@
         // Board's card accents (lifecycle block; groups carry no single status)
         (VCOLS.some(function (c) { return c.k === 'status'; })
           ? '<td class="adx-status-cell">' + (r.tier === 'ad' && state.level === 'creative'
-              ? statusDot(lifeCard(r.creative_key), false) : '—') + '</td>' : '') +
+              ? statusDot(lifeCard(r.creative_key), false, r)
+              : '<span class="adx-prov" title="group/channel rows fold several ads — no single live status exists; open a creative row for its status">n/a (group)</span>') + '</td>' : '') +
         (VCOLS.some(function (c) { return c.k === 'verdict'; }) ? '<td>' + (r.tier === 'ad' ? badge(r) : '—') + '</td>' : '') +
         VCOLS.filter(function (c) { return c.k !== 'creative' && c.k !== 'verdict' && c.k !== 'status'; }).map(function (c) {
           var v = r[c.k];

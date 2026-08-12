@@ -204,6 +204,59 @@ def test_stance_whitelist_at_boundary_and_attribution(monkeypatch):
         assert evil not in (it.get("title") or "")
 
 
+# ── STATUS CLARITY + LIVE SORT (structural pins on the view layer) ───────────
+
+_JS = os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "js",
+                   "adsapp.js")
+
+
+def test_js_status_sort_uses_ordinal_not_string():
+    src = open(_JS).read()
+    # the Live column sorts on the classifier's ordinal — never a label string
+    assert "k === 'status'" in src and "statusRank(" in src
+    assert "status.rank" in src
+    # the bug class: r['status'] as a generic row field must not be the key
+    i = src.index("function sortRows")
+    j = src.index("function badge")
+    assert "a['status']" not in src[i:j]
+
+
+def test_js_no_unexplained_glyph_and_labels_render():
+    src = open(_JS).read()
+    # every state renders its label; the no-card branch is LABELED, not a dash
+    assert "NO STATUS · no lifecycle record" in src
+    assert "esc(st.label" in src or "esc(label)" in src
+    # the legend explains the triad + the Delivering chip as the direct tool
+    assert "Live status (the triad)" in src
+    assert "Delivering" in src and "filter chip" in src
+    # intraday note renders from the server field, labeled
+    assert "spend_intraday_note" in src and "intraday, not final" in src
+
+
+def test_build_board_intraday_note_only_when_window_includes_today(monkeypatch):
+    from tests.test_ads_dashboard import _fake_result
+    from helpers import today_sydney
+    _kv_reset(monkeypatch)
+    base = _fake_result()
+
+    def fake_compute(**kw):
+        r = dict(base)
+        r["window"] = {"start": "2026-07-01", "end": kw.pop("_end", None) or
+                       fake_compute.end, "days": 30}
+        return r
+    import dashboard.ads as ADS
+    monkeypatch.setattr("attribution_engine.compute",
+                        lambda **kw: dict(base, window={"start": "2026-07-01",
+                                                        "end": fake_compute.end,
+                                                        "days": 30}), raising=True)
+    fake_compute.end = str(today_sydney())
+    p = ADS._build_board(30, None, None, "cohort")
+    assert p["spend_intraday_note"] and "intraday" in p["spend_intraday_note"]
+    fake_compute.end = "2026-07-31"          # a closed box → no intraday claim
+    p2 = ADS._build_board(30, None, None, "cohort")
+    assert p2["spend_intraday_note"] is None
+
+
 def test_move_dialog_data_shows_opinions(monkeypatch):
     """R-C: the move dialog reads /api/discussion for the card — the SAME
     store — so the decider sees stances + notes before confirming."""
