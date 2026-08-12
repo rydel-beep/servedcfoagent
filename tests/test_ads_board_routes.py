@@ -273,3 +273,39 @@ def test_move_dialog_data_shows_opinions(monkeypatch):
     assert d["notes"][0]["stance"] == "kill"
     assert d["notes"][0]["author"]["user"] == "isaiah"
     assert "CPL is triple" in d["notes"][0]["body"]
+
+
+# ── the all-tiers account door (ground-truth sweep 2 fix) ───────────────────
+
+def test_account_all_cell_matches_headline_totals():
+    """The #140 money tiles total ACROSS tiers; their door must open the same
+    population. Witnessed live: a window whose 2 closes were channel-tier
+    rendered a $18,300 contract tile over an empty __account__ drill."""
+    import datetime as dt
+    import attribution_engine as eng
+    import roster_engine
+    from tests.test_attribution import HDR, row, contact, resolver, RES_A
+    W0, W1 = dt.date(2026, 7, 1), dt.date(2026, 7, 31)
+    rows = [HDR,
+            row("A One", "a1@x.com", closer="won", close_date="2026-07-20",
+                contract="15000", cash="6000"),
+            # a close with NO GHL contact → unattributed tier (the witnessed class)
+            row("U One", "u1@x.com", closer="won", close_date="2026-07-25",
+                contract="9000", cash="1000")]
+    contacts = [contact("c1", "a1@x.com", "A One")]
+    spend = {"120000000000000001": {"name": "Creative A", "spend": 900.0,
+                                    "impressions": 10, "clicks": 2}}
+    r = eng.compute_from_inputs(rows, contacts, spend,
+                                resolver({"120000000000000001": RES_A}), W0, W1)
+    headline_closes = (r.get("totals") or {}).get("closes")
+    assert headline_closes == 2
+    ad_rows, _e = roster_engine._member_rows(r, "account", "__account__")
+    all_rows, _e2 = roster_engine._member_rows(r, "account", "__account_all__")
+    assert sum(c.get("closes") or 0 for c in ad_rows) == 1        # ladder: ad-tier only
+    assert sum(c.get("closes") or 0 for c in all_rows) == headline_closes
+    # contract behind the all-tiers door == the tile's population
+    import attribution_engine as AE
+    hl = AE.scoreboard_view(r)["headline"]
+    deals = [d for c in all_rows for d in (c.get("deals") or [])]
+    assert hl["contract_total"] == 24000.0
+    assert round(sum(float(d.get("contract") or 0) for d in deals), 2) == 24000.0

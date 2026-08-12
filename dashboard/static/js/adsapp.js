@@ -1932,7 +1932,11 @@
     $('#adx-headline').addEventListener('click', function (e) {
       var hd = e.target.closest('.adx-door[data-headdrill]');
       if (hd) {
-        loadRoster('account', '__account__', 'Account · closes',
+        // ALL-TIERS door (sweep-2 fix): the money tiles total across tiers
+        // (#140), so their door opens the all-tiers account cell — the old
+        // __account__ (ad-ladder-only) door showed 0 people whenever the
+        // window's closes were IG-DM/unattributed-tier.
+        loadRoster('account', '__account_all__', 'Account · closes (all tiers)',
                    hd.dataset.headdrill, null);
       }
     });

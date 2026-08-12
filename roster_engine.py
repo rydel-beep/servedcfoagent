@@ -66,6 +66,14 @@ def _member_rows(result: dict, level: str, key: str) -> tuple[list[dict], str | 
     import attribution_verdicts
     groups = attribution_verdicts.ladder_groups(result).get(level) or {}
     if level == "account":
+        # __account_all__ (ground-truth sweep 2): the ALL-TIERS account cell —
+        # ad-attributed creatives PLUS the channel tiers (IG-DM/unattributed/
+        # ambiguous). The HEADLINE money tiles total across tiers (#140), so
+        # their doors must open on the same population; the ladder's account
+        # row (__account__) stays ad-attributed-only by design (tiers ride
+        # beside, never blended into the ad ladder).
+        if key == "__account_all__":
+            return list(creatives), None
         return groups.get("__account__") or [], None
     rows = groups.get(key)
     return (rows or []), (None if rows else f"unknown {level} group '{key}'")
@@ -280,7 +288,7 @@ def build(days=30, start=None, end=None, basis="cohort", market=None,
         return {"error": f"bad metric '{metric}'"}
     if level not in LEVELS:
         return {"error": f"bad level '{level}'"}
-    if level == "account":
+    if level == "account" and key != "__account_all__":
         key = "__account__"
     if not key:
         return {"error": "key required"}

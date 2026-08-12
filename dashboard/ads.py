@@ -759,7 +759,7 @@ def roster():
     metric = request.args.get("metric") or request.args.get("stage") or "leads"
     level = request.args.get("level") or "creative"
     key = request.args.get("key") or request.args.get("creative") or None
-    if level == "account":
+    if level == "account" and key != "__account_all__":
         key = "__account__"
     if metric not in roster_engine.METRICS + roster_engine.ANOMALY_METRICS:
         return jsonify({"error": "bad metric"}), 400
