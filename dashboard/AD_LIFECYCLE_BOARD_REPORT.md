@@ -84,6 +84,38 @@ test_ads_board_routes 8).
 - **Consolidation**: `kill_candidate_flags` output == the block's
   kill-lane keys, bases named, board deep-links; decided cards leave the rail.
 
+## PROD verification (deploy 2b22809c, probe scripts/verify_lifecycle_board.py)
+
+- **Stores live**: 728 entities · 682 archived delivery days · refreshed 58m
+  ago. (First probe on the fresh deploy caught a real seam — the lifecycle
+  loaders read raw state files that Railway wipes per deploy → everything
+  DEGRADED-honest but blind; fixed to the kv-seeding loaders, re-verified.)
+- **STATUS TRUTH, 10 sampled ads — 10/10 exact** vs raw effective_status +
+  delivery buckets: PAUSED→grey "ad layer" · ARCHIVED→"ad (archived)" ·
+  **CAMPAIGN_PAUSED→"paused at the campaign layer"** (the parent-layer case,
+  live) · zero recent impressions in every grey case. Freshness stamp
+  carried. Account-wide: **8 delivering · 3 enabled-not-delivering · 637
+  paused** — the triad separates the graveyard from the live set at a glance.
+- **LANES live**: archive 637 (collapsed) · kill_candidate 4 · watch 1 ·
+  testing 6. Real testing cards: "day 3 · $87/$200", "day 3 · $42/$200".
+  Real rotation kills: "day 11 · $595/$200 · 0 lifetime leads", "day 6 ·
+  $157/$200 · 0 lifetime leads".
+- **Consolidation live: `consolidation_ok: true`** — kill cards ==
+  kill-lane keys, exactly, from the same block object.
+- **EDITH live**: "why did we kill Retargeting NEW VSL" → "No human decision
+  is recorded… The engine's read: archive — paused at the ad (archived)
+  layer" (honest, no fabricated mover). Team-think drill → honest empty.
+- **Sentinel first run**: status_freshness ok (1.0h) · convergence_lag [] ·
+  **stage_drift []** (zero, render vs recompute) · rules ok · stance
+  integrity 0/0 · runtime 0.12s (well inside L2 budget).
+- **Perf**: all-time leg 0.084s (rollup-served) · lifecycle block build
+  0.030s · sentinel watch 0.12s — the board attach adds ~0.11s to a serve,
+  inside the grid budget; status refresh rides the existing TTL/background
+  loaders (non-blocking).
+- View parity is structural: board cards render THE scoreboard rows
+  verbatim (no transform path exists in adsapp.js — grep-checkable), so
+  card numbers == table numbers for any window/clock by construction.
+
 ## Accepted limitations (stated, not hidden)
 
 - Scale-mark convergence: budget raises are invisible under ads_read —
