@@ -69,7 +69,7 @@ def main():
         statuses[s] = statuses.get(s, 0) + 1
     out["lane_counts"] = lanes
     out["status_counts"] = statuses
-    kills = L.kill_candidate_flags(creatives, limit=50, block=block)
+    kills = L.kill_candidate_flags(creatives, limit=100000, block=block)
     lane_kill_keys = sorted(k for k, c in block["cards"].items()
                             if c["lane"] == "kill_candidate")
     out["consolidation_ok"] = sorted(f["creative_key"] for f in kills) == lane_kill_keys

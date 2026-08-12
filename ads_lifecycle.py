@@ -132,13 +132,24 @@ def rules_journal() -> list:
 # ── the status engine (Law 3): DELIVERING / ENABLED-NOT-DELIVERING / PAUSED ──
 
 def _spend_store() -> dict:
+    """The daily-delivery archive via the SEEDING loader — a fresh deploy's
+    empty local file reseeds from the kv mirror (Railway files die per
+    deploy); a raw file read here would render every status DEGRADED until
+    the first engine compute (probe-caught on deploy c32f6541)."""
     import meta_entities
-    return meta_entities._load_json(meta_entities.AD_SPEND_STORE)
+    return meta_entities._load_spend_store()
 
 
 def _entity_store() -> dict:
+    """The entity map via its TTL loader (stale-but-present serves and
+    refreshes in background; only a truly empty first boot fetches inline —
+    the same semantics the dossier identity path already uses)."""
     import meta_entities
-    return meta_entities._load_json(meta_entities.ENTITY_STORE)
+    try:
+        return meta_entities.refresh_entity_map()
+    except Exception as e:
+        logger.info("entity map load degraded: %s", e)
+        return meta_entities._load_json(meta_entities.ENTITY_STORE)
 
 
 def _recent_delivery_days(spend_store: dict, horizon_days: int) -> list[str]:
