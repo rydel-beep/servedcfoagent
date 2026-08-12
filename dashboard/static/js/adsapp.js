@@ -685,8 +685,8 @@
     var c = lifeCard(key);
     var rot = c && c.rotation;
     if (!rot) return state.band === 'below';   // no clock → below the threshold, honestly
-    var above = (rot.spend || 0) >= (rot.test_spend || 200);
-    return state.band === 'above' ? above : !above;
+    // engine-computed flag (rotation.above_test_spend) — the view never re-derives it
+    return state.band === 'above' ? !!rot.above_test_spend : !rot.above_test_spend;
   }
   function renderStatusBar() {
     var bar = $('#adx-status-bar');

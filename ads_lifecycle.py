@@ -262,6 +262,7 @@ def classify_stage(row_all: dict, status: dict, rl: dict) -> dict:
             "test_spend": float(rl["test_spend"]),
             "boundary_hit": by_days or by_spend,
             "boundary_by": ("days" if by_days else "spend") if (by_days or by_spend) else None,
+            "above_test_spend": by_spend,      # the spend-band grouping flag (view reads, never recomputes)
             "label": (f"day {active_days} · ${spend:,.0f}/${rl['test_spend']:,.0f}"
                       + (" · clock ≈ (launch probe pending)" if lin.get("launch_approx") else "")),
             "clock_note": "rotation clock: per-ad lifetime from FIRST DELIVERY "
