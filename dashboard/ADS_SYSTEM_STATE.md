@@ -175,6 +175,28 @@ hourly (L1), n=20 nightly (L2), FULL weekly (L3) + suite sweeps.
   integrity. Tests: tests/test_ads_lifecycle.py (37) +
   tests/test_ads_board_routes.py (8).
 
+## Status clarity + ground-truth sweep 2 (2026-08-12, same day)
+
+- TRIAD RE-RULED: every status renders a server-built LABEL (`status.label`)
+  — `LIVE` / `NOT DELIVERING · {campaign paused|ad set paused|in review|
+  billing issue|has issues|disapproved|reason unknown}` / `PAUSED` (own
+  layer only) / `STATUS UNKNOWN · …`. Parent-paused = the AMBER class
+  (`blocked_by_parent`); lanes park parent-blocked ads in the archive; kill
+  marks converge on parent-pauses too. `status.rank` (3/2/1/0) is the ONE
+  sort ordinal — the Live column sorts on it (the shipped header sorted on a
+  nonexistent row field; fixed + structurally pinned).
+- INTRADAY HONESTY: windows including today carry `spend_intraday_note`
+  (banner + legend) — today's Meta numbers render as provisional.
+- ALL-TIERS DOOR: headline money tiles drill `account/__account_all__`
+  (ad creatives + channel tiers) — the ad-ladder `__account__` row is
+  ad-only by design and under-reported the tile whenever closes were
+  channel-tier (sweep-caught, fixed, live-exact).
+- SWEEP 2 (dashboard/GROUND_TRUTH_SWEEP_2.md): spend cent-exact vs fresh
+  Meta on 7d/30d closed + today; status zero-drift post fresh refresh;
+  reconciliation 0.0%; stamps truthful; contract tile exact on both clocks.
+  Sentinel gained nightly status-mismatch sampling (8 fresh per-ad lookups
+  vs rendered state, loud on drift).
+
 ## Known open findings
 
 - **F17 (register)**: normalization split — `resolution._norm` strips '@'/'.'
