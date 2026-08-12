@@ -16,6 +16,11 @@
     <!-- THE UNBIND (#134 mission): the page-top window/range controls are GONE.
          The ONE date control lives in the Ads card header below — one table,
          one control, zero ambiguity. Market stays here (orthogonal filter). -->
+    <!-- BOARD v2: Table ⇄ Board — one engine, two shapes; URL-stated (?view=board) -->
+    <div class="adx-views" id="adx-views" title="Two views of the SAME engine numbers — the table for depth, the lifecycle board for the testing rotation">
+      <button class="adx-view active" data-view="table">Table</button>
+      <button class="adx-view" data-view="board">Board</button>
+    </div>
     <div class="adx-markets" id="adx-markets" title="Engine-level market filter — AU + US + Unknown always sum to All (I15); spend is omitted under a filter (per-creative, not market-splittable)">
       <button class="adx-market active" data-market="all">All</button>
       <button class="adx-market" data-market="au">AU</button>
@@ -46,8 +51,29 @@
     <div id="adx-hygiene-body"></div>
   </section>
 
+  <!-- LIVE-STATUS FILTER CHIPS (Law 3) — both views; URL-stated -->
+  <div class="adx-status-bar" id="adx-status-bar" style="display:none">
+    <span class="adx-status-chips" id="adx-status-chips"></span>
+    <span class="adx-band-toggle" id="adx-band-toggle" title="Group by the rotation spend threshold (R-A config) — lifetime spend above/below the test boundary"></span>
+    <span class="adx-status-asof" id="adx-status-asof"></span>
+  </div>
+
+  <!-- THE LIFECYCLE BOARD (Board v2) — a VIEW of the one engine: lanes from the
+       ONE stage classifier; decisions overlay; stances from the ONE discussion
+       store. Zero board-local math. -->
+  <section class="adx-panel" id="adx-board-panel" style="display:none">
+    <div class="adx-board-head">
+      <h2>Lifecycle board <span class="adx-h2-sub" id="adx-board-sub"></span></h2>
+      <details class="adx-rules-panel" id="adx-rules-panel">
+        <summary>Rotation rules ▾</summary>
+        <div class="adx-rules-body" id="adx-rules-body"></div>
+      </details>
+    </div>
+    <div class="adx-board-lanes" id="adx-board-lanes"></div>
+  </section>
+
   <!-- THE CREATIVE TABLE (with the aggregation ladder) -->
-  <section class="adx-panel">
+  <section class="adx-panel" id="adx-table-panel">
     <div class="adx-table-head">
       <h2 id="adx-table-title">Creatives <span class="adx-h2-sub" id="adx-table-window"></span></h2>
       <!-- THE date control (#133/#134): Meta-Ads-Manager-familiar, IN the card

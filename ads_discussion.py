@@ -40,6 +40,13 @@ _CAP = 2000                              # store cap — tombstones included, ol
 
 _ANCHOR_RE = re.compile(r"^(board|[0-9]{10,20}|__ig_dm__|__unattributed__|__ambiguous__)$")
 
+# STANCES (Board v2, R-C): an OPTIONAL tag on a comment — Kill / Scale / Hold.
+# Stances are OPINIONS, never votes: nothing here (or anywhere) moves a card
+# from a stance; the only consumers are the summary chip, the move dialog's
+# display, and EDITH's read-only recall. Schema extension is additive — every
+# pre-existing comment simply has no "stance" key.
+_STANCES = ("kill", "scale", "hold")
+
 
 def _store() -> dict:
     try:
@@ -63,9 +70,9 @@ def _now_iso() -> str:
     return now_sydney().strftime("%Y-%m-%d %H:%M")
 
 
-def _clean_body(body) -> str | None:
+def _clean_body(body, allow_empty: bool = False) -> str | None:
     b = str(body or "").strip()
-    if not b or len(b) > _BODY_MAX:
+    if (not b and not allow_empty) or len(b) > _BODY_MAX:
         return None
     return b
 
@@ -109,11 +116,18 @@ def _rate_limited(d: dict, user: str) -> bool:
     return len(recent) >= _RATE_N
 
 
-def post(actor: dict, body, anchor: str, *, reply_to=None,
+def post(actor: dict, body, anchor: str, *, reply_to=None, stance=None,
          days=30, start=None, end=None, basis="cohort") -> tuple[dict | None, str | None]:
     """Create a comment (or one-level reply). Author = the SESSION actor,
-    always. Returns (comment, error)."""
-    b = _clean_body(body)
+    always. `stance` (optional, R-C): kill|scale|hold — a tag ON the comment;
+    stance-only posts are allowed (text encouraged by the UI). A user's newer
+    stance on the same anchor supersedes the older one in the summary (the
+    superseded comment is journaled, never edited). Returns (comment, error)."""
+    if stance is not None:
+        stance = str(stance).strip().lower()
+        if stance not in _STANCES:
+            return None, "stance must be kill, scale, or hold"
+    b = _clean_body(body, allow_empty=stance is not None)
     if b is None:
         return None, f"comment must be 1–{_BODY_MAX} characters of text"
     anchor = str(anchor or "board").strip()
@@ -147,6 +161,19 @@ def post(actor: dict, body, anchor: str, *, reply_to=None,
                                        basis=basis),
         "_ts": time.time(),
     }
+    if stance:
+        c["stance"] = stance
+        # supersession journal (R-C): the user's PRIOR stance comment on this
+        # anchor gets a journal line — history auditable, body untouched.
+        for old in d["comments"]:
+            if (old.get("stance") and old.get("anchor") == anchor
+                    and old.get("author", {}).get("user") == user
+                    and old.get("state") == "active"
+                    and not old.get("stance_superseded_by")):
+                old["journal"].append({"at": _now_iso(), "action": "stance_superseded",
+                                       "old_stance": old["stance"], "new_stance": stance,
+                                       "by_comment": c["id"]})
+                old["stance_superseded_by"] = c["id"]
     d["comments"].append(c)
     _put(d)
     _publish_feed(d)
@@ -219,7 +246,8 @@ def _render(c: dict) -> dict:
     tombstone never carries its old body on the wire."""
     out = {k: c.get(k) for k in ("id", "anchor", "reply_to", "state", "created",
                                  "edited", "context_stamp", "resolved_by",
-                                 "resolution_note")}
+                                 "resolution_note", "stance",
+                                 "stance_superseded_by")}
     out["author"] = {"display": c.get("author", {}).get("display"),
                      "user": c.get("author", {}).get("user")}
     if c.get("state") == "tombstone":
@@ -267,6 +295,32 @@ def counts_by_anchor() -> dict:
     return out
 
 
+def stances_by_anchor() -> dict:
+    """THE stance summary (R-C): a user's LATEST active stance per anchor
+    counts once (a newer stance supersedes). Consumers: the card chip, the
+    move dialog, EDITH recall. NOTHING ELSE — stances never move cards.
+    Returns {anchor: {"counts": {kill,scale,hold}, "by": {user: stance},
+                      "display": {user: display_name}}}."""
+    d = _store()
+    latest: dict = {}          # (anchor, user) -> comment (highest id wins)
+    for c in d["comments"]:
+        if c.get("state") != "active" or not c.get("stance"):
+            continue
+        k = (c.get("anchor"), c.get("author", {}).get("user"))
+        if k[1] is None:
+            continue
+        if k not in latest or c.get("id", 0) > latest[k].get("id", 0):
+            latest[k] = c
+    out: dict = {}
+    for (anchor, user), c in latest.items():
+        a = out.setdefault(anchor, {"counts": {"kill": 0, "scale": 0, "hold": 0},
+                                    "by": {}, "display": {}})
+        a["counts"][c["stance"]] += 1
+        a["by"][user] = c["stance"]
+        a["display"][user] = c.get("author", {}).get("display") or user
+    return out
+
+
 def _publish_feed(d: dict) -> None:
     """Owner feed items via the action-feed registry channel — REPLACED
     wholesale (self-retiring). Titles are server-built from trusted fields;
@@ -308,7 +362,8 @@ def edith_context(max_notes: int = 12) -> str:
             st.get("creative"), st.get("clock"), st.get("window"),
             f"CPL ${m.get('cpl')}" if m.get("cpl") is not None else None,
             str(m.get("verdict") or "") or None) if x)
-        lines.append(f"- {c['author']['display']} ({c['created']}): "
+        tag = f" [stance: {c['stance'].upper()}]" if c.get("stance") else ""
+        lines.append(f"- {c['author']['display']} ({c['created']}){tag}: "
                      f"\"{c['body'][:200]}\" [viewing: {stamp}]")
     return "\n".join(lines)
 

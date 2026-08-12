@@ -139,6 +139,42 @@ hourly (L1), n=20 nightly (L2), FULL weekly (L3) + suite sweeps.
   degrades) — grep-enforced. Nightly sweep watches: launch_freshness +
   clock_label (ACTION-promoted).
 
+## Lifecycle Board v2 (2026-08-12 — R-A/R-B/R-C = DECISIONS #143–145)
+
+- `ads_lifecycle.py` — THE lifecycle engine: rotation rules (kv
+  `ads:rotation_rules`, RULED defaults 4 active days / $200 lifetime spend,
+  edits journaled) · the ONE status classifier `status_for` (DELIVERING per
+  the daily-delivery archive / ENABLED-NOT-DELIVERING with the reason named
+  where knowable / PAUSED with the layer named via effective_status; Meta
+  dead or archive >26h stale → `unknown` DEGRADED, never a stale green) ·
+  the ONE stage classifier `classify_stage` (testing · kill_candidate with
+  `kill_basis` rotation|verdict — the two kills never confused · watch ·
+  scale_candidate VERDICT-ONLY · archive) · the decision journal +
+  convergence loop (`ads:lifecycle:decisions` / `:journal`; kill → converges
+  on Meta-paused, scale → on duplication or human confirm; unexecuted marks
+  age, naming the mover; feed channel `feed:extra:ads_decisions`).
+- The Board is a VIEW: `?view=board` toggle on /ads; cards read the SAME
+  scoreboard rows as the table (window numbers) + the lifecycle block
+  (attached at SERVE time in `/ads/api/board`, lifetime leg = the ALL_DAYS
+  rollup via roster_engine — two clocks per card, each labelled). Status
+  triad renders on BOTH views (table Live column + card accents); filter
+  chips (All/Delivering/Not-delivering/Paused) + spend-band toggle, URL-stated.
+- KILL CONSOLIDATION: `attribution_flags` spend_no_leads is RETIRED; the
+  dashboard kill cards derive from the SAME built lifecycle block
+  (`kill_candidate_flags(block=...)`) and deep-link to the Board.
+- STANCES (one store): `ads_discussion` grew an additive `stance` field
+  (kill/scale/hold; latest-per-user counts once, supersession journaled;
+  stance-only posts allowed). Stances are opinions, never votes —
+  structurally test-pinned. EDITH: `ads_lifecycle.handle_decision_recall`
+  ("why did we kill X") + `handle_stance_recall` ("what does the team think
+  of X"), registered in both chat tiers.
+- Sentinel L2 additions (`ads_lifecycle.sentinel_watch`): status-freshness ·
+  convergence-lag (>2d, names the mover) · stage-classifier drift (rendered
+  lanes vs recompute on unchanged inputs-hash — zero drift, I17-for-stages) ·
+  rules-journal integrity (edited-without-journal = loud) · stance-summary
+  integrity. Tests: tests/test_ads_lifecycle.py (37) +
+  tests/test_ads_board_routes.py (8).
+
 ## Known open findings
 
 - **F17 (register)**: normalization split — `resolution._norm` strips '@'/'.'

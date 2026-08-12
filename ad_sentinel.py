@@ -387,6 +387,15 @@ def nightly_extras() -> dict | None:
         out["queue_watch"] = collab.sentinel_watch()
     except Exception as e:
         out["queue_watch"] = {"error": str(e)[:80]}
+    # LIFECYCLE BOARD watch (Board v2): status freshness · convergence lag
+    # (>2d unexecuted → HYGIENE naming the mover) · stage-classifier drift
+    # (unchanged inputs must reclassify identically — I17 applied to stages) ·
+    # rotation-rules edit-journal integrity · stance-summary integrity.
+    try:
+        import ads_lifecycle
+        out["lifecycle_watch"] = ads_lifecycle.sentinel_watch()
+    except Exception as e:
+        out["lifecycle_watch"] = {"error": str(e)[:80]}
     # VOICE watch (2026-08-10): canary state is a tracked metric — degraded
     # voice goes LOUD here too (the feed item is published by voice_health;
     # this records the watch + re-publishes in case the state got stale)

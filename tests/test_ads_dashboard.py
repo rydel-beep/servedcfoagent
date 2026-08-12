@@ -169,14 +169,16 @@ def _flag_kinds(result, **kw):
     return {f["kind"] for f in AF.flags(result, th={**AF.DEFAULTS, **kw})}
 
 
-def test_spend_no_leads_flag_fires_at_threshold():
+def test_spend_no_leads_rule_retired_to_lifecycle():
+    # Board v2 (R-A / DECISIONS #143): the window-scoped spend_no_leads rule is
+    # RETIRED — kill candidacy is ads_lifecycle.classify_stage (rotation
+    # boundary + verdict kills), attached by scorecard(creatives_all=...).
     r = {"creatives": [{"tier": "ad", "label": "Burner", "creative_key": "burner",
                         "leads": 0, "qualified": 0, "sets": 0, "shows": 0, "closes": 0,
                         "cash": 0, "spend": 200.0, "cost_per_lead": None,
                         "revenue_unknown": 0, "gates": {}}],
          "totals": {"leads": 0}, "window": {"days": 30}, "flags": []}
-    assert "spend_no_leads" in _flag_kinds(r)
-    assert "spend_no_leads" not in _flag_kinds(r, ad_flag_spend_no_leads=500.0)  # adjustable
+    assert "spend_no_leads" not in _flag_kinds(r)
 
 
 def test_leads_no_sets_respects_min_n():
@@ -206,8 +208,8 @@ def test_zero_flag_state_is_honest_and_leaders_empty_window():
 
 def test_flags_read_manual_target_thresholds(monkeypatch):
     monkeypatch.setattr("manual_targets.get_resolved",
-                        lambda: {"ad_flag_spend_no_leads": 999.0}, raising=True)
-    assert AF.thresholds()["ad_flag_spend_no_leads"] == 999.0
+                        lambda: {"ad_flag_leads_no_sets": 999.0}, raising=True)
+    assert AF.thresholds()["ad_flag_leads_no_sets"] == 999.0
 
 
 # ── read-only: no writes to sheet/GHL/Meta in the new modules ────────────────

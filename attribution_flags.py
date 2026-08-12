@@ -17,7 +17,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 DEFAULTS = {
-    "ad_flag_spend_no_leads": 150.0,
+    # ad_flag_spend_no_leads RETIRED (Board v2, R-A): kill candidacy is the
+    # rotation boundary in ads_lifecycle.rules() — min(4 active days, $200
+    # lifetime spend) — editable in the Board's rules panel, journaled.
     "ad_flag_leads_no_sets": 8,
     "ad_flag_show_floor_pct": 40.0,
     "ad_flag_qual_dev_pts": 25.0,
@@ -97,11 +99,13 @@ def flags(result: dict, trailing_attr_rate: float | None = None,
                           f"{(result.get('window') or {}).get('days')}d"})
 
     for c in ads:
-        # KILL CANDIDATE: spend, zero leads
-        if c["spend"] >= th["ad_flag_spend_no_leads"] and c["leads"] == 0:
-            flag(1, "spend_no_leads", c["label"],
-                 f"${c['spend']:,.0f} spent, 0 leads in the window",
-                 "kill candidate — why is this still running?")
+        # KILL CANDIDATE — MOVED (Board v2, R-A / DECISIONS #143): the old
+        # window-scoped spend_no_leads rule ($150, no day boundary) is RETIRED.
+        # The one kill-candidate computation now lives in
+        # ads_lifecycle.classify_stage (rotation boundary min(4 active days,
+        # $200 lifetime spend) + verdict kills) and scorecard() attaches its
+        # cards via ads_lifecycle.kill_candidate_flags — the dashboard kill
+        # cards and the Board's kill lane are ONE computation.
         # FUNNEL BREAK: leads, zero sets
         if c["leads"] >= th["ad_flag_leads_no_sets"] and c["sets"] == 0:
             flag(2, "leads_no_sets", c["label"],
@@ -172,9 +176,21 @@ def flags(result: dict, trailing_attr_rate: float | None = None,
     return out
 
 
-def scorecard(result: dict, trailing_attr_rate: float | None = None) -> dict:
+def scorecard(result: dict, trailing_attr_rate: float | None = None,
+              creatives_all: list | None = None) -> dict:
     th = thresholds()
     fl = flags(result, trailing_attr_rate=trailing_attr_rate, th=th)
+    # KILL CANDIDATES (Board v2 consolidation): the Board's kill-lane
+    # computation IS the dashboard's kill cards — one function, R-A thresholds.
+    # `creatives_all` = the lifetime engine creatives; when the caller can't
+    # supply them (pure-unit tests), the kill cards are simply absent here
+    # (the Board still carries them) — never a second computation.
+    if creatives_all is not None:
+        try:
+            import ads_lifecycle
+            fl = ads_lifecycle.kill_candidate_flags(creatives_all) + fl
+        except Exception as e:
+            logger.info("kill-candidate cards unavailable: %s", e)
     vl = result.get("verdict_layer") or {}
     return {
         "leaders": leaders(result),

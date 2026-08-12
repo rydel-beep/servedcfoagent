@@ -819,6 +819,8 @@ def api_chat():
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
             (lambda m: __import__('open_loops').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # Pillar 1: 'remind me to X' / 'drop it' (internal reminders only)
+            (__import__('ads_lifecycle').handle_decision_recall, False),   # Board v2: 'why did we kill X' → move reason + mover (journal truth)
+            (__import__('ads_lifecycle').handle_stance_recall, False),     # Board v2: 'what does the team think of X' → stances + quotes (one store)
             (__import__('ads_discussion').handle_discussion_recall, False),  # 'what has Romano noticed' → real quotes + context stamps (read-only)
             (__import__('timeline_adapter').handle_timeline_client, False),   # Universal advisor P2: per-client delivery state (+finance join on 'overall')
             (__import__('timeline_adapter').handle_timeline_risk, False),     # 'what's overdue/stalled' → Timeline drill, verbatim
@@ -1062,6 +1064,8 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
             (lambda m: __import__('open_loops').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # Pillar 1: 'remind me to X' / 'drop it' (internal reminders only)
+            (__import__('ads_lifecycle').handle_decision_recall, False),   # Board v2: 'why did we kill X' → move reason + mover (journal truth)
+            (__import__('ads_lifecycle').handle_stance_recall, False),     # Board v2: 'what does the team think of X' → stances + quotes (one store)
             (__import__('ads_discussion').handle_discussion_recall, False),  # 'what has Romano noticed' → real quotes + context stamps (read-only)
             (__import__('timeline_adapter').handle_timeline_client, False),   # Universal advisor P2: per-client delivery state (+finance join on 'overall')
             (__import__('timeline_adapter').handle_timeline_risk, False),     # 'what's overdue/stalled' → Timeline drill, verbatim

@@ -172,6 +172,14 @@ def test_spend_in_range_sums_archive_past_the_floor(monkeypatch):
     monkeypatch.setattr(meta_spend, "_load_store",
                         lambda: {"2023-05-01": {"spend": 42.0}, "2026-08-01": {"spend": 8.0}})
     monkeypatch.setattr(meta_spend, "today_sydney", lambda: TODAY)
+    # PIN THE FLOOR'S CLOCK TOO: spend_in_range computes the floor via
+    # meta_range.api_floor() → the REAL today_sydney — unpinned, the expected
+    # floor date rolls daily and this test rots on the calendar (it failed
+    # 2026-08-12 expecting the 2026-08-10 floor). Same TODAY everywhere.
+    import meta_range as MR
+    monkeypatch.setattr(MR, "api_floor",
+                        lambda today=None: MR._cal_minus_months(TODAY, MR._RETENTION_MONTHS)
+                        + __import__("datetime").timedelta(days=MR._SAFETY_MARGIN_DAYS))
     monkeypatch.setattr(meta_spend, "META_ACCESS_TOKEN", "")   # no live fetch
     monkeypatch.setattr(meta_spend, "META_AD_ACCOUNT_ID", "")
     r = meta_spend.spend_in_range("2023-01-01", "2026-08-10")

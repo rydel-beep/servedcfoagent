@@ -19,7 +19,11 @@
                 // pick survives preset switches; otherwise presets default to
                 // ACTIVITY (the Meta-native reading) and the standard windows keep
                 // the ruled cohort default.
-                range: null, rangeLabel: null, clockChosen: false };
+                range: null, rangeLabel: null, clockChosen: false,
+                // BOARD v2: view = table|board (URL-stated ?view=); status
+                // filter chips + spend-band toggle apply on BOTH views; role
+                // arrives from whoami (server enforces regardless).
+                view: 'table', statusFilter: 'all', band: 'all', role: null };
 
   // Sydney "today" — the date control's boundaries are SYDNEY days (F8
   // discipline), never the browser's local day.
@@ -104,9 +108,11 @@
     ltgp_cac: 'Lifetime gross profit returned per $1 of acquisition cost. 3.0x is the floor.',
     verdict: 'DOUBLE DOWN / KILL / WATCH, from the verdict engine. WATCH means not enough data yet.',
     n: 'Sample size behind the verdict: leads / closes.',
+    status: 'LIVE = effective delivery, never the toggle alone. GREEN = delivering (recent impressions, daily archive). AMBER = enabled but not delivering (reason named where knowable). GREY = paused (the pausing layer named). Freshness-stamped; DEGRADED when Meta is unreachable.',
   };
   var COLS = [
-    { k: 'creative', label: 'Creative' }, { k: 'verdict', label: 'Verdict' },
+    { k: 'creative', label: 'Creative' }, { k: 'status', label: 'Live' },
+    { k: 'verdict', label: 'Verdict' },
     { k: 'leads', label: 'Leads' }, { k: 'qualified', label: 'Qualified' },
     { k: 'reached', label: 'Reached' },
     { k: 'sets', label: 'Sets' }, { k: 'shows', label: 'Shows' },
@@ -147,7 +153,10 @@
       var qs = (state.range ? '?range=' + state.range : '?window=' + state.days) +
         '&clock=' + state.basis + '&market=' + state.market +
         '&sort=' + state.sort + '.' + (state.sortDir === -1 ? 'desc' : 'asc') +
-        '&rows=' + state.rows;
+        '&rows=' + state.rows +
+        (state.view !== 'table' ? '&view=' + state.view : '') +
+        (state.statusFilter !== 'all' ? '&status=' + state.statusFilter : '') +
+        (state.band !== 'all' ? '&band=' + state.band : '');
       history.replaceState(null, '', qs);
     } catch (e) {}
   }
@@ -340,6 +349,8 @@
       state.level = state.board.ladder.default_level;
     }
     renderBanner(); renderHeadline(); renderScorecard(); renderHygiene(); renderScoreboard(); renderRows(true);
+    renderStatusBar(); applyView();
+    if (state.view === 'board') renderBoard();
     // #134: the resolved state, always — "{Clock} · {label} · {start} → {end}"
     $('#adx-table-window').textContent = '· ' + headerLine() +
       (state.gq ? ' · FILTERED VIEW (aggregates unchanged)' : '') +
@@ -566,10 +577,17 @@
     var F = $('#adx-flags');
     var flags = sc.flags || [];
     F.innerHTML = flags.length ? flags.map(function (f) {
-      return '<div class="adx-flag adx-sev' + f.severity + '" data-window="' + windowStamp() + '">' +
-        '<div class="adx-flag-head">' + (f.creative ? esc(f.creative.slice(0, 44)) : 'ACCOUNT') + '</div>' +
+      // Board v2: the kill cards are the Board's kill-lane computation —
+      // clicking one deep-links to the Board (?view=board) at the card.
+      var deep = f.kind === 'rotation_kill_candidate' && f.creative_key
+        ? ' adx-flag-door" data-boardkey="' + esc(f.creative_key) : '';
+      return '<div class="adx-flag adx-sev' + f.severity + deep + '" data-window="' + windowStamp() + '">' +
+        '<div class="adx-flag-head">' + (f.creative ? esc(f.creative.slice(0, 44)) : 'ACCOUNT') +
+        (f.kill_basis ? ' <span class="adx-kill-basis adx-kill-basis-' + esc(f.kill_basis) + '">' +
+          (f.kill_basis === 'rotation' ? 'rotation call' : 'verdict kill') + '</span>' : '') + '</div>' +
         '<div class="adx-flag-line">' + esc(f.headline) + '</div>' +
-        '<div class="adx-flag-q">' + esc(f.question) + '</div></div>';
+        '<div class="adx-flag-q">' + esc(f.question) +
+        (deep ? ' <span class="adx-prov">→ board</span>' : '') + '</div></div>';
     }).join('') : '<div class="adx-flag adx-sev-none">No flags in this window — thresholds all clear.</div>';
   }
 
@@ -630,6 +648,386 @@
     return '<span class="adx-badge adx-none">—</span>';
   }
 
+  // ── BOARD v2 · LIFECYCLE (Laws 1–4). This whole section is RENDER-ONLY:
+  // lanes/status/rotation arrive computed from ads_lifecycle (one classifier);
+  // stances arrive from the one discussion store. Zero board-local math. ─────
+  function lifeBlock() { return (state.board && state.board.lifecycle) || {}; }
+  function lifeCard(key) { return (lifeBlock().cards || {})[key] || null; }
+  function stancesOf(key) { return (lifeBlock().stances || {})[key] || null; }
+
+  var STATUS_META = {
+    delivering: { cls: 'adx-st-green', label: 'LIVE' },
+    enabled_not_delivering: { cls: 'adx-st-amber', label: 'ON · not delivering' },
+    paused: { cls: 'adx-st-grey', label: 'PAUSED' },
+    unknown: { cls: 'adx-st-unknown', label: 'DEGRADED' },
+  };
+  function statusDot(card, compact) {
+    if (!card || !card.status) {
+      return '<span class="adx-st adx-st-unknown" title="no status computed for this row">—</span>';
+    }
+    var st = card.status;
+    var m = STATUS_META[st.status] || STATUS_META.unknown;
+    var tip = (st.reason || '') + (st.as_of ? ' · status as of ' + st.as_of : '');
+    return '<span class="adx-st ' + m.cls + '" title="' + esc(tip) + '">' +
+      '<span class="adx-st-dot"></span>' + (compact ? '' : ' ' + m.label) + '</span>';
+  }
+  function statusMatches(key) {
+    if (state.statusFilter === 'all') return true;
+    var c = lifeCard(key);
+    var s = c && c.status && c.status.status;
+    if (state.statusFilter === 'delivering') return s === 'delivering';
+    if (state.statusFilter === 'not_delivering') return s === 'enabled_not_delivering' || s === 'unknown';
+    if (state.statusFilter === 'paused') return s === 'paused';
+    return true;
+  }
+  function bandMatches(key) {
+    if (state.band === 'all') return true;
+    var c = lifeCard(key);
+    var rot = c && c.rotation;
+    if (!rot) return state.band === 'below';   // no clock → below the threshold, honestly
+    var above = (rot.spend || 0) >= (rot.test_spend || 200);
+    return state.band === 'above' ? above : !above;
+  }
+  function renderStatusBar() {
+    var bar = $('#adx-status-bar');
+    if (!bar) return;
+    var lb = lifeBlock();
+    if (lb.degraded && !(lb.cards && Object.keys(lb.cards).length)) {
+      bar.style.display = '';
+      $('#adx-status-chips').innerHTML = '<span class="adx-degraded" title="' + esc(lb.degraded) + '">STATUS DEGRADED</span>';
+      $('#adx-band-toggle').innerHTML = '';
+      $('#adx-status-asof').textContent = '';
+      return;
+    }
+    bar.style.display = '';
+    var chips = [['all', 'All'], ['delivering', 'Delivering'],
+                 ['not_delivering', 'Not delivering'], ['paused', 'Paused']];
+    $('#adx-status-chips').innerHTML = chips.map(function (c) {
+      return '<button class="adx-status-chip' + (state.statusFilter === c[0] ? ' active' : '') +
+        '" data-sfilter="' + c[0] + '">' + c[1] + '</button>';
+    }).join('');
+    var rules = lb.rules || {};
+    var bands = [['all', 'Any spend'], ['above', '≥ $' + (rules.test_spend || 200)],
+                 ['below', '< $' + (rules.test_spend || 200)]];
+    $('#adx-band-toggle').innerHTML = '<span class="adx-band-label" title="lifetime spend vs the R-A test threshold (rules panel)">spend band:</span> ' +
+      bands.map(function (b) {
+        return '<button class="adx-status-chip' + (state.band === b[0] ? ' active' : '') +
+          '" data-sband="' + b[0] + '">' + b[1] + '</button>';
+      }).join('');
+    var asof = '';
+    var anyKey = Object.keys(lb.cards || {})[0];
+    var any = anyKey && lb.cards[anyKey];
+    if (any && any.status && any.status.as_of) asof = 'status as of ' + any.status.as_of;
+    $('#adx-status-asof').textContent = asof;
+  }
+  function applyView() {
+    document.querySelectorAll('.adx-view').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.view === state.view);
+    });
+    var bp = $('#adx-board-panel'), tp = $('#adx-table-panel');
+    if (bp) bp.style.display = state.view === 'board' ? '' : 'none';
+    if (tp) tp.style.display = state.view === 'board' ? 'none' : '';
+  }
+
+  function stanceChip(key) {
+    var s = stancesOf(key);
+    if (!s || !s.counts) return '';
+    var parts = [];
+    ['kill', 'scale', 'hold'].forEach(function (k) {
+      if (s.counts[k]) parts.push(s.counts[k] + ' ' + k);
+    });
+    if (!parts.length) return '';
+    var who = Object.keys(s.by || {}).map(function (u) {
+      return (s.display && s.display[u] || u) + ': ' + s.by[u];
+    }).join(' · ');
+    return '<span class="adx-stance-chip" title="team stances (latest per person) — opinions, never votes: ' +
+      esc(who) + '">' + esc(parts.join(' · ')) + '</span>';
+  }
+
+  function decisionChip(card) {
+    var d = card && card.decision;
+    if (!d) return '';
+    var verb = d.state === 'marked_to_kill' ? 'KILL' : 'SCALE';
+    var h = '<div class="adx-decision-chip' + (d.executed ? ' adx-decision-done' : '') + '">' +
+      '<strong>' + verb + '</strong> — ' + esc(d.by_display || d.by) + ' · ' + esc(d.at) +
+      ' · “' + esc((d.reason || '').slice(0, 120)) + '”';
+    if (d.executed) {
+      h += '<div class="adx-decision-conv">✓ ' + esc(d.convergence || 'executed') + '</div>';
+    } else {
+      h += '<div class="adx-decision-pending">action pending — ' +
+        (d.state === 'marked_to_kill' ? 'pause' : 'scale') + ' it in Ads Manager' +
+        (d.age_days >= 1 ? ' · <strong>marked ' + d.age_days + 'd ago by ' +
+          esc(d.by_display || d.by) + ' — still ' +
+          (card.status && card.status.status === 'delivering' ? 'delivering' : 'unexecuted') +
+          '</strong>' : '') + '</div>';
+    }
+    if (d.below_min_n) {
+      h += '<div class="adx-prov">recorded below the evidence threshold — a rotation call, not a verdict</div>';
+    }
+    return h + '</div>';
+  }
+
+  function rotationLine(card) {
+    var rot = card && card.rotation;
+    if (!rot) {
+      return '<div class="adx-rot-line adx-prov" title="the rotation clock starts at FIRST DELIVERY — none recorded yet">rotation clock: unavailable (no first delivery recorded)</div>';
+    }
+    return '<div class="adx-rot-line" title="' + esc(rot.clock_note || '') +
+      ' · launched ' + esc(rot.launch || '?') + '">' +
+      '⏱ ' + esc(rot.label) + ' <span class="adx-prov">lifetime clock</span></div>';
+  }
+
+  function boardCardHtml(row, card) {
+    var key = row.creative_key;
+    var st = card && card.status || {};
+    var accent = (STATUS_META[st.status] || STATUS_META.unknown).cls;
+    var dn = (state.board.discussion_counts || {})[key] || 0;
+    var lin = row.lineage || {};
+    var dgd = degradedEntryFor('spend');
+    var h = '<div class="adx-card ' + accent + '" draggable="true" data-key="' + esc(key) + '">' +
+      '<div class="adx-card-head">' + statusDot(card, true) +
+      '<span class="adx-card-name" title="open the dossier">' + esc(String(row.creative || '').slice(0, 46)) + '</span>' +
+      (lin.preview_link ? ' <a class="adx-preview" href="' + esc(lin.preview_link) + '" target="_blank" rel="noopener">↗</a>' : '') +
+      '</div>' +
+      (st.status === 'enabled_not_delivering' ? '<div class="adx-card-amber" title="' + esc(st.reason || '') + '">⚠ ' + esc(String(st.reason || '').slice(0, 60)) + '</div>' : '') +
+      rotationLine(card) +
+      // WINDOW-scoped funnel line — the SAME engine row the table renders,
+      // labelled with the table's clock+window (two clocks, each named).
+      '<div class="adx-card-funnel" title="window-scoped (' + esc(clockStamp()) + ' · ' + esc(windowStamp()) + ') — same numbers as the table row">' +
+      num(row.leads) + ' leads · ' + num(row.sets) + ' sets · ' + num(row.closes) + ' closes' +
+      ' <span class="adx-prov">' + esc(windowStamp()) + '</span></div>' +
+      '<div class="adx-card-money">' +
+      (dgd ? degradedChip(dgd) : ('spend ' + money(row.spend) +
+        (row.cost_per_lead != null ? ' · CPL ' + money(row.cost_per_lead) : ''))) + '</div>' +
+      '<div class="adx-card-badges">' + badge(row) + ' ' + stanceChip(key) +
+      (card && card.kill_basis ? ' <span class="adx-kill-basis adx-kill-basis-' + card.kill_basis +
+        '" title="' + esc(card.engine_why || '') + '">' +
+        (card.kill_basis === 'rotation' ? 'rotation call' : 'verdict kill') + '</span>' : '') +
+      (card && card.disagreement ? ' <span class="adx-disagree" title="the human decision pins this card; the engine currently computes a different lane">' +
+        esc(card.disagreement) + '</span>' : '') +
+      '</div>' +
+      decisionChip(card) +
+      (card && card.archive_label ? '<div class="adx-prov">' + esc(card.archive_label) + '</div>' : '') +
+      '<div class="adx-card-foot">' +
+      '<button class="adx-card-btn adx-disc-open" data-danchor="' + esc(key) + '" data-dlabel="' +
+      esc(String(row.creative || '').slice(0, 40)) + '">💬' + (dn || '+') + '</button>' +
+      (!card || !card.decision || card.decision.executed
+        ? '<button class="adx-card-btn adx-move-btn" data-mkey="' + esc(key) + '" data-mto="kill">mark kill</button>' +
+          '<button class="adx-card-btn adx-move-btn" data-mkey="' + esc(key) + '" data-mto="scale">mark scale</button>'
+        : (state.role === 'owner'
+            ? '<button class="adx-card-btn adx-rev-btn" data-mkey="' + esc(key) + '">reverse</button>' : '') +
+          (card.decision.state === 'marked_to_scale'
+            ? '<button class="adx-card-btn adx-exec-btn" data-mkey="' + esc(key) + '">confirm executed</button>' : '')) +
+      '</div></div>';
+    return h;
+  }
+
+  function renderBoard() {
+    var lanesEl = $('#adx-board-lanes');
+    if (!lanesEl) return;
+    var lb = lifeBlock();
+    var sub = $('#adx-board-sub');
+    if (sub) {
+      sub.textContent = '· ' + headerLine() + ' · rotation clock is per-ad lifetime (labelled on cards)' +
+        (lb.stale ? ' · lifetime leg from a rollup (refreshing)' : '');
+    }
+    if (lb.degraded && !(lb.cards && Object.keys(lb.cards).length)) {
+      lanesEl.innerHTML = '<div class="adx-degraded-strip">⚠ ' + esc(lb.degraded) + '</div>';
+      return;
+    }
+    var rows = (state.board.scoreboard.rows || []).filter(function (r) {
+      return r.tier === 'ad' && statusMatches(r.creative_key) && bandMatches(r.creative_key);
+    });
+    var byLane = {};
+    rows.forEach(function (r) {
+      var c = lifeCard(r.creative_key);
+      var lane = (c && c.lane) || 'testing';
+      (byLane[lane] = byLane[lane] || []).push({ row: r, card: c });
+    });
+    // lifetime-only cards (no window activity → not in the window rows) still
+    // belong on the board: archive/testing entries from the lifecycle block
+    // whose key has no window row render from the all-time lifecycle data only.
+    var seen = {};
+    rows.forEach(function (r) { seen[r.creative_key] = 1; });
+    Object.keys(lb.cards || {}).forEach(function (key) {
+      if (seen[key] || !statusMatches(key) || !bandMatches(key)) return;
+      var c = lb.cards[key];
+      var pseudo = { creative_key: key, creative: (c.decision && c.decision.label) || key,
+                     tier: 'ad', leads: null, sets: null, closes: null,
+                     spend: (c.lifetime || {}).spend, cost_per_lead: null, lineage: {} };
+      (byLane[c.lane] = byLane[c.lane] || []).push({ row: pseudo, card: c, quiet: true });
+    });
+    var order = lb.lanes_order || [];
+    var labels = lb.lane_labels || {};
+    var laneDesc = {
+      testing: 'inside the rotation window (R-A: min(' + ((lb.rules || {}).test_days || 4) +
+        ' active days, $' + ((lb.rules || {}).test_spend || 200) + ') — rules panel)',
+      kill_candidate: 'the rotation/verdict said kill — each card names WHICH (a rotation lane is never statistical proof)',
+      marked_to_kill: 'human decision recorded — awaiting Ads Manager; ages until Meta shows paused',
+      watch: 'survived the boundary with leads — evidence accumulating; verdicts stay provisional below min-n',
+      scale_candidate: 'VERDICT-BACKED only (past min-n) — a hot day-2 never lands here',
+      marked_to_scale: 'human decision recorded — converges on duplication, or confirm executed',
+      archive: 'verified-in-Meta terminal states — collapsed, browsable, never deleted',
+    };
+    lanesEl.innerHTML = order.map(function (lane) {
+      var items = byLane[lane] || [];
+      var cards = items.map(function (it) { return boardCardHtml(it.row, it.card); }).join('') ||
+        '<div class="adx-lane-empty">empty</div>';
+      var inner = '<div class="adx-lane-head" title="' + esc(laneDesc[lane] || '') + '">' +
+        esc(labels[lane] || lane) + ' <span class="adx-lane-n">' + items.length + '</span></div>' +
+        '<div class="adx-lane-cards" data-lane="' + lane + '">' + cards + '</div>';
+      if (lane === 'archive') {
+        return '<details class="adx-lane adx-lane-archive"><summary>' + esc(labels[lane] || lane) +
+          ' (' + items.length + ')</summary><div class="adx-lane-cards" data-lane="archive">' +
+          cards + '</div></details>';
+      }
+      return '<div class="adx-lane" data-lanewrap="' + lane + '">' + inner + '</div>';
+    }).join('');
+  }
+
+  // ── the MOVE dialog (Law 2 / R-B / R-C): meaning stated · reason MANDATORY ·
+  // the team's opinions + stances IN FRONT of the decider · friction below
+  // min-n. A drag/confirm records a decision — it does not control Meta. ─────
+  var moveState = { key: null, to: null };
+  function openMoveDialog(key, to) {
+    moveState.key = key; moveState.to = to;
+    var row = findLevelRow(key) || { creative: key };
+    var card = lifeCard(key) || {};
+    var verb = to === 'kill' ? 'pause' : 'scale';
+    var meaning = 'This records the decision and creates the human action: <strong>' +
+      verb + ' “' + esc(String(row.creative || key).slice(0, 40)) + '” in Ads Manager</strong>. ' +
+      'This board does not control Meta — the card converges when the next status sync sees Meta actually changed.';
+    var friction = card.below_min_n
+      ? '<label class="adx-friction"><input type="checkbox" id="adx-move-confirm"> ' +
+        'below evidence threshold — this is a <strong>rotation call, not a verdict</strong>; tick to confirm</label>'
+      : '';
+    openDrill('Mark to ' + esc(to.toUpperCase()) + ' · ' + esc(String(row.creative || key).slice(0, 40)),
+      '<div class="adx-move-meaning">' + meaning + '</div>' +
+      (card.engine_why ? '<div class="adx-roster-note">engine: ' + esc(card.engine_why) + '</div>' : '') +
+      '<div class="adx-move-reason"><textarea id="adx-move-reason" rows="2" maxlength="500" ' +
+      'placeholder="reason (required — blank is rejected)"></textarea></div>' +
+      friction +
+      '<button id="adx-move-send" class="adx-range-apply">record the decision</button>' +
+      '<span id="adx-move-err" class="adx-range-err"></span>' +
+      '<div class="adx-dossier-sec"><h3>The team’s takes <span class="adx-h2-sub">stances are opinions — this move is the decision</span></h3>' +
+      '<div id="adx-move-opinions"><span class="adx-skel">loading…</span></div></div>');
+    var send = $('#adx-move-send');
+    if (send) send.addEventListener('click', submitMove);
+    // R-C: current opinions + stances for THIS card, in front of the decider
+    fetch('/ads/api/discussion?creative=' + encodeURIComponent(key), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var box = $('#adx-move-opinions');
+        if (!box) return;
+        var s = stancesOf(key);
+        var chip = s ? stanceChip(key) : '';
+        var notes = ((d && d.notes) || []).slice(0, 6).map(function (n) {
+          if (n.state === 'tombstone') return '';
+          return '<div class="adx-disc-note"><div class="adx-disc-head"><strong>' +
+            esc(n.author.display) + '</strong>' +
+            (n.stance ? ' <span class="adx-stance-tag adx-stance-' + esc(n.stance) + '">' + esc(n.stance.toUpperCase()) + '</span>' : '') +
+            ' · ' + esc(n.created) + '</div>' +
+            (n.body ? '<div class="adx-disc-body">' + esc(n.body) + '</div>' : '<div class="adx-disc-body adx-prov">(stance only)</div>') + '</div>';
+        }).join('');
+        box.innerHTML = (chip ? '<div class="adx-move-stancesum">' + chip + '</div>' : '') +
+          (notes || '<div class="adx-roster-note">no notes or stances on this card yet</div>');
+      })
+      .catch(function () {
+        var box = $('#adx-move-opinions');
+        if (box) box.innerHTML = '<div class="adx-roster-note">opinions unavailable</div>';
+      });
+  }
+  function submitMove() {
+    var reason = ($('#adx-move-reason') || {}).value || '';
+    var errEl = $('#adx-move-err');
+    var confirmEl = $('#adx-move-confirm');
+    if (!reason.trim()) {
+      if (errEl) errEl.textContent = 'a reason is required — blank is rejected';
+      return;
+    }
+    fetch('/ads/api/lifecycle/move', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ creative: moveState.key, to: moveState.to,
+                             reason: reason.trim(),
+                             confirm_below_min_n: !!(confirmEl && confirmEl.checked) })
+    }).then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); })
+      .then(function (res) {
+        if (res.s === 409 && res.j && res.j.friction) {
+          if (errEl) errEl.textContent = res.j.note + ' (tick the confirm box)';
+          return;
+        }
+        if (res.j && res.j.error) { if (errEl) errEl.textContent = res.j.error; return; }
+        closeDrill();
+        loadBoard(null);          // the decision chip + feed item render on refresh
+      })
+      .catch(function () { if (errEl) errEl.textContent = 'move failed — try again'; });
+  }
+  function reverseDecision(key) {
+    var reason = prompt('Reversal reason (required — journaled):');
+    if (!reason || !reason.trim()) return;
+    fetch('/ads/api/lifecycle/reverse', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ creative: key, reason: reason.trim() })
+    }).then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.error) { alert(d.error); return; } loadBoard(null); });
+  }
+  function confirmExecuted(key) {
+    var note = prompt('Confirm executed in Ads Manager — optional note:');
+    fetch('/ads/api/lifecycle/confirm-executed', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ creative: key, note: note || null })
+    }).then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.error) { alert(d.error); return; } loadBoard(null); });
+  }
+
+  // ── the rotation-rules panel (R-A): live thresholds, journaled edits ──────
+  function loadRulesPanel() {
+    var body = $('#adx-rules-body');
+    if (!body) return;
+    body.innerHTML = '<span class="adx-skel">loading…</span>';
+    fetch('/ads/api/rotation-rules', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || d.error) { body.innerHTML = esc((d && d.error) || 'unavailable'); return; }
+        var rl = d.rules || {};
+        var canEdit = state.role === 'owner' || state.role === 'coo';
+        var journal = (d.journal || []).slice(-5).reverse().map(function (j) {
+          return '<div class="adx-prov">' + esc(j.at) + ' · ' + esc(j.who) + ': ' +
+            esc(j.key) + ' ' + esc(String(j.old)) + ' → ' + esc(String(j.new)) + '</div>';
+        }).join('') || '<div class="adx-prov">no edits — the ruled defaults are live</div>';
+        body.innerHTML =
+          '<div class="adx-rules-line">' + esc(d.ruling || '') + '</div>' +
+          '<div class="adx-rules-form">' +
+          'test window <input type="number" id="adx-rule-days" value="' + (+rl.test_days || 4) + '" min="1" max="60"' + (canEdit ? '' : ' disabled') + '> active days · ' +
+          '$<input type="number" id="adx-rule-spend" value="' + (+rl.test_spend || 200) + '" min="10" max="10000"' + (canEdit ? '' : ' disabled') + '> spend · ' +
+          'delivery horizon <input type="number" id="adx-rule-fresh" value="' + (+rl.freshness_days || 2) + '" min="1" max="7"' + (canEdit ? '' : ' disabled') + '> day(s)' +
+          (canEdit ? ' <button id="adx-rules-save" class="adx-range-apply">save (journaled)</button>'
+                   : ' <span class="adx-prov">edits are owner/coo — these ARE the live thresholds</span>') +
+          '<span id="adx-rules-err" class="adx-range-err"></span></div>' +
+          '<div class="adx-rules-journal"><strong>edit journal</strong>' + journal + '</div>';
+        var save = $('#adx-rules-save');
+        if (save) save.addEventListener('click', function () {
+          fetch('/ads/api/rotation-rules', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ test_days: +($('#adx-rule-days').value),
+                                   test_spend: +($('#adx-rule-spend').value),
+                                   freshness_days: +($('#adx-rule-fresh').value) })
+          }).then(function (r) { return r.json(); })
+            .then(function (res) {
+              var errEl = $('#adx-rules-err');
+              if (res && res.error) { if (errEl) errEl.textContent = res.error; return; }
+              loadRulesPanel();
+              loadBoard(null);        // lanes re-read the new thresholds
+            });
+        });
+      })
+      .catch(function () { body.textContent = 'rules unavailable'; });
+  }
+
   function levelRows() {
     var b = state.board;
     if (state.level === 'creative') return b.scoreboard.rows;
@@ -662,6 +1060,10 @@
       if (r.tier !== 'ad') return true;
       if (state.verdict && r.verdict !== state.verdict) return false;
       if (state.gq && String(r.creative || '').toLowerCase().indexOf(state.gq) < 0) return false;
+      // Law 3 filter chips apply on the TABLE too (creative level only —
+      // groups have no single live status)
+      if (state.level === 'creative' &&
+          (!statusMatches(r.creative_key) || !bandMatches(r.creative_key))) return false;
       return (r.spend || r.leads || r.closes);
     });
     if (state.level !== 'creative') rows = rows.filter(function (r) { return r.tier === 'ad'; });
@@ -689,8 +1091,13 @@
         '" title="' + dn + ' open note(s) — click to read/reply">💬' + dn + '</span>' : '';
       return '<tr class="' + cls + '" data-key="' + esc(r.creative_key) + '" data-tier="' + r.tier + '" data-window="' + windowStamp() + '">' +
         '<td class="adx-name">' + (r.tier === 'ad' ? esc(r.creative) : '<em>' + esc(r.creative) + '</em>') + discBadge + '</td>' +
+        // Law 3: the dot+label column — the SAME status classifier as the
+        // Board's card accents (lifecycle block; groups carry no single status)
+        (VCOLS.some(function (c) { return c.k === 'status'; })
+          ? '<td class="adx-status-cell">' + (r.tier === 'ad' && state.level === 'creative'
+              ? statusDot(lifeCard(r.creative_key), false) : '—') + '</td>' : '') +
         (VCOLS.some(function (c) { return c.k === 'verdict'; }) ? '<td>' + (r.tier === 'ad' ? badge(r) : '—') + '</td>' : '') +
-        VCOLS.filter(function (c) { return c.k !== 'creative' && c.k !== 'verdict'; }).map(function (c) {
+        VCOLS.filter(function (c) { return c.k !== 'creative' && c.k !== 'verdict' && c.k !== 'status'; }).map(function (c) {
           var v = r[c.k];
           // EVERY FUNNEL NUMBER OPENS ITS PEOPLE: all tabs, tier rows, zero cells
           // (a zero opens an honest empty state with the reason — never a dead click)
@@ -987,9 +1394,14 @@
     }
     var h = '<div class="adx-disc-note' + (isReply ? ' adx-disc-reply' : '') +
       (n.state === 'resolved' ? ' adx-disc-resolved' : '') + '" data-note="' + n.id + '">' +
-      '<div class="adx-disc-head"><strong>' + esc(n.author.display) + '</strong> · ' + esc(n.created) +
+      '<div class="adx-disc-head"><strong>' + esc(n.author.display) + '</strong>' +
+      (n.stance ? ' <span class="adx-stance-tag adx-stance-' + esc(n.stance) +
+        (n.stance_superseded_by ? ' adx-stance-old" title="superseded by a newer stance from the same person' : '') +
+        '">' + esc(n.stance.toUpperCase()) + (n.stance_superseded_by ? ' (superseded)' : '') + '</span>' : '') +
+      ' · ' + esc(n.created) +
       (n.was_edited ? ' <span class="adx-prov">edited</span>' : '') + ' ' + stampChip(n.context_stamp) + '</div>' +
-      '<div class="adx-disc-body">' + esc(n.body) + '</div>';
+      (n.body ? '<div class="adx-disc-body">' + esc(n.body) + '</div>'
+              : '<div class="adx-disc-body adx-prov">(stance only — no note)</div>');
     if (n.state === 'resolved') {
       h += '<div class="adx-disc-resline">resolved by ' + esc(n.resolved_by || '') +
         (n.resolution_note ? ' — ' + esc(n.resolution_note) : '') + '</div>';
@@ -1017,10 +1429,19 @@
       .catch(function () { $('#adx-drill-body').textContent = 'Discussion fetch failed.'; });
   }
   function renderDiscussion(notes) {
+    // STANCE (R-C): an optional tag on the note — creative-anchored panels
+    // only (a board-level stance has no card to summarize onto).
+    var stanceSel = discState.anchor
+      ? '<select id="adx-disc-stance" title="optional stance — an OPINION for the summary chip, never a vote; your newest stance supersedes your old one">' +
+        '<option value="">no stance</option><option value="kill">Kill</option>' +
+        '<option value="scale">Scale</option><option value="hold">Hold</option></select>'
+      : '';
     var box = '<div class="adx-disc-post"><textarea id="adx-disc-input" rows="2" maxlength="2000" ' +
       'placeholder="add a note' + (discState.label ? ' on ' + esc(discState.label) : ' (board-level)') + '…"></textarea>' +
+      stanceSel +
       '<button id="adx-disc-send" class="adx-range-apply">post</button>' +
-      '<span class="adx-prov">Ctrl+Enter posts · your view (window + clock + live numbers) is stamped server-side</span></div>';
+      '<span class="adx-prov">Ctrl+Enter posts · your view (window + clock + live numbers) is stamped server-side' +
+      (discState.anchor ? ' · a stance without text is allowed, text is better' : '') + '</span></div>';
     var body = notes.length
       ? notes.map(function (n) {
           return noteHtml(n, false) + (n.replies || []).map(function (rp) { return noteHtml(rp, true); }).join('');
@@ -1040,12 +1461,14 @@
   function postNote(replyTo) {
     var inp = $('#adx-disc-input');
     var body = inp && inp.value.trim();
-    if (!body) return;
+    var stanceEl = $('#adx-disc-stance');
+    var stance = (stanceEl && stanceEl.value) || null;
+    if (!body && !stance) return;      // stance-only posts allowed (R-C)
     fetch('/ads/api/discussion?' + windowQS(), {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body: body, anchor: discState.anchor || 'board',
-                             reply_to: replyTo || null })
+      body: JSON.stringify({ body: body || '', anchor: discState.anchor || 'board',
+                             reply_to: replyTo || null, stance: stance })
     }).then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && d.error) { alert(d.error); return; }
@@ -1633,10 +2056,97 @@
       deb = setTimeout(function () { state.q = v.trim(); renderRows(true); }, 200);
     });
     $('#adx-more').addEventListener('click', function () { renderRows(false); });
+    // ── BOARD v2 wiring ──────────────────────────────────────────────────────
+    var viewParam = (location.search.match(/[?&]view=(board|table)/) || [])[1];
+    if (viewParam) state.view = viewParam;
+    var sfParam = (location.search.match(/[?&]status=(delivering|not_delivering|paused)/) || [])[1];
+    if (sfParam) state.statusFilter = sfParam;
+    var bandParam = (location.search.match(/[?&]band=(above|below)/) || [])[1];
+    if (bandParam) state.band = bandParam;
+    applyView();
+    document.querySelectorAll('.adx-view').forEach(function (b) {
+      b.addEventListener('click', function () {
+        state.view = b.dataset.view;
+        writeUrl(); applyView();
+        if (state.board) { renderStatusBar(); if (state.view === 'board') renderBoard(); }
+      });
+    });
+    $('#adx-status-bar').addEventListener('click', function (e) {
+      var sf = e.target.closest('[data-sfilter]');
+      var sb = e.target.closest('[data-sband]');
+      if (!sf && !sb) return;
+      if (sf) state.statusFilter = sf.dataset.sfilter;
+      if (sb) state.band = sb.dataset.sband;
+      writeUrl(); renderStatusBar(); renderScoreboard();
+      if (state.view === 'board') renderBoard();
+    });
+    var boardEl = $('#adx-board-lanes');
+    if (boardEl) {
+      boardEl.addEventListener('click', function (e) {
+        var mv = e.target.closest('.adx-move-btn');
+        if (mv) { openMoveDialog(mv.dataset.mkey, mv.dataset.mto); return; }
+        var rv = e.target.closest('.adx-rev-btn');
+        if (rv) { reverseDecision(rv.dataset.mkey); return; }
+        var ex = e.target.closest('.adx-exec-btn');
+        if (ex) { confirmExecuted(ex.dataset.mkey); return; }
+        if (e.target.closest('.adx-disc-open') || e.target.closest('a')) return;
+        var cardEl = e.target.closest('.adx-card[data-key]');
+        if (cardEl) openDossier(cardEl.dataset.key);   // click card → the dossier
+      });
+      // DRAG: a drop on MARKED TO KILL/SCALE opens the SAME dialog (Law 2 —
+      // the drag itself decides nothing; the reasoned confirm does).
+      var dragKey = null;
+      boardEl.addEventListener('dragstart', function (e) {
+        var c = e.target.closest('.adx-card[data-key]');
+        dragKey = c ? c.dataset.key : null;
+        if (dragKey && e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+      });
+      boardEl.addEventListener('dragover', function (e) {
+        var lane = e.target.closest('.adx-lane-cards[data-lane]');
+        if (!lane || !dragKey) return;
+        var ln = lane.dataset.lane;
+        if (ln === 'marked_to_kill' || ln === 'marked_to_scale') {
+          e.preventDefault();
+          lane.classList.add('adx-lane-over');
+        }
+      });
+      boardEl.addEventListener('dragleave', function (e) {
+        var lane = e.target.closest('.adx-lane-cards');
+        if (lane) lane.classList.remove('adx-lane-over');
+      });
+      boardEl.addEventListener('drop', function (e) {
+        var lane = e.target.closest('.adx-lane-cards[data-lane]');
+        if (!lane || !dragKey) return;
+        e.preventDefault();
+        lane.classList.remove('adx-lane-over');
+        var ln = lane.dataset.lane;
+        if (ln === 'marked_to_kill') openMoveDialog(dragKey, 'kill');
+        else if (ln === 'marked_to_scale') openMoveDialog(dragKey, 'scale');
+        dragKey = null;
+      });
+    }
+    var rulesPanel = $('#adx-rules-panel');
+    if (rulesPanel) rulesPanel.addEventListener('toggle', function () {
+      if (rulesPanel.open) loadRulesPanel();
+    });
+    // kill flag-cards deep-link into the Board at the card's dossier
+    $('#adx-flags').addEventListener('click', function (e) {
+      var fd = e.target.closest('.adx-flag-door[data-boardkey]');
+      if (!fd) return;
+      state.view = 'board';
+      writeUrl(); applyView(); renderBoard();
+      openDossier(fd.dataset.boardkey);
+    });
+
     fetch('/dashboard/api/whoami', { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (w) {
-        if (w) { $('#adx-who').textContent = w.display || w.user || ''; state.me = w.user || null; }
+        if (w) {
+          $('#adx-who').textContent = w.display || w.user || '';
+          state.me = w.user || null;
+          state.role = w.role || null;
+          if (state.view === 'board' && state.board) renderBoard();  // owner buttons
+        }
       });
     var dossierParam = (location.search.match(/[?&]dossier=([^&]+)/) || [])[1];
     var dealParam = (location.search.match(/[?&]deal=([^&]+)/) || [])[1];

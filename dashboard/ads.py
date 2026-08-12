@@ -388,9 +388,51 @@ def board():
         payload["discussion_counts"] = ads_discussion.counts_by_anchor()
     except Exception as e:
         logger.info("discussion counts unavailable: %s", e)
+    _attach_lifecycle(payload, basis)
     resp = jsonify(payload)
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     return resp
+
+
+def _all_time_creatives(basis: str):
+    """The LIFETIME engine leg (rollup-backed, F1 fast path) — the rotation
+    clock's scope. Returns (creatives, meta) or ([], {}) degraded."""
+    import roster_engine
+    r_all, meta = roster_engine.load_result(ALL_DAYS, None, None, basis=basis,
+                                            market=None)
+    return (r_all.get("creatives") or []), (meta or {})
+
+
+def _attach_lifecycle(payload: dict, basis: str) -> None:
+    """BOARD v2: the lifecycle block + the consolidated kill cards attach at
+    SERVE time (fresh kv/status reads — a move or stance seconds ago reflects
+    immediately even on a rollup-served board). Degrades honestly: a missing
+    all-time leg yields lifecycle.degraded, never a fabricated lane."""
+    try:
+        import ads_lifecycle
+        creatives_all, meta_all = _all_time_creatives(basis)
+        block = ads_lifecycle.build_block(creatives_all)
+        block["stale"] = bool(meta_all.get("stale"))
+        block["stale_reason"] = meta_all.get("stale_reason")
+        payload["lifecycle"] = block
+        # the dashboard kill cards ARE the Board's kill lane (one computation —
+        # derived from the SAME block object just built); replace any earlier
+        # serve's cards, then prepend (idempotent per serve)
+        kill = ads_lifecycle.kill_candidate_flags(creatives_all, block=block)
+        sc = payload.get("scorecard") or {}
+        others = [f for f in (sc.get("flags") or [])
+                  if f.get("kind") != "rotation_kill_candidate"]
+        sc["flags"] = kill + others
+        payload["scorecard"] = sc
+        try:
+            import attribution_flags
+            attribution_flags.record_flag_salience(kill)
+        except Exception:
+            pass
+    except Exception as e:
+        logger.warning("lifecycle block unavailable: %s", e)
+        payload["lifecycle"] = {"degraded": f"lifecycle engine unavailable: "
+                                            f"{str(e)[:120]}", "cards": {}}
 
 
 def _strip_html(s: str) -> str:
@@ -771,7 +813,7 @@ def discussion_post():
         return jsonify({"error": w_err}), 400
     j = request.get_json(silent=True) or {}
     c, err = ads_discussion.post(actor, j.get("body"), j.get("anchor") or "board",
-                                 reply_to=j.get("reply_to"),
+                                 reply_to=j.get("reply_to"), stance=j.get("stance"),
                                  days=days, start=start, end=end, basis=_basis_arg())
     if err:
         return jsonify({"error": err}), 429 if "rate limit" in err else 400
@@ -818,3 +860,107 @@ def discussion_resolve():
     if err:
         return jsonify({"error": err}), 400
     return jsonify({"ok": True, "note": ads_discussion._render(c)})
+
+
+# ── LIFECYCLE BOARD v2 (Law 2 / R-B): decisions, reversal, rotation rules ────
+# Move rights: the ad team (romano/isaiah/inna) + owner + coo — every move
+# reason-mandatory, attributed, journaled; reversal is OWNER-only (R-B).
+
+def _move_actor():
+    return _discussion_actor()      # same roles as discussion (the ad team + core)
+
+
+@bp.route("/api/lifecycle/move", methods=["POST"])
+@require_auth
+def lifecycle_move():
+    """Record a decision: {creative, to: kill|scale, reason, confirm_below_min_n}.
+    The dialog's contract is server-enforced: blank reason REJECTED; a
+    below-min-n move needs the explicit friction confirm; the response carries
+    the journaled decision. This endpoint does NOT touch Meta (Law 2)."""
+    import ads_lifecycle
+    actor = _move_actor()
+    if actor is None:
+        return jsonify({"error": "moves are for the ad team", "scope": "ad_domain"}), 403
+    j = request.get_json(silent=True) or {}
+    key = str(j.get("creative") or "").strip()
+    creatives_all, _meta = _all_time_creatives(_basis_arg())
+    row_all = next((c for c in creatives_all if c.get("creative_key") == key), None)
+    if row_all is None:
+        return jsonify({"error": "unknown creative"}), 404
+    st = ads_lifecycle.status_for(row_all.get("ad_ids") or [],
+                                  ads_lifecycle._entity_store(),
+                                  ads_lifecycle._spend_store())
+    engine_lane = ads_lifecycle.classify_stage(row_all, st,
+                                               ads_lifecycle.rules())["lane"]
+    dec, err, friction = ads_lifecycle.move(
+        actor, key, j.get("to"), j.get("reason"), row_all, engine_lane,
+        confirm_below_min_n=bool(j.get("confirm_below_min_n")))
+    if friction:
+        return jsonify(friction), 409
+    if err:
+        return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "decision": dec, "engine_lane": engine_lane})
+
+
+@bp.route("/api/lifecycle/reverse", methods=["POST"])
+@require_auth
+def lifecycle_reverse():
+    """Owner reversal (R-B) — reason required, journaled."""
+    import ads_lifecycle
+    from dashboard.auth import is_owner, current_actor
+    if not is_owner():
+        return jsonify({"error": "reversal is owner-only (R-B)",
+                        "role": current_actor().get("role")}), 403
+    j = request.get_json(silent=True) or {}
+    ok, err = ads_lifecycle.reverse(current_actor(), j.get("creative"), j.get("reason"))
+    if err:
+        return jsonify({"error": err}), 400
+    return jsonify({"ok": ok})
+
+
+@bp.route("/api/lifecycle/confirm-executed", methods=["POST"])
+@require_auth
+def lifecycle_confirm_executed():
+    """Human execution confirm (scale marks — budget changes are invisible
+    under ads_read; duplication auto-converges, budget raises need a word)."""
+    import ads_lifecycle
+    actor = _move_actor()
+    if actor is None:
+        return jsonify({"error": "moves are for the ad team", "scope": "ad_domain"}), 403
+    j = request.get_json(silent=True) or {}
+    ok, err = ads_lifecycle.confirm_executed(actor, j.get("creative"), j.get("note"))
+    if err:
+        return jsonify({"error": err}), 400
+    return jsonify({"ok": ok})
+
+
+@bp.route("/api/rotation-rules", methods=["GET"])
+@require_auth
+def rotation_rules_get():
+    """The visible rules panel (R-A): live thresholds + ruled defaults + the
+    edit journal. Readable by everyone who sees /ads."""
+    import ads_lifecycle
+    return jsonify({"rules": ads_lifecycle.rules(),
+                    "defaults": ads_lifecycle.RULE_DEFAULTS,
+                    "journal": ads_lifecycle.rules_journal()[-20:],
+                    "ruling": "R-A (Rydel): test window = min(4 active days, "
+                              "$200 lifetime spend); 0 leads at boundary → kill "
+                              "candidate, ≥1 lead → watch"})
+
+
+@bp.route("/api/rotation-rules", methods=["POST"])
+@require_auth
+def rotation_rules_set():
+    """Edit the live thresholds — no deploy; who/when/old→new journaled (R-A).
+    Owner + coo only: the thresholds parameterize a RULING."""
+    import ads_lifecycle
+    from dashboard.auth import current_actor
+    if current_actor().get("role") not in ("owner", "coo"):
+        return jsonify({"error": "rotation-rule edits are owner/coo only "
+                                 "(they parameterize Rydel's R-A ruling)"}), 403
+    j = request.get_json(silent=True) or {}
+    rl, err = ads_lifecycle.set_rules(current_actor(), j)
+    if err:
+        return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "rules": rl,
+                    "journal": ads_lifecycle.rules_journal()[-5:]})

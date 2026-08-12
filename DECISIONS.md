@@ -1978,3 +1978,49 @@
      (needs user_read) won't fire for this scoped key — degrades gracefully;
      credit exhaustion still caught loudly at synth time. Tests:
      tests/test_voice_loud_fallback.py (scoped-key class). Suite 946.
+
+143. **R-A · ROTATION RULES (Rydel's ruling, 2026-08-12, Board v2).** The ad
+     test window ends at min(4 ACTIVE DELIVERY DAYS from first delivery, $200
+     lifetime spend) — whichever hits first. At the boundary: 0 lifetime
+     leads → KILL CANDIDATE; ≥1 lead → WATCH (evidence accumulates toward a
+     verdict). Scale-candidate requires a VERDICT-backed signal (DOUBLE DOWN
+     past min-n) — never a hot day-2. TWO KINDS OF KILL, NEVER CONFUSED: a
+     ROTATION kill is a cost/delivery decision, legitimate at low n; a
+     VERDICT kill keeps the 30-lead min-n bar (#132-era standing ruling
+     unchanged); every kill card names which fired. The thresholds are kv
+     config (`ads:rotation_rules`) with 4d/$200 as the RULED defaults —
+     editable in the Board's rules panel without a deploy (owner/coo), every
+     edit journaled {who, when, old→new}. The old dashboard kill-card rule
+     (attribution_flags spend_no_leads, window-scoped $150) is RETIRED —
+     the Board's kill lane and the dashboard kill cards are ONE computation
+     (ads_lifecycle.classify_stage / kill_candidate_flags).
+
+144. **R-B · MOVE RIGHTS + MANDATORY REASON (Rydel's ruling, 2026-08-12).**
+     Role users (romano/isaiah/inna) CAN move lifecycle-board cards. Every
+     move requires a NON-EMPTY REASON (blank rejected server-side, 400),
+     is attributed to the session identity, journaled {who, when, from→to,
+     reason} (`ads:lifecycle:journal`, cap 500), and surfaces in the owner's
+     action feed WITH the reason (feed:extra:ads_decisions). A move on a
+     below-min-n card gets a friction confirm ("below evidence threshold —
+     a rotation call, not a verdict", HTTP 409 until confirmed). The owner
+     can reverse any move — reason required on the reversal too, journaled.
+     A move records a DECISION, never controls Meta (ads_read only): kill
+     marks converge when a status sync sees Meta paused (any layer); scale
+     marks converge on duplication (a new ad id joining the creative) or an
+     explicit human "confirm executed" (budget changes are invisible under
+     ads_read — accepted limitation, stated in the dialog). Marked-but-
+     unexecuted decisions AGE visibly, naming the mover (feed + sentinel
+     convergence-lag watch at >2d).
+
+145. **R-C · STANCES ARE OPINIONS, NEVER VOTES (encoded guard, 2026-08-12).**
+     Kill / Scale / Hold tags attach to comments in the ONE ads_discussion
+     store (additive schema field `stance`; stance-only posts allowed, text
+     encouraged). A user's LATEST active stance per card counts once
+     (supersession journaled on the older comment). Cards show a stance
+     summary chip; the move dialog DISPLAYS the card's opinions + stances
+     before the decider confirms. THE GUARD: no stance count moves a card —
+     structurally test-pinned (no stance input exists in classify_stage /
+     move / convergence). A decision is always an explicit move + reason by
+     a named human; opinions inform, moves decide, the journal records both.
+     EDITH reads both: "why did we kill X" → move reason + mover; "what does
+     the team think of X" → stances + quotes.
