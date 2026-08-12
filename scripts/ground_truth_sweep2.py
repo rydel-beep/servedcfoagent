@@ -20,6 +20,13 @@ import meta_range as MR
 from helpers import today_sydney
 
 
+def _money(s) -> float:
+    try:
+        return float(re.sub(r"[^0-9.]", "", str(s or "")) or 0)
+    except ValueError:
+        return 0.0
+
+
 def main():
     out = {}
     rl = L.rules()
@@ -128,17 +135,37 @@ def main():
 
     # ── E · contract tile re-proof: tile == the drill behind it ──────────────
     sb = AE.scoreboard_view(r30)
-    tile = (sb.get("headline") or {}).get("contract_total")
+    hl = sb.get("headline") or {}
+    tile = hl.get("contract_total")
     drill = roster_engine.build(days=30, start=None, end=None, basis="cohort",
                                 market=None, level="account", key="__account__",
                                 metric="closes")
     people = drill.get("people") or []
     drill_sum = round(sum(float(p.get("contract") or 0) for p in people), 2)
-    out["E_contract"] = {"tile": tile, "drill_sum": drill_sum,
+    # independent raw-tracker cross-check: won rows closed inside the window
+    w = r30.get("window") or {}
+    leads_all, _cm = AE.parse_tracker(AE._tracker_rows_clean())
+    raw = [l for l in leads_all
+           if l.get("won") and l.get("close_date")
+           and str(w.get("start")) <= str(l["close_date"]) <= str(w.get("end"))]
+    out["E_contract"] = {"tile": tile,
+                         "headline_closes": hl.get("closes_total"),
+                         "headline_cash": hl.get("cash_total"),
+                         "window": w,
+                         "drill_error": drill.get("error"),
+                         "drill_count": drill.get("count"),
+                         "drill_i17": drill.get("i17"),
+                         "drill_served": (drill.get("served_from")
+                                          or drill.get("stale")),
+                         "drill_sum": drill_sum,
                          "closes_in_drill": len(people),
-                         "missing_contract": sum(1 for p in people
-                                                 if p.get("close_date") and
-                                                 p.get("contract") is None),
+                         "people_sample": [{"name": p.get("name"),
+                                            "contract": p.get("contract"),
+                                            "close": p.get("close_date")}
+                                           for p in people[:6]],
+                         "raw_tracker_closes": len(raw),
+                         "raw_tracker_contract_sum":
+                             round(sum(_money(l.get("contract")) for l in raw), 2),
                          "exact": (tile is not None
                                    and round(float(tile), 2) == drill_sum)}
 
