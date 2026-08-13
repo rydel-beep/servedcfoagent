@@ -396,6 +396,14 @@ def nightly_extras() -> dict | None:
         out["lifecycle_watch"] = ads_lifecycle.sentinel_watch()
     except Exception as e:
         out["lifecycle_watch"] = {"error": str(e)[:80]}
+    # FORWARD PROJECTION watch (forward-MRR wave): month-0 committed must
+    # reconcile with the recognized-now truth; every live declaration must
+    # have its journal line (warning-clear integrity).
+    try:
+        import forward_projection
+        out["projection_watch"] = forward_projection.sentinel_watch()
+    except Exception as e:
+        out["projection_watch"] = {"error": str(e)[:80]}
     # VOICE watch (2026-08-10): canary state is a tracked metric — degraded
     # voice goes LOUD here too (the feed item is published by voice_health;
     # this records the watch + re-publishes in case the state got stale)

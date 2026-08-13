@@ -2032,6 +2032,15 @@
       </div>
     `;
 
+    // DECLARE-FROM-THE-WARNING (forward-MRR wave): every card carries the
+    // inline actions — ONE declaration flow (the same dialog; no card-local
+    // variant). Declaring clears the warning + moves the dollars ASSUMED →
+    // COMMITTED on the projection in the same refresh.
+    const inlineActions = (name) =>
+      '<span class="rw-inline-wrap">' +
+      '<button class="rw-btn rw-inline" data-rw-client="' + esc(name) + '" data-rw-kind="renewal" title="declare the real outcome — amount, term, cadence; clears this warning">Mark resigned</button>' +
+      '<button class="rw-btn rw-inline rw-inline-churn" data-rw-client="' + esc(name) + '" data-rw-kind="churn" title="declare the churn — clears this warning">Mark churned</button></span>';
+
     list.innerHTML = '';
     atRisk.forEach(c => {
       const row = document.createElement('div');
@@ -2041,6 +2050,7 @@
         <span class="churn-client">${esc(c.name)}</span>
         <span class="churn-days ${c.risk_level}">${daysText}</span>
         <span class="churn-revenue">${fmt$(c.monthly_revenue)}/mo</span>
+        ${inlineActions(c.name)}
       `;
       list.appendChild(row);
     });
@@ -2072,9 +2082,36 @@
           <span class="churn-revenue">${fmt$(c.monthly_revenue)}/mo</span>
           <span style="font-size:0.7rem;padding:2px 6px;border-radius:4px;background:${isUrgent ? 'var(--red-dim)' : 'var(--amber-dim)'};color:${color};margin-left:0.4rem">${statusLabel}</span>
           ${decChip}
+          ${inlineActions(c.name)}
         `;
         list.appendChild(row);
       });
+    }
+
+    // CLEARED-WARNING ARCHIVE (excluded \u2260 deleted): warnings cleared by a
+    // declaration stay browsable with the declaration that cleared them; the
+    // owner can reverse (the warning re-raises, journaled).
+    const cleared = ch.renewal_watch_cleared || [];
+    if (cleared.length > 0) {
+      const det = document.createElement('details');
+      det.className = 'rw-cleared';
+      let inner = '<summary>Cleared by declaration (' + cleared.length + ') \u2014 archived, reversible</summary>';
+      cleared.forEach(c => {
+        const d = c.declaration || {};
+        inner += '<div class="churn-row rw-cleared-row">' +
+          '<span class="churn-client">' + esc(c.name) + '</span>' +
+          '<span class="churn-days">' + esc(c.cleared_by || 'declaration') +
+          (d.cadence && d.cadence !== 'one_off'
+            ? ' \u00b7 $' + Math.round(d.amount || 0).toLocaleString() + ' ' + esc(d.cadence) + ' \u00d7 ' + (d.term_months || '?') + 'mo'
+            : d.cadence === 'one_off' ? ' \u00b7 one-off $' + Math.round(d.amount || 0).toLocaleString() : '') +
+          (d.effective_date ? ' \u00b7 through ' + esc(d.effective_date) : '') + '</span>' +
+          '<span class="rw-chip ' + (String(c.chip).indexOf('\u2713') >= 0 ? 'rw-chip-good' : 'rw-chip-pend') + '">' + esc(c.chip || '') + '</span>' +
+          (c.reenters_watch ? '<span class="rw-note" style="font-size:0.65rem;">re-enters ' + esc(c.reenters_watch) + '</span>' : '') +
+          (d.id ? '<button class="rw-btn rw-reverse" data-rw-reverse="' + d.id + '" data-rw-name="' + esc(c.name) + '" title="owner reversal \u2014 returns the client to ASSUMED and re-raises this warning (journaled)">reverse</button>' : '') +
+          '</div>';
+      });
+      det.innerHTML = inner;
+      list.appendChild(det);
     }
   }
 
@@ -3483,276 +3520,174 @@
     });
   }
 
-  // ── Forward Projection (standalone, with re-sign slider) ──
-  function renderForwardProjection(snap) {
-    var body = document.getElementById('forward-projection-body');
-    if (!body) return;
+  // ── FORWARD PROJECTION — TWO LAYERS (forward-MRR wave 2026-08-13) ─────────
+  // COMMITTED + ASSUMED, never blended: the engine (/api/projection) computes
+  // both curves; the slider applies the engine's STATED formula
+  // (assumed[m] = pool[m] × pct/100) to the ASSUMED layer only. Committed is
+  // slider-immune by construction — the engine takes no pct parameter.
+  // Controls are wired by DOCUMENT-LEVEL delegation (immune to node moves —
+  // the previous slider's direct binding was part of the witnessed deadness).
+  var _projData = null;    // the engine payload
+  var _projPct = null;     // the live what-if (URL-persisted, never journaled)
 
-    var fwd = snap.forward_mrr;
-    if (!fwd || !fwd.forward_months || fwd.forward_months.length === 0) {
-      body.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:12px;">Forward MRR data not available</div>';
+  function _projAssumed(pct) {
+    // THE engine-stated formula, verbatim — no other assumed math exists
+    return (_projData.assumed_pool || []).map(function (v) { return v * pct / 100; });
+  }
+
+  async function loadProjection() {
+    try {
+      var r = await fetch('/dashboard/api/projection');
+      if (!r.ok) {
+        var body = document.getElementById('forward-projection-body');
+        if (body) body.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:12px;">Projection unavailable (' + r.status + ')</div>';
+        return;
+      }
+      _projData = await r.json();
+      if (_projPct == null) {
+        var m = (location.search.match(/[?&]renew=(\d{1,3})/) || [])[1];
+        _projPct = m != null ? Math.min(100, +m) : (_projData.default_renewal_pct || 0);
+      }
+      var slider = document.getElementById('proj-renew-slider');
+      if (slider) slider.value = _projPct;
+      var badge = document.getElementById('proj-horizon-badge');
+      if (badge) badge.textContent = (_projData.horizon_months || 12) + 'mo';
+      renderProjection();
+    } catch (e) { console.error('projection load failed:', e); }
+  }
+
+  function renderForwardProjection(snap) {
+    // render() hook: burn/cash context refreshes; the engine payload loads once
+    // and refreshes with each declaration (doDeclareConfirm reloads it).
+    if (!_projData) loadProjection(); else renderProjection();
+  }
+
+  function renderProjection() {
+    var body = document.getElementById('forward-projection-body');
+    if (!body || !_projData) return;
+    var p = _projData;
+    if (!p.months || !p.months.length) {
+      body.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:12px;">' +
+        esc(((p.degraded || [])[0] || {}).reason || 'Projection data not available') + '</div>';
       return;
     }
+    var pct = _projPct == null ? (p.default_renewal_pct || 0) : _projPct;
+    var pctLabel = document.getElementById('proj-renew-pct');
+    if (pctLabel) pctLabel.textContent = pct + '%';
+    var assumed = _projAssumed(pct);
+    var committed = p.committed || [];
+    var oneoff = p.oneoff_cash || [];
+    var snap = currentSnap || {};
+    var burn = (snap.monthly_burn || {}).total_recurring_burn || 0;
+    var startingCash = (snap.cash_position || {}).cash_in_bank || 0;
+    var last = p.months.length - 1;
 
-    var resignPct = parseInt(document.getElementById('resign-slider').value) || 0;
-    _renderForwardTable(snap, resignPct);
-  }
+    // THE HONEST HEADLINE: both figures + the live assumption, never blended
+    var html = '<div class="proj-headline">' +
+      'Month 0: <strong>' + fmt$(Math.round(committed[0] || 0)) + ' committed</strong>' +
+      (assumed[0] ? ' + <span class="proj-assumed-fig">' + fmt$(Math.round(assumed[0])) + ' assumed</span>' : '') +
+      ' &nbsp;·&nbsp; by ' + esc(p.months[last].split(' ')[0].substring(0, 3) + ' ' + p.months[last].split(' ')[1]) + ': ' +
+      '<strong>' + fmt$(Math.round(committed[last] || 0)) + ' committed</strong> + ' +
+      '<span class="proj-assumed-fig">' + fmt$(Math.round(assumed[last] || 0)) + ' assumed</span>' +
+      ' at <strong>' + pct + '% renewal assumption</strong>' +
+      ' <span class="proj-whatif-tag" title="' + esc(p.assumption_formula || '') + '">what-if layer — slider-controlled; committed is slider-immune</span>' +
+      '</div>';
+    html += '<div class="proj-note">' + esc(p.historical_note || '') +
+      ' · a declaration moves a client ASSUMED → COMMITTED (declare from any renewal warning)</div>';
 
-  // Shared forward model: identical math for table and chart (display-side
-  // re-sign adjustment over engine-provided forward months; engines untouched).
-  function _computeForwardModel(fwdMonths, fwd, totalBurn, startingCash, resignPct) {
-    var runningCash = startingCash;
-    var rows = [];
-    for (var i = 0; i < fwdMonths.length; i++) {
-      var fm = fwdMonths[i];
-      var baseMrr = fm.recognized_mrr || 0;
-      var baseClients = fm.clients || 0;
-      var resignUplift = 0;
-      var resignClients = 0;
-      if (resignPct > 0 && i > 0) {
-        var prevMrr = fwdMonths[i - 1].recognized_mrr || 0;
-        var drop = prevMrr - baseMrr;
-        if (drop > 0) {
-          resignUplift = drop * (resignPct / 100);
-          var avgPerClient = fwd.avg_monthly_per_client || 2200;
-          resignClients = avgPerClient > 0 ? Math.round(resignUplift / avgPerClient) : 0;
-        }
-      }
-      if (i > 0 && rows[i - 1]) {
-        resignUplift += rows[i - 1].cumulativeResign || 0;
-        resignClients += rows[i - 1].cumulativeResignClients || 0;
-      }
-      var adjustedMrr = baseMrr + resignUplift;
-      var adjustedClients = baseClients + resignClients;
-      var netCash = adjustedMrr - totalBurn;
-      runningCash = runningCash + netCash;
-      var teamCostPct = adjustedMrr > 0 ? Math.round(totalBurn / adjustedMrr * 100) : null;
-      var grade = 'healthy';
-      var gradeReason = '';
-      if (runningCash < 0) { grade = 'unsustainable'; gradeReason = 'Cash negative'; }
-      else if (teamCostPct !== null && teamCostPct > 80) { grade = 'unsustainable'; gradeReason = 'Burn > 80% of MRR'; }
-      else if (netCash < -5000) { grade = 'unsustainable'; gradeReason = 'Net loss > $5k/mo'; }
-      else if (teamCostPct !== null && teamCostPct > 50) { grade = 'tight'; gradeReason = 'Burn > 50% of MRR'; }
-      else if (netCash < 0) { grade = 'tight'; gradeReason = 'Slightly negative'; }
-      else { gradeReason = 'Healthy'; }
-      rows.push({
-        month: fm.month,
-        baseMrr: baseMrr,
-        adjustedMrr: adjustedMrr,
-        clients: adjustedClients,
-        resignUplift: resignUplift,
-        cumulativeResign: resignUplift,
-        cumulativeResignClients: resignClients,
-        net: netCash,
-        cashBalance: runningCash,
-        teamCostPct: teamCostPct,
-        grade: grade,
-        gradeReason: gradeReason,
-      });
-    }
-    return rows;
-  }
-
-  function _renderForwardTable(snap, resignPct) {
-    var body = document.getElementById('forward-projection-body');
-    if (!body) return;
-
-    var fwd = snap.forward_mrr;
-    if (!fwd || !fwd.forward_months) return;
-
-    var burn = snap.monthly_burn || {};
-    var totalBurn = burn.total_recurring_burn || 0;
-    var cashPos = snap.cash_position || {};
-    var startingCash = cashPos.cash_in_bank || 0;  // cash_in_bank ONLY, not total_available
-
-    var fwdMonths = fwd.forward_months.slice(0, 7);
-    var expiryByMonth = {};
-    (fwd.expiry_schedule || []).forEach(function(e) {
-      expiryByMonth[e.month] = e;
-    });
-
-    var rows = _computeForwardModel(fwdMonths, fwd, totalBurn, startingCash, resignPct);
-
-    // Summary stats
-    var healthyCount = rows.filter(function(r) { return r.grade === 'healthy'; }).length;
-    var tightCount = rows.filter(function(r) { return r.grade === 'tight'; }).length;
-    var unsustCount = rows.filter(function(r) { return r.grade === 'unsustainable'; }).length;
-    var cashRunoutMonth = null;
-    for (var ri = 0; ri < rows.length; ri++) {
-      if (rows[ri].cashBalance < 0) { cashRunoutMonth = rows[ri].month; break; }
+    // reconciliation line (month-0 base == present truth, drift disclosed)
+    var rec = p.reconciliation || {};
+    if (rec.recognized_now != null) {
+      html += '<div class="proj-note">base check: month-0 committed ' + fmt$(Math.round(rec.month0_committed || 0)) +
+        ' vs recognized-now ' + fmt$(Math.round(rec.recognized_now)) +
+        (rec.declaration_delta ? ' (Δ ' + fmt$(Math.round(rec.declaration_delta)) + ' from declarations: ' +
+          esc((rec.declarations_touching_month0 || []).join(', ') || '—') + ')' : ' — exact') +
+        (rec.roster_mrr != null && rec.roster_drift ? ' · roster (Health tab) ' + fmt$(Math.round(rec.roster_mrr)) +
+          ' — drift ' + fmt$(Math.round(rec.roster_drift)) + ' disclosed' : '') + '</div>';
     }
 
-    var html = '';
+    html += '<div class="chart-wrap" style="height:200px;margin:8px 0 12px;"><canvas id="forward-chart"></canvas></div>';
 
-    // Key metrics bar
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:10px 0;">';
-    html += '<div class="kpi"><div class="kpi-label">Current MRR</div><div class="kpi-value">' + fmt$(fwd.current_recognized_mrr) + '</div><div class="kpi-sub">' + fwd.active_clients + ' clients</div></div>';
-    html += '<div class="kpi"><div class="kpi-label">MTM Floor</div><div class="kpi-value">' + fmt$(fwd.mtm_floor) + '</div><div class="kpi-sub">' + fwd.mtm_clients + ' mtm</div></div>';
-    html += '<div class="kpi"><div class="kpi-label">Starting Cash</div><div class="kpi-value">' + fmt$(startingCash) + '</div><div class="kpi-sub">CommBank</div></div>';
-    html += '<div class="kpi"><div class="kpi-label">Monthly Burn</div><div class="kpi-value">' + fmt$(totalBurn) + '</div><div class="kpi-sub">full outflow</div></div>';
-
-    // Sustainability summary
-    var summaryColor = unsustCount > 0 ? 'var(--red)' : tightCount > 0 ? 'var(--amber)' : 'var(--green)';
-    html += '<div class="kpi"><div class="kpi-label">Outlook</div><div class="kpi-value" style="font-size:14px;color:' + summaryColor + ';">';
-    if (unsustCount > 0) {
-      html += healthyCount + '/' + rows.length + ' healthy';
-    } else if (tightCount > 0) {
-      html += healthyCount + ' ok, ' + tightCount + ' tight';
-    } else {
-      html += 'All healthy';
-    }
-    html += '</div>';
-    if (cashRunoutMonth) html += '<div class="kpi-sub" style="color:var(--red);">Cash out by ' + cashRunoutMonth.split(' ')[0].substring(0, 3) + '</div>';
-    html += '</div>';
-    html += '</div>';
-
-    // Re-sign value callout (only when slider > 0)
-    if (resignPct > 0) {
-      var lastRowBase = fwdMonths[fwdMonths.length - 1] ? (fwdMonths[fwdMonths.length - 1].recognized_mrr || 0) : 0;
-      var lastRowAdj = rows[rows.length - 1] ? rows[rows.length - 1].adjustedMrr : 0;
-      var retentionValue = lastRowAdj - lastRowBase;
-      html += '<div style="background:var(--accent-dim);border:1px solid rgba(59,130,246,0.2);border-radius:6px;padding:8px 12px;font-size:11px;margin-bottom:8px;">';
-      html += '<strong style="color:var(--accent);">' + resignPct + '% re-sign rate</strong> preserves <strong>' + fmt$(Math.round(retentionValue)) + '/mo</strong> by ' + (rows[rows.length - 1] ? rows[rows.length - 1].month.split(' ')[0].substring(0, 3) : 'end') + '. ';
-      html += 'Every 25% improvement = ~' + fmt$(Math.round(retentionValue * 25 / resignPct)) + '/mo.';
-      html += '</div>';
-    }
-
-    // Comparative forward cash chart: 0% churn-cliff baseline vs selected re-sign
-    html += '<div class="chart-wrap" style="height:190px;margin:4px 0 14px;"><canvas id="forward-chart"></canvas></div>';
-
-    // Forward table
+    // the table — layers DISTINCT, one-off cash separate, never in MRR
+    var anyOneoff = oneoff.some(function (v) { return v > 0; });
     html += '<table class="data-table" style="width:100%;font-size:11px;">';
-    html += '<thead><tr>';
-    html += '<th style="text-align:left;">Month</th>';
-    html += '<th class="col-num" style="text-align:right;">Rec. MRR</th>';
-    if (resignPct > 0) html += '<th class="col-num" style="text-align:right;color:var(--accent);">+ Re-sign</th>';
-    html += '<th style="text-align:center;">Cl.</th>';
-    html += '<th class="col-num" style="text-align:right;">Net</th>';
-    html += '<th class="col-num" style="text-align:right;">Cash Bal.</th>';
-    html += '<th style="text-align:center;">Burn %</th>';
-    html += '<th style="text-align:center;">Status</th>';
-    html += '</tr></thead><tbody>';
-
-    for (var ri = 0; ri < rows.length; ri++) {
-      var r = rows[ri];
-      var netColor = r.net >= 0 ? 'var(--green)' : 'var(--red)';
-      var cashColor = r.cashBalance < 0 ? 'var(--red)' : 'var(--text)';
-      var gradeColor = r.grade === 'healthy' ? 'var(--green)' : r.grade === 'tight' ? 'var(--amber)' : 'var(--red)';
-      var gradeIcon = r.grade === 'healthy' ? '&#10003;' : r.grade === 'tight' ? '&#9888;' : '&#10007;';
-      var shortMonth = r.month.split(' ')[0].substring(0, 3) + ' \'' + r.month.split(' ')[1].substring(2);
-
-      html += '<tr style="border-bottom:1px solid var(--border);">';
-      html += '<td style="padding:6px 8px;font-weight:500;">' + shortMonth + '</td>';
-      html += '<td class="col-num" style="text-align:right;padding:6px 8px;">' + fmt$(Math.round(r.baseMrr)) + '</td>';
-      if (resignPct > 0) {
-        html += '<td class="col-num" style="text-align:right;padding:6px 8px;color:var(--accent);">' + (r.resignUplift > 0 ? '+' + fmt$(Math.round(r.resignUplift)) : '—') + '</td>';
-      }
-      html += '<td style="text-align:center;padding:6px 8px;color:var(--text-muted);">' + r.clients + '</td>';
-      html += '<td class="col-num" style="text-align:right;padding:6px 8px;color:' + netColor + ';">' + fmt$(Math.round(r.net)) + '</td>';
-      html += '<td class="col-num" style="text-align:right;padding:6px 8px;color:' + cashColor + ';font-weight:600;">' + fmt$(Math.round(r.cashBalance)) + '</td>';
-      html += '<td style="text-align:center;padding:6px 8px;color:var(--text-muted);">' + (r.teamCostPct != null ? r.teamCostPct + '%' : '—') + '</td>';
-      html += '<td style="text-align:center;padding:6px 8px;color:' + gradeColor + ';" title="' + esc(r.gradeReason) + '">' + gradeIcon + '</td>';
-      html += '</tr>';
+    html += '<thead><tr><th style="text-align:left;">Month</th>' +
+      '<th class="col-num" style="text-align:right;">Committed</th>' +
+      '<th class="col-num" style="text-align:right;color:var(--accent);">Assumed @' + pct + '%</th>' +
+      '<th class="col-num" style="text-align:right;">Total MRR</th>' +
+      (anyOneoff ? '<th class="col-num" style="text-align:right;">One-off cash</th>' : '') +
+      '<th class="col-num" style="text-align:right;">Net</th>' +
+      '<th class="col-num" style="text-align:right;">Cash bal.</th></tr></thead><tbody>';
+    var runningCash = startingCash;
+    for (var i = 0; i < p.months.length; i++) {
+      var total = (committed[i] || 0) + (assumed[i] || 0);
+      var net = total - burn;
+      runningCash += net + (oneoff[i] || 0);
+      var parts = p.months[i].split(' ');
+      var shortMonth = parts[0].substring(0, 3) + " '" + parts[1].substring(2);
+      html += '<tr style="border-bottom:1px solid var(--border);">' +
+        '<td style="padding:5px 8px;font-weight:500;">' + shortMonth + '</td>' +
+        '<td class="col-num" style="text-align:right;padding:5px 8px;">' + fmt$(Math.round(committed[i] || 0)) + '</td>' +
+        '<td class="col-num" style="text-align:right;padding:5px 8px;color:var(--accent);">' +
+          (assumed[i] ? fmt$(Math.round(assumed[i])) : '—') + '</td>' +
+        '<td class="col-num" style="text-align:right;padding:5px 8px;font-weight:600;">' + fmt$(Math.round(total)) + '</td>' +
+        (anyOneoff ? '<td class="col-num" style="text-align:right;padding:5px 8px;" title="one-off payment — committed CASH for this month, never recurring MRR">' +
+          (oneoff[i] ? fmt$(Math.round(oneoff[i])) : '—') + '</td>' : '') +
+        '<td class="col-num" style="text-align:right;padding:5px 8px;color:' + (net >= 0 ? 'var(--green)' : 'var(--red)') + ';">' + fmt$(Math.round(net)) + '</td>' +
+        '<td class="col-num" style="text-align:right;padding:5px 8px;color:' + (runningCash < 0 ? 'var(--red)' : 'var(--text)') + ';font-weight:600;">' + fmt$(Math.round(runningCash)) + '</td>' +
+        '</tr>';
     }
     html += '</tbody></table>';
-
-    // Expiry schedule
-    var expiries = fwd.expiry_schedule || [];
-    if (expiries.length > 0) {
-      html += '<div style="margin-top:10px;font-size:10px;color:var(--text-muted);">';
-      html += '<strong>Expiries:</strong> ';
-      var parts = [];
-      for (var ei = 0; ei < Math.min(expiries.length, 6); ei++) {
-        var e = expiries[ei];
-        parts.push(e.month + ': ' + e.contracts_expiring + ' cl. (' + fmt$(e.mrr_at_risk) + ')');
-      }
-      html += parts.join(' · ');
-      html += '</div>';
-    }
-
-    html += '<div style="margin-top:6px;font-size:10px;color:var(--text-muted);">Renewal rate: 0% historical (0/12). Cash bal. = prior + (rec. MRR − burn). Source: RECOGNIZED tab, live pull.</div>';
-
+    html += '<div class="proj-note">Committed = contracted recognition (RECOGNIZED tab) + owner declarations · ' +
+      'Assumed = undecided clients × the assumption (labelled what-if) · one-offs are cash, never MRR · ' +
+      'net/cash use burn ' + fmt$(burn) + ' + starting cash ' + fmt$(startingCash) + ' at the stated assumption</div>';
     body.innerHTML = html;
-    _drawForwardChart(fwdMonths, fwd, totalBurn, startingCash, resignPct, rows);
+    _drawProjectionChart(p, committed, assumed, oneoff, pct);
   }
 
   var _forwardChart = null;
-  function _drawForwardChart(fwdMonths, fwd, totalBurn, startingCash, resignPct, rows) {
+  function _drawProjectionChart(p, committed, assumed, oneoff, pct) {
     var canvas = document.getElementById('forward-chart');
     if (!canvas || !window.Chart) return;
     if (_forwardChart) { _forwardChart.destroy(); _forwardChart = null; }
-
-    var labels = rows.map(function(r) {
-      return r.month.split(' ')[0].substring(0, 3);
-    });
-    var selectedSeries = rows.map(function(r) { return Math.round(r.cashBalance); });
-    var datasets = [];
-
-    if (resignPct > 0) {
-      var baseline = _computeForwardModel(fwdMonths, fwd, totalBurn, startingCash, 0);
-      datasets.push({
-        label: '0% re-sign (churn cliff)',
-        data: baseline.map(function(r) { return Math.round(r.cashBalance); }),
-        borderColor: 'rgba(113,136,159,0.7)',
-        borderDash: [5, 4],
-        borderWidth: 1.5,
-        pointRadius: 0,
-        tension: 0.3,
-        fill: false,
-      });
-    }
-    datasets.push({
-      label: resignPct > 0 ? resignPct + '% re-sign' : 'Cash balance (0% re-sign)',
-      data: selectedSeries,
-      borderColor: CHART.brand,
-      backgroundColor: CHART.brandFillTop,
-      borderWidth: 2,
-      pointRadius: 2.5,
-      pointBackgroundColor: CHART.brand,
-      tension: 0.3,
-      fill: true,
-    });
-
+    var labels = p.months.map(function (m) { return m.split(' ')[0].substring(0, 3); });
     _forwardChart = new Chart(canvas.getContext('2d'), {
-      type: 'line',
-      data: { labels: labels, datasets: datasets },
+      type: 'bar',
+      data: { labels: labels, datasets: [
+        { label: 'COMMITTED (declared + contracted — slider-immune)',
+          data: committed.map(Math.round), backgroundColor: CHART.brand,
+          stack: 'mrr' },
+        { label: 'ASSUMED @' + pct + '% (what-if)',
+          data: assumed.map(Math.round), backgroundColor: 'rgba(59,130,246,0.30)',
+          borderColor: CHART.brand, borderWidth: 1, borderDash: [4, 3],
+          stack: 'mrr' },
+        { label: 'one-off cash (not MRR)', type: 'line', showLine: false,
+          data: oneoff.map(function (v) { return v > 0 ? Math.round(v) : null; }),
+          pointStyle: 'triangle', pointRadius: 6,
+          pointBackgroundColor: 'var(--amber)', borderColor: 'transparent' },
+      ]},
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
+        responsive: true, maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { display: true, position: 'top', align: 'end' },
-          tooltip: {
-            callbacks: {
-              label: function(ctx) { return ctx.dataset.label + ': ' + fmt$(ctx.parsed.y); }
-            }
-          }
-        },
-        scales: {
-          y: {
-            grid: {
-              color: function(ctx) {
-                return ctx.tick && ctx.tick.value === 0 ? 'rgba(232,97,107,0.55)' : CHART.grid;
-              },
-              lineWidth: function(ctx) {
-                return ctx.tick && ctx.tick.value === 0 ? 1.5 : 1;
-              }
-            },
-            ticks: { callback: function(v) { return fmtK(v); } }
-          },
-          x: { grid: { display: false } }
-        }
+        plugins: { legend: { display: true, position: 'top', align: 'end' },
+          tooltip: { callbacks: { label: function (ctx) {
+            return ctx.dataset.label + ': ' + fmt$(ctx.parsed.y); } } } },
+        scales: { x: { stacked: true, grid: { display: false } },
+                  y: { stacked: true, ticks: { callback: function (v) { return fmtK(v); } } } }
       }
     });
   }
 
-  function initForwardSlider() {
-    var slider = document.getElementById('resign-slider');
-    var pctLabel = document.getElementById('resign-pct');
-    if (!slider || !pctLabel) return;
-    slider.addEventListener('input', function() {
-      pctLabel.textContent = this.value + '%';
-      if (currentSnap) _renderForwardTable(currentSnap, parseInt(this.value));
+  function initProjectionControls() {
+    // DELEGATION, not direct binding — survives any node move/replacement
+    document.addEventListener('input', function (e) {
+      if (!e.target || e.target.id !== 'proj-renew-slider') return;
+      _projPct = Math.min(100, parseInt(e.target.value, 10) || 0);
+      try {
+        var qs = location.search.replace(/([?&])renew=[^&]*/, '');
+        history.replaceState(null, '', (qs ? qs + (qs.indexOf('?') < 0 ? '?' : '&') : '?') + 'renew=' + _projPct);
+      } catch (err) {}
+      renderProjection();     // instant — engine curves recombined client-side
     });
   }
 
@@ -4477,7 +4412,7 @@
           '<div class="fc-line">Net <strong>' + fmt$(cf.net_weekly * 52 / 12) + '/mo</strong> · 13-week end ~<strong>' + fmt$(cf.ending_cash) + '</strong> (from ' + fmt$(cf.starting_cash) + ')</div>' +
           '<div class="fc-line fc-muted">Static runway ' + (dr.static_runway_months != null ? dr.static_runway_months + 'mo' : '—') +
           ' assumes zero inflow' + (pos ? ' — dynamic view: cash grows.' : (dr.dynamic_runway_months ? ' — dynamic ~' + dr.dynamic_runway_months + 'mo.' : '.')) + '</div>' +
-          '<div class="fc-tag">PROJECTION · adjustable (inflow / collection / renewal)</div>';
+          '<div class="fc-tag">PROJECTION · what-if controls live on the Forward Projection panel</div>';
       }
       var mb = $('#forecast-mrr-body');
       if (mb && mf.available) {
@@ -4486,7 +4421,7 @@
         mb.innerHTML =
           '<div class="fc-line">Now <strong>' + fmt$(mf.current_mrr) + '</strong> → in ' + mf.months + 'mo:</div>' +
           row('Best', s.best || {}, 'fc-good') + row('Base', s.base || {}, 'fc-base') + row('Worst', s.worst || {}, 'fc-warn') +
-          '<div class="fc-tag">PROJECTION · ' + (mf.renewal_rate_pct != null ? mf.renewal_rate_pct + '% renewal · ' : '') + 'adjustable</div>';
+          '<div class="fc-tag">PROJECTION · ' + (mf.renewal_rate_pct != null ? mf.renewal_rate_pct + '% renewal · ' : '') + 'what-if controls on the Forward Projection panel</div>';
       }
     } catch (e) { /* silent */ }
   }
@@ -4878,7 +4813,7 @@
     initGlobalWindowSelector();
     initHiringForm();
     initRosterControls();
-    initForwardSlider();
+    initProjectionControls();
     initMetricTips();
     initKeyboardShortcuts();
     initRenewalLoop();
@@ -4993,13 +4928,24 @@
         '>CHURNED</option><option value="renewal"' + (k === 'renewal' ? ' selected' : '') +
         '>RENEWED</option></select></div>' +
       '<div id="rw-suggest" class="rw-suggest"></div>' +
-      '<div class="rw-dec-row">' +
-        '<label>' + (k === 'churn' ? 'Effective date' : 'New renewal/term end') +
-        ' <input type="date" id="rw-date"></label>' +
-        (k === 'renewal'
-          ? '<label>New MRR (blank = unchanged) <input type="number" id="rw-mrr" placeholder="$/mo"></label>'
-          : '<label>Reason (optional) <input type="text" id="rw-reason"></label>') +
-      '</div>' +
+      // THE RICHER RESIGN (forward-MRR wave): amount · cadence · term · start.
+      // The normalisation + committed-impact line comes SERVER-computed in the
+      // preview ("$30,000 annual = $2,500/mo … through {end}") — no client math.
+      (k === 'renewal'
+        ? '<div class="rw-dec-row">' +
+          '<label>Amount per period $<input type="number" id="rw-amount" placeholder="e.g. 30000" min="1"></label>' +
+          '<label>Cadence <select id="rw-cadence">' +
+          '<option value="monthly">monthly</option><option value="quarterly">quarterly</option>' +
+          '<option value="annual">annual</option><option value="one_off">one-off (cash, not MRR)</option>' +
+          '</select></label>' +
+          '<label>Term <input type="number" id="rw-term" placeholder="months" min="1" max="60" value="12"> mo</label>' +
+          '<label>Start <input type="date" id="rw-start"></label>' +
+          '</div>' +
+          '<div class="rw-note">normalisation + committed impact appear in the preview (server-computed): e.g. “$30,000 annual = $2,500/mo committed through the term end”</div>'
+        : '<div class="rw-dec-row">' +
+          '<label>Effective date <input type="date" id="rw-date"></label>' +
+          '<label>Reason (optional) <input type="text" id="rw-reason"></label>' +
+          '</div>') +
       '<div class="rw-dec-row"><button class="rw-btn" id="rw-preview-btn">Preview impact</button>' +
       '<button class="rw-btn" id="rw-cancel-btn">Close</button></div>' +
       '<div id="rw-preview" class="rw-preview"></div>';
@@ -5044,6 +4990,15 @@
     const dateEl = $('#rw-date');
     const body = { stage: 'preview', client: client, kind: kind };
     if (dateEl && dateEl.value) body.effective_date = dateEl.value;
+    // richer resign fields (server validates + normalises — one engine)
+    const amtEl = $('#rw-amount');
+    if (amtEl && amtEl.value) body.amount = parseFloat(amtEl.value);
+    const cadEl = $('#rw-cadence');
+    if (cadEl && cadEl.value) body.cadence = cadEl.value;
+    const termEl = $('#rw-term');
+    if (termEl && termEl.value) body.term_months = parseInt(termEl.value, 10);
+    const startEl = $('#rw-start');
+    if (startEl && startEl.value) body.start_date = startEl.value;
     const mrrEl = $('#rw-mrr');
     if (mrrEl && mrrEl.value) body.new_mrr = parseFloat(mrrEl.value);
     const reasonEl = $('#rw-reason');
@@ -5079,6 +5034,9 @@
     }
     box.innerHTML = '<div class="rw-good-note">Declared ' + _rwChip('declared · pending sheet', 'rw-chip-pend') +
       '</div><div class="rw-edit">Piolo item: ' + esc(d.piolo_item) + '</div>';
+    // the SAME refresh moves the dollars: warning clears + ASSUMED → COMMITTED
+    _projData = null;
+    await loadProjection();
     const snap = await fetchSnapshot();
     if (snap) render(snap);
   }
@@ -5087,6 +5045,41 @@
     document.addEventListener('click', (e) => {
       const t = e.target.closest('.renewal-scan-trigger');
       if (t) { runRenewalScan(t); return; }
+      // DECLARE-FROM-THE-WARNING: inline card actions open the ONE dialog,
+      // prefilled — no card-local declaration variant exists.
+      const inline = e.target.closest('.rw-inline[data-rw-client]');
+      if (inline) {
+        if (!_rwOwner) {
+          $('#renewal-result').style.display = '';
+          $('#renewal-result').innerHTML =
+            '<div class="rw-degraded">Declarations are owner-only (money events).</div>';
+          return;
+        }
+        _rwDeclare.client = inline.dataset.rwClient;
+        _rwDeclare.kind = inline.dataset.rwKind || 'renewal';
+        renderDeclarePanel();
+        const panel = $('#renewal-declare-panel');
+        if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      // archive reversal (owner) — the warning re-raises, journaled
+      const rev = e.target.closest('.rw-reverse[data-rw-reverse]');
+      if (rev) {
+        if (!_rwOwner) return;
+        if (!confirm('Reverse the declaration for ' + rev.dataset.rwName +
+                     '? The client returns to ASSUMED and the warning re-raises (journaled).')) return;
+        fetch('/dashboard/api/renewal/reverse', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: +rev.dataset.rwReverse, confirm: true })
+        }).then(r => r.json()).then(async d => {
+          if (d && d.error) { alert(d.error); return; }
+          _projData = null;
+          await loadProjection();
+          const snap = await fetchSnapshot();
+          if (snap) render(snap);
+        });
+        return;
+      }
     });
     const dbtn = $('#renewal-declare-btn');
     if (dbtn) dbtn.addEventListener('click', () => {

@@ -395,6 +395,10 @@ def pull_client_health() -> dict:
 
     # Renewal watch tracking — clients approaching contract renewal
     renewal_watch = []
+    # DECLARE-FROM-THE-WARNING (forward-MRR wave): warnings cleared by a
+    # declaration are ARCHIVED here (excluded ≠ deleted — browsable with the
+    # declaration that cleared them), never silently dropped.
+    renewal_watch_cleared = []
 
     # Declared churn/downgrade/renewal overrides (dashboard-only; the sheet is
     # untouched — DECISIONS #135 one-writer boundary). Loaded once, plus the
@@ -427,6 +431,14 @@ def pull_client_health() -> dict:
         # downgrade → lower this client's MRR. The sheet still says Active until Piolo updates it.
         _ov = _ovr.get(_ovr_norm(name))
         if _ov and _ov.get("change_type") == "churn":
+            # the cleared-warning archive entry rides before the drop — a
+            # churn-declared client leaves the watch DECIDED, not vanished
+            renewal_watch_cleared.append({
+                "name": name, "cleared_by": "churn declaration",
+                "declaration": {"kind": "churn",
+                                "effective_date": str(_ov.get("effective_date") or ""),
+                                "id": _ov.get("id")},
+                "chip": "declared · pending sheet"})
             continue
 
         # Parse contract dates — col 4 = start, col 5 = end
@@ -551,21 +563,56 @@ def pull_client_health() -> dict:
 
         clients.append(client_entry)
 
-        # Renewal watch: flag clients from month 4+ of their contract
-        if contract_start and contract_end:
-            total_months = (contract_end - contract_start).days / 30.44
-            elapsed_months = (today - contract_start).days / 30.44
+        # Renewal watch: flag clients from month 4+ of their contract.
+        # THE CYCLE (forward-MRR wave): a declared RESIGN re-bases the term —
+        # elapsed counts from the DECLARED new-term start, not the original
+        # sheet start (the witnessed bug: the old rule kept flagging a client
+        # forever after their renewal was declared, because months-elapsed
+        # from the ORIGINAL start never resets). The client leaves the watch
+        # on declaration (archived below) and re-enters as the NEW term ages
+        # past the same lead time — a loop, not a one-shot.
+        _renew_ov = (_ov if (_ov and _ov.get("change_type") == "renewal")
+                     else _ovr_recon.get(_ovr_norm(name))
+                     if (_ovr_recon.get(_ovr_norm(name)) or {}).get("change_type") == "renewal"
+                     else None)
+        watch_start = contract_start
+        if _renew_ov:
+            _ds = _renew_ov.get("start_date")
+            try:
+                watch_start = (date.fromisoformat(str(_ds)[:10]) if _ds
+                               else (contract_start or today))
+            except (ValueError, TypeError):
+                watch_start = contract_start
+        if watch_start and contract_end:
+            total_months = (contract_end - watch_start).days / 30.44
+            elapsed_months = (today - watch_start).days / 30.44
+            entry = {
+                "name": name,
+                "contract_start": str(watch_start),
+                "contract_end": str(contract_end),
+                "months_elapsed": round(elapsed_months, 1),
+                "total_months": round(total_months, 1),
+                "days_until_renewal": max((contract_end - today).days, 0),
+                "monthly_revenue": round(current_mrr, 2),
+                "status": "renewal_urgent" if elapsed_months >= 5 else "renewal_prep",
+            }
             if elapsed_months >= 4 and total_months >= 4:
-                renewal_watch.append({
-                    "name": name,
-                    "contract_start": str(contract_start),
-                    "contract_end": str(contract_end),
-                    "months_elapsed": round(elapsed_months, 1),
-                    "total_months": round(total_months, 1),
-                    "days_until_renewal": max((contract_end - today).days, 0),
-                    "monthly_revenue": round(current_mrr, 2),
-                    "status": "renewal_urgent" if elapsed_months >= 5 else "renewal_prep",
-                })
+                renewal_watch.append(entry)
+            elif _renew_ov:
+                # the declaration cleared this warning — archived, browsable
+                renewal_watch_cleared.append({
+                    **entry, "cleared_by": "resign declaration",
+                    "declaration": {
+                        "kind": "renewal",
+                        "effective_date": str(_renew_ov.get("effective_date") or ""),
+                        "amount": _renew_ov.get("amount"),
+                        "term_months": _renew_ov.get("term_months"),
+                        "cadence": _renew_ov.get("cadence"),
+                        "id": _renew_ov.get("id")},
+                    "chip": ("declared ✓ sheet" if _renew_ov.get("reconciled")
+                             else "declared · pending sheet"),
+                    "reenters_watch": "as the new term ages past the lead time "
+                                      "(the cycle)"})
 
     # Sort renewal watch by days until renewal (most urgent first)
     renewal_watch.sort(key=lambda c: c["days_until_renewal"])
@@ -674,6 +721,7 @@ def pull_client_health() -> dict:
             "trend": trend,
             "at_risk": at_risk,
             "renewal_watch": renewal_watch,
+            "renewal_watch_cleared": renewal_watch_cleared,
             "revenue_at_risk_30d": round(revenue_at_risk_30d, 2),
             "revenue_at_risk_60d": round(revenue_at_risk_60d, 2),
             "projection": projection,

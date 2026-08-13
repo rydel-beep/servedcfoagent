@@ -40,6 +40,13 @@ CREATE TABLE IF NOT EXISTS client_overrides (
   reconciled     BOOLEAN NOT NULL DEFAULT FALSE     -- TRUE = the sheet caught up
 );
 ALTER TABLE client_overrides ADD COLUMN IF NOT EXISTS old_end DATE;
+-- FORWARD MRR wave (2026-08-13): the RICHER resign declaration — amount per
+-- billing period, term length, cadence, term start. Additive; old rows keep
+-- NULLs and behave exactly as before.
+ALTER TABLE client_overrides ADD COLUMN IF NOT EXISTS amount REAL;
+ALTER TABLE client_overrides ADD COLUMN IF NOT EXISTS term_months INTEGER;
+ALTER TABLE client_overrides ADD COLUMN IF NOT EXISTS cadence TEXT;
+ALTER TABLE client_overrides ADD COLUMN IF NOT EXISTS start_date DATE;
 CREATE TABLE IF NOT EXISTS client_override_pending (
   token       TEXT PRIMARY KEY,
   payload     JSONB NOT NULL,
@@ -85,6 +92,8 @@ def active_overrides() -> list[dict]:
                     d[k] = d[k].isoformat()
             if d.get("effective_date") is not None:
                 d["effective_date"] = str(d["effective_date"])
+            if d.get("start_date") is not None:
+                d["start_date"] = str(d["start_date"])
             out.append(d)
         return out
     except Exception as e:
@@ -99,16 +108,19 @@ def active_map() -> dict[str, dict]:
 
 def _add(o: dict) -> int | None:
     migrate()
-    o = {"old_end": None, "reason": None, **o}
+    o = {"old_end": None, "reason": None, "amount": None, "term_months": None,
+         "cadence": None, "start_date": None, **o}
     try:
         with db.get_conn() as c:
             cur = c.execute(
                 """INSERT INTO client_overrides
                      (client_name, change_type, old_status, new_status, old_mrr, new_mrr,
-                      effective_date, reason, created_by, old_end)
+                      effective_date, reason, created_by, old_end,
+                      amount, term_months, cadence, start_date)
                    VALUES (%(client_name)s,%(change_type)s,%(old_status)s,%(new_status)s,
                            %(old_mrr)s,%(new_mrr)s,%(effective_date)s,%(reason)s,
-                           %(created_by)s,%(old_end)s)
+                           %(created_by)s,%(old_end)s,
+                           %(amount)s,%(term_months)s,%(cadence)s,%(start_date)s)
                    RETURNING id""", o)
             return cur.fetchone()["id"]
     except Exception as e:
@@ -154,9 +166,34 @@ def undo_client(name: str) -> dict | None:
 # ── THE DECLARE FLOW (#135 — dashboard routes call these; EXTENDS the chat
 # write-back, same tables, same confirmation contract, same no-sheet-write line) ──
 
+CADENCES = ("monthly", "quarterly", "annual", "one_off")
+_CADENCE_MONTHS = {"monthly": 1, "quarterly": 3, "annual": 12}
+
+
+def normalize_mrr(amount: float, cadence: str) -> float | None:
+    """THE cadence→MRR normalisation (one function; the dialog, the engine,
+    the journal and EDITH all read this). one_off → None: a one-off payment
+    is committed CASH for its month, NEVER recurring MRR."""
+    if cadence == "one_off":
+        return None
+    return round(float(amount) / _CADENCE_MONTHS[cadence], 2)
+
+
+def _add_months(d, n: int):
+    """Calendar-safe month add (clamped day)."""
+    import calendar
+    import datetime as dt
+    y, m = d.year + (d.month - 1 + n) // 12, (d.month - 1 + n) % 12 + 1
+    return dt.date(y, m, min(d.day, calendar.monthrange(y, m)[1]))
+
+
 def preview_declaration(client_name: str, kind: str, effective_date: str | None = None,
                         new_mrr: float | None = None,
-                        reason: str | None = None) -> tuple[dict | None, str | None]:
+                        reason: str | None = None,
+                        amount: float | None = None,
+                        term_months: int | None = None,
+                        cadence: str | None = None,
+                        start_date: str | None = None) -> tuple[dict | None, str | None]:
     """Stage 1: bind the EXACT roster client (IDs-are-truth: the type-ahead sends
     a roster name verbatim; anything not matching exactly one roster entry is
     'not a known client' — NO phantom clients, ever) and build the impact
@@ -184,18 +221,66 @@ def preview_declaration(client_name: str, kind: str, effective_date: str | None 
         preview = (f"CHURN {nm}: removes ${cur_mrr:,.0f}/mo from MRR effective {eff}"
                    + (f" — reason: {reason}" if reason else ""))
     elif kind == "renewal":
-        if not effective_date:
-            return None, "a renewal needs the NEW renewal/term end date"
-        payload.update({"new_status": "Active",
-                        "new_mrr": float(new_mrr) if new_mrr is not None else None})
-        delta = ""
-        if new_mrr is not None and abs(float(new_mrr) - cur_mrr) > 0.005:
-            word = "up" if float(new_mrr) > cur_mrr else "down"
-            delta = (f", MRR {word} ${abs(float(new_mrr) - cur_mrr):,.0f}/mo "
-                     f"(${cur_mrr:,.0f} → ${float(new_mrr):,.0f})")
-        preview = (f"RENEW {nm}: contract end {old_end or '(none on file)'} → {eff}"
-                   f"{delta or ', MRR unchanged'} — leaves Renewal Watch until "
-                   f"{eff} approaches")
+        # THE RICHER RESIGN (forward-MRR wave): amount · term · cadence ·
+        # start — normalised to MRR live; effective_date (the sheet's End
+        # Date, the convergence key) is DERIVED = start + term. The legacy
+        # shape (explicit end date, optional new_mrr) still works unchanged.
+        if amount is not None or term_months is not None or cadence is not None:
+            if amount is None or float(amount) <= 0:
+                return None, "a resign needs the amount (per billing period)"
+            cadence = (cadence or "monthly").strip().lower()
+            if cadence not in CADENCES:
+                return None, f"cadence must be one of {', '.join(CADENCES)}"
+            try:
+                term_months = int(term_months or (1 if cadence == "one_off" else 0))
+            except (TypeError, ValueError):
+                return None, "term must be a number of months"
+            if cadence != "one_off" and not (1 <= term_months <= 60):
+                return None, "term must be 1–60 months"
+            import datetime as _dt
+            try:
+                start = (_dt.date.fromisoformat(str(start_date))
+                         if start_date else today_sydney())
+            except ValueError:
+                return None, "bad start date"
+            end = _add_months(start, term_months if cadence != "one_off" else 1)
+            norm = normalize_mrr(float(amount), cadence)
+            eff = str(end)
+            payload.update({"new_status": "Active", "new_mrr": norm,
+                            "effective_date": eff,
+                            "amount": float(amount), "term_months": term_months,
+                            "cadence": cadence, "start_date": str(start)})
+            if cadence == "one_off":
+                preview = (f"RESIGN {nm} (ONE-OFF): ${float(amount):,.0f} counted as "
+                           f"committed CASH in {start.strftime('%B %Y')} — NOT "
+                           f"recurring MRR (the MRR line is untouched); clears the "
+                           f"renewal warning")
+            else:
+                per_label = {"monthly": "monthly", "quarterly": "quarterly",
+                             "annual": "annual"}[cadence]
+                norm_line = (f"${float(amount):,.0f} {per_label} = ${norm:,.2f}/mo"
+                             if cadence != "monthly" else f"${norm:,.2f}/mo")
+                preview = (f"RESIGN {nm}: {norm_line} × {term_months}mo from {start} "
+                           f"— adds ${norm:,.2f}/mo COMMITTED through "
+                           f"{end.strftime('%B %Y')}; clears the renewal warning; "
+                           f"re-enters the watch as {end} approaches"
+                           + (f"; MRR {'up' if norm > cur_mrr else 'down'} "
+                              f"${abs(norm - cur_mrr):,.0f}/mo (${cur_mrr:,.0f} → "
+                              f"${norm:,.0f})" if abs(norm - cur_mrr) > 0.005 else ""))
+            new_mrr = norm     # the delta math below reads it
+        else:
+            if not effective_date:
+                return None, "a renewal needs the NEW renewal/term end date"
+            payload.update({"new_status": "Active",
+                            "new_mrr": float(new_mrr) if new_mrr is not None else None})
+            delta = ""
+            if new_mrr is not None and abs(float(new_mrr) - cur_mrr) > 0.005:
+                word = "up" if float(new_mrr) > cur_mrr else "down"
+                delta = (f", MRR {word} ${abs(float(new_mrr) - cur_mrr):,.0f}/mo "
+                         f"(${cur_mrr:,.0f} → ${float(new_mrr):,.0f})")
+            preview = (f"RENEW {nm}: contract end {old_end or '(none on file)'} → {eff}"
+                       f"{delta or ', MRR unchanged'} — clears the renewal warning; "
+                       f"re-enters the watch as {eff} approaches")
     else:  # downgrade
         if new_mrr is None or float(new_mrr) >= cur_mrr:
             return None, (f"{nm} is at ${cur_mrr:,.0f}/mo — a downgrade needs a "
@@ -225,6 +310,9 @@ def apply_declaration(payload: dict, actor: dict | None = None) -> tuple[int | N
             f"{payload.get('effective_date')}"
             + (f", MRR → ${float(payload['new_mrr']):,.0f}"
                if payload.get("new_mrr") is not None else "")
+            + (f" [{payload.get('cadence')} ${float(payload.get('amount') or 0):,.0f}"
+               f" × {payload.get('term_months')}mo from {payload.get('start_date')}]"
+               if payload.get("cadence") else "")
             + f" — by {(actor or {}).get('user', 'rydel')} (owner declaration, "
               f"pending sheet)")
     except Exception:

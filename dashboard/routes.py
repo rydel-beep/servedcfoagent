@@ -1733,7 +1733,12 @@ def api_renewal_declare():
             d.get("client") or "", d.get("kind") or "",
             effective_date=d.get("effective_date") or None,
             new_mrr=d.get("new_mrr"),
-            reason=(d.get("reason") or "").strip() or None)
+            reason=(d.get("reason") or "").strip() or None,
+            # RICHER RESIGN (forward-MRR wave): amount · term · cadence · start
+            amount=d.get("amount"),
+            term_months=d.get("term_months"),
+            cadence=(d.get("cadence") or "").strip().lower() or None,
+            start_date=d.get("start_date") or None)
         if err:
             return jsonify({"error": err}), 400
         token = secrets.token_urlsafe(16)
@@ -1755,6 +1760,34 @@ def api_renewal_declare():
                         "chip": "declared · pending sheet",
                         "piolo_item": renewal_loop.piolo_edit_text(payload)})
     return jsonify({"error": "stage must be preview|confirm"}), 400
+
+
+@bp.route("/api/projection", methods=["GET"])
+@require_auth
+def api_projection():
+    """THE TWO-LAYER FORWARD PROJECTION (forward-MRR wave): committed +
+    assumed-pool curves from the one engine. The renewal slider is CLIENT-side
+    what-if over the engine's stated formula — committed takes no assumption
+    parameter (slider-immune by construction). Finance surface: ad_domain is
+    walled by the fail-closed allowlist."""
+    import forward_projection
+    resp = jsonify(forward_projection.project())
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/projection/config", methods=["POST"])
+@require_owner
+def api_projection_config():
+    """The DEFAULT assumption + horizon — config, owner-only, journaled
+    {who, when, old→new}. Slider positions are what-ifs and never journal."""
+    import forward_projection
+    from dashboard.auth import current_actor
+    d = request.get_json(silent=True) or {}
+    cfg, err = forward_projection.set_config(current_actor(), d)
+    if err:
+        return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "config": cfg})
 
 
 @bp.route("/api/renewal/reverse", methods=["POST"])

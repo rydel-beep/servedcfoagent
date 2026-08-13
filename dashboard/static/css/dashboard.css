@@ -2924,3 +2924,17 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .ops-back { color: var(--muted); text-decoration: none; font-size: .8rem;
   margin-right: 1rem; }
 .ops-back:hover { color: var(--text); }
+
+/* ═══ FORWARD MRR wave (2026-08-13): two-layer projection + inline declare ═══ */
+.proj-headline { font-size: 13px; margin: 8px 0 4px; }
+.proj-assumed-fig { color: var(--accent); }
+.proj-whatif-tag { font-size: 10px; color: var(--accent); border: 1px dashed var(--accent);
+  border-radius: 4px; padding: 1px 6px; margin-left: 6px; cursor: help; }
+.proj-note { font-size: 10.5px; color: var(--text-muted); margin: 3px 0 6px; }
+.rw-inline-wrap { margin-left: auto; display: inline-flex; gap: 4px; }
+.rw-inline { font-size: 0.65rem; padding: 2px 7px; }
+.rw-inline-churn { color: var(--red); border-color: rgba(232,97,107,0.5); }
+.rw-cleared { margin-top: 10px; font-size: 0.75rem; color: var(--text-muted); }
+.rw-cleared summary { cursor: pointer; padding: 4px 0; }
+.rw-cleared-row { opacity: 0.85; gap: 8px; flex-wrap: wrap; }
+.rw-reverse { font-size: 0.65rem; margin-left: auto; }

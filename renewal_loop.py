@@ -211,6 +211,27 @@ def piolo_edit_text(ov: dict) -> str:
                 f"{ov.get('effective_date')} (renewal)")
         if ov.get("new_mrr") is not None:
             base += f", Monthly Recognized=${float(ov['new_mrr']):,.0f}"
+        # RICHER RESIGN (forward-MRR wave): the full declared shape rides the
+        # queue item. The sheet HAS Service Term / Contract Value / Start Date
+        # columns — the exact values to set are spelled out; convergence still
+        # MATCHES on End Date + Monthly Recognized (the reliably-parseable
+        # pair; Service Term is free text on the sheet — honestly noted).
+        if ov.get("cadence"):
+            cad = str(ov["cadence"])
+            amt = float(ov.get("amount") or 0)
+            tm = ov.get("term_months")
+            if cad == "one_off":
+                base += (f", one-off payment ${amt:,.0f} "
+                         f"({ov.get('start_date')}) — NOT recurring; leave "
+                         f"Monthly Recognized as-is unless agreed")
+            else:
+                periods = {"monthly": tm or 0, "quarterly": (tm or 0) / 3,
+                           "annual": (tm or 0) / 12}[cad]
+                base += (f", Start Date={ov.get('start_date')}, Service Term="
+                         f"{tm} months, Contract Value=${amt * periods:,.0f} "
+                         f"(${amt:,.0f} {cad})")
+            base += (" — convergence auto-clears on End Date + Monthly "
+                     "Recognized matching")
         return base
     return (f"MRR contract sheet (Health tab), row '{nm}': set Monthly Recognized="
             f"${float(ov.get('new_mrr') or 0):,.0f} (downgrade), keep Active")

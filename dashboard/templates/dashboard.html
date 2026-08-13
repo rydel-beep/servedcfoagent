@@ -182,17 +182,20 @@
 
   </div>
 
-  <!-- Forward Projection (full width) -->
+  <!-- Forward Projection (full width) — TWO LAYERS, never blended:
+       COMMITTED (declared actuals + contracted recognition, slider-immune)
+       + ASSUMED (the undecided pool × the renewal assumption — the what-if
+       layer the slider controls). Forward-MRR wave 2026-08-13. -->
   <section class="panel" id="section-forward">
     <div class="panel-header">
-      <h2 class="panel-title">Forward Projection <span class="win-badge">6mo</span></h2>
-      <span class="panel-sub">recognized MRR + cash trajectory</span>
+      <h2 class="panel-title">Forward Projection <span class="win-badge" id="proj-horizon-badge">12mo</span></h2>
+      <span class="panel-sub">committed vs assumed — a declaration converts a guess into a commitment</span>
     </div>
-    <div class="control-group">
-      <label class="control-label" for="resign-slider">Re-sign rate</label>
-      <input type="range" id="resign-slider" min="0" max="100" step="5" value="0">
-      <span id="resign-pct" class="control-readout">0%</span>
-      <span class="control-hint">of expiring clients renew &mdash; drag to see retention value vs the 0% churn cliff</span>
+    <div class="control-group" id="proj-controls">
+      <label class="control-label" for="proj-renew-slider">Renewal assumption</label>
+      <input type="range" id="proj-renew-slider" min="0" max="100" step="5" value="0">
+      <span id="proj-renew-pct" class="control-readout">0%</span>
+      <span class="control-hint">WHAT-IF on the ASSUMED layer only &mdash; committed never moves with this slider. Historical: 0/12 re-signed.</span>
     </div>
     <div id="forward-projection-body"><div class="skeleton skeleton-block"></div></div>
   </section>

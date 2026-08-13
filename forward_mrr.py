@@ -124,6 +124,63 @@ def _month_col_indices(headers: list[str]) -> list[tuple[str, int]]:
     return months
 
 
+def per_client_recognition() -> dict:
+    """Per-client per-month recognized values off the SAME tab/parse the
+    forward model uses (one source — the forward_projection engine's committed
+    base reads THIS, never a second sheet read path).
+    Returns {"months": [labels...], "clients": {name: {"monthly": {label: $},
+    "monthly_value": $, "end_date": iso|None, "start_date": iso|None,
+    "term": str, "mtm": bool}}, "degraded": [...]}."""
+    degraded = []
+    all_rows = _fetch_recognized_tab()
+    if not all_rows or len(all_rows) < 2:
+        return {"months": [], "clients": {},
+                "degraded": [{"metric": "forward_projection",
+                              "reason": "RECOGNIZED tab unreachable"}]}
+    headers = all_rows[0]
+    data_rows = [r for r in all_rows[1:] if r[0].strip()]
+    month_cols = _month_col_indices(headers)
+    today = today_sydney()
+    labels = []
+    month_names = {"January": 1, "February": 2, "March": 3, "April": 4, "May": 5,
+                   "June": 6, "July": 7, "August": 8, "September": 9,
+                   "October": 10, "November": 11, "December": 12}
+    fwd_cols = []
+    for label, idx in month_cols:
+        parts = label.split()
+        m_num = month_names.get(parts[0])
+        m_year = int(parts[1])
+        if m_num and (m_year > today.year or (m_year == today.year and m_num >= today.month)):
+            labels.append(label)
+            fwd_cols.append((label, idx))
+    clients: dict = {}
+    for row in data_rows:
+        name = row[0].strip()
+        status = row[1].strip()
+        if status != "Active" or _is_churned(name):
+            continue
+        term = row[3].strip() if len(row) > 3 else ""
+        start_dt = _parse_date(row[4].strip()) if len(row) > 4 else None
+        end_str = row[5].strip() if len(row) > 5 else ""
+        end_dt = _parse_date(end_str) if end_str and end_str != "-" else None
+        monthly_val = _parse_money(row[7]) if len(row) > 7 else None
+        monthly = {}
+        for label, idx in fwd_cols:
+            cell = row[idx].strip() if idx < len(row) else ""
+            val = _parse_money(cell)
+            if val is not None and val > 0:
+                monthly[label] = round(val, 2)
+        clients[name] = {
+            "monthly": monthly,
+            "monthly_value": round(monthly_val, 2) if monthly_val else None,
+            "start_date": start_dt.isoformat() if start_dt else None,
+            "end_date": end_dt.isoformat() if end_dt else None,
+            "term": term,
+            "mtm": term == "Month to Month" or (not end_dt and end_str in ("-", "")),
+        }
+    return {"months": labels, "clients": clients, "degraded": degraded}
+
+
 def build_forward_mrr() -> dict:
     """Build the forward recognized MRR model.
 
