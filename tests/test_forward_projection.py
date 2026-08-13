@@ -352,3 +352,16 @@ def test_js_slider_is_delegated_and_assumed_only():
     assert "_computeForwardModel" not in src
     # honest labels
     assert "slider-immune" in src and "what-if" in src
+
+def test_mrr_now_falls_back_to_latest_committed_month(monkeypatch):
+    """PROD-CAUGHT: blank Monthly-Recognized column → mrr_now was 0 → the
+    assumed pool was ALL ZEROS and the slider moved nothing (the dead-slider
+    class again). The run-rate falls back to the latest non-zero month."""
+    c = _sheet_client(3000.0, 3)
+    c["monthly_value"] = None                      # the blank sheet column
+    labels = FP._horizon_labels(TODAY, 12)
+    c["monthly"][labels[2]] = 2800.0               # latest committed month
+    _mock_engine(monkeypatch, {"Hono Grill": c})
+    p = FP.project()
+    assert p["assumed_pool"][3:] == [2800.0] * 9   # the pool breathes again
+    assert p["per_client"]["Hono Grill"]["mrr_now"] == 2800.0

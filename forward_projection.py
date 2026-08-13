@@ -176,7 +176,20 @@ def project() -> dict:
     for name in sorted(all_names):
         srow = sheet_clients.get(name) or {}
         dv = decls.get(client_overrides._norm(name))
-        mrr_now = srow.get("monthly_value") or (dv or {}).get("new_mrr") or 0
+        mrr_now = srow.get("monthly_value") or 0
+        if not mrr_now:
+            # PROD-CAUGHT (probe, deploy a4684572): the sheet's Monthly
+            # Recognized column is blank/0 for most rows — the client's live
+            # run-rate is their LATEST non-zero month in the recognition
+            # schedule (same tab, same parse). Without this the assumed pool
+            # was all zeros and the slider moved nothing — the witnessed
+            # dead-slider class all over again.
+            for _lbl in labels:
+                v = (srow.get("monthly") or {}).get(_lbl)
+                if v:
+                    mrr_now = v
+        if not mrr_now:
+            mrr_now = (dv or {}).get("new_mrr") or 0
         row = {"source": "sheet", "committed_until": None, "mrr_now": mrr_now,
                "declared": None}
         covered_until = None
