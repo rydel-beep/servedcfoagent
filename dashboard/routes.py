@@ -819,6 +819,7 @@ def api_chat():
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
             (lambda m: __import__('open_loops').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # Pillar 1: 'remind me to X' / 'drop it' (internal reminders only)
+            (__import__('outflow_bands').handle_expense_query, False),    # outflow truth: 'real monthly expenses' → OpEx + tax stated separately
             (__import__('ads_lifecycle').handle_decision_recall, False),   # Board v2: 'why did we kill X' → move reason + mover (journal truth)
             (__import__('ads_lifecycle').handle_stance_recall, False),     # Board v2: 'what does the team think of X' → stances + quotes (one store)
             (__import__('ads_discussion').handle_discussion_recall, False),  # 'what has Romano noticed' → real quotes + context stamps (read-only)
@@ -1064,6 +1065,7 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
             (lambda m: __import__('open_loops').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # Pillar 1: 'remind me to X' / 'drop it' (internal reminders only)
+            (__import__('outflow_bands').handle_expense_query, False),    # outflow truth: 'real monthly expenses' → OpEx + tax stated separately
             (__import__('ads_lifecycle').handle_decision_recall, False),   # Board v2: 'why did we kill X' → move reason + mover (journal truth)
             (__import__('ads_lifecycle').handle_stance_recall, False),     # Board v2: 'what does the team think of X' → stances + quotes (one store)
             (__import__('ads_discussion').handle_discussion_recall, False),  # 'what has Romano noticed' → real quotes + context stamps (read-only)
@@ -1760,6 +1762,36 @@ def api_renewal_declare():
                         "chip": "declared · pending sheet",
                         "piolo_item": renewal_loop.piolo_edit_text(payload)})
     return jsonify({"error": "stage must be preview|confirm"}), 400
+
+
+@bp.route("/api/outflow-bands", methods=["GET"])
+@require_auth
+def api_outflow_bands():
+    """OUTFLOW TRUTH: the trailing months restated by band (OPEX ·
+    TAX/STATUTORY · PERSONAL · FLAGGED) + the accrual/cash view data +
+    partition invariant. One classifier; finance surface (ad_domain walled
+    by the allowlist)."""
+    import outflow_bands
+    months = min(max(int(request.args.get("months", 6) or 6), 1), 12)
+    payload = outflow_bands.monthly_bands(months)
+    payload["journal"] = outflow_bands.journal_entries(20)
+    resp = jsonify(payload)
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/outflow-bands/assign", methods=["POST"])
+@require_owner
+def api_outflow_bands_assign():
+    """One-click FLAGGED-lane assignment → a deterministic rule (owner-only,
+    journaled, reversible — assign band='flagged' to clear)."""
+    import outflow_bands
+    from dashboard.auth import current_actor
+    d = request.get_json(silent=True) or {}
+    out, err = outflow_bands.assign(current_actor(), d.get("account"), d.get("band"))
+    if err:
+        return jsonify({"error": err}), 400
+    return jsonify({"ok": True, **out})
 
 
 @bp.route("/api/projection", methods=["GET"])

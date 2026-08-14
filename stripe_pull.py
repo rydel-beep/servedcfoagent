@@ -208,8 +208,7 @@ def pull_stripe() -> dict:
     current_start = today - timedelta(days=WINDOW_CURRENT)
     previous_start = today - timedelta(days=WINDOW_PREVIOUS)
 
-    return {
-        "stripe": {
+    out_block = {
             "mrr": mrr,
             "revenue": {
                 "current": {
@@ -244,6 +243,18 @@ def pull_stripe() -> dict:
                 "basis": "NET — banked after Stripe fees; lags collection. FLOW (per period).",
                 "period": {"label": f"trailing {WINDOW_CURRENT} days"},
             },
-        },
+    }
+    # STRIPE HEALTH (Part B): DIRECT-key overlays replace the MCP's broken
+    # aggregates (miscounted subs, failed-charge count) where the restricted
+    # key's scopes allow — labelled; the MCP value is kept beside for audit.
+    # The canary runs here too (on-load freshness) — classified, LOUD on fail.
+    try:
+        import stripe_health
+        stripe_health.overlay(out_block, degraded)
+        out_block["canary"] = stripe_health.canary_probe(source="snapshot_build")
+    except Exception as e:
+        logger.info("stripe health overlay unavailable: %s", e)
+    return {
+        "stripe": out_block,
         "degraded": degraded,
     }

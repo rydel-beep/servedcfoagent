@@ -283,6 +283,16 @@ def build_snapshot() -> dict:
 
     # Build profit block from Xero P&L data
     xero_data = xero_result.get("xero")
+    # OUTFLOW-TRUTH bands (2026-08-13): the ONE classifier bands the P&L
+    # expense lines by LEDGER ACCOUNT — the waterfall + tiles render OpEx and
+    # the tax band DISTINCTLY; the partition (sum == total) rides the payload.
+    if xero_data and xero_data.get("opex_line_items"):
+        try:
+            import outflow_bands
+            xero_data["opex_bands"] = outflow_bands.band_line_items(
+                xero_data["opex_line_items"])
+        except Exception as e:
+            logger.info("opex banding unavailable: %s", e)
     profit = None
     if xero_data:
         profit = {

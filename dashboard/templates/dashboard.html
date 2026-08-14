@@ -263,6 +263,22 @@
     <div id="waterfall-content"></div>
   </section>
 
+  <!-- OUTFLOW TRUTH (outflow-truth wave 2026-08-13): the trailing months
+       restated by band — OpEx (managed) · tax/statutory (flagged, never
+       blended) · personal · flagged-for-review. Accrual/cash toggle. -->
+  <section class="panel" id="section-outflow">
+    <div class="panel-header">
+      <h2 class="panel-title">Outflow Truth <span class="win-badge">6mo</span></h2>
+      <div class="panel-badge" id="outflow-badge"></div>
+      <span class="panel-sub">OpEx vs tax/statutory — classified by the ledger's own accounts, never blended</span>
+      <div class="renewal-toolbar">
+        <button class="rw-btn outflow-view-btn active" data-oview="cash" title="the real payment events, flagged in their months (lumpy — when money actually left)">Cash</button>
+        <button class="rw-btn outflow-view-btn" data-oview="accrual" title="OpEx + the month's accrued ATO share from the set-aside math — labelled planning estimate">Accrual</button>
+      </div>
+    </div>
+    <div id="outflow-content"><div class="skeleton skeleton-block"></div></div>
+  </section>
+
   <!-- Two-column: Commission Tracker + Unit Economics -->
   <div class="grid-2">
 

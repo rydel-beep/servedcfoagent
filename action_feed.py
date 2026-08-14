@@ -133,8 +133,9 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
     # (each key is owned by exactly ONE publisher, replaced wholesale per
     # publish — self-retiring per channel, no read-modify-write races).
     _EXTRA_CHANNELS = ("feed:extra:ads_discussion", "feed:extra:voice",
-                       "feed:extra:ads_decisions")   # Board v2: pending moves
-                                                     # with reasons; age daily
+                       "feed:extra:ads_decisions",   # Board v2: pending moves
+                       "feed:extra:stripe")          # Stripe canary failures
+                                                     # (self-retiring on OK)
     try:
         import kv_store
         for ch_key in _EXTRA_CHANNELS:

@@ -68,6 +68,15 @@ _OPEX_CATEGORY = {
     "motor vehicle expenses": "other_opex",
     # Contractors WITH GST = videog/photog = variable COGS (not fixed burn)
     "contractors with gst remittly": "variable_cogs",
+    # OUTFLOW-TRUTH wave (2026-08-13): tax + personal are NOT operating cost.
+    # "Income Tax Expense" ($26,553.75 in June 2026) previously fell through
+    # the default into other_opex and inflated recurring burn for any window
+    # covering a BAS month. Classified out of burn, reported beside it —
+    # never blended, never hidden (the band totals ride the payload).
+    "income tax expense": "tax_statutory",
+    "personal expense": "personal_excluded",
+    "refunds and rebates expense": "one_off",   # post-close economics (R1) — real
+                                                # money, not recurring burn
 }
 
 _RECURRING_OVERRIDE = {
@@ -147,6 +156,8 @@ def get_monthly_burn(
     commissions = 0.0
     one_off = 0.0
     variable_cogs = 0.0  # videog/photog, subcontractors (not in fixed burn)
+    tax_statutory = 0.0  # BAS/income-tax remittances — settling liabilities, never OpEx
+    personal_excluded = 0.0  # the P&L Personal Expense account — surfaced, not burn
 
     line_details = []
 
@@ -189,6 +200,10 @@ def get_monthly_burn(
             one_off += amount
         elif cat == "variable_cogs":
             variable_cogs += amount
+        elif cat == "tax_statutory":
+            tax_statutory += amount
+        elif cat == "personal_excluded":
+            personal_excluded += amount
         else:
             other_opex += amount
 
@@ -278,6 +293,12 @@ def get_monthly_burn(
         "variable_cogs_note": "Videog/photog + subcontractors — scales with work, excluded from fixed burn",
         "commissions": round(commissions, 2),
         "one_off_excluded": round(one_off, 2),
+        # OUTFLOW-TRUTH bands (never blended into burn; never hidden):
+        "tax_statutory_excluded": round(tax_statutory, 2),
+        "tax_statutory_note": ("BAS/income-tax remittances in this P&L window — "
+                               "statutory settlements, flagged beside OpEx, "
+                               "excluded from the managed burn figure"),
+        "personal_excluded": round(personal_excluded, 2),
         "total_recurring_burn": round(total_recurring_burn, 2),
         "total_with_variable": round(total_with_variable, 2),
         "total_with_commissions": round(total_with_commissions, 2),

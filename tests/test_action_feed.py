@@ -12,6 +12,13 @@ def _snap():
             "stripe_reconciliation": {"paid_missing_from_tracker": [{"id": "ch_1", "amt": 500}]}}
 
 def test_aggregates_and_ranks(monkeypatch):
+    # kv isolation: earlier suite tests may leave feed:extra:* items in the
+    # shared in-memory kv (e.g. the Stripe canary's no-key S1 from any
+    # pull_stripe call in a keyless test env) — counts here must start clean
+    import kv_store
+    for k in list(kv_store._MEM):
+        if str(k).startswith("feed:extra:"):
+            kv_store._MEM.pop(k, None)
     import salience
     monkeypatch.setattr(salience, "collect", lambda s=None: [
         {"id": "f", "type": "failed", "salience": 100, "ago": 0, "spoken": "1 charge failed"},

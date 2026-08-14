@@ -404,6 +404,18 @@ def nightly_extras() -> dict | None:
         out["projection_watch"] = forward_projection.sentinel_watch()
     except Exception as e:
         out["projection_watch"] = {"error": str(e)[:80]}
+    # OUTFLOW TRUTH (Part A): the I-OUTFLOW partition invariant nightly +
+    # the flagged-lane size. STRIPE (Part B): the canary + MCP-layer watch.
+    try:
+        import outflow_bands
+        out["outflow_watch"] = outflow_bands.sentinel_watch()
+    except Exception as e:
+        out["outflow_watch"] = {"error": str(e)[:80]}
+    try:
+        import stripe_health
+        out["stripe_watch"] = stripe_health.sentinel_watch()
+    except Exception as e:
+        out["stripe_watch"] = {"error": str(e)[:80]}
     # VOICE watch (2026-08-10): canary state is a tracked metric — degraded
     # voice goes LOUD here too (the feed item is published by voice_health;
     # this records the watch + re-publishes in case the state got stale)

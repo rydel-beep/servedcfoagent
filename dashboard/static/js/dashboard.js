@@ -958,7 +958,19 @@
     rows += `<div class="wf-row"><span class="wf-label">Revenue</span>${bar(rev, 'revenue')}<span class="wf-value" style="color:var(--accent)">${fmt$(rev)}</span></div>`;
     if (cogs != null) rows += `<div class="wf-row"><span class="wf-label">COGS${pctOf(cogs, rev)}</span>${bar(cogs, 'cost')}<span class="wf-value" style="color:var(--red)">-${fmt$(cogs)}</span></div>`;
     if (gp != null) rows += `<div class="wf-row total"><span class="wf-label">Gross Profit${pctOf(gp, rev)}</span>${bar(gp, gp >= 0 ? 'profit' : 'loss')}<span class="wf-value" style="color:${gp >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt$(gp)}</span></div>`;
-    if (opex != null) rows += `<div class="wf-row"><span class="wf-label">Operating Expenses${pctOf(opex, rev)}</span>${bar(opex, 'cost')}<span class="wf-value" style="color:var(--red)">-${fmt$(opex)}</span></div>`;
+    // OUTFLOW TRUTH: when the classifier banded the expense lines, OpEx and
+    // the tax band render DISTINCTLY (total unchanged — partition invariant);
+    // the blended single line survives only when banding is unavailable.
+    const ob = (xero.opex_bands || {}).bands;
+    if (opex != null && ob && (ob.tax_statutory > 0 || ob.personal > 0 || ob.flagged > 0)) {
+      rows += `<div class="wf-row"><span class="wf-label">Operating Expenses (OpEx)${pctOf(ob.opex, rev)}</span>${bar(ob.opex, 'cost')}<span class="wf-value" style="color:var(--red)">-${fmt$(ob.opex)}</span></div>`;
+      if (ob.tax_statutory > 0) rows += `<div class="wf-row"><span class="wf-label">⚑ Tax / statutory <span style="font-size:10px;color:var(--amber)">(BAS/ATO — settling liabilities, not operating cost)</span></span>${bar(ob.tax_statutory, 'cost')}<span class="wf-value" style="color:var(--amber)">-${fmt$(ob.tax_statutory)}</span></div>`;
+      if (ob.personal > 0) rows += `<div class="wf-row"><span class="wf-label">Personal <span style="font-size:10px;color:var(--text-muted)">(flagged)</span></span>${bar(ob.personal, 'cost')}<span class="wf-value" style="color:var(--text-muted)">-${fmt$(ob.personal)}</span></div>`;
+      if (ob.flagged > 0) rows += `<div class="wf-row"><span class="wf-label">Unclassified <span style="font-size:10px;color:var(--amber)">(review on Outflow Truth)</span></span>${bar(ob.flagged, 'cost')}<span class="wf-value" style="color:var(--amber)">-${fmt$(ob.flagged)}</span></div>`;
+      rows += `<div class="wf-row" style="opacity:.65"><span class="wf-label">Total outflow (sum of bands)${pctOf(opex, rev)}</span>${bar(opex, 'cost')}<span class="wf-value" style="color:var(--red)">-${fmt$(opex)}</span></div>`;
+    } else if (opex != null) {
+      rows += `<div class="wf-row"><span class="wf-label">Operating Expenses${pctOf(opex, rev)}</span>${bar(opex, 'cost')}<span class="wf-value" style="color:var(--red)">-${fmt$(opex)}</span></div>`;
+    }
     if (net != null) rows += `<div class="wf-row total"><span class="wf-label">Net Profit${pctOf(net, rev)}</span>${bar(Math.abs(net), net >= 0 ? 'profit' : 'loss')}<span class="wf-value" style="color:${net >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt$(net)}</span></div>`;
 
     // OpEx breakdown
@@ -1145,7 +1157,20 @@
     const subs = stripe.subscriptions || {};
     const failed = stripe.failed_charges_count;
 
-    let html = '<div class="stripe-grid">';
+    let html = '';
+    // THE CANARY (Part B): the authenticated probe's classified state + last
+    // probe time — green means the DIRECT key path authenticated just now.
+    const can = stripe.canary || {};
+    if (can.cls) {
+      html += can.ok
+        ? '<div class="proj-note" style="color:var(--green);">● Stripe connection healthy — authenticated probe OK · last probe ' + esc(can.at || '') + '</div>'
+        : '<div class="proj-note" style="color:var(--red);">● STRIPE CANARY FAILED (' + esc(can.cls) + ') — ' + esc(can.fix || '') + ' · last probe ' + esc(can.at || '') + '</div>';
+    }
+    if (stripe.subscriptions_source) {
+      html += '<div class="proj-note">subscription counts: ' + esc(stripe.subscriptions_source) +
+        (stripe.subscriptions_mcp ? ' (MCP said ' + esc(String(stripe.subscriptions_mcp.active)) + ' active — kept for audit)' : '') + '</div>';
+    }
+    html += '<div class="stripe-grid">';
 
     // Failed charges
     const failCls = failed > 0 ? 'alert' : 'ok';
@@ -4399,6 +4424,87 @@
     } catch (err) { /* silent — additive */ }
   }
 
+  // ── OUTFLOW TRUTH (2026-08-13): bands from the ONE classifier — render only
+  var _outflowData = null;
+  var _outflowView = 'cash';
+  async function renderOutflow() {
+    var body = document.getElementById('outflow-content');
+    if (!body) return;
+    try {
+      if (!_outflowData) {
+        var r = await fetch('/dashboard/api/outflow-bands');
+        if (!r.ok) { body.innerHTML = '<div class="proj-note">Outflow bands unavailable (' + r.status + ')</div>'; return; }
+        _outflowData = await r.json();
+      }
+      var d = _outflowData;
+      var rows = (d.months || []).filter(function (m) { return !m.unavailable; });
+      var badge = document.getElementById('outflow-badge');
+      var flaggedN = rows.reduce(function (a, m) { return a + (m.flagged_items || []).length; }, 0);
+      var partBad = rows.filter(function (m) { return !m.partition_ok; });
+      if (badge) {
+        badge.textContent = partBad.length ? 'PARTITION BROKEN' : flaggedN ? flaggedN + ' to review' : 'clean';
+        badge.style.background = partBad.length ? 'var(--red-dim)' : flaggedN ? 'var(--amber-dim)' : 'var(--green-dim)';
+        badge.style.color = partBad.length ? 'var(--red)' : flaggedN ? 'var(--amber)' : 'var(--green)';
+      }
+      var acc = d.accrual || {};
+      var accrualShare = acc.monthly_accrued_share;
+      var html = '';
+      if (_outflowView === 'accrual') {
+        html += '<div class="proj-note">⚠ ACCRUAL VIEW — OpEx + the month\'s accrued ATO share (' +
+          (accrualShare != null ? fmt$(accrualShare) + '/mo' : 'unavailable') +
+          ') — <strong>accrued (planning estimate)</strong>, from the set-aside math; export/official figures win for lodged periods. The cash view shows the real payment lumps.</div>';
+      } else {
+        html += '<div class="proj-note">CASH VIEW — the real tax events flagged in their months (lumpy). Toggle Accrual for the smooth planning view.</div>';
+      }
+      html += '<table class="data-table" style="width:100%;font-size:11px;"><thead><tr>' +
+        '<th style="text-align:left;">Month</th>' +
+        '<th class="col-num" style="text-align:right;">OpEx (managed)</th>' +
+        (_outflowView === 'accrual'
+          ? '<th class="col-num" style="text-align:right;color:var(--amber);">+ accrued tax (est.)</th>'
+          : '<th class="col-num" style="text-align:right;color:var(--amber);">⚑ Tax/statutory (cash)</th>') +
+        '<th class="col-num" style="text-align:right;">Personal</th>' +
+        '<th class="col-num" style="text-align:right;">Blended P&L total</th>' +
+        '<th style="text-align:center;">Σ=total</th></tr></thead><tbody>';
+      rows.forEach(function (m) {
+        var taxCell = _outflowView === 'accrual'
+          ? (accrualShare != null ? fmt$(accrualShare) + ' <span style="font-size:9px;color:var(--amber)">est.</span>' : '—')
+          : (m.tax_statutory ? '<span style="color:var(--amber);font-weight:600;">' + fmt$(m.tax_statutory) + ' ⚑</span>' : '—');
+        html += '<tr style="border-bottom:1px solid var(--border);">' +
+          '<td style="padding:5px 8px;">' + esc(m.month) + '</td>' +
+          '<td class="col-num" style="text-align:right;padding:5px 8px;font-weight:600;">' + fmt$(m.opex) + '</td>' +
+          '<td class="col-num" style="text-align:right;padding:5px 8px;">' + taxCell + '</td>' +
+          '<td class="col-num" style="text-align:right;padding:5px 8px;">' + (m.personal ? fmt$(m.personal) : '—') + '</td>' +
+          '<td class="col-num" style="text-align:right;padding:5px 8px;color:var(--text-muted);">' + fmt$(m.blended_total) + '</td>' +
+          '<td style="text-align:center;color:' + (m.partition_ok ? 'var(--green)' : 'var(--red)') + ';">' + (m.partition_ok ? '✓' : '✗') + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      html += '<div class="proj-note">' + esc(d.invariant || '') + ' · ' + esc(d.super_note || '') + '</div>';
+      // FLAGGED lane — surfaced, one-click assign (owner), journaled, reversible
+      var flagged = {};
+      rows.forEach(function (m) { (m.flagged_items || []).forEach(function (i) { flagged[i.label] = i; }); });
+      var fkeys = Object.keys(flagged);
+      if (fkeys.length) {
+        html += '<div class="rw-lane rw-pend" style="margin-top:8px;"><div class="rw-lane-title">FLAGGED — unclassified accounts (never silently assigned)</div>';
+        fkeys.forEach(function (k) {
+          html += '<div class="rw-row">' + esc(k) + ' · ' + fmt$(flagged[k].amount) +
+            ' <span class="rw-inline-wrap">' +
+            ['opex', 'tax_statutory', 'personal'].map(function (b) {
+              return '<button class="rw-btn outflow-assign" data-oacct="' + esc(k) + '" data-oband="' + b + '">→ ' + b.replace('_', '/') + '</button>';
+            }).join('') + '</span></div>';
+        });
+        html += '</div>';
+      }
+      var j = d.journal || [];
+      if (j.length) {
+        html += '<details class="rw-cleared"><summary>Classification journal (' + j.length + ')</summary>' +
+          j.slice(-8).reverse().map(function (e) {
+            return '<div class="proj-note">' + esc(e.at) + ' · ' + esc(e.who) + ': ' + esc(e.account) + ' ' + esc(String(e.old)) + ' → ' + esc(String(e.new)) + '</div>';
+          }).join('') + '</details>';
+      }
+      body.innerHTML = html;
+    } catch (e) { body.innerHTML = '<div class="proj-note">Outflow bands failed to load.</div>'; }
+  }
+
   async function renderForecast() {
     try {
       var r = await fetch('/dashboard/api/forecast'); if (!r.ok) return;
@@ -4796,6 +4902,7 @@
     applyZones();            // relocate sections into decision zones (once)
     renderActionFeed();      // Zone 3 — the consolidated action feed
     renderBas();             // Zone 1 — BAS & tax set-aside (estimates, labelled)
+    renderOutflow();         // Outflow truth — bands + accrual/cash toggle
     renderForecast();        // Zone 1 cash + Zone 4 MRR projections
     loadActor();             // who's signed in (Rydel / Piolo)
     renderOpsCards();        // Zone 3 — worklog + bookkeeping SUMMARY cards
@@ -5060,6 +5167,27 @@
         renderDeclarePanel();
         const panel = $('#renewal-declare-panel');
         if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      // OUTFLOW TRUTH: view toggle + flagged-lane assignment (owner, journaled)
+      const ovBtn = e.target.closest('.outflow-view-btn[data-oview]');
+      if (ovBtn) {
+        _outflowView = ovBtn.dataset.oview;
+        document.querySelectorAll('.outflow-view-btn').forEach(b =>
+          b.classList.toggle('active', b.dataset.oview === _outflowView));
+        renderOutflow();
+        return;
+      }
+      const oa = e.target.closest('.outflow-assign[data-oacct]');
+      if (oa) {
+        fetch('/dashboard/api/outflow-bands/assign', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ account: oa.dataset.oacct, band: oa.dataset.oband })
+        }).then(r => r.json()).then(d => {
+          if (d && d.error) { alert(d.error); return; }
+          _outflowData = null;         // re-band (the restatement is journaled)
+          renderOutflow();
+        });
         return;
       }
       // archive reversal (owner) — the warning re-raises, journaled
