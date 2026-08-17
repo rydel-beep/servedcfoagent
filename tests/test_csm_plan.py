@@ -250,3 +250,31 @@ def test_summary_card_line_shape(monkeypatch):
     assert s["card_line"].startswith("CSM · ")
     assert "Gate 0" in s["card_line"] and "path to 4x" in s["card_line"]
     assert s["dial_4x"]["y1_honesty"] == "year-1 4x exists in NO scenario"
+
+
+def test_b2_reads_xero_amount_key(monkeypatch):
+    """prod-caught: opex_line_items rows are {label, amount} — the wrong key
+    read 0.0 for a real refunds line."""
+    _kv(monkeypatch)
+    import xero_pull, cash_truth
+    monkeypatch.setattr(xero_pull, "pull_pl_range", lambda s, e: {
+        "opex_line_items": [{"label": "Refunds and Rebates Expense",
+                             "amount": 41436.0}]})
+    monkeypatch.setattr(cash_truth, "refund_report", lambda d: None)
+    out = csm_baselines.measure_refund_split()
+    assert out["xero_line_total"] == 41436.0
+
+
+def test_b3_ignores_junk_and_reads_name_key(monkeypatch):
+    """prod-caught: won_businesses rows use the 'name' key; blank/None rows
+    stringified to 'none' and counted as repeat deals."""
+    _kv(monkeypatch)
+    import snapshot
+    monkeypatch.setattr(snapshot, "load_persisted", lambda: {
+        "sales": {"won_businesses": [
+            {"name": "The Vault"}, {"name": "The Vault"},
+            {"name": None}, {"name": None}, {"name": "Lost Sheep Cafe"}]}})
+    out = csm_baselines.measure_expansion_baselines()
+    prox = out["stepup_repeat_deal_rate_pct"]
+    assert prox["repeat_businesses"] == ["the vault"]
+    assert prox["value"] == round(100.0 * 1 / 3, 1)

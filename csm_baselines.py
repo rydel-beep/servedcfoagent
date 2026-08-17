@@ -273,8 +273,11 @@ def measure_refund_split(days: int = 365) -> dict:
         start = str(today - dt.timedelta(days=days))
         pl = xero_pull.pull_pl_range(start, str(today))
         for line in (pl.get("opex_line_items") or []):
+            # opex_line_items rows are {label, amount} (xero_pull
+            # _extract_section_lines) — the first prod probe read a wrong key
+            # and got 0.0; fixed + pinned by test
             if (line.get("label") or "").lower().startswith("refunds"):
-                total = float(line.get("value") or 0)
+                total = float(line.get("amount") or 0)
     except Exception as e:
         out["degraded"] = [f"xero P&L unreachable: {str(e)[:80]}"]
     stripe_refunds = None
@@ -319,10 +322,14 @@ def measure_expansion_baselines() -> dict:
     today = today_sydney()
     snap = _snap()
     won = ((snap.get("sales") or {}).get("won_businesses") or [])
-    names = [str(w.get("business") if isinstance(w, dict) else w).strip().lower()
+    names = [str((w.get("business") or w.get("name"))
+                 if isinstance(w, dict) else w).strip().lower()
              for w in won]
-    dupes = sorted({n for n in names if n and names.count(n) > 1})
-    n_won = len([n for n in names if n])
+    # prod-caught: literal 'none'/blank tracker rows counted as repeat deals
+    _junk = {"", "none", "null", "n/a", "-"}
+    names = [n for n in names if n not in _junk]
+    dupes = sorted({n for n in names if names.count(n) > 1})
+    n_won = len(names)
     stepup_rate = round(100.0 * len(dupes) / n_won, 1) if n_won else None
     return {
         "metric": "expansion_baselines",
