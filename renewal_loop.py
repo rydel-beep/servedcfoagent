@@ -190,7 +190,21 @@ def _sheet_reflects(ov: dict, srow: dict | None) -> tuple[bool, str | None]:
             return False, (f"declared renewal to {declared} but the sheet End Date "
                            f"moved to {sheet_end} — two different truths")
         return False, None
-    if kind == "downgrade":
+    if kind in ("downgrade", "downsell"):
+        # downsell (CSM wave) converges exactly like a downgrade: the sheet's
+        # Monthly Recognized lands on the declared floor figure.
+        smrr = srow.get("monthly_recognized")
+        if smrr is not None and ov.get("new_mrr") is not None \
+                and abs(smrr - float(ov["new_mrr"])) <= 0.01:
+            return True, None
+        return False, None
+    if kind == "expansion":
+        # one-off expansion: nothing on the Health tab to converge on (cash
+        # event; tracker is Piolo's edit) — converged by definition, journaled.
+        if (ov.get("cadence") or "") == "one_off":
+            return True, None
+        # recurring expansion converges when Monthly Recognized reflects the
+        # new total (declared new_mrr = old + normalised add).
         smrr = srow.get("monthly_recognized")
         if smrr is not None and ov.get("new_mrr") is not None \
                 and abs(smrr - float(ov["new_mrr"])) <= 0.01:
@@ -233,8 +247,32 @@ def piolo_edit_text(ov: dict) -> str:
             base += (" — convergence auto-clears on End Date + Monthly "
                      "Recognized matching")
         return base
-    return (f"MRR contract sheet (Health tab), row '{nm}': set Monthly Recognized="
-            f"${float(ov.get('new_mrr') or 0):,.0f} (downgrade), keep Active")
+    if ov["change_type"] == "downsell":
+        return (f"MRR contract sheet (Health tab), row '{nm}': set Monthly "
+                f"Recognized=${float(ov.get('new_mrr') or 0):,.0f} "
+                f"(CONTINUITY — client moved to the Served OS floor"
+                + (f", ${float(ov.get('amount') or 0):,.0f} {ov.get('cadence')}"
+                   if ov.get("cadence") else "")
+                + "), keep Active"
+                + (f" — {ov.get('reason')}" if ov.get("reason") else ""))
+    if ov["change_type"] == "expansion":
+        sub = ov.get("subtype") or "expansion"
+        amt = float(ov.get("amount") or 0)
+        if (ov.get("cadence") or "") == "one_off":
+            return (f"Lead-to-Cash tracker: record one-off {sub} for '{nm}' — "
+                    f"${amt:,.0f} on {ov.get('start_date')} (cash, not MRR; "
+                    f"no Health-tab Monthly Recognized change expected)")
+        return (f"MRR contract sheet (Health tab), row '{nm}': set Monthly "
+                f"Recognized=${float(ov.get('new_mrr') or 0):,.0f} "
+                f"(EXPANSION — {sub}: +${amt:,.0f} {ov.get('cadence')} × "
+                f"{ov.get('term_months')}mo from {ov.get('start_date')}), keep "
+                f"Active — convergence auto-clears on Monthly Recognized matching")
+    if ov["change_type"] == "downgrade":
+        return (f"MRR contract sheet (Health tab), row '{nm}': set Monthly Recognized="
+                f"${float(ov.get('new_mrr') or 0):,.0f} (downgrade), keep Active")
+    # unknown kind: loud, never a silently-wrong instruction (CSM wave)
+    return (f"declaration for '{nm}' has UNRECOGNISED kind "
+            f"'{ov.get('change_type')}' — no sheet edit derivable; flag to Rydel")
 
 
 # ── THE SCAN ─────────────────────────────────────────────────────────────────

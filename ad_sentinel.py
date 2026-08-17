@@ -416,6 +416,15 @@ def nightly_extras() -> dict | None:
         out["stripe_watch"] = stripe_health.sentinel_watch()
     except Exception as e:
         out["stripe_watch"] = {"error": str(e)[:80]}
+    # CSM watch (#146): baseline freshness + book-ledger reconciliation +
+    # shared-memory leak probe. Findings stay in the OWNER-ONLY lane (kv
+    # csm:sentinel, rendered on /csm) + SENTINEL_QUEUE.md — NEVER the shared
+    # feed (a shared-feed mention would itself leak the domain's existence).
+    try:
+        import csm_plan
+        out["csm_watch"] = csm_plan.sentinel_watch()
+    except Exception as e:
+        out["csm_watch"] = {"error": str(e)[:80]}
     # VOICE watch (2026-08-10): canary state is a tracked metric — degraded
     # voice goes LOUD here too (the feed item is published by voice_health;
     # this records the watch + re-publishes in case the state got stale)
@@ -474,8 +483,21 @@ def security_replay() -> dict:
         out = {"debug_stripe_ping": r1.status_code, "debug_sources": r2.status_code,
                "roster_taint_status": r3.status_code,
                "roster_taint_echoed": evil.encode() in r3.data}
+        # CSM owner-only leak probes (#146): every anonymous hit on the CSM
+        # surface must be refused (302 to login for the page, 302/401/403 for
+        # APIs) — a 200 anywhere is a leak, LOUD + P1.
+        csm_codes = {}
+        for path in ("/dashboard/csm", "/dashboard/api/csm/summary",
+                     "/dashboard/api/csm/model", "/dashboard/api/csm/card",
+                     "/dashboard/api/csm/analysis", "/dashboard/api/csm/config",
+                     "/dashboard/api/csm/comp-page.pdf",
+                     "/dashboard/api/csm/scenario-overlay"):
+            csm_codes[path] = c.get(path).status_code
+        out["csm_anon_codes"] = csm_codes
+        out["csm_anon_ok"] = all(v in (302, 401, 403) for v in csm_codes.values())
         ok = (r1.status_code == 401 and r2.status_code == 401
-              and r3.status_code in (400, 401, 302) and not out["roster_taint_echoed"])
+              and r3.status_code in (400, 401, 302) and not out["roster_taint_echoed"]
+              and out["csm_anon_ok"])
         out["ok"] = ok
         if not ok:
             _feed(f"L3 SECURITY REPLAY FAILED: {out}", loud=True)

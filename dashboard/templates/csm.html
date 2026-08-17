@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSM — Served CFO</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/dashboard/static/css/dashboard.css?v={{ asset_v }}">
+<style>
+/* page-local styles — rides the dashboard design system */
+.csm-banner{background:#3a1d1d;color:#f0b9b9;border:1px solid #6b2f2f;border-radius:8px;
+  padding:.45rem .8rem;font-size:.78rem;letter-spacing:.04em;display:flex;gap:.8rem;
+  align-items:center;justify-content:space-between;flex-wrap:wrap;margin:.6rem 0}
+.csm-watermark{position:fixed;bottom:10px;right:14px;opacity:.5;font-size:.7rem;
+  color:#c96a6a;pointer-events:none;z-index:99}
+.csm-tabs{display:flex;gap:.3rem;flex-wrap:wrap;margin:.8rem 0}
+.csm-tab{background:transparent;border:1px solid var(--border,#2a3646);color:inherit;
+  border-radius:8px;padding:.35rem .8rem;cursor:pointer;font:inherit;font-size:.82rem}
+.csm-tab[aria-selected="true"]{background:var(--panel,#141d29);border-color:#4a7ab5;font-weight:600}
+.csm-hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.7rem;margin:.6rem 0}
+.csm-tile{background:var(--panel,#141d29);border:1px solid var(--border,#243244);
+  border-radius:10px;padding:.8rem .9rem;position:relative}
+.csm-tile h3{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;opacity:.65;margin:0 0 .35rem}
+.csm-big{font-size:1.5rem;font-weight:700}
+.csm-sub{font-size:.75rem;opacity:.7;margin-top:.25rem}
+.csm-explain{position:absolute;top:.5rem;right:.55rem;background:none;border:none;
+  color:#6aa9e9;cursor:pointer;font-size:.72rem}
+.csm-note{font-size:.75rem;opacity:.75;margin:.35rem 0}
+.csm-table{width:100%;border-collapse:collapse;font-size:.8rem;margin:.4rem 0}
+.csm-table th,.csm-table td{padding:.3rem .5rem;border-bottom:1px solid var(--border,#243244);text-align:left}
+.csm-table th{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;opacity:.6}
+.csm-chip{display:inline-block;border-radius:6px;padding:.08rem .45rem;font-size:.68rem;margin-left:.3rem}
+.chip-measured{background:#173d2a;color:#7fd6a4}.chip-placeholder{background:#3d3517;color:#e7cf7a}
+.chip-fire{background:#4a1c1c;color:#f09a9a}.chip-watch{background:#3d3517;color:#e7cf7a}
+.chip-ok{background:#173d2a;color:#7fd6a4}
+.csm-strip{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;font-size:.75rem;margin:.4rem 0}
+.csm-strip .mark{border:1px solid var(--border,#243244);border-radius:8px;padding:.3rem .55rem;opacity:.8}
+.csm-strip .mark.today{border-color:#4a7ab5;opacity:1;font-weight:600}
+.csm-2col{display:grid;grid-template-columns:1fr 1fr;gap:.7rem}
+@media(max-width:760px){.csm-2col{grid-template-columns:1fr}}
+.csm-delta{font-weight:700;color:#7fd6a4}
+.csm-degraded{background:#3d3517;color:#e7cf7a;border-radius:8px;padding:.4rem .7rem;font-size:.76rem;margin:.3rem 0}
+.csm-modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:200}
+.csm-modal>div{background:var(--panel,#141d29);border:1px solid #4a7ab5;border-radius:12px;
+  max-width:560px;padding:1rem 1.2rem;font-size:.85rem;line-height:1.5}
+svg text{font-family:inherit}
+</style>
+</head>
+<body>
+<header class="header">
+  <div class="header-left">
+    <a href="/dashboard/" class="ops-back" title="Back to dashboard">← Dashboard</a>
+    <h1 class="wordmark" style="font-size:1.1rem">CSM Investment</h1>
+    <span class="wordmark-sub" id="csm-who"></span>
+  </div>
+</header>
+<main class="main" style="max-width:1020px;margin:0 auto;padding:0 1rem 3rem">
+  <div class="csm-banner" role="alert">
+    <span>🔒 CONFIDENTIAL — OWNER ONLY · NOT FOR SCREEN-SHARE</span>
+    <label style="cursor:pointer"><input type="checkbox" id="csm-discreet"> discreet mode
+      (hides the dashboard card + every CSM mention)</label>
+  </div>
+
+  <section class="panel" id="csm-hero-panel">
+    <div class="panel-header"><h2 class="panel-title">Where we are</h2>
+      <span class="panel-sub" id="csm-phase-label"></span></div>
+    <div class="csm-strip" id="csm-strip"><span class="skeleton skeleton-text"></span></div>
+    <div class="csm-hero" id="csm-hero"><div class="skeleton skeleton-text"></div></div>
+  </section>
+
+  <div class="csm-tabs" role="tablist" aria-label="CSM sections" id="csm-tabs">
+    <button class="csm-tab" role="tab" data-tab="model">Model</button>
+    <button class="csm-tab" role="tab" data-tab="scoreboard">Scoreboard</button>
+    <button class="csm-tab" role="tab" data-tab="calendar">Ladder calendar</button>
+    <button class="csm-tab" role="tab" data-tab="gates">Plan &amp; gates</button>
+    <button class="csm-tab" role="tab" data-tab="risks">Risks</button>
+    <button class="csm-tab" role="tab" data-tab="baselines">Baselines</button>
+    <button class="csm-tab" role="tab" data-tab="exports">Exports</button>
+  </div>
+  <section class="panel" id="csm-tabpanel" role="tabpanel">
+    <div class="skeleton skeleton-text"></div>
+  </section>
+</main>
+<div class="csm-watermark">CONFIDENTIAL · OWNER ONLY</div>
+<script>
+(function () {
+  'use strict';
+  var $ = function (s) { return document.querySelector(s); };
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s === 0 ? '0' : (s || '')); return d.innerHTML; }
+  function money(v) { return v == null ? 'n/a' : '$' + Math.round(v).toLocaleString(); }
+  var TABS = ['model','scoreboard','calendar','gates','risks','baselines','exports'];
+  var m = location.search.match(/[?&]tab=(model|scoreboard|calendar|gates|risks|baselines|exports)/);
+  var tab = m ? m[1] : 'model';
+  var cache = {};
+
+  function explainBtn(q) {
+    return '<button class="csm-explain" data-explain="' + esc(q) + '" title="EDITH narrates this number from the engine">explain ⓘ</button>';
+  }
+  document.addEventListener('click', async function (e) {
+    var b = e.target.closest('[data-explain]');
+    if (!b) return;
+    var r = await fetch('/dashboard/api/csm/explain', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q: b.dataset.explain }) });
+    var d = r.ok ? await r.json() : { reply: 'explain failed' };
+    var wrap = document.createElement('div');
+    wrap.className = 'csm-modal';
+    wrap.innerHTML = '<div>' + esc(d.reply) + '<br><br><button class="csm-tab" data-close>close</button></div>';
+    wrap.addEventListener('click', function (ev) {
+      if (ev.target === wrap || ev.target.closest('[data-close]')) wrap.remove();
+    });
+    document.body.appendChild(wrap);
+  });
+
+  async function get(url) {
+    if (cache[url]) return cache[url];
+    var r = await fetch(url);
+    if (r.status === 401) { location.href = '/dashboard/login'; return null; }
+    if (r.status === 403) { location.href = '/dashboard/'; return null; }
+    if (!r.ok) return { __error: true };
+    var d = await r.json();
+    cache[url] = d;
+    return d;
+  }
+
+  // ── hero ──────────────────────────────────────────────────────────────
+  async function loadHero() {
+    var s = await get('/dashboard/api/csm/summary');
+    if (!s) return;
+    if (s.__error) { $('#csm-hero').innerHTML = '<div class="csm-degraded">Couldn’t load the summary — the engine is degraded, not lying.</div>'; return; }
+    $('#csm-discreet').checked = !!s.discreet;
+    $('#csm-phase-label').textContent = s.phase_strip.phase + ' · today ' + s.phase_strip.today;
+    $('#csm-strip').innerHTML = s.phase_strip.marks.map(function (mk) {
+      var today = s.phase_strip.today;
+      var cls = (mk.date && mk.date <= today) || mk.key === 'phase0' ? ' today' : '';
+      return '<span class="mark' + (mk.key === 'phase0' ? ' today' : '') + '">' + esc(mk.label) +
+        (mk.date ? ' · ' + esc(mk.date) : '') + '</span>';
+    }).join('<span style="opacity:.4">→</span>');
+    var one = s.one_number;
+    var oneHtml = one && one.nrr_pct != null
+      ? '<div class="csm-big">' + one.nrr_pct + '%</div><div class="csm-sub">NRR (rolling ' + one.window_days + 'd, starting cohort)</div>'
+      : '<div class="csm-big">—</div><div class="csm-sub">' + esc((one && one.state) || 'activates at start') +
+        (one && one.baseline && one.baseline.nrr_pct != null ? ' · book baseline ' + one.baseline.nrr_pct + '%' : '') + '</div>';
+    $('#csm-hero').innerHTML =
+      '<div class="csm-tile">' + explainBtn('csm roi status') + '<h3>Next action</h3><div style="font-size:.95rem;font-weight:600">' +
+        esc(s.next_action.item) + '</div><div class="csm-sub">owner: ' + esc(s.next_action.owner) + '</div></div>' +
+      '<div class="csm-tile">' + explainBtn('csm roi status') + '<h3>The one number</h3>' + oneHtml + '</div>' +
+      '<div class="csm-tile">' + explainBtn('what renewal rate gets us to 4x') + '<h3>The 4× dial (cohort clock, loaded)</h3>' +
+        '<div class="csm-big">' + s.dial_4x.base_cohort_roi_loaded + '×</div>' +
+        '<div class="csm-sub">base today · needs <b>' + s.dial_4x.renewal_needed_pct + '% renewal</b> for 4× · ' +
+        esc(s.dial_4x.y1_honesty) + '</div></div>' +
+      '<div class="csm-tile">' + explainBtn('where are we on gate 0') + '<h3>Gate 0</h3><div class="csm-big">' + s.gate0.done + '/' + s.gate0.total + '</div>' +
+        '<div class="csm-sub">' + s.top_risks.map(function (r) {
+          return '<span class="csm-chip chip-' + r.status + '">' + esc(r.risk.slice(0, 34)) + '</span>';
+        }).join(' ') + '</div></div>';
+  }
+
+  // ── charts (inline SVG, dashboard palette, single-hue + reference lines) ──
+  function frontierSvg(frontier, solve, dial) {
+    if (!frontier || !frontier.length) return '';
+    var W = 460, H = 190, P = 34;
+    var xs = frontier.map(function (p) { return p.renewal_pct; });
+    var ys = frontier.map(function (p) { return p.cohort_roi_loaded; });
+    var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+    var y0 = Math.min(1.5, Math.min.apply(null, ys)), y1 = Math.max(4.6, Math.max.apply(null, ys));
+    function X(v) { return P + (v - x0) / (x1 - x0) * (W - 2 * P); }
+    function Y(v) { return H - P - (v - y0) / (y1 - y0) * (H - 2 * P); }
+    var line = frontier.map(function (p, i) { return (i ? 'L' : 'M') + X(p.renewal_pct).toFixed(1) + ' ' + Y(p.cohort_roi_loaded).toFixed(1); }).join(' ');
+    var marks = [{ r: 60, label: 'base' }, { r: 72, label: 'upside' }, { r: solve, label: '4× @ ' + solve + '%' }];
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Cohort ROI vs renewal rate frontier" style="max-width:100%">' +
+      '<line x1="' + P + '" y1="' + Y(4) + '" x2="' + (W - P) + '" y2="' + Y(4) + '" stroke="#6b7c92" stroke-dasharray="5 4" stroke-width="1.5"/>' +
+      '<text x="' + (W - P) + '" y="' + (Y(4) - 5) + '" text-anchor="end" fill="#8fa2ba" font-size="10">4× target</text>' +
+      '<path d="' + line + '" fill="none" stroke="#6aa9e9" stroke-width="2"/>' +
+      marks.map(function (mk) {
+        var yv = null;
+        for (var i = 0; i < frontier.length; i++) if (Math.abs(frontier[i].renewal_pct - mk.r) < 1.01) yv = frontier[i].cohort_roi_loaded;
+        if (yv == null) return '';
+        return '<circle cx="' + X(mk.r) + '" cy="' + Y(yv) + '" r="4" fill="#e7cf7a"><title>' + mk.label + ' · ' + yv + '×</title></circle>' +
+          '<text x="' + X(mk.r) + '" y="' + (Y(yv) - 8) + '" text-anchor="middle" fill="#c8d4e2" font-size="10">' + mk.label + '</text>';
+      }).join('') +
+      '<text x="' + (W / 2) + '" y="' + (H - 4) + '" text-anchor="middle" fill="#8fa2ba" font-size="10">renewal rate % → cohort ROI (loaded) · base pinned as reference</text>' +
+      '</svg>';
+  }
+
+  function curveSvg(curve) {
+    var ms = curve.months || [];
+    if (!ms.length) return '';
+    var W = 460, H = 170, P = 30;
+    var y1 = Math.max.apply(null, ms.map(function (r) { return Math.max(r.cum_lift, r.cum_cost); }));
+    function X(i) { return P + i / (ms.length - 1) * (W - 2 * P); }
+    function Y(v) { return H - P - v / y1 * (H - 2 * P); }
+    function path(key) { return ms.map(function (r, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(r[key]).toFixed(1); }).join(' '); }
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Cumulative credited lift vs loaded cost, base scenario, 36 months" style="max-width:100%">' +
+      '<path d="' + path('cum_lift') + '" fill="none" stroke="#6aa9e9" stroke-width="2"><title>cumulative credited lift</title></path>' +
+      '<path d="' + path('cum_cost') + '" fill="none" stroke="#8fa2ba" stroke-width="2" stroke-dasharray="5 4"><title>cumulative loaded cost</title></path>' +
+      '<text x="' + (W - P) + '" y="' + (Y(ms[ms.length - 1].cum_lift) - 6) + '" text-anchor="end" fill="#6aa9e9" font-size="10">credited lift</text>' +
+      '<text x="' + (W - P) + '" y="' + (Y(ms[ms.length - 1].cum_cost) + 12) + '" text-anchor="end" fill="#8fa2ba" font-size="10">loaded cost</text>' +
+      '<text x="' + (W / 2) + '" y="' + (H - 3) + '" text-anchor="middle" fill="#8fa2ba" font-size="10">months 1–36 · base scenario · ramp months 1–2</text>' +
+      '</svg>';
+  }
+
+  // ── tabs ──────────────────────────────────────────────────────────────
+  var renderers = {
+    model: async function (el) {
+      var d = await get('/dashboard/api/csm/model');
+      if (!d || d.__error) { el.innerHTML = '<div class="csm-degraded">model unavailable</div>'; return; }
+      var sc = d.scenarios;
+      var cfgRow = function (label, s) {
+        return '<tr><td>' + label + ' (' + s.renewal_pct + '%)</td><td>' + money(s.ote) + '</td><td>' + money(s.loaded_cost_y1) +
+          '</td><td>' + s.y1_roi_loaded + '×</td><td><b>' + s.cohort_roi_loaded + '×</b> <span style="opacity:.6">(' +
+          s.cohort_roi_unloaded + '× unloaded — the source print)</span></td></tr>';
+      };
+      var lv = d.layer_vs_hire;
+      var f = d.funding_paths;
+      var fund = function (end, label) {
+        var e = f.ends[end];
+        if (!e || !e.configured) {
+          return '<tr><td>' + label + '</td><td colspan="2"><i>director comp offset (owner config) not set — enter it below</i></td></tr>';
+        }
+        return '<tr><td>' + label + '</td><td>Δ fixed cost <span class="csm-delta">' + money(e.offset_funded.fixed_cost_delta) +
+          '/yr</span> · cash untouched · downside → director income</td><td>Δ fixed cost ' + money(e.business_cash_funded.fixed_cost_delta) +
+          '/yr · ~' + e.business_cash_funded.runway_months_of_base + ' months of base on discretionary · director income unchanged</td></tr>';
+      };
+      el.innerHTML =
+        '<h3>Scenarios — both clocks, loaded beside the source print ' + explainBtn('csm roi status') + '</h3>' +
+        '<div style="overflow-x:auto"><table class="csm-table"><tr><th>scenario</th><th>OTE</th><th>loaded cost</th><th>Y1 ROI (loaded)</th><th>COHORT ROI (loaded)</th></tr>' +
+        cfgRow('floor', sc.floor) + cfgRow('base', sc.base) + cfgRow('upside', sc.upside) + '</table></div>' +
+        '<div class="csm-note">COHORT clock = lifetime lift ÷ ONE year of cost (the source model’s own convention — surfaced). ' +
+        'STEADY-STATE (T12M/T12M, from month 13) renders below. Never blended. <b>Year-1 4× exists in NO scenario.</b></div>' +
+        '<div class="csm-2col"><div class="csm-tile"><h3>The 4× frontier ' + explainBtn('what renewal rate gets us to 4x') + '</h3>' +
+        frontierSvg(d.frontier, d.solve_4x.renewal_pct, null) +
+        '<div class="csm-sub">solve: <b>' + d.solve_4x.renewal_pct + '% renewal</b> (between base 60% and upside 72%)</div></div>' +
+        '<div class="csm-tile"><h3>Base curve — cumulative (36 months)</h3>' + curveSvg(d.monthly_curve_base) +
+        '<div class="csm-sub">steady-state clock from month 13: ' +
+        (d.steady_state.series.length ? d.steady_state.series[d.steady_state.series.length - 1].steady_state_roi + '× (T12M at month 36)' : '—') + '</div></div></div>' +
+        '<h3 style="margin-top:1rem">What-if slider (never touches committed/actual layers)</h3>' +
+        '<input type="range" id="csm-slider" min="44" max="80" step="1" value="' + (d.custom ? d.custom.renewal_pct : 60) + '" style="width:60%">' +
+        '<span id="csm-slider-out" class="csm-note"></span>' +
+        '<h3 style="margin-top:1rem">Layer vs hire</h3><div class="csm-note">LAYER ' + lv.layer_roi_loaded + '× · HIRE ' + lv.hire_roi_loaded +
+        '× (excludes structural ' + money(lv.structural_lift) + ' — ' + esc(lv.structural_split_label) + ' split). ' + esc(lv.note) + '</div>' +
+        '<h3 style="margin-top:1rem">Funding — two paths, both range ends ' + explainBtn('what does the offset actually buy') + '</h3>' +
+        '<div style="overflow-x:auto"><table class="csm-table"><tr><th>range end</th><th>OFFSET-FUNDED</th><th>BUSINESS-CASH-FUNDED</th></tr>' +
+        fund('low_end', 'proposed low') + fund('high_end', 'proposed high') + '</table></div>' +
+        '<div class="csm-note">' + esc(f.law) + '</div>' +
+        '<h3 style="margin-top:1rem">Owner config (director figures live ONLY here — masked in the journal)</h3>' +
+        '<div id="csm-config-form" class="csm-note">' +
+          ['director_current_annual', 'director_proposed_low', 'director_proposed_high'].map(function (k) {
+            return '<label style="display:inline-block;margin-right:1rem">' + k.replace(/_/g, ' ') +
+              ' $<input type="number" data-cfg="' + k + '" style="width:110px"></label>';
+          }).join('') +
+          '<label style="display:inline-block;margin-right:1rem">start date <input type="date" data-cfg="start_date"></label>' +
+          '<label style="display:inline-block;margin-right:1rem">offset start <input type="date" data-cfg="offset_start_date"></label>' +
+          '<label style="display:inline-block;margin-right:1rem">form <select data-cfg="employment_form"><option>employee</option><option>contractor</option></select></label>' +
+          '<button class="csm-tab" id="csm-cfg-save">Save config</button> <span id="csm-cfg-status"></span></div>' +
+        '<h3 style="margin-top:1rem">Publish into the main projection (M8)</h3>' +
+        '<label class="csm-note"><input type="checkbox" id="csm-publish"' + (d.scenario_publish.enabled ? ' checked' : '') + '> ' +
+        esc(d.scenario_publish.label) + '</label>' +
+        '<h3 style="margin-top:1rem">Source-model conventions (surfaced, never silently fixed)</h3>' +
+        '<ul class="csm-note">' + d.convention_notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul>' +
+        '<div class="csm-note">Regression vs the source workbook figures: ' + (d.regression.ok ? '<b style="color:#7fd6a4">GREEN — reproduced exactly</b>' : '<b style="color:#f09a9a">FAILING</b>') +
+        ' (' + d.regression.checks.length + ' checks)</div>';
+      var slider = $('#csm-slider'), out = $('#csm-slider-out');
+      async function slide() {
+        var r = await fetch('/dashboard/api/csm/model?renewal_pct=' + slider.value);
+        var dd = r.ok ? await r.json() : null;
+        out.textContent = dd && dd.custom ? slider.value + '% renewal → ' + dd.custom.cohort_roi_loaded +
+          '× cohort (loaded) · ' + dd.custom.label : '';
+      }
+      slider.addEventListener('change', slide); slide();
+      $('#csm-cfg-save').addEventListener('click', async function () {
+        var updates = {};
+        document.querySelectorAll('[data-cfg]').forEach(function (i) {
+          if (i.value !== '') updates[i.dataset.cfg] = i.value;
+        });
+        var r = await fetch('/dashboard/api/csm/config', { method: 'POST',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) });
+        $('#csm-cfg-status').textContent = r.ok ? 'saved ✓ (director values journaled masked)' : 'save failed';
+        cache = {}; if (r.ok) { loadHero(); show('model'); }
+      });
+      $('#csm-publish').addEventListener('change', async function () {
+        await fetch('/dashboard/api/csm/config', { method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scenario_publish: $('#csm-publish').checked }) });
+        cache = {};
+      });
+    },
+    scoreboard: async function (el) {
+      var d = await get('/dashboard/api/csm/scoreboard');
+      if (!d || d.__error) { el.innerHTML = '<div class="csm-degraded">scoreboard unavailable</div>'; return; }
+      var k1 = d.k1_retention, b1 = k1.renewal_rate_vs_b1.baseline || {};
+      var label = function (l) {
+        return '<span class="csm-chip ' + (String(l).indexOf('measured') === 0 ? 'chip-measured' : 'chip-placeholder') + '">' + esc(l) + '</span>';
+      };
+      el.innerHTML = '<div class="csm-note">state: <b>' + esc(d.state) + '</b></div>' +
+        '<div class="csm-hero">' +
+        '<div class="csm-tile">' + explainBtn('csm roi status') + '<h3>K1 · NRR (the one number)</h3><div class="csm-big">' +
+          (k1.nrr.nrr_pct != null ? k1.nrr.nrr_pct + '%' : '—') + '</div><div class="csm-sub">' +
+          esc(k1.nrr.convention || k1.nrr.reason || '') + '</div></div>' +
+        '<div class="csm-tile"><h3>Renewal vs B1</h3><div class="csm-big">' + (b1.value != null ? b1.value + '%' : '—') + '</div>' +
+          '<div class="csm-sub">' + label(b1.label) + ' targets: floor 48 · base 60 · upside 72' +
+          (b1.lower_bound != null ? ' · lower bound ' + b1.lower_bound + '%' : '') + '</div></div>' +
+        '<div class="csm-tile"><h3>K2 · Continuity</h3><div class="csm-big">' +
+          (d.k2_continuity.capture_pct != null ? d.k2_continuity.capture_pct + '%' : '—') + '</div>' +
+          '<div class="csm-sub">' + d.k2_continuity.downsells + ' downsells / ' + d.k2_continuity.non_renewers +
+          ' non-renewers · target 50% · ' + esc(d.k2_continuity.window) + '</div></div>' +
+        '<div class="csm-tile"><h3>K3 · Expansion (first-6-mo value)</h3><div class="csm-big">' +
+          money(d.k3_expansion.total_first6_value) + '</div><div class="csm-sub">' +
+          Object.keys(d.k3_expansion.by_type).map(function (k) { return k + '×' + d.k3_expansion.by_type[k].length; }).join(' · ') + '</div></div>' +
+        '<div class="csm-tile"><h3>DQS proxy beside NRR</h3><div class="csm-big">' +
+          (d.dqs_beside_nrr.proxy.book_avg_health != null ? d.dqs_beside_nrr.proxy.book_avg_health : '—') + '</div>' +
+          '<div class="csm-sub">' + esc(d.dqs_beside_nrr.proxy.label || '') + ' · ' + esc(d.dqs_beside_nrr.read) + '</div></div>' +
+        '<div class="csm-tile"><h3>Comp accrual</h3><div class="csm-big">' + money(d.comp_accrual.total_accrued) + '</div>' +
+          '<div class="csm-sub">' + esc(d.comp_accrual.state) + ' · ' + esc(d.comp_accrual.xero_note || d.comp_accrual.note || '') + '</div></div>' +
+        '</div>' +
+        '<h3>Milestones</h3><div style="overflow-x:auto"><table class="csm-table"><tr><th>date</th><th>milestone</th><th>measured by</th></tr>' +
+        d.milestones.map(function (mi) { return '<tr><td>' + mi.date + '</td><td>' + esc(mi.label) + '</td><td>' + esc(mi.measured_by) + '</td></tr>'; }).join('') +
+        '</table></div>' +
+        '<h3>Day-90 gate — the decision it is</h3><div class="csm-note"><b>' + esc(d.day90_gate.decision) + '</b> · evidence now: ' +
+        d.day90_gate.evidence.expansions + ' expansions · ' + d.day90_gate.evidence.floor_saves + ' floor-saves · ' +
+        d.day90_gate.evidence.locks + ' locks</div><ul class="csm-note">' +
+        d.day90_gate.criteria.map(function (c) { return '<li>' + esc(c) + '</li>'; }).join('') + '</ul>' +
+        '<div class="csm-note">' + esc(d.refunds_lever_note) + ' · K5: ' + esc(d.k5_health_visibility.no_contact_14d) + '</div>';
+    },
+    calendar: async function (el) {
+      var d = await get('/dashboard/api/csm/calendar');
+      if (!d || d.__error) { el.innerHTML = '<div class="csm-degraded">calendar unavailable</div>'; return; }
+      el.innerHTML = '<div class="csm-note">' + esc(d.note) + '</div>' +
+        '<div style="overflow-x:auto"><table class="csm-table"><tr><th>client</th><th>tier</th><th>term</th><th>month-4 lock</th><th>renewal conv.</th><th>due this week</th><th>due this month</th></tr>' +
+        d.clients.map(function (c) {
+          return '<tr><td>' + esc(c.client) + '</td><td>' + (c.tier || '—') + '</td><td>' + esc(c.term_start) + ' → ' +
+            esc(c.term_end || '?') + ' (' + (c.term_months || '?') + 'mo · ' + esc(c.term_basis) + ')</td><td>' +
+            esc(c.month4_lock_date) + '</td><td>' + esc(c.renewal_date || '—') + '</td><td>' +
+            c.rungs_due_this_week.map(esc).join('; ') + '</td><td>' + c.rungs_due_this_month.map(esc).join('; ') + '</td></tr>';
+        }).join('') + '</table></div>' +
+        (d.undated.length ? '<div class="csm-degraded">no term dates derivable: ' + d.undated.map(esc).join(', ') + '</div>' : '');
+    },
+    gates: async function (el) {
+      var d = await get('/dashboard/api/csm/gates');
+      if (!d || d.__error) { el.innerHTML = '<div class="csm-degraded">gates unavailable</div>'; return; }
+      el.innerHTML = '<h3>Gate 0 — ' + d.done + '/' + d.total + '</h3>' +
+        d.items.map(function (g) {
+          var tick = g.type === 'human'
+            ? '<input type="checkbox" data-gate="' + g.id + '"' + (g.done ? ' checked' : '') + '>'
+            : (g.done ? '✅' : '⬜');
+          return '<div class="csm-note">' + tick + ' <b>' + esc(g.label) + '</b> · ticks: ' + esc(g.ticks) +
+            (g.evidence ? ' · evidence: ' + esc(g.evidence) : '') +
+            (g.ticked_by ? ' · ticked by ' + esc(g.ticked_by) + ' ' + esc(g.ticked_at || '') : '') + '</div>';
+        }).join('') +
+        '<h3 style="margin-top:1rem">Phases</h3>' +
+        d.phase_strip.marks.map(function (mk) { return '<div class="csm-note">' + esc(mk.label) + (mk.date ? ' — ' + mk.date : '') + '</div>'; }).join('') +
+        '<h3 style="margin-top:1rem">Journal (owner-only lane)</h3>' +
+        (d.journal || []).slice().reverse().map(function (j) { return '<div class="csm-note">' + esc(JSON.stringify(j)) + '</div>'; }).join('');
+      el.querySelectorAll('[data-gate]').forEach(function (cb) {
+        cb.addEventListener('change', async function () {
+          await fetch('/dashboard/api/csm/gates', { method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: cb.dataset.gate, done: cb.checked }) });
+          cache = {}; loadHero();
+        });
+      });
+    },
+    risks: async function (el) {
+      var d = await get('/dashboard/api/csm/risks');
+      if (!d || d.__error) { el.innerHTML = '<div class="csm-degraded">risks unavailable</div>'; return; }
+      el.innerHTML = '<div class="csm-note">' + esc(d.note) + '</div>' +
+        '<div style="overflow-x:auto"><table class="csm-table"><tr><th>status</th><th>risk</th><th>leading signal</th><th>owner</th><th>set</th></tr>' +
+        d.register.map(function (r) {
+          var sel = r.live ? '<span class="csm-chip chip-' + r.status + '">' + r.status + ' (live)</span>'
+            : '<select data-risk="' + r.id + '">' + ['ok', 'watch', 'fire'].map(function (s) {
+                return '<option' + (s === r.status ? ' selected' : '') + '>' + s + '</option>';
+              }).join('') + '</select>';
+          return '<tr><td><span class="csm-chip chip-' + r.status + '">' + r.status + '</span></td><td>' + esc(r.risk) +
+            '</td><td>' + esc(r.signal) + '</td><td>' + esc(r.owner) + '</td><td>' + sel + '</td></tr>';
+        }).join('') + '</table></div>';
+      el.querySelectorAll('[data-risk]').forEach(function (s) {
+        s.addEventListener('change', async function () {
+          await fetch('/dashboard/api/csm/risks', { method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: s.dataset.risk, status: s.value }) });
+          cache = {}; show('risks'); loadHero();
+        });
+      });
+    },
+    baselines: async function (el) {
+      var d = await get('/dashboard/api/csm/baselines');
+      if (!d || d.__error) { el.innerHTML = '<div class="csm-degraded">baselines unavailable</div>'; return; }
+      var b1 = d.b1_renewal, b2 = d.b2_refund_split, itc = d.b1_in_term_completion;
+      var lbl = function (l) {
+        return '<span class="csm-chip ' + (String(l || '').indexOf('measured') >= 0 ? 'chip-measured' : 'chip-placeholder') + '">' + esc(l || 'placeholder') + '</span>';
+      };
+      el.innerHTML =
+        '<h3>B1 · renewal rate ' + lbl(b1.label) + '</h3><div class="csm-note"><b>' + (b1.value != null ? b1.value + '%' : '—') +
+        (b1.confidence_pm ? ' ± ' + b1.confidence_pm : '') + '</b>' +
+        (b1.lower_bound != null ? ' · lower bound ' + b1.lower_bound + '%' : '') + ' · n=' + b1.n_decided +
+        ' decided, ' + b1.n_ambiguous + ' ambiguous (flagged, excluded, counted) · source placeholder ' + b1.placeholder + '%<br>' +
+        esc(b1.method) + (b1.bound_note ? '<br><b>' + esc(b1.bound_note) + '</b>' : '') + '</div>' +
+        (b1.edge_cases.length ? '<details class="csm-note"><summary>edge cases (' + b1.edge_cases.length + ')</summary>' +
+          b1.edge_cases.map(function (e) { return '<div>' + esc(e.client || '') + ' — ' + esc(e.why || e.evidence || '') + '</div>'; }).join('') + '</details>' : '') +
+        '<h3>In-term completion ' + lbl(itc.label) + '</h3><div class="csm-note">' + (itc.value != null ? itc.value + '%' : 'placeholder ' + itc.placeholder + '%') +
+        ' · ' + esc(itc.method) + '</div>' +
+        '<h3>B2 · refund split ' + lbl(b2.label) + '</h3><div class="csm-note">Xero line total ' + money(b2.xero_line_total) +
+        ' · Stripe client refunds ' + money((b2.stripe_client_refunds || {}).total) + ' · ' + esc(b2.method) + '</div>' +
+        '<h3>B3 · expansion baselines</h3><div class="csm-note">step-up proxy: ' +
+        (d.b3_expansion.stepup_repeat_deal_rate_pct.value != null ? d.b3_expansion.stepup_repeat_deal_rate_pct.value + '%' : '—') + ' ' +
+        lbl(d.b3_expansion.stepup_repeat_deal_rate_pct.label) + ' · ordering/reservations/sprints: unmeasured, placeholders retained (product lines don’t exist yet)</div>' +
+        '<h3>B4 · the book</h3><div class="csm-note">' + d.b4_book.tiers.book_count + ' clients · Tier 1: ' +
+        (d.b4_book.tiers.tier1_count || 'unassigned') + ' · second-CSM trigger: ' + esc(d.b4_book.tiers.second_csm_trigger.rule) +
+        ' (' + (d.b4_book.tiers.second_csm_trigger.fires ? 'FIRES' : 'not yet') + ') · workload: ' +
+        d.b4_book.workload.cycle_hours_month + 'h/mo vs ' + d.b4_book.workload.capacity_hours_month + 'h capacity (' +
+        d.b4_book.workload.utilisation_pct + '% · ' + esc(d.b4_book.workload.basis) + ')</div>' +
+        '<details class="csm-note"><summary>tier the book (owner)</summary>' +
+        d.b4_book.tiers.suggestion_top_by_mrr.map(function (n) {
+          return '<div>' + esc(n) + ' <button class="csm-tab" data-tier1="' + esc(n) + '">→ Tier 1</button></div>';
+        }).join('') + '<div>' + esc(d.b4_book.tiers.suggestion_note) + '</div></details>' +
+        '<h3>B5 · DQS proxy</h3><div class="csm-note">' + (d.b5_dqs_proxy.available
+          ? 'book avg health ' + d.b5_dqs_proxy.book_avg_health + ' · ' + d.b5_dqs_proxy.pct_with_score + '% scored · overdue ' +
+            d.b5_dqs_proxy.overdue_total + ' · stale ' + (d.b5_dqs_proxy.stale_accounts != null ? d.b5_dqs_proxy.stale_accounts : '?')
+          : 'bridge: ' + esc(d.b5_dqs_proxy.reason || 'unavailable')) + ' · ' + esc(d.b5_dqs_proxy.label) + '</div>';
+      el.querySelectorAll('[data-tier1]').forEach(function (b) {
+        b.addEventListener('click', async function () {
+          await fetch('/dashboard/api/csm/tier', { method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ client: b.dataset.tier1, tier: 1 }) });
+          cache = {}; show('baselines');
+        });
+      });
+    },
+    exports: async function (el) {
+      var a = await get('/dashboard/api/csm/analysis');
+      var p = await get('/dashboard/api/csm/comp-preflight');
+      if (!a || !p) return;
+      el.innerHTML =
+        '<h3>D4 · CSM analysis (owner-only briefing)</h3>' +
+        '<div class="csm-note">latest: ' + (a.latest ? 'v' + a.latest.version + ' · ' + a.latest.generated + ' · ' + esc(a.latest.headline) : 'none yet') + '</div>' +
+        '<button class="csm-tab" id="csm-regen">Regenerate now</button> ' +
+        '<a class="csm-tab" href="/dashboard/api/csm/analysis.pdf" style="text-decoration:none">Download PDF</a>' +
+        '<div class="csm-note">versions: ' + (a.versions || []).map(function (v) { return 'v' + v.version + ' (' + v.generated + ')'; }).join(' · ') + '</div>' +
+        (a.latest ? '<details class="csm-note"><summary>read latest (markdown)</summary><pre style="white-space:pre-wrap;font-size:.75rem">' + esc(a.latest.md) + '</pre></details>' : '') +
+        '<h3 style="margin-top:1rem">D5 · candidate comp page (stripped, proven)</h3>' +
+        '<div class="csm-note">preflight: <b>' + (p.clean ? '<span style="color:#7fd6a4">CLEAN</span>' : '<span style="color:#f09a9a">FORBIDDEN TOKENS: ' + p.forbidden_token_hits.join(', ') + '</span>') + '</b><br>' +
+        'included: ' + p.included.map(esc).join(' · ') + '<br>stripped: ' + p.stripped.map(esc).join(' · ') + '<br>' + esc(p.note) + '</div>' +
+        '<a class="csm-tab" href="/dashboard/api/csm/comp-page.pdf" style="text-decoration:none">Download candidate comp PDF</a>' +
+        '<div class="csm-note">The quarterly CSM comp statement (every variable line calculable by her) ships post-start — the accrual engine already itemises by event.</div>';
+      $('#csm-regen').addEventListener('click', async function () {
+        await fetch('/dashboard/api/csm/analysis', { method: 'POST' });
+        cache = {}; show('exports');
+      });
+    }
+  };
+
+  function show(t) {
+    tab = t;
+    try { history.replaceState(null, '', '?tab=' + t); } catch (e) {}
+    document.querySelectorAll('.csm-tab[role=tab]').forEach(function (b) {
+      b.setAttribute('aria-selected', b.dataset.tab === t ? 'true' : 'false');
+      b.tabIndex = b.dataset.tab === t ? 0 : -1;
+    });
+    var el = $('#csm-tabpanel');
+    el.innerHTML = '<div class="skeleton skeleton-text"></div>';
+    renderers[t](el);
+  }
+  var tablist = $('#csm-tabs');
+  tablist.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-tab]');
+    if (b) show(b.dataset.tab);
+  });
+  tablist.addEventListener('keydown', function (e) {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    var i = TABS.indexOf(tab);
+    var n = TABS[(i + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length];
+    show(n);
+    var btn = tablist.querySelector('[data-tab="' + n + '"]');
+    if (btn) btn.focus();
+  });
+  $('#csm-discreet').addEventListener('change', async function () {
+    await fetch('/dashboard/api/csm/discreet', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ on: $('#csm-discreet').checked }) });
+  });
+  fetch('/dashboard/api/whoami').then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (w) { if (w) $('#csm-who').textContent = 'signed in as ' + (w.display || w.user); });
+  loadHero();
+  show(tab);
+})();
+</script>
+</body>
+</html>

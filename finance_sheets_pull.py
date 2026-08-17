@@ -465,9 +465,27 @@ def pull_client_health() -> dict:
             next_mrr = 0.0
 
         # Chat override: downgrade → this client's MRR becomes the new lower figure.
-        if _ov and _ov.get("change_type") == "downgrade" and _ov.get("new_mrr") is not None:
+        # DOWNSELL (CSM wave) applies identically — the continuity floor IS the
+        # client's MRR until the sheet catches up.
+        if _ov and _ov.get("change_type") in ("downgrade", "downsell") \
+                and _ov.get("new_mrr") is not None:
             current_mrr = float(_ov["new_mrr"])
             next_mrr = float(_ov["new_mrr"])
+
+        # EXPANSION (CSM wave): a recurring expansion ADDS its normalised
+        # monthly figure on top of the sheet's current MRR (additive — the
+        # sheet base may have moved since declare time, so we add the stream,
+        # never overwrite with a stale total). One-off = cash, MRR untouched.
+        if _ov and _ov.get("change_type") == "expansion" \
+                and (_ov.get("cadence") or "") != "one_off" and _ov.get("amount"):
+            try:
+                from client_overrides import normalize_mrr as _norm_mrr
+                _exp_add = _norm_mrr(float(_ov["amount"]), _ov.get("cadence") or "monthly")
+                if _exp_add:
+                    current_mrr += _exp_add
+                    next_mrr += _exp_add
+            except Exception:
+                pass
 
         # Declared RENEWAL (#135): the new term end overrides the sheet's End
         # Date in the ONE engine — Churn Risk / Renewal Watch membership and
@@ -547,12 +565,15 @@ def pull_client_health() -> dict:
         # Declaration provenance chips (#135): a pending declaration renders
         # "declared · pending sheet" EVERYWHERE this client shows; once the scan
         # finds the sheet matching, the chip flips to "declared ✓ sheet".
-        if _ov and _ov.get("change_type") in ("renewal", "downgrade"):
+        if _ov and _ov.get("change_type") in ("renewal", "downgrade",
+                                              "downsell", "expansion"):
             client_entry["declared"] = {
                 "kind": _ov["change_type"],
                 "effective_date": str(_ov.get("effective_date") or ""),
                 "new_mrr": _ov.get("new_mrr"),
                 "state": "pending_sheet", "chip": "declared · pending sheet"}
+            if _ov.get("subtype"):
+                client_entry["declared"]["subtype"] = _ov["subtype"]
         else:
             _rc = _ovr_recon.get(_ovr_norm(name))
             if _rc:
@@ -596,7 +617,24 @@ def pull_client_health() -> dict:
                 "monthly_revenue": round(current_mrr, 2),
                 "status": "renewal_urgent" if elapsed_months >= 5 else "renewal_prep",
             }
-            if elapsed_months >= 4 and total_months >= 4:
+            # DOWNSELL (CSM wave): a continuity declaration is a DECIDED
+            # renewal outcome — the client leaves the watch archived, not
+            # flagged forever at the floor.
+            _downsell_ov = (_ov if (_ov and _ov.get("change_type") == "downsell")
+                            else _ovr_recon.get(_ovr_norm(name))
+                            if (_ovr_recon.get(_ovr_norm(name)) or {}).get("change_type") == "downsell"
+                            else None)
+            if _downsell_ov:
+                renewal_watch_cleared.append({
+                    **entry, "cleared_by": "continuity declaration",
+                    "declaration": {
+                        "kind": "downsell",
+                        "effective_date": str(_downsell_ov.get("effective_date") or ""),
+                        "new_mrr": _downsell_ov.get("new_mrr"),
+                        "id": _downsell_ov.get("id")},
+                    "chip": ("declared ✓ sheet" if _downsell_ov.get("reconciled")
+                             else "declared · pending sheet")})
+            elif elapsed_months >= 4 and total_months >= 4:
                 renewal_watch.append(entry)
             elif _renew_ov:
                 # the declaration cleared this warning — archived, browsable

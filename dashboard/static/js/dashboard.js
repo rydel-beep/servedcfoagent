@@ -2064,7 +2064,8 @@
     const inlineActions = (name) =>
       '<span class="rw-inline-wrap">' +
       '<button class="rw-btn rw-inline" data-rw-client="' + esc(name) + '" data-rw-kind="renewal" title="declare the real outcome — amount, term, cadence; clears this warning">Mark resigned</button>' +
-      '<button class="rw-btn rw-inline rw-inline-churn" data-rw-client="' + esc(name) + '" data-rw-kind="churn" title="declare the churn — clears this warning">Mark churned</button></span>';
+      '<button class="rw-btn rw-inline rw-inline-churn" data-rw-client="' + esc(name) + '" data-rw-kind="churn" title="declare the churn — clears this warning">Mark churned</button>' +
+      '<button class="rw-btn rw-inline" data-rw-client="' + esc(name) + '" data-rw-kind="downsell" title="the no walked down to the Served OS floor — a decided outcome; clears this warning">Mark continuity</button></span>';
 
     list.innerHTML = '';
     atRisk.forEach(c => {
@@ -4224,7 +4225,7 @@
   // action / forecast) without moving HTML blocks — safe DOM relocation on load.
   var ZONES = [
     { n: 1, title: 'Am I safe', sub: 'Cash, runway, burn',
-      ids: ['section-cash-position', 'section-bas', 'section-forecast-cash', 'section-forward'] },
+      ids: ['section-csm-card', 'section-cash-position', 'section-bas', 'section-forecast-cash', 'section-forward'] },
     { n: 3, title: 'What needs action', sub: 'Alerts, data quality, follow-ups',
       ids: ['section-action-feed', 'section-ops-cards', 'section-actions',
             'section-verdicts', 'section-deficiency', 'section-dq-loss', 'section-churn',
@@ -4576,6 +4577,70 @@
     } catch (e) { /* cards keep their skeletons; the pages remain reachable */ }
   }
 
+  // CSM (#146): OWNER-ONLY card, fail-closed — the section ships display:none
+  // and ONLY a 200 {show:true} from the owner-gated endpoint reveals it. A 403
+  // (piolo/ad/anon) or discreet mode leaves it hidden. The GUARD runs before
+  // any reveal. A discreet chip shows in the header while discreet is on.
+  async function renderCsmCard() {
+    try {
+      var sec = document.getElementById('section-csm-card');
+      if (!sec) return;
+      var r = await fetch('/dashboard/api/csm/card');
+      if (!r.ok) { sec.style.display = 'none'; return; }   // guard first: 403/401 → stays hidden
+      var d = await r.json();
+      if (!d.show) {
+        sec.style.display = 'none';
+        if (d.discreet) _csmDiscreetChip(true);
+        return;
+      }
+      _csmDiscreetChip(false);
+      var nums = $('#ops-csm-nums');
+      if (nums) nums.innerHTML = '<strong>' + esc(d.line) + '</strong>';
+      var nxt = $('#ops-csm-next');
+      if (nxt && d.next_action) nxt.textContent = 'next: ' + d.next_action.item + ' (' + d.next_action.owner + ')';
+      sec.style.display = '';
+      renderCsmProjectionNote();
+    } catch (e) { /* hidden stays hidden — fail closed */ }
+  }
+  function _csmDiscreetChip(on) {
+    var chip = document.getElementById('csm-discreet-chip');
+    if (on && !chip) {
+      var h = document.querySelector('.header-left');
+      if (h) {
+        chip = document.createElement('span');
+        chip.id = 'csm-discreet-chip';
+        chip.title = 'discreet mode is on — a hidden section is suppressed';
+        chip.style.cssText = 'font-size:.65rem;opacity:.55;margin-left:.5rem';
+        chip.textContent = '🔒 discreet';
+        h.appendChild(chip);
+      }
+    } else if (!on && chip) { chip.remove(); }
+  }
+  // M8: the labelled what-if overlay note on the MAIN forward projection —
+  // owner-only endpoint; discreet-aware; never touches the committed layers.
+  async function renderCsmProjectionNote() {
+    try {
+      var r = await fetch('/dashboard/api/csm/scenario-overlay');
+      if (!r.ok) return;                       // non-owner: nothing exists
+      var d = await r.json();
+      var host = document.getElementById('section-forward');
+      if (!host) return;
+      var note = document.getElementById('csm-proj-note');
+      if (!d.enabled) { if (note) note.remove(); return; }
+      var y1 = (d.monthly_incremental_revenue || []).slice(0, 12)
+        .reduce(function (a, b) { return a + b; }, 0);
+      if (!note) {
+        note = document.createElement('div');
+        note.id = 'csm-proj-note';
+        note.style.cssText = 'font-size:.75rem;opacity:.8;border:1px dashed #4a7ab5;border-radius:8px;padding:.4rem .7rem;margin:.4rem 0';
+        host.appendChild(note);
+      }
+      note.textContent = '⊕ ' + d.label + ': ≈ +$' + Math.round(y1).toLocaleString() +
+        ' incremental revenue in the 12 months from ' + d.start_date +
+        ' (base scenario, book scale ' + d.book_scale + ') — what-if layer, committed untouched';
+    } catch (e) { /* silent */ }
+  }
+
   // QUEUE FIX 2026-08-10: three lanes. ACTIVE = the queue (and the only count);
   // AGED = demoted with reasons, collapsed, restorable; DONE = dismissals that
   // STICK (evidence-signature suppression — re-arms only on a changed state).
@@ -4905,6 +4970,7 @@
     renderOutflow();         // Outflow truth — bands + accrual/cash toggle
     renderForecast();        // Zone 1 cash + Zone 4 MRR projections
     loadActor();             // who's signed in (Rydel / Piolo)
+    renderCsmCard();         // Zone 1 — OWNER-ONLY CSM card (fail-closed, discreet-aware)
     renderOpsCards();        // Zone 3 — worklog + bookkeeping SUMMARY cards
                              // (the full lists live on /dashboard/worklog and
                              //  /dashboard/bookkeeping — finance IA 2026-08-10)
@@ -5033,7 +5099,9 @@
         (_rwDeclare.client ? ' value="' + esc(_rwDeclare.client) + '"' : '') + '>' +
         '<select id="rw-kind"><option value="churn"' + (k === 'churn' ? ' selected' : '') +
         '>CHURNED</option><option value="renewal"' + (k === 'renewal' ? ' selected' : '') +
-        '>RENEWED</option></select></div>' +
+        '>RENEWED</option><option value="downsell"' + (k === 'downsell' ? ' selected' : '') +
+        '>CONTINUITY (Served OS floor)</option><option value="expansion"' + (k === 'expansion' ? ' selected' : '') +
+        '>EXPANSION</option></select></div>' +
       '<div id="rw-suggest" class="rw-suggest"></div>' +
       // THE RICHER RESIGN (forward-MRR wave): amount · cadence · term · start.
       // The normalisation + committed-impact line comes SERVER-computed in the
@@ -5049,6 +5117,42 @@
           '<label>Start <input type="date" id="rw-start"></label>' +
           '</div>' +
           '<div class="rw-note">normalisation + committed impact appear in the preview (server-computed): e.g. “$30,000 annual = $2,500/mo committed through the term end”</div>'
+        : k === 'downsell'
+        // CONTINUITY (CSM wave): the non-renewal walked down to the Served OS
+        // floor — amount+cadence normalise server-side (the ONE function).
+        ? '<div class="rw-dec-row">' +
+          '<label>Floor amount $<input type="number" id="rw-amount" placeholder="e.g. 499" min="1"></label>' +
+          '<label>Cadence <select id="rw-cadence">' +
+          '<option value="monthly">monthly</option><option value="quarterly">quarterly</option>' +
+          '<option value="annual">annual</option></select></label>' +
+          '<label>Effective <input type="date" id="rw-date"></label>' +
+          '<label>Reason (optional) <input type="text" id="rw-reason"></label>' +
+          '</div>' +
+          '<div class="rw-note">a decided renewal outcome: clears the warning; the floor MRR replaces the retainer (server-computed preview)</div>'
+        : k === 'expansion'
+        // EXPANSION (CSM wave): subtype decides the natural cadence default
+        // (server-side); first-6-month value feeds comp + the model.
+        ? '<div class="rw-dec-row">' +
+          '<label>Type <select id="rw-subtype">' +
+          '<option value="stepup">step-up (retainer up)</option>' +
+          '<option value="sprint">sprint (one-off)</option>' +
+          '<option value="ordering">Served Ordering</option>' +
+          '<option value="reservations">Served Reservations</option>' +
+          '<option value="photo_day">photo/content day</option>' +
+          '<option value="market_intel">market intel session</option>' +
+          '<option value="second_venue">second venue</option>' +
+          '<option value="referral">referral</option></select></label>' +
+          '<label>Amount per period $<input type="number" id="rw-amount" placeholder="e.g. 800" min="1"></label>' +
+          '<label>Cadence <select id="rw-cadence">' +
+          '<option value="">auto (by type)</option>' +
+          '<option value="monthly">monthly</option><option value="quarterly">quarterly</option>' +
+          '<option value="annual">annual</option><option value="one_off">one-off (cash, not MRR)</option>' +
+          '</select></label>' +
+          '<label>Term <input type="number" id="rw-term" placeholder="months" min="1" max="60" value="6"> mo</label>' +
+          '<label>Start <input type="date" id="rw-start"></label>' +
+          '<label>First-6-mo value $ (optional) <input type="number" id="rw-first6" min="0"></label>' +
+          '</div>' +
+          '<div class="rw-note">adds ON TOP of the base retainer — normalisation + committed impact are server-computed in the preview</div>'
         : '<div class="rw-dec-row">' +
           '<label>Effective date <input type="date" id="rw-date"></label>' +
           '<label>Reason (optional) <input type="text" id="rw-reason"></label>' +
@@ -5110,6 +5214,11 @@
     if (mrrEl && mrrEl.value) body.new_mrr = parseFloat(mrrEl.value);
     const reasonEl = $('#rw-reason');
     if (reasonEl && reasonEl.value) body.reason = reasonEl.value;
+    // CSM wave: expansion subtype + first-6-month value ride the same body
+    const subEl = $('#rw-subtype');
+    if (subEl && subEl.value) body.subtype = subEl.value;
+    const f6El = $('#rw-first6');
+    if (f6El && f6El.value) body.first6_value = parseFloat(f6El.value);
     const box = $('#rw-preview');
     box.innerHTML = '<div class="rw-note">building the impact preview…</div>';
     const resp = await fetch('/dashboard/api/renewal/declare', {

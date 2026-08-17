@@ -221,13 +221,37 @@ def project() -> dict:
                         elif in_term and dv.get("new_mrr") is None:
                             # legacy renewal without MRR: keep current MRR
                             val, src = float(mrr_now or 0), "declared resign (MRR unchanged)"
-                elif dv["kind"] == "downgrade":
+                elif dv["kind"] in ("downgrade", "downsell"):
+                    # downsell (CSM wave) projects exactly like a downgrade:
+                    # the floor MRR caps the sheet-committed months from the
+                    # effective date on.
                     if dv["effective"] and m1 >= dv["effective"] \
                             and dv.get("new_mrr") is not None:
                         sheet_v = (srow.get("monthly") or {}).get(label)
                         if sheet_v:
                             val = min(float(dv["new_mrr"]), sheet_v)
-                            src = "declared downgrade"
+                            src = "declared " + dv["kind"]
+                elif dv["kind"] == "expansion":
+                    # EXPANSION (CSM wave): an ADDITIVE stream on top of the
+                    # client's base recognition — the sheet months ride
+                    # untouched (val stays None so the sheet block below still
+                    # applies). One-off → cash in its start month, never MRR.
+                    if dv.get("cadence") == "one_off":
+                        if dv["start"] and m0 <= dv["start"] <= m1:
+                            oneoff_cash[i] += float(dv.get("amount") or 0)
+                    else:
+                        try:
+                            import client_overrides as _co
+                            _norm_add = _co.normalize_mrr(
+                                float(dv.get("amount") or 0),
+                                dv.get("cadence") or "monthly")
+                        except Exception:
+                            _norm_add = None
+                        start = dv["start"] or today
+                        end = dv["effective"]
+                        if _norm_add and m1 >= start and (end is None or m0 <= end):
+                            committed[i] += float(_norm_add)
+                            row["source"] = "declaration"
             if val is None and src is None:
                 sheet_v = (srow.get("monthly") or {}).get(label)
                 if sheet_v:
@@ -282,7 +306,7 @@ def project() -> dict:
         touching = [d["client"] for d in decls.values()
                     if (d["kind"] == "churn" and d["effective"]
                         and d["effective"] <= m0_end)
-                    or (d["kind"] in ("renewal", "downgrade")
+                    or (d["kind"] in ("renewal", "downgrade", "downsell", "expansion")
                         and (d["start"] is None or d["start"] <= m0_end)
                         and (d["effective"] is None or d["effective"] >= m0_start))]
         recon["declarations_touching_month0"] = touching

@@ -1,5 +1,11 @@
 # SPEC — "Pitched & Drifted" section for the Shiproom (timeline dashboard)
 
+> **⛔ SUPERSEDED / DEFERRED (7 Aug 2026 — "go evergreen" ruling, Master Spec v1.2).**
+> The cohort model this spec renders is retired. The dashboard PD section is
+> DEFERRED until the segment earns it. Authority is now
+> `../pd-evergreen/MASTER-SPEC-v1.2.md` + `../pd-evergreen/pd-ghl-build-sheet-v2-EVERGREEN.md`.
+> Do NOT build from this file.
+
 Target repo: **timeline dashboard**. This spec + assets live with the task
 in the cfo agent repo; the timeline dashboard repo must be present in the
 workspace before the run.

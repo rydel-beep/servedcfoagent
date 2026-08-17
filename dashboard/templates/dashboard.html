@@ -590,6 +590,20 @@
   <!-- FINANCE IA (2026-08-10): the worklog + bookkeeping DUMPS became summary
        CARDS — live one-engine counts, whole card is a door to the full page.
        The lists live at /dashboard/worklog and /dashboard/bookkeeping. -->
+  <!-- CSM (#146): OWNER-ONLY card — ships hidden; only a 200 from
+       /api/csm/card with show:true reveals it (fail-closed by construction);
+       discreet mode keeps it hidden while Rydel screen-shares. -->
+  <section class="panel ops-cards" id="section-csm-card" style="display:none">
+    <div class="ops-card-grid">
+      <a class="ops-card" id="ops-card-csm" href="/dashboard/csm">
+        <div class="ops-card-title">CSM</div>
+        <div class="ops-card-nums" id="ops-csm-nums"><span class="skeleton skeleton-text"></span></div>
+        <div class="ops-card-urgent" id="ops-csm-next"></div>
+        <div class="ops-card-go">open the cockpit →</div>
+      </a>
+    </div>
+  </section>
+
   <section class="panel ops-cards" id="section-ops-cards">
     <div class="ops-card-grid">
       <a class="ops-card" id="ops-card-worklog" href="/dashboard/worklog">

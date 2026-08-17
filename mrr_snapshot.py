@@ -119,7 +119,8 @@ def churn_mrr_in_window(start, end) -> dict:
         w0 = dt.date.fromisoformat(str(start)[:10]); w1 = dt.date.fromisoformat(str(end)[:10])
         for a in audit or []:
             ct = (a.get("change_type") or "").lower()
-            if "churn" not in ct and "downgrade" not in ct and "cancel" not in ct:
+            if ("churn" not in ct and "downgrade" not in ct
+                    and "cancel" not in ct and "downsell" not in ct):
                 continue
             when = a.get("created_at")
             try:

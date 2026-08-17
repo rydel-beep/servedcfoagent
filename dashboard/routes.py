@@ -11,7 +11,7 @@ import os
 
 from flask import (
     Blueprint, render_template, request, jsonify, make_response, redirect,
-    url_for, Response, stream_with_context,
+    url_for, Response, stream_with_context, session,
 )
 
 from dashboard.auth import require_auth, require_owner, DASHBOARD_TOKEN, COOKIE_NAME, COOKIE_MAX_AGE
@@ -737,7 +737,13 @@ def api_chat():
     # Rebuild the thread from the DB if the client lost it (refresh/new tab) BEFORE
     # writing the new turn — this is what makes a refresh RESUME instead of restart.
     history = memory.resume_thread(conv_id, history)
-    memory.record_turn(conv_id, "user", user_msg, channel=channel)
+    # CSM confidentiality (#146): turns touching the owner-only CSM domain are
+    # NEVER persisted to shared memory (user or assistant side) — the trigram
+    # recall would replay them to any authenticated identity otherwise.
+    import csm_plan as _csm_mod
+    _csm_turn = bool(user_msg and _csm_mod._CSM_RE.search(user_msg.lower()))
+    if not _csm_turn:
+        memory.record_turn(conv_id, "user", user_msg, channel=channel)
     # Self-improvement loop: silent incident capture + loop-resolution detection on
     # every user turn (corrections, answers that close open loops). Never blocks.
     try:
@@ -815,7 +821,13 @@ def api_chat():
         # (handler, entity_scoped?) — entity_scoped lookups are entity-filtered (the Romano rule);
         # superlative/recency lookups (latest lead, biggest deal) surface entities by design → exempt.
         import capacity_engine, forecasting_engine
+        # CSM drill (#146): owner-only, silent fall-through for every other
+        # identity; replies never persist to memory. ABOVE conversation so
+        # 'path to 4x' follow-ups aren't grabbed by advisory/anaphora.
+        _csm_handler = (lambda m: __import__('csm_plan').handle_csm_command(
+            m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()))
         _tier2 = [
+            (_csm_handler, False),
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
             (lambda m: __import__('open_loops').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # Pillar 1: 'remind me to X' / 'drop it' (internal reminders only)
@@ -891,7 +903,8 @@ def api_chat():
                                getattr(_h, "__name__", "lambda"), user_msg[:60])
                 break
             # Capacity/raise replies carry salary-derived figures → owner-only, NEVER to memory.
-            if _h is not capacity_engine.handle_capacity_command:
+            # CSM replies (#146) likewise never persist.
+            if _h is not capacity_engine.handle_capacity_command and _h is not _csm_handler:
                 memory.record_turn(conv_id, "assistant", _r, channel=channel, intent="command")
             return jsonify({"reply": _r, "error": None, "intent": "command"})
 
@@ -931,11 +944,16 @@ def api_chat():
             _mem_block = _disc_ctx + "\n\n" + (_mem_block or "")
     except Exception:
         pass
+    # CSM (#146): OWNER tier-3 turns touching the domain get the engine's
+    # grounded context; the whole turn then stays out of memory + distillation.
+    _csm_ctx = _csm_mod.csm_context(user_msg, current_actor())
+    if _csm_ctx:
+        _mem_block = _csm_ctx + "\n\n" + (_mem_block or "")
 
     result = chat_fn(history, snapshot_json, token, voice=voice, memory_block=_mem_block, channel=channel)
 
     reply = result.get("reply")
-    if reply:
+    if reply and not _csm_turn and not _csm_ctx:
         memory.record_turn(conv_id, "assistant", reply, channel=channel, intent=result.get("intent"))
         memory.maybe_distill_async(conv_id)
     if recall.get("recalled"):
@@ -982,7 +1000,12 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
     user_msg = (history[-1].get("content") if history else "") or ""
     # Rebuild the thread from the DB on refresh BEFORE writing the new turn (resume, not restart).
     history = memory.resume_thread(conv_id, history)
-    memory.record_turn(conv_id, "user", user_msg, channel=channel)
+    # CSM confidentiality (#146): CSM-domain turns never persist to shared
+    # memory on ANY channel (dashboard voice/text + timeline bridge).
+    import csm_plan as _csm_mod
+    _csm_turn = bool(user_msg and _csm_mod._CSM_RE.search(user_msg.lower()))
+    if not _csm_turn:
+        memory.record_turn(conv_id, "user", user_msg, channel=channel)
     # Self-improvement loop: silent incident capture + loop-resolution detection on
     # every user turn (corrections, answers that close open loops). Never blocks.
     try:
@@ -1061,7 +1084,12 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
         import range_unit_economics, payback_reconciliation, leads_view, closes_view, liabilities_view, salary_view
         import tracker_read, capacity_engine, forecasting_engine
         _thread = " ".join((m.get("content") or "") for m in (history or [])[-6:])
+        # CSM drill (#146) — registered on the STREAMING list too (voice +
+        # timeline widget run through here); owner-only, silent fall-through.
+        _csm_handler = (lambda m: __import__('csm_plan').handle_csm_command(
+            m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()))
         _tier2 = [
+            (_csm_handler, False),
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
             (lambda m: __import__('open_loops').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # Pillar 1: 'remind me to X' / 'drop it' (internal reminders only)
@@ -1134,7 +1162,8 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
                 logger.warning("repetition guard (stream): re-emit suppressed for %r", user_msg[:60])
                 break
             _cmd_reply = _r
-            _cmd_sensitive = (_h is capacity_engine.handle_capacity_command)
+            _cmd_sensitive = (_h is capacity_engine.handle_capacity_command
+                              or _h is _csm_handler)   # #146: never to memory
             break
     if _cmd_reply is not None:
         if not locals().get("_cmd_sensitive"):   # capacity/raise salary figures never enter memory
@@ -1179,6 +1208,12 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             _mem_block = _disc_ctx + "\n\n" + (_mem_block or "")
     except Exception:
         pass
+    # CSM (#146): owner tier-3 turns get the engine's grounded context; the
+    # whole turn then stays out of memory + distillation (see finally below).
+    from dashboard.auth import current_actor as _ca146
+    _csm_ctx = _csm_mod.csm_context(user_msg, _ca146())
+    if _csm_ctx:
+        _mem_block = _csm_ctx + "\n\n" + (_mem_block or "")
 
     @stream_with_context
     def generate():
@@ -1201,7 +1236,8 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             yield sse("error", {"error": "stream interrupted"})
         finally:
             # Persist the assistant turn once the stream completes (async) + distil.
-            if final_reply:
+            # CSM turns (#146) never persist or distil.
+            if final_reply and not _csm_turn and not _csm_ctx:
                 memory.record_turn(conv_id, "assistant", final_reply, channel=channel)
                 memory.maybe_distill_async(conv_id)
 
@@ -1740,7 +1776,10 @@ def api_renewal_declare():
             amount=d.get("amount"),
             term_months=d.get("term_months"),
             cadence=(d.get("cadence") or "").strip().lower() or None,
-            start_date=d.get("start_date") or None)
+            start_date=d.get("start_date") or None,
+            # CSM wave: downsell/continuity + expansion join the one flow
+            subtype=(d.get("subtype") or "").strip().lower() or None,
+            first6_value=d.get("first6_value"))
         if err:
             return jsonify({"error": err}), 400
         token = secrets.token_urlsafe(16)
@@ -1910,3 +1949,260 @@ def api_worklog():
     resp = jsonify(collab.worklog_page_data())
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     return resp
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CSM INVESTMENT (#146) — OWNER-ONLY surface. The confidentiality law:
+# every API here is @require_owner (the FIRST owner-only page domain — the
+# ruled exception to Piolo's full-visibility standing); the page route
+# redirects non-owners (require_owner would return raw JSON on a page);
+# sales/ad_domain are already walled by the fail-closed allowlist; nothing
+# in this domain writes to collab/feed/salience/snapshot/memory. Discreet
+# mode is an owner SESSION flag — it hides the dashboard card + any CSM
+# mention while Rydel records Looms.
+# ═══════════════════════════════════════════════════════════════════════════
+
+_CSM_DISCREET_KEY = "csm_discreet"
+
+
+@bp.route("/csm", methods=["GET"])
+@require_auth
+def page_csm():
+    from dashboard.auth import is_owner
+    if not is_owner():
+        return redirect(url_for("dashboard.index"))
+    return render_template("csm.html", asset_v=_ASSET_VERSION)
+
+
+@bp.route("/api/csm/summary", methods=["GET"])
+@require_owner
+def api_csm_summary():
+    import csm_plan
+    payload = csm_plan.summary()
+    payload["discreet"] = bool(session.get(_CSM_DISCREET_KEY))
+    resp = jsonify(payload)
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/csm/card", methods=["GET"])
+@require_owner
+def api_csm_card():
+    """The dashboard card feed. Owner + discreet-off only; the card element
+    ships hidden and ONLY this 200 reveals it (fail-closed by construction)."""
+    import csm_plan
+    if session.get(_CSM_DISCREET_KEY):
+        resp = jsonify({"show": False, "discreet": True})
+    else:
+        s = csm_plan.summary()
+        resp = jsonify({"show": True, "discreet": False,
+                        "line": s["card_line"],
+                        "next_action": s["next_action"]})
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/csm/discreet", methods=["POST"])
+@require_owner
+def api_csm_discreet():
+    """One-click discreet toggle — session-persisted, default OFF."""
+    d = request.get_json(silent=True) or {}
+    session[_CSM_DISCREET_KEY] = bool(d.get("on"))
+    session.permanent = True
+    return jsonify({"ok": True, "discreet": session[_CSM_DISCREET_KEY]})
+
+
+@bp.route("/api/csm/model", methods=["GET"])
+@require_owner
+def api_csm_model():
+    import csm_plan
+    custom = None
+    if request.args.get("renewal_pct"):
+        custom = {"renewal_pct": request.args.get("renewal_pct")}
+    resp = jsonify(csm_plan.model_view(custom))
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/csm/scoreboard", methods=["GET"])
+@require_owner
+def api_csm_scoreboard():
+    import csm_plan
+    resp = jsonify(csm_plan.scoreboard())
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/csm/baselines", methods=["GET"])
+@require_owner
+def api_csm_baselines():
+    import csm_baselines
+    fresh = request.args.get("fresh") == "1"
+    resp = jsonify(csm_baselines.all_baselines(fresh=fresh))
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/csm/calendar", methods=["GET"])
+@require_owner
+def api_csm_calendar():
+    import csm_plan
+    resp = jsonify(csm_plan.ladder_calendar())
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/csm/gates", methods=["GET", "POST"])
+@require_owner
+def api_csm_gates():
+    import csm_plan
+    from dashboard.auth import current_actor
+    if request.method == "POST":
+        d = request.get_json(silent=True) or {}
+        out, err = csm_plan.tick_gate(current_actor(), d.get("id") or "",
+                                      bool(d.get("done")))
+        if err:
+            return jsonify({"error": err}), 400
+        return jsonify({"ok": True, **out})
+    resp = jsonify({**csm_plan.gates(),
+                    "phase_strip": csm_plan.phase_strip(),
+                    "journal": csm_plan.journal_entries(30)})
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/csm/risks", methods=["GET", "POST"])
+@require_owner
+def api_csm_risks():
+    import csm_plan
+    from dashboard.auth import current_actor
+    if request.method == "POST":
+        d = request.get_json(silent=True) or {}
+        out, err = csm_plan.set_risk(current_actor(), d.get("id") or "",
+                                     d.get("status") or "", d.get("note"))
+        if err:
+            return jsonify({"error": err}), 400
+        return jsonify({"ok": True, **out})
+    resp = jsonify(csm_plan.risks())
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/csm/config", methods=["GET", "POST"])
+@require_owner
+def api_csm_config():
+    """Owner config incl. the director comp offset figures — journaled with
+    MASKED values for director keys; kv-only; never in any doc/export."""
+    import csm_plan
+    from dashboard.auth import current_actor
+    if request.method == "POST":
+        d = request.get_json(silent=True) or {}
+        cfg, err = csm_plan.set_config(current_actor(), d)
+        if err:
+            return jsonify({"error": err}), 400
+        return jsonify({"ok": True, "config": cfg})
+    resp = jsonify({"config": csm_plan.config()})
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/csm/tier", methods=["POST"])
+@require_owner
+def api_csm_tier():
+    import csm_baselines
+    from dashboard.auth import current_actor
+    d = request.get_json(silent=True) or {}
+    out, err = csm_baselines.set_tier(current_actor(), d.get("client") or "",
+                                      d.get("tier"))
+    if err:
+        return jsonify({"error": err}), 400
+    return jsonify({"ok": True, **out})
+
+
+@bp.route("/api/csm/scenario-overlay", methods=["GET"])
+@require_owner
+def api_csm_scenario_overlay():
+    """M8: the labelled 'include CSM hire plan' what-if overlay for the main
+    forward-projection panel. Owner-only + discreet-aware (the overlay is a
+    CSM mention on the finance dashboard)."""
+    import csm_plan
+    if session.get(_CSM_DISCREET_KEY):
+        resp = jsonify({"enabled": False, "discreet": True})
+    else:
+        resp = jsonify(csm_plan.scenario_overlay())
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/csm/analysis", methods=["GET", "POST"])
+@require_owner
+def api_csm_analysis():
+    """D4: POST regenerates (dated version); GET returns the latest (md) +
+    the version list."""
+    import csm_docs
+    if request.method == "POST":
+        return jsonify({"ok": True, **csm_docs.generate_analysis()})
+    latest = csm_docs.latest_analysis()
+    resp = jsonify({"latest": latest, "versions": csm_docs.analysis_versions()})
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/csm/analysis.pdf", methods=["GET"])
+@require_owner
+def api_csm_analysis_pdf():
+    import csm_docs
+    from helpers import today_sydney
+    pdf = csm_docs.analysis_pdf()
+    resp = make_response(pdf)
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = \
+        f"attachment; filename=csm-analysis-{today_sydney()}.pdf"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@bp.route("/api/csm/comp-preflight", methods=["GET"])
+@require_owner
+def api_csm_comp_preflight():
+    """D5 preflight: shows EXACTLY what the candidate page includes and what
+    is stripped, with the forbidden-token proof — before anything renders."""
+    import csm_docs
+    resp = jsonify(csm_docs.comp_page_preflight())
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/csm/comp-page.pdf", methods=["GET"])
+@require_owner
+def api_csm_comp_page_pdf():
+    """D5: the candidate offer-pack comp page — stripped + proven (the
+    generator REFUSES to emit if the preflight finds a forbidden token)."""
+    import csm_docs
+    from helpers import today_sydney
+    try:
+        pdf = csm_docs.comp_page_pdf()
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 500
+    resp = make_response(pdf)
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = \
+        f"attachment; filename=csm-compensation-{today_sydney()}.pdf"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@bp.route("/api/csm/explain", methods=["POST"])
+@require_owner
+def api_csm_explain():
+    """'Explain this' on every /csm tile — EDITH narrates the number FROM the
+    engine (the same drill the chat surfaces use; owner voice/text)."""
+    import csm_plan
+    from dashboard.auth import current_actor
+    d = request.get_json(silent=True) or {}
+    q = (d.get("q") or "").strip()
+    reply, handled = csm_plan.handle_csm_command(q or "csm roi status",
+                                                current_actor())
+    if not handled or not reply:
+        reply = "The engine has no drill for that tile yet — the page's own numbers are the truth."
+    return jsonify({"reply": reply})

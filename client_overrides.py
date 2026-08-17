@@ -47,6 +47,10 @@ ALTER TABLE client_overrides ADD COLUMN IF NOT EXISTS amount REAL;
 ALTER TABLE client_overrides ADD COLUMN IF NOT EXISTS term_months INTEGER;
 ALTER TABLE client_overrides ADD COLUMN IF NOT EXISTS cadence TEXT;
 ALTER TABLE client_overrides ADD COLUMN IF NOT EXISTS start_date DATE;
+-- CSM wave (2026-08-17): DOWNSELL/CONTINUITY + EXPANSION join the ONE flow.
+-- Additive; old rows keep NULLs and behave exactly as before.
+ALTER TABLE client_overrides ADD COLUMN IF NOT EXISTS subtype TEXT;
+ALTER TABLE client_overrides ADD COLUMN IF NOT EXISTS first6_value REAL;
 CREATE TABLE IF NOT EXISTS client_override_pending (
   token       TEXT PRIMARY KEY,
   payload     JSONB NOT NULL,
@@ -109,18 +113,20 @@ def active_map() -> dict[str, dict]:
 def _add(o: dict) -> int | None:
     migrate()
     o = {"old_end": None, "reason": None, "amount": None, "term_months": None,
-         "cadence": None, "start_date": None, **o}
+         "cadence": None, "start_date": None, "subtype": None,
+         "first6_value": None, **o}
     try:
         with db.get_conn() as c:
             cur = c.execute(
                 """INSERT INTO client_overrides
                      (client_name, change_type, old_status, new_status, old_mrr, new_mrr,
                       effective_date, reason, created_by, old_end,
-                      amount, term_months, cadence, start_date)
+                      amount, term_months, cadence, start_date, subtype, first6_value)
                    VALUES (%(client_name)s,%(change_type)s,%(old_status)s,%(new_status)s,
                            %(old_mrr)s,%(new_mrr)s,%(effective_date)s,%(reason)s,
                            %(created_by)s,%(old_end)s,
-                           %(amount)s,%(term_months)s,%(cadence)s,%(start_date)s)
+                           %(amount)s,%(term_months)s,%(cadence)s,%(start_date)s,
+                           %(subtype)s,%(first6_value)s)
                    RETURNING id""", o)
             return cur.fetchone()["id"]
     except Exception as e:
@@ -169,6 +175,14 @@ def undo_client(name: str) -> dict | None:
 CADENCES = ("monthly", "quarterly", "annual", "one_off")
 _CADENCE_MONTHS = {"monthly": 1, "quarterly": 3, "annual": 12}
 
+# THE kinds enum (CSM wave adds downsell/continuity + expansion to the one
+# flow — every consumer references THIS, never a re-typed tuple).
+DECLARATION_KINDS = ("churn", "renewal", "downgrade", "downsell", "expansion")
+EXPANSION_SUBTYPES = ("stepup", "sprint", "ordering", "reservations",
+                      "photo_day", "market_intel", "second_venue", "referral")
+# subtypes whose natural shape is a one-off payment (default cadence)
+_ONE_OFF_SUBTYPES = ("sprint", "photo_day", "market_intel", "referral")
+
 
 def normalize_mrr(amount: float, cadence: str) -> float | None:
     """THE cadence→MRR normalisation (one function; the dialog, the engine,
@@ -193,12 +207,14 @@ def preview_declaration(client_name: str, kind: str, effective_date: str | None 
                         amount: float | None = None,
                         term_months: int | None = None,
                         cadence: str | None = None,
-                        start_date: str | None = None) -> tuple[dict | None, str | None]:
+                        start_date: str | None = None,
+                        subtype: str | None = None,
+                        first6_value: float | None = None) -> tuple[dict | None, str | None]:
     """Stage 1: bind the EXACT roster client (IDs-are-truth: the type-ahead sends
     a roster name verbatim; anything not matching exactly one roster entry is
     'not a known client' — NO phantom clients, ever) and build the impact
     preview. Returns (payload+preview, None) or (None, honest_error)."""
-    if kind not in ("churn", "renewal", "downgrade"):
+    if kind not in DECLARATION_KINDS:
         return None, f"unknown declaration kind '{kind}'"
     roster = _roster()
     exact = [c for c in roster if _norm(c.get("name", "")) == _norm(client_name)]
@@ -281,6 +297,92 @@ def preview_declaration(client_name: str, kind: str, effective_date: str | None 
             preview = (f"RENEW {nm}: contract end {old_end or '(none on file)'} → {eff}"
                        f"{delta or ', MRR unchanged'} — clears the renewal warning; "
                        f"re-enters the watch as {eff} approaches")
+    elif kind == "downsell":
+        # CONTINUITY (CSM wave): a non-renewal walked down to the Served OS
+        # floor instead of churn-to-zero. Amount+cadence normalise via THE one
+        # function; a direct new_mrr also works. Must be below current MRR
+        # and above zero (zero would be a churn, not a continuity capture).
+        if amount is not None:
+            cadence = (cadence or "monthly").strip().lower()
+            if cadence not in CADENCES or cadence == "one_off":
+                return None, "continuity floor is recurring — monthly/quarterly/annual"
+            floor_mrr = normalize_mrr(float(amount), cadence)
+        elif new_mrr is not None:
+            floor_mrr = float(new_mrr)
+        else:
+            return None, "a continuity downsell needs the floor amount"
+        if floor_mrr is None or floor_mrr <= 0:
+            return None, "a continuity downsell needs a figure above zero"
+        if floor_mrr >= cur_mrr and cur_mrr > 0:
+            return None, (f"{nm} is at ${cur_mrr:,.0f}/mo — the continuity floor "
+                          f"must be below that (otherwise declare a renewal)")
+        payload.update({"new_status": "Active", "new_mrr": floor_mrr,
+                        "subtype": "continuity",
+                        "amount": float(amount) if amount is not None else None,
+                        "cadence": cadence if amount is not None else None})
+        saved = floor_mrr
+        preview = (f"CONTINUITY {nm}: ${cur_mrr:,.0f} → ${floor_mrr:,.0f}/mo floor "
+                   f"effective {eff} (−${cur_mrr - floor_mrr:,.0f}/mo vs the full "
+                   f"retainer; ${saved:,.0f}/mo SAVED vs churn-to-zero) — clears "
+                   f"the renewal warning as a decided outcome")
+        new_mrr = floor_mrr
+    elif kind == "expansion":
+        # EXPANSION (CSM wave): step-up / sprint / ordering / reservations /
+        # photo day / market intel / second venue / referral. Recurring adds a
+        # committed stream on TOP of the client's base; one-off is committed
+        # CASH for its month, never MRR. first6_value feeds comp + the model;
+        # derived honestly when not supplied.
+        subtype = (subtype or "").strip().lower()
+        if subtype not in EXPANSION_SUBTYPES:
+            return None, (f"expansion needs a subtype: "
+                          f"{', '.join(EXPANSION_SUBTYPES)}")
+        if amount is None or float(amount) <= 0:
+            return None, "an expansion needs the amount (per billing period)"
+        cadence = ((cadence or "").strip().lower()
+                   or ("one_off" if subtype in _ONE_OFF_SUBTYPES else "monthly"))
+        if cadence not in CADENCES:
+            return None, f"cadence must be one of {', '.join(CADENCES)}"
+        import datetime as _dt
+        try:
+            start = (_dt.date.fromisoformat(str(start_date))
+                     if start_date else today_sydney())
+        except ValueError:
+            return None, "bad start date"
+        if cadence == "one_off":
+            term_months = 1
+            end = _add_months(start, 1)
+            norm = None
+            f6 = float(first6_value) if first6_value is not None else float(amount)
+            payload.update({"new_status": "Active", "new_mrr": cur_mrr,
+                            "effective_date": str(end),
+                            "amount": float(amount), "term_months": term_months,
+                            "cadence": cadence, "start_date": str(start),
+                            "subtype": subtype, "first6_value": round(f6, 2)})
+            preview = (f"EXPANSION {nm} ({subtype}, ONE-OFF): ${float(amount):,.0f} "
+                       f"counted as committed CASH in {start.strftime('%B %Y')} — "
+                       f"NOT recurring MRR; first-6-month value ${f6:,.0f}")
+            new_mrr = cur_mrr
+        else:
+            try:
+                term_months = int(term_months or 6)
+            except (TypeError, ValueError):
+                return None, "term must be a number of months"
+            if not (1 <= term_months <= 60):
+                return None, "term must be 1–60 months"
+            end = _add_months(start, term_months)
+            norm = normalize_mrr(float(amount), cadence)
+            f6 = (float(first6_value) if first6_value is not None
+                  else norm * min(6, term_months))
+            payload.update({"new_status": "Active", "new_mrr": cur_mrr + norm,
+                            "effective_date": str(end),
+                            "amount": float(amount), "term_months": term_months,
+                            "cadence": cadence, "start_date": str(start),
+                            "subtype": subtype, "first6_value": round(f6, 2)})
+            preview = (f"EXPANSION {nm} ({subtype}): +${norm:,.2f}/mo × "
+                       f"{term_months}mo from {start} — MRR ${cur_mrr:,.0f} → "
+                       f"${cur_mrr + norm:,.0f}/mo committed through "
+                       f"{end.strftime('%B %Y')}; first-6-month value ${f6:,.0f}")
+            new_mrr = cur_mrr + norm
     else:  # downgrade
         if new_mrr is None or float(new_mrr) >= cur_mrr:
             return None, (f"{nm} is at ${cur_mrr:,.0f}/mo — a downgrade needs a "
@@ -306,8 +408,9 @@ def apply_declaration(payload: dict, actor: dict | None = None) -> tuple[int | N
         import renewal_loop
         renewal_loop.journal(
             f"declared ({payload['change_type']})",
-            f"{payload['client_name']}: {payload['change_type']} effective "
-            f"{payload.get('effective_date')}"
+            f"{payload['client_name']}: {payload['change_type']}"
+            + (f"/{payload.get('subtype')}" if payload.get("subtype") else "")
+            + f" effective {payload.get('effective_date')}"
             + (f", MRR → ${float(payload['new_mrr']):,.0f}"
                if payload.get("new_mrr") is not None else "")
             + (f" [{payload.get('cadence')} ${float(payload.get('amount') or 0):,.0f}"

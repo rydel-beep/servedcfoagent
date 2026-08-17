@@ -63,6 +63,13 @@ OWNER_RECURRING_GROSS_MONTHLY = round(
 
 SUPER_BASELINE_MONTHLY = 1076.0
 
+# THE super-guarantee rate authority (CSM wave, 2026-08-17). No SG percentage
+# existed anywhere in the codebase before this — super was modelled only as
+# the flat monthly baseline above (which is NOT SG-derived; never multiply
+# it). New-hire loaded-cost models read THIS. Statutory SG is 12% from
+# 1 Jul 2026 (verify against the first real payroll run when a hire lands).
+SG_RATE = 0.12
+
 
 def identify_account_bucket(transaction: dict) -> str:
     """

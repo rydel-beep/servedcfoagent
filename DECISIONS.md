@@ -2024,3 +2024,44 @@
      a named human; opinions inform, moves decide, the journal records both.
      EDITH reads both: "why did we kill X" → move reason + mover; "what does
      the team think of X" → stances + quotes.
+
+146. **CSM INVESTMENT — HONEST-ROI RULINGS + THE CONFIDENTIALITY LAW
+     (2026-08-17).** The CSM-hire model ships as the repo's FIRST owner-only
+     domain (/dashboard/csm + /dashboard/api/csm/* + EDITH drills), the ruled
+     exception to Piolo's full-visibility standing (#113-era): the plan
+     requires Miguel to hear the restructure from Rydel IN PERSON before
+     anyone knows, so every CSM artefact is owner-scope — card, page, feed
+     items, EDITH answers, exports, memory. Mechanics: @require_owner on all
+     APIs; the page redirects non-owners; CSM turns NEVER persist to shared
+     memory or distillation (either side of the conversation, any channel);
+     nothing CSM writes to collab/action-feed/salience/greeting/brief/
+     snapshot; sentinel findings ride an owner-only lane (kv csm:sentinel +
+     SENTINEL_QUEUE.md), never the shared feed; the weekly security replay
+     gains anonymous CSM leak probes. DIRECTOR COMP FIGURES exist ONLY as
+     owner-entered kv config (no defaults in code; config journal masks the
+     values; grep-asserted absent from code/docs/exports/session notes —
+     referenced as "director comp offset (owner config)"). DISCREET MODE:
+     owner session flag hides the dashboard CSM card + every CSM mention
+     (Looms/screen-shares); indicator chip while active; default OFF.
+     ROI RULINGS (encoded in csm_model, test-pinned): R1 gross ROI divides
+     by FULLY-LOADED cost (the source's 3.5x is unloaded — loaded ~3.1x
+     rendered beside it; the 4x target is measured against what she actually
+     costs). R2 TWO CLOCKS never blended: COHORT (lifetime lift / year-one
+     cost — the source model's own convention, surfaced verbatim) carries
+     the 4x target; STEADY-STATE (T12M/T12M from month 13) is the ongoing
+     check; year-1 4x exists in NO scenario and early-month ROI is never a
+     verdict. R3 layer-vs-hire lens: guarantee-policy-driven refund
+     avoidance is STRUCTURAL and excluded from the hire lens. R4 funding
+     path != return: the director-comp offset FINANCES the hire and never
+     changes her economics; return-per-$-of-net-cost may only ever render
+     labelled "financing view", never ROI. R5 lift-over-baseline only,
+     evidence-linked (declaration/invoice/tracker ids); baseline-predicted
+     renewals credit $0. R6 estimates-not-advice (comp/tax/structure =
+     Rydel + Latitude; director personal tax out of scope). DECLARATIONS:
+     DOWNSELL/CONTINUITY + EXPANSION (stepup/sprint/ordering/reservations/
+     photo_day/market_intel/second_venue/referral + first-6-month value)
+     join the ONE flow (#135) — same dialog, same convergence discipline,
+     one-off expansion = cash never MRR, projection treats expansion as an
+     ADDITIVE committed stream. The SG-rate authority (12% from 1 Jul 2026)
+     now lives beside SUPER_BASELINE_MONTHLY in xero_wages_categoriser —
+     the flat baseline is NOT SG-derived and is never multiplied.
