@@ -239,11 +239,12 @@ def map_adset(actor: dict, adset_id: str, role) -> tuple[dict | None, str | None
     return {"adset_id": aid, "role": role}, None
 
 
-def roles_for_ads(ad_ids: list, entity_store: dict) -> tuple[list[str], list[str]]:
+def roles_for_ads(ad_ids: list, entity_store: dict,
+                  roles_map: dict | None = None) -> tuple[list[str], list[str]]:
     """(roles, adset_ids) for a creative's member ads — via the entity map's
     adset ids and the owner mapping. Unmapped ids yield no role (the caller
     renders 'unmapped set' honestly)."""
-    m = set_roles_map()
+    m = roles_map if roles_map is not None else set_roles_map()
     roles, sids = [], []
     for a in ad_ids or []:
         e = ((entity_store.get("ads") or {}).get(str(a))
@@ -396,24 +397,30 @@ def _review_clock_map() -> dict:
         return {}
 
 
-def review_clock(creative_key: str, launch: str | None, today=None) -> dict | None:
+def review_clock(creative_key: str, launch: str | None, today=None,
+                 clock_map: dict | None = None,
+                 cfg: dict | None = None) -> dict | None:
     """THE review clock: CALENDAR days since the last review decision (the
     ritual is a calendar cadence), anchored at first delivery until the first
-    review. None when no launch is known (honest, never a zero)."""
+    review. None when no launch is known (honest, never a zero). Callers on
+    the hot path pass clock_map/cfg (loaded ONCE — per-card kv reads were a
+    7s serve, prod-caught)."""
     if not launch:
         return None
     import datetime as dt
     from helpers import today_sydney
     today = today or today_sydney()
-    anchor = _review_clock_map().get(creative_key) or launch
+    if clock_map is None:
+        clock_map = _review_clock_map()
+    anchor = clock_map.get(creative_key) or launch
     try:
         a = dt.date.fromisoformat(str(anchor)[:10])
     except (ValueError, TypeError):
         return None
-    cyc = strategy()
+    cyc = cfg or strategy()
     day = (today - a).days
     return {"anchor": str(a),
-            "anchored_on": "last review" if creative_key in _review_clock_map()
+            "anchored_on": "last review" if creative_key in clock_map
                            else "first delivery",
             "cycle_day": day,
             "cycle_days": cyc["review_cycle_days"],
@@ -828,14 +835,15 @@ def _publish_feed() -> None:
 
 # ── the lifecycle block (ONE attach point — dashboard/ads.py board serve) ────
 
-def _inputs_hash(row_all: dict, status: dict, dec: dict | None, rl: dict) -> str:
+def _inputs_hash(row_all: dict, status: dict, dec: dict | None, rl: dict,
+                 clock_anchor=None) -> str:
     lin = (row_all or {}).get("lineage") or {}
     basis = "|".join(str(x) for x in (
         (row_all or {}).get("leads"), round(float((row_all or {}).get("spend") or 0), 2),
         (row_all or {}).get("verdict"), lin.get("launch"), lin.get("active_days"),
         lin.get("never_delivered"), status.get("status"), status.get("layer"),
         (dec or {}).get("state"), (dec or {}).get("executed"),
-        rl["review_cycle_days"], _review_clock_map().get((row_all or {}).get("creative_key"))))
+        rl["review_cycle_days"], clock_anchor))
     return hashlib.sha1(basis.encode()).hexdigest()[:12]
 
 
@@ -849,6 +857,8 @@ def build_block(creatives_all: list[dict], record_render: bool = True) -> dict:
     es = _entity_store()
     ss = _spend_store()
     decisions = _decisions()
+    clock_map = _review_clock_map()          # loaded ONCE (perf: prod-caught)
+    roles_map = set_roles_map()
     pc = pull_candidates(creatives_all, es, rl)
     cycle_window = int(rl["review_cycle_days"]) + 1
     import datetime as dt
@@ -864,13 +874,14 @@ def build_block(creatives_all: list[dict], record_render: bool = True) -> dict:
             continue
         st = status_for(row.get("ad_ids") or [], es, ss, rl)
         lin = row.get("lineage") or {}
-        review = review_clock(key, lin.get("launch"), today)
+        review = review_clock(key, lin.get("launch"), today,
+                              clock_map=clock_map, cfg=rl)
         pf = (pc.get("flags") or {}).get(key)
         stage = classify_stage(row, st, rl, review, pf)
         dec = decisions.get(key)
         if dec and _check_convergence(key, dec, st, row):
             converged_any = True
-        roles, sids = roles_for_ads(row.get("ad_ids") or [], es)
+        roles, sids = roles_for_ads(row.get("ad_ids") or [], es, roles_map)
         injected = False
         try:
             injected = bool(lin.get("launch") and
@@ -891,7 +902,8 @@ def build_block(creatives_all: list[dict], record_render: bool = True) -> dict:
             "below_min_n": below_min_n(row),
             "lifetime": {"leads": row.get("leads"), "closes": row.get("closes"),
                          "spend": row.get("spend")},
-            "inputs_hash": _inputs_hash(row, st, dec, rl),
+            "inputs_hash": _inputs_hash(row, st, dec, rl,
+                                        clock_map.get(key)),
         }
         if dec:
             age = _age_days(dec.get("at"))
