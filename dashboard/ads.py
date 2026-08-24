@@ -431,18 +431,19 @@ def _attach_lifecycle(payload: dict, basis: str) -> None:
         block["stale"] = bool(meta_all.get("stale"))
         block["stale_reason"] = meta_all.get("stale_reason")
         payload["lifecycle"] = block
-        # the dashboard kill cards ARE the Board's kill lane (one computation —
-        # derived from the SAME block object just built); replace any earlier
-        # serve's cards, then prepend (idempotent per serve)
-        kill = ads_lifecycle.kill_candidate_flags(creatives_all, block=block)
+        # R-A2: the review-cycle cards replace the retired kill cards —
+        # "due for review: N · pull candidates: M", doors into the Session
+        # (derived from the SAME block object; idempotent per serve)
+        rev = ads_lifecycle.review_flags(creatives_all, block=block)
         sc = payload.get("scorecard") or {}
         others = [f for f in (sc.get("flags") or [])
-                  if f.get("kind") != "rotation_kill_candidate"]
-        sc["flags"] = kill + others
+                  if f.get("kind") != "review_due"
+                  and not str(f.get("kind") or "").startswith("rotation_")]
+        sc["flags"] = rev + others
         payload["scorecard"] = sc
         try:
             import attribution_flags
-            attribution_flags.record_flag_salience(kill)
+            attribution_flags.record_flag_salience(rev)
         except Exception:
             pass
     except Exception as e:
@@ -878,7 +879,7 @@ def discussion_resolve():
     return jsonify({"ok": True, "note": ads_discussion._render(c)})
 
 
-# ── LIFECYCLE BOARD v2 (Law 2 / R-B): decisions, reversal, rotation rules ────
+# ── LIFECYCLE BOARD v2 (Law 2 / R-B): decisions, reversal, strategy config ───
 # Move rights: the ad team (romano/isaiah/inna) + owner + coo — every move
 # reason-mandatory, attributed, journaled; reversal is OWNER-only (R-B).
 
@@ -950,33 +951,134 @@ def lifecycle_confirm_executed():
     return jsonify({"ok": ok})
 
 
-@bp.route("/api/rotation-rules", methods=["GET"])
+@bp.route("/api/strategy", methods=["GET"])
 @require_auth
-def rotation_rules_get():
-    """The visible rules panel (R-A): live thresholds + ruled defaults + the
-    edit journal. Readable by everyone who sees /ads."""
+def strategy_get():
+    """The strategy panel (R-A2): live config + set mapping + the live ad
+    sets (entity-store names for the mapping UI) + the edit journal."""
     import ads_lifecycle
-    return jsonify({"rules": ads_lifecycle.rules(),
-                    "defaults": ads_lifecycle.RULE_DEFAULTS,
-                    "journal": ads_lifecycle.rules_journal()[-20:],
-                    "ruling": "R-A (Rydel): test window = min(4 active days, "
-                              "$200 lifetime spend); 0 leads at boundary → kill "
-                              "candidate, ≥1 lead → watch"})
+    es = ads_lifecycle._entity_store()
+    live_sets = {}
+    for aid, a in (((es.get("ads") or {}) | (es.get("extras") or {}))).items():
+        sid = a.get("adset_id")
+        if sid:
+            live_sets.setdefault(str(sid), {"name": a.get("adset_name") or "",
+                                            "ads": 0})
+            live_sets[str(sid)]["ads"] += 1
+    return jsonify({"strategy": ads_lifecycle.strategy(),
+                    "defaults": ads_lifecycle.STRATEGY_DEFAULTS,
+                    "set_roles": ads_lifecycle.set_roles_map(),
+                    "role_labels": ads_lifecycle.SET_ROLE_LABELS,
+                    "live_adsets": live_sets,
+                    "journal": ads_lifecycle.strategy_journal()[-20:],
+                    "ruling": "R-A2 (Rydel, supersedes R-A): four standing ad "
+                              "sets run continuously; review every 7–8 days; "
+                              "pull candidates are PEER-RELATIVE within the "
+                              "set — no absolute spend/day threshold exists"})
 
 
-@bp.route("/api/rotation-rules", methods=["POST"])
+@bp.route("/api/strategy", methods=["POST"])
 @require_auth
-def rotation_rules_set():
-    """Edit the live thresholds — no deploy; who/when/old→new journaled (R-A).
-    Owner + coo only: the thresholds parameterize a RULING."""
+def strategy_set():
+    """Edit the live strategy config — no deploy; journaled. Owner + coo only
+    (the thresholds parameterize Rydel's R-A2 ruling)."""
     import ads_lifecycle
     from dashboard.auth import current_actor
     if current_actor().get("role") not in ("owner", "coo"):
-        return jsonify({"error": "rotation-rule edits are owner/coo only "
-                                 "(they parameterize Rydel's R-A ruling)"}), 403
+        return jsonify({"error": "strategy edits are owner/coo only "
+                                 "(they parameterize Rydel's R-A2 ruling)"}), 403
     j = request.get_json(silent=True) or {}
-    rl, err = ads_lifecycle.set_rules(current_actor(), j)
+    rl, err = ads_lifecycle.set_strategy(current_actor(), j)
     if err:
         return jsonify({"error": err}), 400
-    return jsonify({"ok": True, "rules": rl,
-                    "journal": ads_lifecycle.rules_journal()[-5:]})
+    return jsonify({"ok": True, "strategy": rl,
+                    "journal": ads_lifecycle.strategy_journal()[-5:]})
+
+
+@bp.route("/api/strategy/map-set", methods=["POST"])
+@require_auth
+def strategy_map_set():
+    """Map a Meta ad set id → one of the four roles (owner/coo, journaled,
+    reversible). IDs are truth — the UI lists live adset ids + names."""
+    import ads_lifecycle
+    from dashboard.auth import current_actor
+    if current_actor().get("role") not in ("owner", "coo"):
+        return jsonify({"error": "set mapping is owner/coo only"}), 403
+    j = request.get_json(silent=True) or {}
+    out, err = ads_lifecycle.map_adset(current_actor(), j.get("adset_id"),
+                                       j.get("role"))
+    if err:
+        return jsonify({"error": err}), 400
+    return jsonify({"ok": True, **out})
+
+
+@bp.route("/api/sets", methods=["GET"])
+@require_auth
+def sets_view():
+    """THE SETS tab: per-role budget-vs-actual, funnel, within-set peer
+    ranking, status rollup, injected count; unmapped sets surfaced; the
+    Σ-set-spend partition asserted. Window/clock follow the header control."""
+    days, start, end, note, err = _window_args()
+    if err:
+        return jsonify({"error": err}), 400
+    basis = _basis_arg()
+    import roster_engine
+    import ads_lifecycle
+    r_win, _mw = roster_engine.load_result(days, start, end, basis=basis,
+                                           market=None)
+    creatives_all, _ma = _all_time_creatives(basis)
+    payload = ads_lifecycle.sets_overview(r_win.get("creatives") or [],
+                                          creatives_all)
+    payload["window"] = r_win.get("window")
+    payload["clock"] = basis
+    if note:
+        payload["range_note"] = note
+    resp = jsonify(payload)
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/review/keep", methods=["POST"])
+@require_auth
+def review_keep():
+    """Review Session KEEP: resets the creative's review clock (reason
+    optional, encouraged) — journaled + recorded in the dated session."""
+    import ads_lifecycle
+    actor = _move_actor()
+    if actor is None:
+        return jsonify({"error": "reviews are for the ad team",
+                        "scope": "ad_domain"}), 403
+    j = request.get_json(silent=True) or {}
+    ok, err = ads_lifecycle.keep_running(actor, j.get("creative"), j.get("reason"))
+    if err:
+        return jsonify({"error": err}), 400
+    return jsonify({"ok": ok})
+
+
+@bp.route("/api/review/sessions", methods=["GET"])
+@require_auth
+def review_sessions_get():
+    """The browsable review-ritual history — one dated record per session."""
+    import ads_lifecycle
+    return jsonify({"sessions": ads_lifecycle.review_sessions(10)})
+
+
+@bp.route("/api/experiment", methods=["GET"])
+@require_auth
+def experiment_view():
+    """Broad vs targeted — the strategy's live question, from the one engine
+    (exact pairs side-by-side; set-level aggregate fallback, labelled)."""
+    days, start, end, note, err = _window_args()
+    if err:
+        return jsonify({"error": err}), 400
+    import roster_engine
+    import ads_lifecycle
+    r_win, _mw = roster_engine.load_result(days, start, end,
+                                           basis=_basis_arg(), market=None)
+    payload = ads_lifecycle.broad_vs_targeted(r_win.get("creatives") or [])
+    payload["window"] = r_win.get("window")
+    if note:
+        payload["range_note"] = note
+    resp = jsonify(payload)
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp

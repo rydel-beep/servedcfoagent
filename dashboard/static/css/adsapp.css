@@ -473,3 +473,40 @@ button.adx-deal-open { color: var(--accent, #7aa2ff); }
 /* status-clarity wave: labeled states + intraday chip */
 .adx-intraday { color: var(--warn); font-size: 11px; cursor: help; }
 .adx-st-unknown { font-size: 10px; }
+
+/* ═══ R-A2 strategy migration: sets, review cycles, pull flags ═══ */
+.adx-set-chip { font-size: 9px; letter-spacing: .4px; text-transform: uppercase;
+  border-radius: 4px; padding: 1px 5px; margin-right: 3px; }
+.adx-set-broad_video { color: var(--accent); border: 1px solid rgba(79,140,255,.5); }
+.adx-set-targeted_video { color: #b48cff; border: 1px solid rgba(180,140,255,.5); }
+.adx-set-graphics { color: var(--good); border: 1px solid rgba(52,199,123,.5); }
+.adx-set-retargeting { color: var(--warn); border: 1px solid rgba(240,180,92,.5); }
+.adx-set-unmapped { color: var(--bad); border: 1px dashed rgba(255,92,92,.5); }
+.adx-card-sets { margin-top: 3px; }
+.adx-due-chip { font-size: 9px; color: var(--warn); border: 1px solid rgba(240,180,92,.6);
+  border-radius: 4px; padding: 0 4px; font-weight: 700; }
+.adx-injected-chip { font-size: 9px; color: var(--accent); border: 1px dotted var(--accent);
+  border-radius: 4px; padding: 0 4px; }
+.adx-pull-sig { display: inline-block; font-size: 9.5px; color: var(--warn);
+  border: 1px solid rgba(240,180,92,.5); border-radius: 4px; padding: 1px 5px;
+  margin: 1px 3px 1px 0; cursor: help; }
+.adx-pull-starved { color: var(--accent); border-color: rgba(79,140,255,.5); }
+.adx-card-pulls { margin-top: 3px; }
+.adx-rs-step { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--dim); }
+.adx-rs-name { font-size: 15px; font-weight: 700; margin: 4px 0; }
+.adx-rs-actions { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.adx-rs-actions textarea { flex: 1 1 100%; background: #10151f; color: var(--fg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12.5px; }
+.adx-rs-pullbtn { border-color: rgba(255,92,92,.6); color: var(--bad); }
+.adx-good-note { color: var(--good); font-size: 13px; padding: 12px; }
+.adx-map-head { font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--muted); margin: 10px 0 4px; }
+.adx-map-row { display: flex; justify-content: space-between; align-items: center;
+  gap: 8px; padding: 2px 0; font-size: 11.5px; }
+.adx-map-role { background: #10151f; color: var(--fg); border: 1px solid var(--line);
+  border-radius: 5px; font-size: 11px; }
+.adx-set-row td { font-size: 12px; }
+.adx-set-rank td { background: var(--panel2); }
+.adx-drift { color: var(--warn); font-weight: 600; cursor: help; }
+.adx-set-unmapped-row td { color: var(--bad); }
+.adx-level-sets { border-color: rgba(79,140,255,.5); }

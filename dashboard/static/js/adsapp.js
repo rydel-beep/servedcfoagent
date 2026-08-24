@@ -23,7 +23,7 @@
                 // BOARD v2: view = table|board (URL-stated ?view=); status
                 // filter chips + spend-band toggle apply on BOTH views; role
                 // arrives from whoami (server enforces regardless).
-                view: 'table', statusFilter: 'all', band: 'all', role: null };
+                view: 'table', statusFilter: 'all', setFilter: 'all', role: null };
 
   // Sydney "today" — the date control's boundaries are SYDNEY days (F8
   // discipline), never the browser's local day.
@@ -156,7 +156,7 @@
         '&rows=' + state.rows +
         (state.view !== 'table' ? '&view=' + state.view : '') +
         (state.statusFilter !== 'all' ? '&status=' + state.statusFilter : '') +
-        (state.band !== 'all' ? '&band=' + state.band : '');
+        (state.setFilter !== 'all' ? '&set=' + state.setFilter : '');
       history.replaceState(null, '', qs);
     } catch (e) {}
   }
@@ -452,6 +452,7 @@
       ['Launched + days running', 'Launched = the first day Meta recorded impressions for the ad (first delivery, #133) — never the created date (the object’s birthday, shown as secondary when it differs) and never the ad-set schedule (ad sets are reused). Days running = days with actual delivery; a paused ad does not accrue runtime.'],
       ['Sources', 'Spend/impressions carry the META chip — Meta’s own numbers for the box, not recomputable from the tracker. CPL and every C/* carry the HYB chip: Meta spend ÷ engine counts — they degrade if EITHER side degrades. Funnel counts (leads → closes) are engine-authoritative from the tracker and stay live when Meta dies.'],
       ['The date box + clock', 'The range picker sets a Sydney-day box and asks ONE of two questions: ACTIVITY (events that happened inside the box) or COHORT (what the box’s arrivals went on to become). The toggle beside the picker declares which; every label carries the active clock; the engine refuses cross-clock math (I11).'],
+      ['The R-A2 strategy (review cycles)', 'Four standing ad sets run continuously — Broad video (no interest targeting), Targeted video, Graphics, Retargeting — mapped by Meta adset id on the strategy panel. Creatives share a set budget, so Meta\u2019s delivery allocation is itself a signal. REVIEW CYCLE: every 7\u20138 days each running creative comes DUE; the ritual is keep-or-pull. PULL CANDIDATES are PEER-RELATIVE within the creative\u2019s own ad set over the review window \u2014 zero leads at \u2265 set-median delivery share, CPL > 1.5\u00d7 set median (needs \u22653 leads \u2014 a 1-lead fluke never flags), or STARVED (<5% delivery share two cycles running \u2014 an allocation problem, not an expense problem; the flag names which signal fired). No absolute spend threshold exists; retargeting only ever compares against itself; the system flags, humans decide \u2014 nothing auto-pulls. DELIVERY SHARE = the creative\u2019s slice of its set\u2019s spend over the window (from the daily archive).'],
       ['Live status (the triad)', 'LIVE (green) = delivering — impressions within the freshness horizon per the daily-delivery archive, never the toggle alone. NOT DELIVERING (amber) = the ad itself is ENABLED but Meta isn’t delivering it — the reason is in the label (campaign paused / ad set paused / in review / billing / has issues / reason unknown); this is the dangerous middle state. PAUSED (grey) = parked at the ad’s own layer, deliberately. STATUS UNKNOWN = the Meta source is degraded — stated, never a stale green. Hover any status for the full detail + fetch time. Want just the live ads? The “Delivering” filter chip above the table does exactly that in one click.'],
       ['Intraday numbers', 'A window that includes TODAY shows Meta spend/impressions that are still moving — Meta restates recent days for ~72h. They render with the intraday note and firm up as days close. Funnel counts (tracker) are unaffected.'],
     ].map(function (d) {
@@ -582,12 +583,11 @@
     F.innerHTML = flags.length ? flags.map(function (f) {
       // Board v2: the kill cards are the Board's kill-lane computation —
       // clicking one deep-links to the Board (?view=board) at the card.
-      var deep = f.kind === 'rotation_kill_candidate' && f.creative_key
-        ? ' adx-flag-door" data-boardkey="' + esc(f.creative_key) : '';
+      var deep = f.kind === 'review_due'
+        ? ' adx-flag-door" data-session="1' : '';
       return '<div class="adx-flag adx-sev' + f.severity + deep + '" data-window="' + windowStamp() + '">' +
         '<div class="adx-flag-head">' + (f.creative ? esc(f.creative.slice(0, 44)) : 'ACCOUNT') +
-        (f.kill_basis ? ' <span class="adx-kill-basis adx-kill-basis-' + esc(f.kill_basis) + '">' +
-          (f.kill_basis === 'rotation' ? 'rotation call' : 'verdict kill') + '</span>' : '') + '</div>' +
+        '</div>' +
         '<div class="adx-flag-line">' + esc(f.headline) + '</div>' +
         '<div class="adx-flag-q">' + esc(f.question) +
         (deep ? ' <span class="adx-prov">→ board</span>' : '') + '</div></div>';
@@ -710,13 +710,13 @@
     if (state.statusFilter === 'paused') return s === 'paused';
     return true;
   }
-  function bandMatches(key) {
-    if (state.band === 'all') return true;
+  function setMatches(key) {
+    // R-A2 set filter: membership from the engine block's card.sets (mapped
+    // Meta adset ids — the view never re-derives membership)
+    if (state.setFilter === 'all') return true;
     var c = lifeCard(key);
-    var rot = c && c.rotation;
-    if (!rot) return state.band === 'below';   // no clock → below the threshold, honestly
-    // engine-computed flag (rotation.above_test_spend) — the view never re-derives it
-    return state.band === 'above' ? !!rot.above_test_spend : !rot.above_test_spend;
+    if (state.setFilter === 'unmapped') return !!(c && c.unmapped_set);
+    return !!(c && (c.sets || []).indexOf(state.setFilter) >= 0);
   }
   function renderStatusBar() {
     var bar = $('#adx-status-bar');
@@ -725,7 +725,7 @@
     if (lb.degraded && !(lb.cards && Object.keys(lb.cards).length)) {
       bar.style.display = '';
       $('#adx-status-chips').innerHTML = '<span class="adx-degraded" title="' + esc(lb.degraded) + '">STATUS DEGRADED</span>';
-      $('#adx-band-toggle').innerHTML = '';
+      $('#adx-set-chips').innerHTML = '';
       $('#adx-status-asof').textContent = '';
       return;
     }
@@ -736,13 +736,12 @@
       return '<button class="adx-status-chip' + (state.statusFilter === c[0] ? ' active' : '') +
         '" data-sfilter="' + c[0] + '">' + c[1] + '</button>';
     }).join('');
-    var rules = lb.rules || {};
-    var bands = [['all', 'Any spend'], ['above', '≥ $' + (rules.test_spend || 200)],
-                 ['below', '< $' + (rules.test_spend || 200)]];
-    $('#adx-band-toggle').innerHTML = '<span class="adx-band-label" title="lifetime spend vs the R-A test threshold (rules panel)">spend band:</span> ' +
-      bands.map(function (b) {
-        return '<button class="adx-status-chip' + (state.band === b[0] ? ' active' : '') +
-          '" data-sband="' + b[0] + '">' + b[1] + '</button>';
+    var sets = [['all', 'All'], ['broad_video', 'Broad'], ['targeted_video', 'Targeted'],
+                ['graphics', 'Graphics'], ['retargeting', 'Retarget'], ['unmapped', 'Unmapped']];
+    $('#adx-set-chips').innerHTML = '<span class="adx-band-label" title="the four standing ad sets (R-A2) — membership by Meta adset id">set:</span> ' +
+      sets.map(function (b) {
+        return '<button class="adx-status-chip' + (state.setFilter === b[0] ? ' active' : '') +
+          '" data-sset="' + b[0] + '">' + b[1] + '</button>';
       }).join('');
     var asof = '';
     var anyKey = Object.keys(lb.cards || {})[0];
@@ -777,34 +776,45 @@
   function decisionChip(card) {
     var d = card && card.decision;
     if (!d) return '';
-    var verb = d.state === 'marked_to_kill' ? 'KILL' : 'SCALE';
+    var verb = d.state === 'marked_to_scale' ? 'SCALE' : 'PULL';
+    var preRa2 = d.pre_ra2 ? ' <span class="adx-prov" title="decided under the retired rotation ruling — history kept, never erased">pre-R-A2</span>' : '';
     var h = '<div class="adx-decision-chip' + (d.executed ? ' adx-decision-done' : '') + '">' +
-      '<strong>' + verb + '</strong> — ' + esc(d.by_display || d.by) + ' · ' + esc(d.at) +
+      '<strong>' + verb + '</strong>' + preRa2 + ' — ' + esc(d.by_display || d.by) + ' · ' + esc(d.at) +
       ' · “' + esc((d.reason || '').slice(0, 120)) + '”';
     if (d.executed) {
       h += '<div class="adx-decision-conv">✓ ' + esc(d.convergence || 'executed') + '</div>';
     } else {
       h += '<div class="adx-decision-pending">action pending — ' +
-        (d.state === 'marked_to_kill' ? 'pause' : 'scale') + ' it in Ads Manager' +
+        (d.state === 'marked_to_scale' ? 'scale' : 'pause') + ' it in Ads Manager' +
         (d.age_days >= 1 ? ' · <strong>marked ' + d.age_days + 'd ago by ' +
           esc(d.by_display || d.by) + ' — still ' +
           (card.status && card.status.status === 'delivering' ? 'delivering' : 'unexecuted') +
           '</strong>' : '') + '</div>';
     }
     if (d.below_min_n) {
-      h += '<div class="adx-prov">recorded below the evidence threshold — a rotation call, not a verdict</div>';
+      h += '<div class="adx-prov">recorded below the evidence threshold — a review-cycle call, not a verdict</div>';
     }
     return h + '</div>';
   }
 
-  function rotationLine(card) {
-    var rot = card && card.rotation;
-    if (!rot) {
-      return '<div class="adx-rot-line adx-prov" title="the rotation clock starts at FIRST DELIVERY — none recorded yet">rotation clock: unavailable (no first delivery recorded)</div>';
+  function reviewLine(card) {
+    var rv = card && card.review;
+    var setChips = ((card && card.sets) || []).map(function (r) {
+      return '<span class="adx-set-chip adx-set-' + esc(r) + '">' + esc(r.replace('_video', '').replace('_', ' ')) + '</span>';
+    }).join('') + (card && card.unmapped_set ? '<span class="adx-set-chip adx-set-unmapped" title="this creative\'s ad set is not mapped to a role — map it on the strategy panel">unmapped set</span>' : '');
+    if (!rv) {
+      return '<div class="adx-rot-line adx-prov" title="the review clock starts at FIRST DELIVERY — none recorded yet">review clock: unavailable (no first delivery recorded)</div>' +
+        (setChips ? '<div class="adx-card-sets">' + setChips + '</div>' : '');
     }
-    return '<div class="adx-rot-line" title="' + esc(rot.clock_note || '') +
-      ' · launched ' + esc(rot.launch || '?') + '">' +
-      '⏱ ' + esc(rot.label) + ' <span class="adx-prov">lifetime clock</span></div>';
+    var pulls = ((card.pull_flags || {}).signals || []).map(function (sg) {
+      return '<span class="adx-pull-sig adx-pull-' + esc(sg.signal) + '" title="' + esc(sg.detail) + '">' + esc(sg.signal.replace(/_/g, ' ')) + '</span>';
+    }).join('');
+    return '<div class="adx-rot-line" title="' + esc(rv.clock_note || '') + '">' +
+      '⏱ ' + esc(rv.label) + (rv.due ? ' <span class="adx-due-chip">DUE</span>' : '') +
+      (card.injected ? ' <span class="adx-injected-chip" title="new in a mapped set this cycle">injected</span>' : '') +
+      '</div>' +
+      (setChips ? '<div class="adx-card-sets">' + setChips + '</div>' : '') +
+      (pulls ? '<div class="adx-card-pulls" title="peer-relative within this creative\'s ad set — a flag, never an auto-pull; humans decide">' + pulls + '</div>' : '');
   }
 
   function boardCardHtml(row, card) {
@@ -823,7 +833,7 @@
       (st.status && st.status !== 'delivering'
         ? '<div class="adx-card-amber" title="' + esc((st.reason || '') + (st.as_of ? ' · status as of ' + st.as_of : '')) + '">' +
           (st.status === 'enabled_not_delivering' ? '⚠ ' : '') + esc(st.label || st.status) + '</div>' : '') +
-      rotationLine(card) +
+      reviewLine(card) +
       // WINDOW-scoped funnel line — the SAME engine row the table renders,
       // labelled with the table's clock+window (two clocks, each named).
       '<div class="adx-card-funnel" title="window-scoped (' + esc(clockStamp()) + ' · ' + esc(windowStamp()) + ') — same numbers as the table row">' +
@@ -833,9 +843,7 @@
       (dgd ? degradedChip(dgd) : ('spend ' + money(row.spend) +
         (row.cost_per_lead != null ? ' · CPL ' + money(row.cost_per_lead) : ''))) + '</div>' +
       '<div class="adx-card-badges">' + badge(row) + ' ' + stanceChip(key) +
-      (card && card.kill_basis ? ' <span class="adx-kill-basis adx-kill-basis-' + card.kill_basis +
-        '" title="' + esc(card.engine_why || '') + '">' +
-        (card.kill_basis === 'rotation' ? 'rotation call' : 'verdict kill') + '</span>' : '') +
+
       (card && card.disagreement ? ' <span class="adx-disagree" title="the human decision pins this card; the engine currently computes a different lane">' +
         esc(card.disagreement) + '</span>' : '') +
       '</div>' +
@@ -845,7 +853,9 @@
       '<button class="adx-card-btn adx-disc-open" data-danchor="' + esc(key) + '" data-dlabel="' +
       esc(String(row.creative || '').slice(0, 40)) + '">💬' + (dn || '+') + '</button>' +
       (!card || !card.decision || card.decision.executed
-        ? '<button class="adx-card-btn adx-move-btn" data-mkey="' + esc(key) + '" data-mto="kill">mark kill</button>' +
+        ? (lifeCard(key) && (lifeCard(key).review || {}).due
+            ? '<button class="adx-card-btn adx-keep-btn" data-mkey="' + esc(key) + '" title="reset the review clock — reason optional, encouraged">keep</button>' : '') +
+          '<button class="adx-card-btn adx-move-btn" data-mkey="' + esc(key) + '" data-mto="pull">mark pull</button>' +
           '<button class="adx-card-btn adx-move-btn" data-mkey="' + esc(key) + '" data-mto="scale">mark scale</button>'
         : (state.role === 'owner'
             ? '<button class="adx-card-btn adx-rev-btn" data-mkey="' + esc(key) + '">reverse</button>' : '') +
@@ -861,7 +871,7 @@
     var lb = lifeBlock();
     var sub = $('#adx-board-sub');
     if (sub) {
-      sub.textContent = '· ' + headerLine() + ' · rotation clock is per-ad lifetime (labelled on cards)' +
+      sub.textContent = '· ' + headerLine() + ' · review clock is per-creative, resets on review (labelled on cards)' +
         (lb.stale ? ' · lifetime leg from a rollup (refreshing)' : '');
     }
     if (lb.degraded && !(lb.cards && Object.keys(lb.cards).length)) {
@@ -869,7 +879,7 @@
       return;
     }
     var rows = (state.board.scoreboard.rows || []).filter(function (r) {
-      return r.tier === 'ad' && statusMatches(r.creative_key) && bandMatches(r.creative_key);
+      return r.tier === 'ad' && statusMatches(r.creative_key) && setMatches(r.creative_key);
     });
     var byLane = {};
     rows.forEach(function (r) {
@@ -883,7 +893,7 @@
     var seen = {};
     rows.forEach(function (r) { seen[r.creative_key] = 1; });
     Object.keys(lb.cards || {}).forEach(function (key) {
-      if (seen[key] || !statusMatches(key) || !bandMatches(key)) return;
+      if (seen[key] || !statusMatches(key) || !setMatches(key)) return;
       var c = lb.cards[key];
       var pseudo = { creative_key: key, creative: (c.decision && c.decision.label) || key,
                      tier: 'ad', leads: null, sets: null, closes: null,
@@ -893,12 +903,13 @@
     var order = lb.lanes_order || [];
     var labels = lb.lane_labels || {};
     var laneDesc = {
-      testing: 'inside the rotation window (R-A: min(' + ((lb.rules || {}).test_days || 4) +
-        ' active days, $' + ((lb.rules || {}).test_spend || 200) + ') — rules panel)',
-      kill_candidate: 'the rotation/verdict said kill — each card names WHICH (a rotation lane is never statistical proof)',
-      marked_to_kill: 'human decision recorded — awaiting Ads Manager; ages until Meta shows paused',
-      watch: 'survived the boundary with leads — evidence accumulating; verdicts stay provisional below min-n',
-      scale_candidate: 'VERDICT-BACKED only (past min-n) — a hot day-2 never lands here',
+      running: 'in cycle (R-A2: review every ' + ((lb.rules || {}).review_cycle_days || 7) +
+        '–' + ((lb.rules || {}).review_due_through || 8) + ' days) — campaigns never stop',
+      due_for_review: 'the review clock hit day ' + ((lb.rules || {}).review_cycle_days || 7) +
+        ' — bring to the Session; pull flags are PEER-RELATIVE within the ad set, never absolute',
+      marked_to_pull: 'human decision recorded — awaiting Ads Manager; ages until Meta shows paused',
+      watch: 'at evidence — the verdict layer is accumulating; review judgments stay provisional',
+      scale_candidate: 'VERDICT-BACKED only (past min-n) — under R-A2 scale = keep + replicate',
       marked_to_scale: 'human decision recorded — converges on duplication, or confirm executed',
       archive: 'verified-in-Meta terminal states — collapsed, browsable, never deleted',
     };
@@ -926,13 +937,13 @@
     moveState.key = key; moveState.to = to;
     var row = findLevelRow(key) || { creative: key };
     var card = lifeCard(key) || {};
-    var verb = to === 'kill' ? 'pause' : 'scale';
+    var verb = (to === 'pull' || to === 'kill') ? 'pause' : 'scale';
     var meaning = 'This records the decision and creates the human action: <strong>' +
       verb + ' “' + esc(String(row.creative || key).slice(0, 40)) + '” in Ads Manager</strong>. ' +
       'This board does not control Meta — the card converges when the next status sync sees Meta actually changed.';
     var friction = card.below_min_n
       ? '<label class="adx-friction"><input type="checkbox" id="adx-move-confirm"> ' +
-        'below evidence threshold — this is a <strong>rotation call, not a verdict</strong>; tick to confirm</label>'
+        'below evidence threshold — this is a <strong>review-cycle call, not a verdict</strong>; tick to confirm</label>'
       : '';
     openDrill('Mark to ' + esc(to.toUpperCase()) + ' · ' + esc(String(row.creative || key).slice(0, 40)),
       '<div class="adx-move-meaning">' + meaning + '</div>' +
@@ -1016,39 +1027,61 @@
       .then(function (d) { if (d && d.error) { alert(d.error); return; } loadBoard(null); });
   }
 
-  // ── the rotation-rules panel (R-A): live thresholds, journaled edits ──────
+  // ── the STRATEGY panel (R-A2): config + THE SET MAPPING, journaled ────────
   function loadRulesPanel() {
     var body = $('#adx-rules-body');
     if (!body) return;
     body.innerHTML = '<span class="adx-skel">loading…</span>';
-    fetch('/ads/api/rotation-rules', { credentials: 'same-origin' })
+    fetch('/ads/api/strategy', { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d || d.error) { body.innerHTML = esc((d && d.error) || 'unavailable'); return; }
-        var rl = d.rules || {};
+        var st = d.strategy || {};
         var canEdit = state.role === 'owner' || state.role === 'coo';
-        var journal = (d.journal || []).slice(-5).reverse().map(function (j) {
+        var journal = (d.journal || []).slice(-6).reverse().map(function (j) {
           return '<div class="adx-prov">' + esc(j.at) + ' · ' + esc(j.who) + ': ' +
             esc(j.key) + ' ' + esc(String(j.old)) + ' → ' + esc(String(j.new)) + '</div>';
-        }).join('') || '<div class="adx-prov">no edits — the ruled defaults are live</div>';
+        }).join('') || '<div class="adx-prov">no edits — the R-A2 defaults are live</div>';
+        // THE SET MAPPING: live adset ids + names from the entity store —
+        // ids are truth; the owner assigns roles here (journaled, reversible)
+        var roles = d.set_roles || {};
+        var live = d.live_adsets || {};
+        var roleOpts = function (cur) {
+          return ['', 'broad_video', 'targeted_video', 'graphics', 'retargeting']
+            .map(function (r) {
+              return '<option value="' + r + '"' + ((cur || '') === r ? ' selected' : '') + '>' +
+                (r || 'unmapped') + '</option>'; }).join('');
+        };
+        var mapRows = Object.keys(live).sort(function (a, b) {
+          return (live[b].ads || 0) - (live[a].ads || 0);
+        }).slice(0, 20).map(function (sid) {
+          return '<div class="adx-map-row"><span class="adx-map-name" title="adset id ' + esc(sid) + '">' +
+            esc((live[sid].name || sid).slice(0, 44)) + ' <span class="adx-prov">(' + live[sid].ads + ' ads)</span></span>' +
+            (canEdit ? '<select class="adx-map-role" data-mapsid="' + esc(sid) + '">' + roleOpts(roles[sid]) + '</select>'
+                     : '<span class="adx-prov">' + esc(roles[sid] || 'unmapped') + '</span>') + '</div>';
+        }).join('');
         body.innerHTML =
           '<div class="adx-rules-line">' + esc(d.ruling || '') + '</div>' +
           '<div class="adx-rules-form">' +
-          'test window <input type="number" id="adx-rule-days" value="' + (+rl.test_days || 4) + '" min="1" max="60"' + (canEdit ? '' : ' disabled') + '> active days · ' +
-          '$<input type="number" id="adx-rule-spend" value="' + (+rl.test_spend || 200) + '" min="10" max="10000"' + (canEdit ? '' : ' disabled') + '> spend · ' +
-          'delivery horizon <input type="number" id="adx-rule-fresh" value="' + (+rl.freshness_days || 2) + '" min="1" max="7"' + (canEdit ? '' : ' disabled') + '> day(s)' +
+          'review cycle <input type="number" id="adx-rule-cycle" value="' + (+st.review_cycle_days || 7) + '" min="3" max="21"' + (canEdit ? '' : ' disabled') + '> days (due through ' +
+          '<input type="number" id="adx-rule-due" value="' + (+st.review_due_through || 8) + '" min="3" max="28"' + (canEdit ? '' : ' disabled') + '>) · ' +
+          'pull: CPL ×<input type="number" step="0.1" id="adx-rule-cplx" value="' + (+st.pull_cpl_mult || 1.5) + '" min="1.1" max="5"' + (canEdit ? '' : ' disabled') + '> set median · ' +
+          'starved <<input type="number" id="adx-rule-starve" value="' + (+st.starved_share_pct || 5) + '" min="1" max="25"' + (canEdit ? '' : ' disabled') + '>% ×2 cycles' +
           (canEdit ? ' <button id="adx-rules-save" class="adx-range-apply">save (journaled)</button>'
-                   : ' <span class="adx-prov">edits are owner/coo — these ARE the live thresholds</span>') +
+                   : ' <span class="adx-prov">edits are owner/coo — these parameterize R-A2</span>') +
           '<span id="adx-rules-err" class="adx-range-err"></span></div>' +
+          '<div class="adx-map-head">SET MAPPING — Meta ad set → role (ids are truth; unmapped renders honestly)</div>' +
+          (mapRows || '<div class="adx-prov">no live ad sets in the entity store yet</div>') +
           '<div class="adx-rules-journal"><strong>edit journal</strong>' + journal + '</div>';
         var save = $('#adx-rules-save');
         if (save) save.addEventListener('click', function () {
-          fetch('/ads/api/rotation-rules', {
+          fetch('/ads/api/strategy', {
             method: 'POST', credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ test_days: +($('#adx-rule-days').value),
-                                   test_spend: +($('#adx-rule-spend').value),
-                                   freshness_days: +($('#adx-rule-fresh').value) })
+            body: JSON.stringify({ review_cycle_days: +($('#adx-rule-cycle').value),
+                                   review_due_through: +($('#adx-rule-due').value),
+                                   pull_cpl_mult: +($('#adx-rule-cplx').value),
+                                   starved_share_pct: +($('#adx-rule-starve').value) })
           }).then(function (r) { return r.json(); })
             .then(function (res) {
               var errEl = $('#adx-rules-err');
@@ -1057,8 +1090,22 @@
               loadBoard(null);        // lanes re-read the new thresholds
             });
         });
+        body.querySelectorAll('.adx-map-role').forEach(function (sel) {
+          sel.addEventListener('change', function () {
+            fetch('/ads/api/strategy/map-set', {
+              method: 'POST', credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ adset_id: sel.dataset.mapsid,
+                                     role: sel.value || 'unmapped' })
+            }).then(function (r) { return r.json(); })
+              .then(function (res) {
+                if (res && res.error) { alert(res.error); return; }
+                loadBoard(null);      // set chips + lanes re-read the mapping
+              });
+          });
+        });
       })
-      .catch(function () { body.textContent = 'rules unavailable'; });
+      .catch(function () { body.textContent = 'strategy unavailable'; });
   }
 
   function levelRows() {
@@ -1076,6 +1123,7 @@
   }
 
   function renderScoreboard() {
+    if (state.level === 'sets') { renderSetsView(); return; }
     var sb = state.board.scoreboard;
     document.querySelectorAll('.adx-level').forEach(function (b) {
       b.classList.toggle('active', b.dataset.level === state.level);
@@ -1096,7 +1144,7 @@
       // Law 3 filter chips apply on the TABLE too (creative level only —
       // groups have no single live status)
       if (state.level === 'creative' &&
-          (!statusMatches(r.creative_key) || !bandMatches(r.creative_key))) return false;
+          (!statusMatches(r.creative_key) || !setMatches(r.creative_key))) return false;
       return (r.spend || r.leads || r.closes);
     });
     if (state.level !== 'creative') rows = rows.filter(function (r) { return r.tier === 'ad'; });
@@ -1792,6 +1840,173 @@
       .catch(function () { $('#adx-drill-body').textContent = 'Roster fetch failed.'; });
   }
 
+  // ── THE REVIEW SESSION (R-A2 — the weekly ritual as a stepper) ─────────────
+  var _rsState = { cohort: [], i: 0, sets: null };
+  function openReviewSession() {
+    var lb = lifeBlock();
+    var cohort = Object.keys(lb.cards || {}).filter(function (k) {
+      return lb.cards[k].lane === 'due_for_review';
+    });
+    if (!cohort.length) {
+      openDrill('Review Session', '<div class="adx-roster-note">Nothing due for review — every running creative is inside its cycle. The ritual returns when clocks hit day ' + ((lb.rules || {}).review_cycle_days || 7) + '.</div>');
+      return;
+    }
+    _rsState = { cohort: cohort, i: 0, sets: null };
+    fetch('/ads/api/sets?' + windowQS(), { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { _rsState.sets = d; renderReviewStep(); });
+    openDrill('Review Session · ' + cohort.length + ' due',
+              '<div class="adx-skel">Assembling the cohort…</div>');
+  }
+  function renderReviewStep() {
+    var ks = _rsState.cohort;
+    if (_rsState.i >= ks.length) {
+      $('#adx-drill-body').innerHTML =
+        '<div class="adx-good-note">Session complete — ' + ks.length + ' reviewed. The dated session record is saved (journal + /ads/api/review/sessions); pulled creatives converge as Meta shows them paused.</div>';
+      loadBoard(null);
+      return;
+    }
+    var key = ks[_rsState.i];
+    var row = findLevelRow(key) || { creative: key };
+    var card = lifeCard(key) || {};
+    var rv = card.review || {};
+    var g = (row.gates || row.n) ? (row.gates || {}) : {};
+    var nLeads = (row.n || {}).leads != null ? row.n.leads : (g.n_leads || 0);
+    var pulls = ((card.pull_flags || {}).signals || []).map(function (sg) {
+      return '<div class="adx-pull-sig adx-pull-' + esc(sg.signal) + '" title="peer-relative within this set">' + esc(sg.detail) + '</div>';
+    }).join('');
+    // the peer table for this creative's set (from /ads/api/sets)
+    var peers = '';
+    var roles = card.sets || [];
+    if (_rsState.sets && roles.length) {
+      var role = roles[0];
+      var rk = (((_rsState.sets.roles || {})[role] || {}).ranking) || [];
+      peers = '<table class="adx-table" style="font-size:11px"><thead><tr><th>peer (' + esc(role) + ')</th><th>share</th><th>spend 7d</th><th>leads</th><th>CPL</th></tr></thead><tbody>' +
+        rk.slice(0, 10).map(function (p) {
+          return '<tr' + (p.creative_key === key ? ' class="adx-selected"' : '') + '><td>' + esc(String(p.label || '').slice(0, 32)) + '</td>' +
+            '<td>' + p.delivery_share_pct + '%</td><td>' + money(p.window_spend) + '</td>' +
+            '<td>' + (p.leads != null ? p.leads : '<span class="adx-prov" title="' + esc(p.spans_note || '') + '">n/a</span>') + '</td>' +
+            '<td>' + (p.cpl != null ? money(p.cpl) : '—') + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    }
+    var html = '<div class="adx-rs-step">creative ' + (_rsState.i + 1) + ' of ' + ks.length + '</div>' +
+      '<div class="adx-rs-name">' + esc(String(row.creative || key).slice(0, 60)) + '</div>' +
+      '<div class="adx-rot-line">⏱ ' + esc(rv.label || '') + (card.injected ? ' · <span class="adx-injected-chip">injected this cycle</span>' : '') + '</div>' +
+      '<div class="adx-person-meta">evidence so far: ' + nLeads + '/30 leads toward a verdict ' + badge(row) + '</div>' +
+      (pulls ? '<div class="adx-card-pulls">' + pulls + '</div>'
+             : '<div class="adx-prov">no pull flags — holding its own against set peers</div>') +
+      peers +
+      '<div class="adx-dossier-sec"><h3>Team takes</h3><div id="adx-rs-stances"><span class="adx-skel">loading…</span></div></div>' +
+      '<div class="adx-rs-actions">' +
+      '<textarea id="adx-rs-reason" rows="2" placeholder="reason (required for PULL; encouraged for KEEP)"></textarea>' +
+      '<button class="adx-range-apply" id="adx-rs-keep">KEEP RUNNING (resets clock)</button>' +
+      '<button class="adx-range-apply adx-rs-pullbtn" id="adx-rs-pull">PULL (mandatory reason)</button>' +
+      '<span id="adx-rs-err" class="adx-range-err"></span></div>';
+    $('#adx-drill-title').innerHTML = 'Review Session · ' + (ks.length - _rsState.i) + ' remaining';
+    $('#adx-drill-body').innerHTML = html;
+    fetch('/ads/api/discussion?creative=' + encodeURIComponent(key), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var box = $('#adx-rs-stances');
+        if (!box) return;
+        var chip = stanceChip(key);
+        var notes = ((d && d.notes) || []).slice(0, 4).map(function (n) {
+          if (n.state === 'tombstone') return '';
+          return '<div class="adx-disc-note"><strong>' + esc(n.author.display) + '</strong>' +
+            (n.stance ? ' <span class="adx-stance-tag adx-stance-' + esc(n.stance) + '">' + esc(n.stance.toUpperCase()) + '</span>' : '') +
+            (n.body ? ': ' + esc(String(n.body).slice(0, 140)) : ' (stance only)') + '</div>';
+        }).join('');
+        box.innerHTML = (chip || '') + (notes || '<div class="adx-prov">no notes/stances on this card</div>');
+      });
+    $('#adx-rs-keep').addEventListener('click', function () {
+      keepCreative(key, ($('#adx-rs-reason') || {}).value || null, function () {
+        _rsState.i++; renderReviewStep();
+      });
+    });
+    $('#adx-rs-pull').addEventListener('click', function () {
+      var reason = (($('#adx-rs-reason') || {}).value || '').trim();
+      var errEl = $('#adx-rs-err');
+      if (!reason) { if (errEl) errEl.textContent = 'a PULL needs its reason — blank is rejected'; return; }
+      fetch('/ads/api/lifecycle/move', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ creative: key, to: 'pull', reason: reason,
+                               confirm_below_min_n: true, session: true })
+      }).then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); })
+        .then(function (res) {
+          if (res.j && res.j.error) { if (errEl) errEl.textContent = res.j.error; return; }
+          _rsState.i++; renderReviewStep();
+        });
+    });
+  }
+  function keepCreative(key, reason, done) {
+    fetch('/ads/api/review/keep', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ creative: key, reason: reason })
+    }).then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.error) { alert(d.error); return; }
+        if (done) done(); else loadBoard(null);
+      });
+  }
+
+  // ── THE SETS VIEW (R-A2 — the ad set as first-class unit) ─────────────────
+  var _setsCache = null;
+  function renderSetsView() {
+    var thead = $('#adx-scoreboard thead'), tbody = $('#adx-scoreboard tbody');
+    $('#adx-table-title').childNodes[0].textContent = 'Ad sets (R-A2) ';
+    thead.innerHTML = '<tr><th>Set</th><th>Budget/day</th><th>Actual y\u2019day</th><th>7d avg</th>' +
+      '<th>Leads</th><th>Sets</th><th>Closes</th><th>Status</th><th>Injected</th></tr>';
+    tbody.innerHTML = '<tr><td colspan="9"><span class="adx-skel">Loading the sets…</span></td></tr>';
+    fetch('/ads/api/sets?' + windowQS(), { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || d.error) { tbody.innerHTML = '<tr><td colspan="9">' + esc((d && d.error) || 'sets unavailable') + '</td></tr>'; return; }
+        _setsCache = d;
+        var rows = '';
+        Object.keys(d.roles || {}).forEach(function (role) {
+          var v = d.roles[role];
+          var budget = v.intended_daily ? '$' + v.intended_daily[0] + '–$' + v.intended_daily[1]
+            : '<span class="adx-prov" title="no intended budget configured — set it via the strategy panel (edits journaled)">not set</span>';
+          var st = v.status_rollup || {};
+          var stTxt = ['delivering', 'enabled_not_delivering', 'paused'].map(function (k) {
+            return st[k] ? st[k] + (k === 'delivering' ? ' live' : k === 'paused' ? ' paused' : ' amber') : null;
+          }).filter(Boolean).join(' · ') || '—';
+          rows += '<tr class="adx-set-row" data-setrole="' + esc(role) + '">' +
+            '<td class="adx-name">' + esc(role.replace('_', ' ')) + ' <span class="adx-prov">(' + v.creatives + ' creatives · ' + (v.adset_names || []).filter(Boolean).slice(0, 2).map(esc).join(', ') + ')</span></td>' +
+            '<td>' + budget + '</td>' +
+            '<td' + (v.budget_drift ? ' class="adx-drift" title="' + esc(v.budget_drift) + '"' : '') + '>' + money(v.actual_yesterday) + (v.budget_drift ? ' ⚠' : '') + '</td>' +
+            '<td>' + money(v.actual_daily_avg) + '</td>' +
+            '<td>' + num(v.funnel_window.leads) + '</td><td>' + num(v.funnel_window.sets) + '</td><td>' + num(v.funnel_window.closes) + '</td>' +
+            '<td>' + stTxt + '</td><td>' + (v.injected_this_cycle || '—') + '</td></tr>';
+          // within-set peer ranking (expand row)
+          rows += '<tr class="adx-set-rank"><td colspan="9"><details><summary>within-set ranking (' + (v.ranking || []).length + ') — delivery share is Meta\u2019s allocation signal</summary>' +
+            '<table class="adx-table" style="font-size:11px"><thead><tr><th>creative</th><th>share</th><th>spend 7d</th><th>leads</th><th>CPL</th><th>verdict</th><th>flags</th></tr></thead><tbody>' +
+            (v.ranking || []).map(function (p) {
+              return '<tr><td>' + esc(String(p.label || '').slice(0, 40)) + (p.injected ? ' <span class="adx-injected-chip">injected</span>' : '') + (p.due ? ' <span class="adx-due-chip">DUE</span>' : '') + '</td>' +
+                '<td>' + p.delivery_share_pct + '%</td><td>' + money(p.window_spend) + '</td>' +
+                '<td>' + (p.leads != null ? p.leads : '<span class="adx-prov" title="' + esc(p.spans_note || '') + '">n/a</span>') + '</td>' +
+                '<td>' + (p.cpl != null ? money(p.cpl) : '—') + '</td>' +
+                '<td>' + esc(p.verdict || p.provisional || '—') + '</td>' +
+                '<td>' + (p.pull_flags || []).map(function (f) { return '<span class="adx-pull-sig adx-pull-' + esc(f) + '">' + esc(f.replace(/_/g, ' ')) + '</span>'; }).join(' ') + '</td></tr>';
+            }).join('') + '</tbody></table>' +
+            (v.funnel_note ? '<div class="adx-prov">' + esc(v.funnel_note) + '</div>' : '') + '</details></td></tr>';
+        });
+        (d.unmapped || []).forEach(function (u) {
+          rows += '<tr class="adx-set-row adx-set-unmapped-row"><td class="adx-name">UNMAPPED: ' + esc(u.adset_name || u.adset_id) +
+            ' <span class="adx-prov">(' + u.ads + ' ads — map it on the strategy panel)</span></td>' +
+            '<td>—</td><td colspan="2">' + money(u.window_spend) + ' over the window</td><td colspan="5">surfaced, never silently binned</td></tr>';
+        });
+        var part = d.partition || {};
+        rows += '<tr class="adx-rowcut"><td colspan="9">' + esc(part.invariant || '') + ': ' +
+          (part.ok ? '✓ holds' : '✗ VIOLATED') + ' (mapped ' + money(part.mapped) + ' + unmapped ' + money(part.unmapped) +
+          ' + no-adset-record ' + money(part.no_adset_record) + ' = ' + money(part.total) + ')</td></tr>';
+        tbody.innerHTML = rows;
+      })
+      .catch(function () { tbody.innerHTML = '<tr><td colspan="9">sets fetch failed</td></tr>'; });
+  }
+
   // ── events ─────────────────────────────────────────────────────────────────
   function init() {
     var m = (location.search.match(/[?&]window=(\d{1,3}|all)/) || [])[1];
@@ -2099,8 +2314,8 @@
     if (viewParam) state.view = viewParam;
     var sfParam = (location.search.match(/[?&]status=(delivering|not_delivering|paused)/) || [])[1];
     if (sfParam) state.statusFilter = sfParam;
-    var bandParam = (location.search.match(/[?&]band=(above|below)/) || [])[1];
-    if (bandParam) state.band = bandParam;
+    var setParam = (location.search.match(/[?&]set=(broad_video|targeted_video|graphics|retargeting|unmapped)/) || [])[1];
+    if (setParam) state.setFilter = setParam;
     applyView();
     document.querySelectorAll('.adx-view').forEach(function (b) {
       b.addEventListener('click', function () {
@@ -2111,10 +2326,10 @@
     });
     $('#adx-status-bar').addEventListener('click', function (e) {
       var sf = e.target.closest('[data-sfilter]');
-      var sb = e.target.closest('[data-sband]');
+      var sb = e.target.closest('[data-sset]');
       if (!sf && !sb) return;
       if (sf) state.statusFilter = sf.dataset.sfilter;
-      if (sb) state.band = sb.dataset.sband;
+      if (sb) state.setFilter = sb.dataset.sset;
       writeUrl(); renderStatusBar(); renderScoreboard();
       if (state.view === 'board') renderBoard();
     });
@@ -2123,6 +2338,8 @@
       boardEl.addEventListener('click', function (e) {
         var mv = e.target.closest('.adx-move-btn');
         if (mv) { openMoveDialog(mv.dataset.mkey, mv.dataset.mto); return; }
+        var kp = e.target.closest('.adx-keep-btn');
+        if (kp) { keepCreative(kp.dataset.mkey, null); return; }
         var rv = e.target.closest('.adx-rev-btn');
         if (rv) { reverseDecision(rv.dataset.mkey); return; }
         var ex = e.target.closest('.adx-exec-btn');
@@ -2143,7 +2360,7 @@
         var lane = e.target.closest('.adx-lane-cards[data-lane]');
         if (!lane || !dragKey) return;
         var ln = lane.dataset.lane;
-        if (ln === 'marked_to_kill' || ln === 'marked_to_scale') {
+        if (ln === 'marked_to_pull' || ln === 'marked_to_scale') {
           e.preventDefault();
           lane.classList.add('adx-lane-over');
         }
@@ -2158,7 +2375,7 @@
         e.preventDefault();
         lane.classList.remove('adx-lane-over');
         var ln = lane.dataset.lane;
-        if (ln === 'marked_to_kill') openMoveDialog(dragKey, 'kill');
+        if (ln === 'marked_to_pull') openMoveDialog(dragKey, 'pull');
         else if (ln === 'marked_to_scale') openMoveDialog(dragKey, 'scale');
         dragKey = null;
       });
@@ -2167,13 +2384,13 @@
     if (rulesPanel) rulesPanel.addEventListener('toggle', function () {
       if (rulesPanel.open) loadRulesPanel();
     });
-    // kill flag-cards deep-link into the Board at the card's dossier
+    // the review-cycle flag card opens the Review Session
     $('#adx-flags').addEventListener('click', function (e) {
-      var fd = e.target.closest('.adx-flag-door[data-boardkey]');
+      var fd = e.target.closest('.adx-flag-door[data-session]');
       if (!fd) return;
       state.view = 'board';
       writeUrl(); applyView(); renderBoard();
-      openDossier(fd.dataset.boardkey);
+      openReviewSession();
     });
 
     fetch('/dashboard/api/whoami', { credentials: 'same-origin' })
@@ -2190,6 +2407,12 @@
     var dealParam = (location.search.match(/[?&]deal=([^&]+)/) || [])[1];
     var rosterParam = (location.search.match(/[?&]roster=([^&]+)/) || [])[1];
     if (state.range) loadBoard(null); else loadBoard(days);
+    if (/[?&]session=1/.test(location.search)) {
+      setTimeout(function () {
+        state.view = 'board'; applyView();
+        if (state.board) { renderBoard(); openReviewSession(); }
+      }, 900);
+    }
     if (dossierParam) setTimeout(function () { openDossier(decodeURIComponent(dossierParam)); }, 600);
     else if (dealParam) setTimeout(function () { dealPanel(decodeURIComponent(dealParam)); }, 600);
     else if (rosterParam) setTimeout(function () {

@@ -17,9 +17,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 DEFAULTS = {
-    # ad_flag_spend_no_leads RETIRED (Board v2, R-A): kill candidacy is the
-    # rotation boundary in ads_lifecycle.rules() — min(4 active days, $200
-    # lifetime spend) — editable in the Board's rules panel, journaled.
+    # ad_flag_spend_no_leads RETIRED. Under R-A2 (DECISIONS #147) there is
+    # no absolute kill threshold at all: review-cycle cards come from
+    # ads_lifecycle.review_flags (peer-relative pull candidates, 7-8 day
+    # cycles); the verdict engine stays the statistical layer.
     "ad_flag_leads_no_sets": 8,
     "ad_flag_show_floor_pct": 40.0,
     "ad_flag_qual_dev_pts": 25.0,
@@ -99,13 +100,10 @@ def flags(result: dict, trailing_attr_rate: float | None = None,
                           f"{(result.get('window') or {}).get('days')}d"})
 
     for c in ads:
-        # KILL CANDIDATE — MOVED (Board v2, R-A / DECISIONS #143): the old
-        # window-scoped spend_no_leads rule ($150, no day boundary) is RETIRED.
-        # The one kill-candidate computation now lives in
-        # ads_lifecycle.classify_stage (rotation boundary min(4 active days,
-        # $200 lifetime spend) + verdict kills) and scorecard() attaches its
-        # cards via ads_lifecycle.kill_candidate_flags — the dashboard kill
-        # cards and the Board's kill lane are ONE computation.
+        # KILL CANDIDATE — RETIRED TWICE OVER: the window-scoped
+        # spend_no_leads rule went with Board v2; the absolute boundary went
+        # with R-A2 (DECISIONS #147). Review-cycle cards attach at serve time
+        # via ads_lifecycle.review_flags — peer-relative, humans decide.
         # FUNNEL BREAK: leads, zero sets
         if c["leads"] >= th["ad_flag_leads_no_sets"] and c["sets"] == 0:
             flag(2, "leads_no_sets", c["label"],

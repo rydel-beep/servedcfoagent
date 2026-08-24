@@ -175,6 +175,43 @@ hourly (L1), n=20 nightly (L2), FULL weekly (L3) + suite sweeps.
   integrity. Tests: tests/test_ads_lifecycle.py (37) +
   tests/test_ads_board_routes.py (8).
 
+## STRATEGY MIGRATION — R-A2 (2026-08-24, DECISIONS #147 supersedes #143)
+
+- The 4-day/fixed-dollar rotation is RETIRED (ghost-grepped out of live code
+  and rendered copy; history browsable, labelled pre-R-A2). Live model: FOUR
+  STANDING AD SETS (broad video / targeted video / graphics / retargeting)
+  mapped by Meta adset id (kv `ads:set_roles`, owner/coo, journaled;
+  unmapped sets surface honestly). Config kv `ads:strategy_rules`:
+  review_cycle_days 7 (due through 8) · pull thresholds (CPL ×1.5 set median
+  with ≥3-lead guard · starved <5% share ×2 cycles · zero-leads-at-≥median-
+  share) · budget_drift_pct · per-role intended budgets (graphics $60–70/d,
+  retargeting $40/d; broad/targeted unset until entered).
+- `ads_lifecycle` reworked: REVIEW CLOCK (calendar days since last review,
+  anchored at first delivery, resets on KEEP/PULL; kv `ads:review_clock`) ·
+  PEER-RELATIVE `pull_candidates` (per mapped set over the review window —
+  retargeting structurally isolated; flags labelled with WHICH signal; no
+  auto-pull path exists) · lanes RUNNING · DUE FOR REVIEW · MARKED TO PULL ·
+  WATCH · SCALE CANDIDATE · MARKED TO SCALE · archive (verdict path
+  untouched; a verdict KILL surfaces at review with the pill as the
+  statistical layer) · `review_flags` replaces the kill cards ("due for
+  review: N · pull candidates: M" → the Session) · injection detection
+  (launch within the cycle → "injected") · `sets_overview` (budget vs actual
+  from the archive rollup, Σ-set-spend partition invariant, within-set
+  ranking with delivery share, status rollup) · `broad_vs_targeted` (exact
+  pairs side-by-side; set aggregates labelled; shared creatives' leads
+  honestly not-set-splittable).
+- /ads surfaces: Sets tab (a level beside Ads/Names/Batches/Campaigns/
+  Account) · set filter chips replace the spend bands (?set=) · Review
+  Session stepper (keep resets the clock, reason encouraged; pull =
+  mandatory reason into the marked-to-pull/convergence/ageing mechanics; one
+  dated session record per day, kv `ads:review_sessions`) · Strategy panel
+  (config + THE SET MAPPING over live adset ids/names) · legend rewritten.
+- Sentinel: old-boundary watches retired; live now — strategy-journal
+  integrity · review-overdue (> due_through+3) · budget drift · set-spend
+  partition · unmapped-set surfacing (plus all carried watches).
+- NOTE: regenerate served-ship-notes (the team PDF references the old
+  rotation).
+
 ## Status clarity + ground-truth sweep 2 (2026-08-12, same day)
 
 - TRIAD RE-RULED: every status renders a server-built LABEL (`status.label`)

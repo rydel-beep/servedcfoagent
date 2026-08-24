@@ -1979,7 +1979,8 @@
      credit exhaustion still caught loudly at synth time. Tests:
      tests/test_voice_loud_fallback.py (scoped-key class). Suite 946.
 
-143. **R-A · ROTATION RULES (Rydel's ruling, 2026-08-12, Board v2).** The ad
+143. **[SUPERSEDED by #147 (R-A2), 2026-08-24 — kept for history, never erased]**
+     **R-A · ROTATION RULES (Rydel's ruling, 2026-08-12, Board v2).** The ad
      test window ends at min(4 ACTIVE DELIVERY DAYS from first delivery, $200
      lifetime spend) — whichever hits first. At the boundary: 0 lifetime
      leads → KILL CANDIDATE; ≥1 lead → WATCH (evidence accumulates toward a
@@ -2065,3 +2066,29 @@
      ADDITIVE committed stream. The SG-rate authority (12% from 1 Jul 2026)
      now lives beside SUPER_BASELINE_MONTHLY in xero_wages_categoriser —
      the flat baseline is NOT SG-derived and is never multiplied.
+
+
+147. **R-A2 · CONTINUOUS AD SETS + REVIEW CYCLES (Rydel's ruling, 2026-08-24 —
+     SUPERSEDES #143/R-A).** The 1-creative:1-ad-set rotation with its 4-day/
+     fixed-dollar test boundary is RETIRED. Live now: FOUR STANDING AD SETS
+     run continuously — SET 1 Broad video (no interest targeting; Meta finds
+     the ICP; 3–4 videos) · SET 2 Targeted video (demo+interest; 3–4 videos)
+     · SET 3 Graphics (~10 graphics; intended ~$60–70/day) · SET 4
+     Retargeting (3–5 videos; intended ~$40/day). REVIEW CADENCE: every 7–8
+     days, review running creatives; PULL underperformers, INJECT new ones;
+     campaigns never stop. THE ANALYTICAL SHIFT: the unit of competition is
+     the AD SET — creatives share a set budget, Meta's delivery allocation is
+     itself a signal, and underperformance is PEER-RELATIVE within the set
+     over the review window (zero leads at ≥ set-median share · CPL >1.5× set
+     median with a ≥3-lead evidence guard · starved <5% share two cycles —
+     each labelled; starved ≠ expensive). No absolute spend/day kill
+     threshold exists anymore. Retargeting compares only against itself
+     (set-scoping makes the retarget-vs-cold false comparison structural).
+     The system ranks and flags; humans decide — no auto-pull, ever. The
+     verdict engine (min-n 30 leads / 3 closes) is UNTOUCHED and now
+     reachable; scale under R-A2 = keep + replicate (convergence mechanics
+     stand). Decision-board mechanics (R-B reasons/attribution/journaling/
+     convergence/ageing) and stances-are-opinions (R-C) carry unchanged;
+     MARKED TO KILL relabels MARKED TO PULL (historical decisions keep their
+     old label with a pre-R-A2 note). Config: kv ads:strategy_rules +
+     ads:set_roles (Meta adset ids → roles — ids are truth), journaled.

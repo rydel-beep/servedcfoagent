@@ -59,11 +59,15 @@ def _mock_lifecycle(monkeypatch, rows=None):
 
 # ── the board payload carries the lifecycle block + kill cards ───────────────
 
-def test_board_payload_carries_lifecycle_and_kill_cards(monkeypatch):
+def test_board_payload_carries_lifecycle_and_review_cards(monkeypatch):
+    import datetime as dt
+    import helpers
     _kv_reset(monkeypatch)
+    today = dt.date(2026, 8, 24)
+    monkeypatch.setattr(helpers, "today_sydney", lambda: today)
     rows = _mock_lifecycle(monkeypatch, [
-        mk_row(key="120000000000000001", leads=0, spend=250, active_days=2,
-               label="Rot Kill")])
+        mk_row(key="120000000000000001", leads=2, spend=250,
+               launch=str(today - dt.timedelta(days=9)), label="Due One")])
     from tests.test_ads_dashboard import _fake_result
     result = _fake_result()
     monkeypatch.setattr("attribution_engine.compute", lambda **kw: result, raising=True)
@@ -77,17 +81,18 @@ def test_board_payload_carries_lifecycle_and_kill_cards(monkeypatch):
     _login(c, "romano")
     d = c.get("/ads/api/board?days=30").get_json()
     lc = d["lifecycle"]
-    assert lc["rules"]["test_days"] == 4 and lc["rules"]["test_spend"] == 200.0
+    assert lc["rules"]["review_cycle_days"] == 7      # R-A2 config rides
     card = lc["cards"]["120000000000000001"]
-    assert card["lane"] == "kill_candidate" and card["kill_basis"] == "rotation"
+    assert card["lane"] == "due_for_review"
+    assert card["review"]["cycle_day"] == 9 and card["review"]["due"] is True
     assert card["status"]["status"] == "delivering"
-    assert card["rotation"]["label"].startswith("day 2")
-    # consolidated kill cards ride the scorecard, prepended, deep-linking
+    assert "marked_to_pull" in lc["lanes_order"]      # R-A2 lanes
+    assert "testing" not in lc["lanes_order"]
+    # the review-cycle card rides the scorecard, prepended, session-linked
     kinds = [f["kind"] for f in d["scorecard"]["flags"]]
-    assert kinds[0] == "rotation_kill_candidate" and "other" in kinds
-    # idempotent across serves (rollup payloads are reused objects)
+    assert kinds[0] == "review_due" and "other" in kinds
     d2 = c.get("/ads/api/board?days=30").get_json()
-    assert [f["kind"] for f in d2["scorecard"]["flags"]].count("rotation_kill_candidate") == 1
+    assert [f["kind"] for f in d2["scorecard"]["flags"]].count("review_due") == 1
 
 
 # ── decision loop over HTTP ──────────────────────────────────────────────────
@@ -101,11 +106,11 @@ def test_move_http_blank_reason_400_then_journal_feed(monkeypatch):
                json={"creative": "120000000000000001", "to": "kill", "reason": "  "})
     assert r.status_code == 400 and "reason" in r.get_json()["error"]
     r2 = c.post("/ads/api/lifecycle/move",
-                json={"creative": "120000000000000001", "to": "kill",
+                json={"creative": "120000000000000001", "to": "pull",
                       "reason": "CPL 3x the account"})
     assert r2.status_code == 200
     dec = r2.get_json()["decision"]
-    assert dec["by"] == "romano" and dec["state"] == "marked_to_kill"
+    assert dec["by"] == "romano" and dec["state"] == "marked_to_pull"
     assert store["ads:lifecycle:journal"][-1]["reason"] == "CPL 3x the account"
     assert "CPL 3x the account" in store["feed:extra:ads_decisions"][0]["title"]
 
@@ -154,27 +159,35 @@ def test_move_unknown_creative_404_and_anon_locked(monkeypatch):
                         "reason": "r"}).status_code == 404
     anon = _team_client(monkeypatch)
     for p, j in (("/ads/api/lifecycle/move", {}), ("/ads/api/lifecycle/reverse", {}),
-                 ("/ads/api/rotation-rules", None)):
+                 ("/ads/api/strategy", None), ("/ads/api/sets", None),
+                 ("/ads/api/review/keep", {})):
         r = anon.post(p, json=j or {}) if j is not None else anon.get(p)
         assert r.status_code in (302, 401), p
 
 
 # ── rules panel over HTTP (R-A) ──────────────────────────────────────────────
 
-def test_rules_get_all_roles_edit_owner_coo_only(monkeypatch):
+def test_strategy_get_all_roles_edit_owner_coo_only(monkeypatch):
     _kv_reset(monkeypatch)
+    monkeypatch.setattr(L, "_entity_store", lambda: {"ads": {}})
     c = _team_client(monkeypatch)
     _login(c, "romano")
-    d = c.get("/ads/api/rotation-rules").get_json()
-    assert d["rules"]["test_days"] == 4 and "R-A" in d["ruling"]
-    r = c.post("/ads/api/rotation-rules", json={"test_spend": 300})
+    d = c.get("/ads/api/strategy").get_json()
+    assert d["strategy"]["review_cycle_days"] == 7 and "R-A2" in d["ruling"]
+    r = c.post("/ads/api/strategy", json={"review_cycle_days": 10})
     assert r.status_code == 403                      # ad_domain can't edit a ruling's params
+    r_map = c.post("/ads/api/strategy/map-set",
+                   json={"adset_id": "230000000000000001", "role": "graphics"})
+    assert r_map.status_code == 403
     c2 = _team_client(monkeypatch)
     _login(c2, "piolo")                              # coo can
-    r2 = c2.post("/ads/api/rotation-rules", json={"test_spend": 300})
+    r2 = c2.post("/ads/api/strategy", json={"review_cycle_days": 10})
     assert r2.status_code == 200
     j = r2.get_json()["journal"]
-    assert j[-1]["who"] == "piolo" and j[-1]["old"] == 200.0 and j[-1]["new"] == 300.0
+    assert j[-1]["who"] == "piolo" and j[-1]["old"] == 7 and j[-1]["new"] == 10
+    assert c2.post("/ads/api/strategy/map-set",
+                   json={"adset_id": "230000000000000001",
+                         "role": "graphics"}).status_code == 200
 
 
 # ── stance boundary (taint + attribution) ────────────────────────────────────

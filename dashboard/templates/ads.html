@@ -54,7 +54,7 @@
   <!-- LIVE-STATUS FILTER CHIPS (Law 3) — both views; URL-stated -->
   <div class="adx-status-bar" id="adx-status-bar" style="display:none">
     <span class="adx-status-chips" id="adx-status-chips"></span>
-    <span class="adx-band-toggle" id="adx-band-toggle" title="Group by the rotation spend threshold (R-A config) — lifetime spend above/below the test boundary"></span>
+    <span class="adx-band-toggle" id="adx-set-chips" title="Filter by the four standing ad sets (R-A2) — membership by Meta adset id, mapped on the strategy panel"></span>
     <span class="adx-status-asof" id="adx-status-asof"></span>
   </div>
 
@@ -65,7 +65,7 @@
     <div class="adx-board-head">
       <h2>Lifecycle board <span class="adx-h2-sub" id="adx-board-sub"></span></h2>
       <details class="adx-rules-panel" id="adx-rules-panel">
-        <summary>Rotation rules ▾</summary>
+        <summary>Strategy (R-A2) ▾</summary>
         <div class="adx-rules-body" id="adx-rules-body"></div>
       </details>
     </div>
@@ -133,6 +133,7 @@
       </div>
       <div class="adx-levels" id="adx-levels">
         <button class="adx-level" data-level="creative">Ads</button>
+        <button class="adx-level adx-level-sets" data-level="sets" title="The four standing ad sets (R-A2): budget vs actual, within-set peer ranking, status rollup">Sets</button>
         <button class="adx-level" data-level="name">Names</button>
         <button class="adx-level" data-level="batch">Batches</button>
         <button class="adx-level" data-level="campaign">Campaigns</button>
