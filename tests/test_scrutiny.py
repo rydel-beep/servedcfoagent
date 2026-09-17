@@ -264,6 +264,13 @@ def test_ratio_tiles_top_section_always_rendered():
     assert "'section-ratio-tiles'" in js
     # FIRST in the Zone-1 ids array (the top of the top section)
     assert "ids: ['section-ratio-tiles'," in js
+    # AND in the FIRST SCREENFUL: the Morning-Brief hero carries both ratio
+    # stats beside MRR and cash (#151 — the shipped-≠-visible fix), refilled
+    # after every hero rebuild
+    for hid in ('brief-ltvcac', 'brief-ltgpcac'):
+        assert hid in js
+    assert js.index('id="brief-ltvcac"') > 0
+    assert js.count("fillHeroRatios()") >= 2   # ratio load + post-brief-rebuild
     assert "renderRatioTiles()" in js
     assert "unit-econ-honest" in js
     # ALWAYS rendered: the failure paths render text, never hide the section

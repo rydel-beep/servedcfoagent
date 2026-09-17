@@ -383,6 +383,20 @@
     html += '<div class="brief-stat-sub">' + (risk30 ? fmt$(risk30) + ' MRR at risk in 30d' : 'no near-term renewal risk flagged') + '</div>';
     html += '</div>';
 
+    // #151: LTV:CAC + LTGP:CAC in the FIRST SCREENFUL, beside MRR and cash
+    // (the shipped-≠-visible fix). Filled async by renderRatioTiles from the
+    // honest engine; degraded inputs label the stat, never hide it.
+    html += '<div>';
+    html += '<div class="brief-stat-label">LTV : CAC <button class="fin-door" data-findrawer="ltv_cac" title="show your work">ⓘ</button></div>';
+    html += '<div class="brief-stat-value" id="brief-ltvcac">…</div>';
+    html += '<div class="brief-stat-sub" id="brief-ltvcac-sub">Sep cohort · loading the honest engine</div>';
+    html += '</div>';
+    html += '<div>';
+    html += '<div class="brief-stat-label">LTGP : CAC <button class="fin-door" data-findrawer="ltgp_cac" title="show your work">ⓘ</button></div>';
+    html += '<div class="brief-stat-value" id="brief-ltgpcac">…</div>';
+    html += '<div class="brief-stat-sub" id="brief-ltgpcac-sub">3:1 = benchmark, not target</div>';
+    html += '</div>';
+
     html += '</div>';
 
     // Top movers since yesterday (history-driven)
@@ -518,6 +532,7 @@
 
     renderStatus(snap);
     renderMorningBrief(snap);
+    fillHeroRatios();        // #151 — the hero rebuild wipes the ratio stats
     renderExecSummary(snap);
     renderActionItems(snap);
     renderKPIs(snap);
@@ -4589,6 +4604,24 @@
   // ALWAYS rendered — a degraded/fallback input LABELS the tile, never
   // hides it (the shipped-≠-visible doctrine).
   var _ratioData = null;
+  // #151: the Morning-Brief hero ratio stats — re-fillable after any hero
+  // re-render (renderMorningBrief rebuilds its innerHTML every cycle).
+  function fillHeroRatios() {
+    if (!_ratioData) return;
+    try {
+      var hc = (_ratioData.windows || {}).cohort_month || {};
+      var el1 = document.getElementById('brief-ltvcac');
+      var el2 = document.getElementById('brief-ltgpcac');
+      if (el1) el1.textContent = hc.ltv_to_cac != null ? hc.ltv_to_cac + '×' : '—';
+      if (el2) el2.textContent = hc.ltgp_to_cac != null ? hc.ltgp_to_cac + '×' : '—';
+      var s1 = document.getElementById('brief-ltvcac-sub');
+      if (s1) s1.textContent = 'Sep cohort · ' + (hc.closes || 0) + ' closes · CAC loaded $' +
+        (hc.cac_fully_loaded != null ? Math.round(hc.cac_fully_loaded).toLocaleString() : '—');
+      var s2 = document.getElementById('brief-ltgpcac-sub');
+      if (s2) s2.textContent = ((_ratioData.margin_provenance || '').indexOf('fallback') >= 0 ?
+        'margin: FY26 42.9% fallback (labelled)' : 'margin: Xero P&L') + ' · 3:1 = benchmark, not target';
+    } catch (e) { /* placeholders persist — never hidden */ }
+  }
   function _ratioTile(label, val, drawerKey, subBits) {
     var v = (val == null) ? '—' : val + '×';
     var vs3 = (val == null) ? '' :
@@ -4610,6 +4643,7 @@
         _ratioData = await r.json();
       }
       var d = _ratioData;
+      fillHeroRatios();
       var sel = (document.getElementById('ratio-window') || {}).value || 'cohort_month';
       if (sel === 'by_package') {
         var w = d.windows.cohort_month;
