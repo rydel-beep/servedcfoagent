@@ -635,8 +635,8 @@ def unit_econ_view() -> dict:
     t = today_sydney()
     for name, (w0, w1) in (("cohort_month", (t.replace(day=1), t)),
                            ("trailing_90d", (t - dt.timedelta(days=89), t))):
-        ue = RUE.unit_economics(w0, w1)
-        comp = ue.get("components") or {}
+        ue = RUE.unit_economics(str(w0), str(w1))   # ISO strings — the contract
+        comp = {} if ue.get("error") else (ue.get("components") or {})
         closes = _closes_union(str(w0), str(w1), "activity")
         # per-close LTV from the close's own package where known
         ltv_total, by_pkg = 0.0, {}
@@ -669,13 +669,17 @@ def unit_econ_view() -> dict:
             # the SAME components ÷ the union close count, labelled.
             try:
                 from config import SALES_TOOLING_MONTHLY
-                days = (comp.get("window") or {}).get("days") or 30
+                days = (comp.get("window") or {}).get("days") or ((w1 - w0).days + 1)
                 tooling = SALES_TOOLING_MONTHLY * days / 30.44
-                acq = ((comp.get("ad_spend") or 0)
+                spend = comp.get("ad_spend")
+                if spend is None:
+                    import meta_spend
+                    spend = (meta_spend.spend_in_range(str(w0), str(w1)) or {}).get("spend")
+                acq = ((spend or 0)
                        + (comp.get("closer_comm") or 0)
                        + (comp.get("setter_comm") or 0))
                 cac_full = round((acq + tooling) / n, 2)
-                cac_spend = round((comp.get("ad_spend") or 0) / n, 2)
+                cac_spend = round((spend or 0) / n, 2)
                 cac_note = (f"closes from the union engine (n={n}; tracker "
                             f"won-marks lag — the gap-window class); "
                             f"components from the standing engine")
