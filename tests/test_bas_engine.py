@@ -163,8 +163,11 @@ def test_scheduled_obligations_and_forecast_week():
             "stripe": {"revenue": {"current": {"total_aud": 60000}}}}
     fc = FE.cash_flow_13wk(snap)
     hits = fc["tax_obligations_in_horizon"]
-    assert hits and "2026-08-25" in hits
-    wk = hits["2026-08-25"]["week"]
+    # DATE-ROT FIX (2026-09-17): the 13-week horizon rolls — assert the NEXT
+    # due obligation is booked, not a hardcoded August date forever.
+    assert hits, "no tax obligation booked in the 13-week horizon"
+    due = sorted(hits)[0]
+    wk = hits[due]["week"]
     # the curve drops by the obligation in that week (vs the smooth net_weekly path)
     smooth = fc["starting_cash"] + fc["net_weekly"] * wk
     assert abs((smooth - sum(h["amount"] for h in hits.values()

@@ -119,9 +119,12 @@ def test_consult_freshness_persisting_unfetched_flags(monkeypatch):
     import consult_schedule as CS2
     import datetime as dt
     from tests.test_attribution import HDR, row, contact
-    monkeypatch.setattr(eng, "_tracker_rows_clean",
-                        lambda: [HDR, row("Set Lead", "sl@x.com",
-                                          input_date=str(dt.date.today()))])
+    # DATE-ROT FIX (2026-09-17): row()'s default set date is a fixed
+    # 2026-07-11, which aged out of the watch's 60-day window — build the
+    # row with a live recent set date so the fixture never rots again.
+    _r = row("Set Lead", "sl@x.com", input_date=str(dt.date.today()))
+    _r[18] = str(dt.date.today() - dt.timedelta(days=1))   # set date, recent
+    monkeypatch.setattr(eng, "_tracker_rows_clean", lambda: [HDR, _r])
     monkeypatch.setattr(attribution_join, "load_contacts",
                         lambda: [contact("c9", "sl@x.com", "Set Lead")])
     monkeypatch.setattr(CS2, "_cache", lambda: {})
