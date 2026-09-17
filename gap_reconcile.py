@@ -332,11 +332,27 @@ def rebuild_closes(apply: bool = True) -> dict:
                              "cash": tracker.get("cash")}
                             if tracker else {"present": False}),
         }
-        # contract value: evidence ladder — tracker cell > health contract
-        # value > package-term × MRR (derived, labelled) > unknown
+        # contract value: evidence ladder — tracker cell > RECOGNIZED-row
+        # contract cell (sheet-recorded) > health contract value >
+        # package-term × MRR (derived, labelled) > unknown
         cv, cv_src = None, None
+        ledger_row = None
+        if health and health.get("name"):
+            try:
+                import finance_tabs
+                _hn = _norm(health["name"])
+                ledger_row = next(
+                    (e for e in finance_tabs.renewal_ledger().get("entries") or []
+                     if _norm(e["client"]) == _hn and e.get("contract_value")),
+                    None)
+            except Exception:
+                pass
         if tracker and str(tracker.get("contract") or "").strip():
             cv = tracker.get("contract"); cv_src = "tracker cell"
+        elif ledger_row:
+            cv = ledger_row["contract_value"]
+            cv_src = (f"RECOGNIZED row {ledger_row['provenance']['row']} "
+                      f"contract cell (sheet-recorded)")
         elif health and health.get("contract_value"):
             cv = health["contract_value"]; cv_src = "Health-tab contract value"
         elif health and health.get("current_mrr"):
