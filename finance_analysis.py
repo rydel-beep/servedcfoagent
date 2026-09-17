@@ -81,6 +81,14 @@ def _closes_union(w0: str, w1: str, basis: str) -> list[dict]:
     the engine — provenance labelled, deduped by person (ONE event)."""
     import attribution_engine as AE
     res = AE.compute(start=str(w0), end=str(w1), basis=basis)
+    ledger_by_person = {}
+    try:
+        import gap_reconcile
+        for e in (gap_reconcile.close_ledger().get("ledger") or []):
+            if e.get("state") == "AUTO":
+                ledger_by_person[_norm(e["person"])] = e
+    except Exception as ex:
+        logger.info("gap ledger read failed: %s", ex)
     out, seen = [], set()
     for c in res.get("creatives", []):
         for d in (c.get("deals") or []):
@@ -91,33 +99,48 @@ def _closes_union(w0: str, w1: str, basis: str) -> list[dict]:
             if k in seen:
                 continue
             seen.add(k)
-            out.append({"person": d.get("name"), "close_date": cd,
-                        "contract": d.get("contract"), "cash": d.get("cash"),
-                        "creative": c.get("label"),
-                        "provenance": ("derived: " + json.dumps(d.get("derived"))
-                                       if d.get("derived") else "tracker row"),
-                        "source": "engine"})
-    try:
-        import gap_reconcile
-        for e in (gap_reconcile.close_ledger().get("ledger") or []):
-            if e.get("state") != "AUTO":
-                continue
-            cd = str(e.get("close_date") or "")
-            if not (str(w0) <= cd <= str(w1)):
-                continue
-            if any(_norm(e["person"]) == _norm(o["person"]) for o in out):
-                continue          # already in the engine — ONE event
-            out.append({"person": e["person"], "close_date": cd,
-                        "contract": e.get("contract_value"),
-                        "contract_provenance": e.get("contract_provenance"),
-                        "cash": (e.get("stripe") or {}).get("cash_to_date"),
-                        "creative": None,
-                        "provenance": e.get("provenance"),
-                        "evidence": e.get("evidence"),
-                        "source": "gap-ledger (ghl-primary, "
-                                  "payment-corroborated)"})
-    except Exception as ex:
-        logger.info("gap ledger union failed: %s", ex)
+            row = {"person": d.get("name"), "close_date": cd,
+                   "contract": d.get("contract"), "cash": d.get("cash"),
+                   "creative": c.get("label"),
+                   "provenance": ("derived: " + json.dumps(d.get("derived"))
+                                  if d.get("derived") else "tracker row"),
+                   "source": "engine"}
+            # ENRICH from the gap ledger — blank ≠ zero: an engine row whose
+            # tracker cells are empty gains the ledger's evidenced values
+            # (never overwriting a filled tracker cell).
+            le = ledger_by_person.get(_norm(d.get("name")))
+            if le:
+                if not row["contract"] and le.get("contract_value"):
+                    row["contract"] = le["contract_value"]
+                    row["contract_provenance"] = le.get("contract_provenance")
+                if not row["cash"] and (le.get("stripe") or {}).get("cash_to_date"):
+                    row["cash"] = le["stripe"]["cash_to_date"]
+                    row["cash_provenance"] = "Stripe " + ",".join(
+                        (le.get("evidence") or {}).get("charge_ids", [])[:3])
+                row["evidence"] = le.get("evidence")
+                hr = le.get("health_row") or {}
+                if hr.get("name"):
+                    row["client_row"] = hr["name"]
+                    row["mrr"] = hr.get("current_mrr")
+                row["source"] = "engine + gap-ledger enrichment"
+            out.append(row)
+    for nn, e in ledger_by_person.items():
+        cd = str(e.get("close_date") or "")
+        if not (str(w0) <= cd <= str(w1)):
+            continue
+        if any(nn == _norm(o["person"]) for o in out):
+            continue              # already in the engine — ONE event
+        hr = e.get("health_row") or {}
+        out.append({"person": e["person"], "close_date": cd,
+                    "contract": e.get("contract_value"),
+                    "contract_provenance": e.get("contract_provenance"),
+                    "cash": (e.get("stripe") or {}).get("cash_to_date"),
+                    "creative": None,
+                    "client_row": hr.get("name"), "mrr": hr.get("current_mrr"),
+                    "provenance": e.get("provenance"),
+                    "evidence": e.get("evidence"),
+                    "source": "gap-ledger (ghl-primary, "
+                              "payment-corroborated)"})
     out.sort(key=lambda o: o["close_date"])
     return out
 
@@ -160,25 +183,29 @@ def payback_schedule(close: dict) -> dict:
     term. Never invented — where no MRR row exists the schedule stops at
     actuals and says so."""
     person = close.get("person") or ""
-    mrr, pkg = None, None
-    try:
-        from snapshot import load_persisted
-        snap = load_persisted() or {}
-        pool = ((snap.get("active_clients") or {}).get("active") or [])
-        toks = [t for t in re.split(r"[^a-z0-9]+", person.lower()) if len(t) > 3]
-        hr = (close.get("health_name") and None) or None
-        best = None
-        for c in pool:
-            nm = (c.get("name") or "").lower()
-            score = sum(1 for t in toks if t in nm)
-            if score and (best is None or score > best[0]):
-                best = (score, c)
-        if best:
-            mrr = best[1].get("current_mrr")
-            pkg = best[1].get("package")
-            close["client_row"] = best[1].get("name")
-    except Exception:
-        pass
+    # the union's gap-ledger enrichment already carries the venue bridge
+    # (client_row + mrr) — person-token matching is only the fallback.
+    mrr, pkg = close.get("mrr"), close.get("package")
+    if not close.get("client_row"):
+        try:
+            from snapshot import load_persisted
+            snap = load_persisted() or {}
+            pool = ((snap.get("active_clients") or {}).get("active") or [])
+            toks = [t for t in re.split(r"[^a-z0-9]+", person.lower()) if len(t) > 3]
+            best = None
+            for c in pool:
+                nm = (c.get("name") or "").lower()
+                score = sum(1 for t in toks if t in nm)
+                if score and (best is None or score > best[0]):
+                    best = (score, c)
+            if best:
+                mrr = best[1].get("current_mrr")
+                pkg = best[1].get("package")
+                close["client_row"] = best[1].get("name")
+        except Exception:
+            pass
+    elif mrr is None:
+        mrr = close.get("mrr")
     cash_now = float(close.get("cash") or 0)
     cv = float(close.get("contract") or 0) or None
     sched = []
