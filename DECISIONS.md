@@ -2092,3 +2092,36 @@
      MARKED TO KILL relabels MARKED TO PULL (historical decisions keep their
      old label with a pre-R-A2 note). Config: kv ads:strategy_rules +
      ads:set_roles (Meta adset ids → roles — ids are truth), journaled.
+148. **READ-ONLY LAW — LEAD-TO-CASH TRACKER + GHL (Rydel's standing rule,
+     2026-09-17).** The tracker sheet and GHL are VIEW ONLY for this repo and
+     every future build on it: never create/edit/delete/move/tag/re-stage or
+     otherwise mutate any row, cell, contact, opportunity, appointment, note,
+     tag, pipeline stage, custom field, or call record in either system —
+     not to fix a gap, not to backfill, not to reconcile, not under any
+     framing. Corrections to the tracker are a PACKAGE handed to Piolo;
+     corrections to GHL are a flagged item for the GHL owner. Enforced
+     structurally: tracker reads ride the read-only sheet mirror (the
+     no-sheets-write grep guard extends to the new modules); GHL reads use
+     the read-only sales token only — GHL_EMAIL_TOKEN (write-capable) is
+     untouchable by reconciliation paths, test-asserted; a suite test greps
+     the reconciliation code for mutating verbs against the GHL/Sheets
+     clients → zero hits or the build fails.
+
+149. **FINANCE GAP + ROAS RULINGS (2026-09-17).**
+     R-GAP · AUTHORITY INVERSION, SCOPED: for the DETECTED tracker-gap
+     window only (2026-07-21 → open; detected from the tracker close-column cadence vs GHL closed-stage cadence, journaled in gap:state), GHL is PRIMARY for
+     funnel events and the tracker is corroboration; outside the window the
+     standing tracker-authority ruling (#118/#126 era) holds unchanged. The
+     tracker is restored at source by Piolo from the generated backfill
+     package; post-restore disagreements are SURFACED, GHL stays primary
+     for the window unless Rydel rules otherwise.
+     R-CASH · CASH IS NEVER DERIVED: cash collected = Stripe/Xero
+     reconciled receipts only, every window, always. A gap-window close is
+     AUTO only with GHL closed-won + payment corroboration; no money behind
+     it → PROPOSED.
+     R-ROAS · THREE ROAS, LABELLED, NEVER BLENDED: CASH ROAS (reconciled
+     receipts ÷ spend) · CONTRACT ROAS (signed value of closes ÷ spend) ·
+     LTV ROAS (projected LTV of closes ÷ spend, inputs' provenance
+     measured-vs-placeholder). The month's verdict is decided by CONTRACT
+     ROAS + PAYBACK MONTHS from real billing cadence — never by cash ROAS
+     alone, never by reassurance.

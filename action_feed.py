@@ -132,7 +132,9 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
     # EXTRA-CHANNEL REGISTRY: fixed kv channels other modules publish through
     # (each key is owned by exactly ONE publisher, replaced wholesale per
     # publish — self-retiring per channel, no read-modify-write races).
-    _EXTRA_CHANNELS = ("feed:extra:ads_discussion", "feed:extra:voice",
+    _EXTRA_CHANNELS = ("feed:extra:watchdog",
+                       "feed:extra:tracker_backfill",
+                       "feed:extra:ads_discussion", "feed:extra:voice",
                        "feed:extra:ads_decisions",   # Board v2: pending moves
                        "feed:extra:stripe")          # Stripe canary failures
                                                      # (self-retiring on OK)

@@ -174,6 +174,32 @@ def _edith_health() -> list[dict]:
         out.append(_eval_gap("cfo:mrr_snapshot", "Daily MRR snapshot", h, 30))
     except Exception as e:  # noqa: BLE001
         out.append(_entry("cfo:mrr_snapshot", "Daily MRR snapshot", "UNKNOWN", str(e)[:80]))
+    # WATCHDOG-OF-THE-WATCHDOG (currency audit 2026-09-17): the sentinel and
+    # the nightly sweep are now REGISTRY SUBJECTS — a dead sentinel loop or an
+    # unstamped sweep can no longer die silently (it becomes a FAILING/STALE
+    # row here → feed items via publish_feed_state, pushed by the snapshot
+    # refresh loop, which the sentinel L1 watches in return).
+    try:
+        import kv_store
+        st = kv_store.get("sentinel:state") or {}
+        out.append(_eval_gap("cfo:ad_sentinel_l1", "Ad sentinel hourly (L1)",
+                             _hours_since(st.get("L1")), 3))
+        out.append(_eval_gap("cfo:ad_sentinel_l2", "Ad sentinel nightly (L2)",
+                             _hours_since(st.get("L2")), 30))
+        tick = kv_store.get("ads_truth:sweep_tick")
+        h = None
+        if tick:
+            try:
+                import datetime as _dt
+                h = (now_sydney().date()
+                     - _dt.date.fromisoformat(str(tick)[:10])).days * 24.0
+            except ValueError:
+                pass
+        out.append(_eval_gap("cfo:ads_truth_sweep", "Ads-truth nightly sweep",
+                             h, 30))
+    except Exception as e:  # noqa: BLE001
+        out.append(_entry("cfo:ad_sentinel_l1", "Ad sentinel hourly (L1)",
+                          "UNKNOWN", str(e)[:80]))
     return out
 
 
@@ -257,3 +283,39 @@ def handle_automation_health(msg: str) -> tuple[str | None, bool]:
         bits.append("%d unverifiable right now: %s — I'm not counting those as green"
                     % (len(unknown), ", ".join(r["label"] for r in unknown[:3])))
     return ("%d of %d automations green. %s." % (c["RUNNING"], h["total"], ". ".join(bits))), True
+
+
+# ── watchdog feed publisher (currency audit 2026-09-17) ──────────────────────
+
+_KV_WATCHDOG_FEED = "feed:extra:watchdog"
+
+
+def publish_feed_state() -> dict:
+    """Push FAILING/STALE registry rows into the shared action feed as
+    self-retiring items (empty list when everything is green — the item
+    retires itself). Called by the snapshot refresh loop (an independent
+    pulse from the sentinel) and cheap enough to call anywhere. A dead
+    nightly/sentinel now ALERTS instead of dying silently."""
+    import kv_store
+    try:
+        h = health()
+    except Exception as e:  # noqa: BLE001
+        kv_store.put(_KV_WATCHDOG_FEED, [{
+            "severity": 1, "category": "data_quality",
+            "title": "automation registry itself failed to evaluate",
+            "detail": str(e)[:140],
+            "action": "check automations.health() — the watchdog is blind"}])
+        return {"ok": False, "error": str(e)[:80]}
+    items = []
+    for r in h["automations"]:
+        if r["state"] in ("FAILING", "STALE") and str(r["id"]).startswith("cfo:"):
+            items.append({
+                "severity": 1 if r["state"] == "FAILING" else 2,
+                "category": "data_quality",
+                "title": f"automation {r['state']}: {r['label']}",
+                "detail": (r.get("detail") or "")[:140],
+                "action": "a scheduled job died or went stale — the numbers "
+                          "downstream of it are ageing; investigate before "
+                          "trusting them"})
+    kv_store.put(_KV_WATCHDOG_FEED, items)
+    return {"ok": True, "published": len(items)}

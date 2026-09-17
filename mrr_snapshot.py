@@ -58,11 +58,22 @@ def take_snapshot(force: bool = False) -> dict:
             nm = (cli.get("name") or cli.get("business") or "").strip()
             if nm:
                 per_client[nm] = cli.get("current_mrr") or cli.get("mrr")
+        # NULL GUARD (currency audit 2026-09-17): a boot-time call can land
+        # before the roster exists — never persist a garbage row (the
+        # 2026-09-17 null/0 row was exactly this class).
+        if current_mrr is None and not per_client:
+            return {"ok": False,
+                    "skipped_empty": "roster not built yet — refusing to "
+                                     "write a null snapshot row"}
         today = today_sydney()
         with db.get_conn() as c:
-            existing = c.execute("SELECT 1 FROM mrr_snapshots WHERE snap_date=%s", (today,)).fetchone()
+            existing = c.execute("SELECT current_mrr, client_count FROM mrr_snapshots "
+                                 "WHERE snap_date=%s", (today,)).fetchone()
             if existing and not force:
-                return {"ok": True, "skipped": "already snapshotted today"}
+                # SELF-HEAL: an earlier null/empty row today is overwritten by
+                # real data (the idempotency guard must not preserve garbage).
+                if existing["current_mrr"] is not None or (existing["client_count"] or 0) > 0:
+                    return {"ok": True, "skipped": "already snapshotted today"}
             c.execute(
                 """INSERT INTO mrr_snapshots (snap_date, current_mrr, client_count, per_client, taken_at)
                    VALUES (%s,%s,%s,%s, now())

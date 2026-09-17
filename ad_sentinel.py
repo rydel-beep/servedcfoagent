@@ -208,6 +208,42 @@ def hourly_tick(force: bool = False) -> dict | None:
         if (kv_store.get("stripe:partial_pull") or None) is not None:
             signals.append({"domain": "recon",
                             "detail": "L0: stripe partial-pull marker is set"})
+        # 6 · MUTUAL WATCHDOG (currency audit 2026-09-17): L1 watches the
+        # OTHER pulses — a stale snapshot loop, an unstamped nightly sweep
+        # (which silently gates all of L2), or a dead L2 go LOUD here.
+        try:
+            import datetime as _dt
+            from helpers import today_sydney
+            from snapshot import load_persisted as _lp
+            _snap = _lp() or {}
+            _gen = str(_snap.get("generated_at") or "")
+            if _gen:
+                _age_h = (now_sydney()
+                          - _dt.datetime.fromisoformat(_gen)).total_seconds() / 3600
+                if _age_h > 5:
+                    signals.append({"domain": "watchdog:snapshot",
+                                    "detail": f"snapshot refresh loop stale — "
+                                              f"last build {_age_h:.1f}h ago "
+                                              f"(expected ~2h)"})
+            _tick = str(kv_store.get("ads_truth:sweep_tick") or "")
+            if _tick:
+                _tage = (today_sydney()
+                         - _dt.date.fromisoformat(_tick[:10])).days
+                if _tage > 1:
+                    signals.append({"domain": "watchdog:sweep",
+                                    "detail": f"ads_truth nightly sweep hasn't "
+                                              f"stamped for {_tage}d — every L2 "
+                                              f"watch is silently gated on it"})
+            _l2 = str((kv_store.get("sentinel:state") or {}).get("L2") or "")
+            if _l2:
+                _l2age = (now_sydney().replace(tzinfo=None)
+                          - _dt.datetime.fromisoformat(_l2)).total_seconds() / 3600
+                if _l2age > 36:
+                    signals.append({"domain": "watchdog:L2",
+                                    "detail": f"nightly extras (L2) last ran "
+                                              f"{_l2age:.0f}h ago"})
+        except Exception as _we:  # noqa: BLE001
+            logger.info("L1 watchdog leg failed: %s", _we)
         for s in signals:
             _feed(f"L1 signal [{s['domain']}]: {s['detail'][:140]}", loud=True)
             escalate(s["domain"], "L1", s["detail"])
@@ -416,6 +452,14 @@ def nightly_extras() -> dict | None:
         out["stripe_watch"] = stripe_health.sentinel_watch()
     except Exception as e:
         out["stripe_watch"] = {"error": str(e)[:80]}
+    # GAP RECONCILIATION (#148/#149): backfill-package convergence + R-GAP
+    # authority-scope integrity (gap provenance never leaks outside the
+    # window — a leak is a P1 queue item).
+    try:
+        import gap_reconcile
+        out["gap_watch"] = gap_reconcile.sentinel_watch()
+    except Exception as e:
+        out["gap_watch"] = {"error": str(e)[:80]}
     # CSM watch (#146): baseline freshness + book-ledger reconciliation +
     # shared-memory leak probe. Findings stay in the OWNER-ONLY lane (kv
     # csm:sentinel, rendered on /csm) + SENTINEL_QUEUE.md — NEVER the shared

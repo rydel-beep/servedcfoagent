@@ -169,6 +169,20 @@ def _scheduled_refresh_loop() -> None:
         except Exception as e:
             # Includes ConsistencyError: keep serving the last good snapshot.
             logger.error("Scheduled refresh failed: %s — keeping previous snapshot", e)
+        # CURRENCY AUDIT (2026-09-17): this loop is the sentinel's watchdog
+        # (and vice versa — L1 watches snapshot age). Also the daily MRR
+        # snapshot cadence — it used to run only at boot, which left a month
+        # of holes the moment deploys stopped.
+        try:
+            import mrr_snapshot
+            mrr_snapshot.take_snapshot()   # idempotent per day; null-guarded
+        except Exception as e:  # noqa: BLE001
+            logger.warning("scheduled mrr snapshot failed: %s", e)
+        try:
+            import automations
+            automations.publish_feed_state()   # dead jobs → LOUD feed items
+        except Exception as e:  # noqa: BLE001
+            logger.warning("watchdog publish failed: %s", e)
 
 
 def _email_cadence_loop() -> None:

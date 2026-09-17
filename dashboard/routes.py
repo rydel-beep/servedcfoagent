@@ -828,6 +828,10 @@ def api_chat():
             m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()))
         _tier2 = [
             (_csm_handler, False),
+            # FINANCE CURRENCY (#148/#149): ROAS/verdict + gap/currency drills
+            # — high so 'roas'/'what did I miss' aren't grabbed downstream.
+            (__import__('finance_analysis').handle_finance_command, False),
+            (__import__('gap_reconcile').handle_gap_command, False),
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
             (lambda m: __import__('open_loops').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # Pillar 1: 'remind me to X' / 'drop it' (internal reminders only)
@@ -1090,6 +1094,10 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()))
         _tier2 = [
             (_csm_handler, False),
+            # FINANCE CURRENCY (#148/#149): ROAS/verdict + gap/currency drills
+            # — high so 'roas'/'what did I miss' aren't grabbed downstream.
+            (__import__('finance_analysis').handle_finance_command, False),
+            (__import__('gap_reconcile').handle_gap_command, False),
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
             (lambda m: __import__('open_loops').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # Pillar 1: 'remind me to X' / 'drop it' (internal reminders only)
@@ -2206,3 +2214,80 @@ def api_csm_explain():
     if not handled or not reply:
         reply = "The engine has no drill for that tile yet — the page's own numbers are the truth."
     return jsonify({"reply": reply})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FINANCE CURRENCY + GAP + ANALYSIS (#148/#149, 2026-09-17). Finance
+# surfaces (require_auth — piolo full visibility; ad_domain/sales walled by
+# the allowlist); the owner briefing is @require_owner. READ-ONLY LAW: these
+# routes only read engines + kv; the backfill is a Piolo package.
+# ═══════════════════════════════════════════════════════════════════════════
+
+@bp.route("/api/roas", methods=["GET"])
+@require_auth
+def api_roas():
+    """Three ROAS side by side, labelled, never blended — plus the verdict."""
+    import finance_analysis
+    win = request.args.get("window", "sep_mtd")
+    if win not in ("sep_mtd", "aug_full", "t30", "t60", "t90"):
+        return jsonify({"error": "unknown window"}), 400
+    payload = {"activity": finance_analysis.window_report(win, "activity"),
+               "cohort": finance_analysis.window_report(win, "cohort"),
+               "verdict": finance_analysis.verdict()}
+    resp = jsonify(payload)
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/gap", methods=["GET"])
+@require_auth
+def api_gap():
+    """The tracker-gap state: window + evidence + close ledger + the Piolo
+    backfill package (Piolo executes it — full visibility)."""
+    import gap_reconcile
+    import kv_store
+    resp = jsonify({"state": kv_store.get("gap:state"),
+                    "ledger": gap_reconcile.close_ledger(),
+                    "package": kv_store.get("gap:backfill_package"),
+                    "lead_diff": gap_reconcile.lead_diff(),
+                    "journal": kv_store.get("gap:journal")})
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/gap/rebuild", methods=["POST"])
+@require_owner
+def api_gap_rebuild():
+    """Owner: re-detect + rebuild the ledger + refresh the package now."""
+    import gap_reconcile
+    st = gap_reconcile.detect_gap(force=True)
+    led = gap_reconcile.rebuild_closes(apply=True)
+    pkg = gap_reconcile.build_backfill_package()
+    return jsonify({"ok": True, "state": st.get("gap"),
+                    "auto": led.get("auto"), "proposed": led.get("proposed"),
+                    "package_rows": pkg.get("rows")})
+
+
+@bp.route("/api/finance-analysis", methods=["GET", "POST"])
+@require_owner
+def api_finance_analysis():
+    import finance_analysis
+    if request.method == "POST":
+        return jsonify({"ok": True, **finance_analysis.generate_briefing()})
+    resp = jsonify({"latest": finance_analysis.latest_briefing()})
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/finance-analysis.pdf", methods=["GET"])
+@require_owner
+def api_finance_analysis_pdf():
+    import finance_analysis
+    from helpers import today_sydney
+    pdf = finance_analysis.briefing_pdf()
+    resp = make_response(pdf)
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = \
+        f"attachment; filename=financial-analysis-{today_sydney()}.pdf"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp

@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import os
 import time
 
 import db
@@ -494,7 +495,18 @@ def _loop():
     logger.info("ghl_mirror sync loop started (every %ds)", _SYNC_INTERVAL)
     while True:
         try:
-            sync_opportunities()   # cheap, frequent; contacts/notes sync via resync + periodic backfill
+            sync_opportunities()   # cheap, frequent
+            # CURRENCY AUDIT (2026-09-17): contacts/notes used to refresh
+            # ONLY on a manual "resync" chat command — a month with no logins
+            # froze them at 2026-07-27. Now a kv-claimed DAILY pass keeps the
+            # contact mirror current unattended (read-only GETs, throttled).
+            import kv_store
+            from helpers import today_sydney
+            _day = str(today_sydney())
+            if kv_store.put_if_absent(f"ghl:contacts_daily:{_day}",
+                                      {"pid": os.getpid()}):
+                cn = sync_contacts_and_notes()
+                logger.info("ghl_mirror daily contacts/notes: %s", cn)
         except Exception as e:
             logger.warning("ghl_mirror loop error: %s", e)
         time.sleep(_SYNC_INTERVAL)

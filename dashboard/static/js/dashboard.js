@@ -4237,7 +4237,7 @@
             'section-team', 'section-cohort', 'section-offers', 'section-lead-roi', 'section-reps',
             'section-pipeline'] },
     { n: 4, title: 'Where are we going', sub: 'Projections and scenarios',
-      ids: ['section-forecast-mrr'] },
+      ids: ['section-roas', 'section-forecast-mrr'] },
   ];
   function applyZones() {
     var main = document.getElementById('main');
@@ -4575,6 +4575,41 @@
         if (sub) sub.textContent = bk.done ? bk.done + ' done (suppressed until state changes)' : '';
       }
     } catch (e) { /* cards keep their skeletons; the pages remain reachable */ }
+  }
+
+  // THREE ROAS (#149): cash / contract / LTV, labelled, never blended.
+  async function renderRoas() {
+    try {
+      var r = await fetch('/dashboard/api/roas?window=sep_mtd');
+      if (!r.ok) return;
+      var d = await r.json();
+      var a = (d.activity || {});
+      var ro = a.roas || {};
+      var x = function (v) { return v == null ? '—' : v + '×'; };
+      var body = $('#roas-body');
+      if (body) {
+        body.innerHTML =
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.6rem">' +
+          '<div class="csm-tile" style="background:var(--panel,#141d29);border:1px solid var(--border,#243244);border-radius:10px;padding:.7rem .8rem">' +
+            '<div style="font-size:.68rem;text-transform:uppercase;opacity:.6">Cash ROAS</div>' +
+            '<div style="font-size:1.4rem;font-weight:700">' + x(ro.cash_roas_activity) + '</div>' +
+            '<div style="font-size:.7rem;opacity:.65">receipts in window · cohort cash so far ' + x(ro.cash_roas_cohort) + '</div></div>' +
+          '<div style="background:var(--panel,#141d29);border:1px solid #4a7ab5;border-radius:10px;padding:.7rem .8rem">' +
+            '<div style="font-size:.68rem;text-transform:uppercase;opacity:.6">Contract ROAS (the deciding clock)</div>' +
+            '<div style="font-size:1.4rem;font-weight:700">' + x(ro.contract_roas) + '</div>' +
+            '<div style="font-size:.7rem;opacity:.65">signed value of closes ÷ spend</div></div>' +
+          '<div style="background:var(--panel,#141d29);border:1px solid var(--border,#243244);border-radius:10px;padding:.7rem .8rem">' +
+            '<div style="font-size:.68rem;text-transform:uppercase;opacity:.6">LTV ROAS</div>' +
+            '<div style="font-size:1.4rem;font-weight:700">' + x(ro.ltv_roas) + '</div>' +
+            '<div style="font-size:.7rem;opacity:.65">projected LTV · inputs labelled measured/placeholder</div></div>' +
+          '</div>' +
+          '<div style="font-size:.72rem;opacity:.6;margin-top:.35rem">spend ' +
+          (a.spend ? '$' + Math.round(a.spend.amount).toLocaleString() + ' · ' + esc(a.spend.source || '') : '—') +
+          (a.window && a.window.intraday_note ? ' · ⏳ ' + esc(a.window.intraday_note) : '') + '</div>';
+      }
+      var vd = $('#roas-verdict');
+      if (vd && d.verdict) vd.textContent = d.verdict.verdict || '';
+    } catch (e) { /* panel keeps skeleton */ }
   }
 
   // CSM (#146): OWNER-ONLY card, fail-closed — the section ships display:none
@@ -4970,6 +5005,7 @@
     renderOutflow();         // Outflow truth — bands + accrual/cash toggle
     renderForecast();        // Zone 1 cash + Zone 4 MRR projections
     loadActor();             // who's signed in (Rydel / Piolo)
+    renderRoas();            // Zone 4 — three ROAS, labelled (#149)
     renderCsmCard();         // Zone 1 — OWNER-ONLY CSM card (fail-closed, discreet-aware)
     renderOpsCards();        // Zone 3 — worklog + bookkeeping SUMMARY cards
                              // (the full lists live on /dashboard/worklog and
