@@ -480,10 +480,36 @@ def pull_bas_inputs(bs_dates: list[str], pnl_windows: list[tuple[str, str]]) -> 
     at, tid = tokens["access_token"], tokens["tenant_id"]
 
     tax_lines, missing = {}, []
+    ar_anchor = None
     for d in bs_dates:
         bs = _fetch_balance_sheet(at, tid, d)
         if bs:
             tax_lines[str(d)] = extract_tax_lines(bs)
+            # AR anchor (#150): the Accounts Receivable line from the SAME
+            # report — the receivables engine's ledger-truth reconciliation
+            # target (no extra API call, no extra refresh).
+            rep = (bs.get("Reports") or [{}])[0]
+
+            def _walk_ar(rows):
+                found = None
+                for r in rows or []:
+                    if r.get("Rows"):
+                        inner = _walk_ar(r["Rows"])
+                        if inner is not None:
+                            found = inner
+                    cells = r.get("Cells") or []
+                    if len(cells) >= 2:
+                        nm = (cells[0].get("Value") or "").strip().lower()
+                        if "accounts receivable" in nm:
+                            try:
+                                found = float(str(cells[1].get("Value")).replace(",", ""))
+                            except (TypeError, ValueError):
+                                pass
+                return found
+
+            v = _walk_ar(rep.get("Rows", []))
+            if v is not None:
+                ar_anchor = {"date": str(d), "accounts_receivable": v}
         else:
             missing.append(str(d))
 
@@ -502,7 +528,8 @@ def pull_bas_inputs(bs_dates: list[str], pnl_windows: list[tuple[str, str]]) -> 
                 bas_account = b.get("balance")
 
     return {"ok": True, "tax_lines": tax_lines, "bs_missing": missing,
-            "pnl": pnl, "bas_account_balance": bas_account}
+            "pnl": pnl, "bas_account_balance": bas_account,
+            "ar_anchor": ar_anchor}
 
 
 def pull_xero() -> dict:

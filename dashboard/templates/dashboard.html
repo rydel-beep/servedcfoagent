@@ -120,9 +120,9 @@
     </div>
     <div class="kpi-divider"></div>
     <div class="kpi" id="kpi-cash">
-      <div class="kpi-label">Cash Collected <span class="info-icon" data-metric="stripe_cash_collected_30d">&#9432;</span></div>
+      <div class="kpi-label">Cash collected (tracker cells) <span class="info-icon" data-metric="stripe_cash_collected_30d">&#9432;</span></div>
       <div class="kpi-value" id="val-cash">—</div>
-      <div class="kpi-sub"><span class="win-badge">30d</span> gross</div>
+      <div class="kpi-sub"><span class="win-badge">30d</span> team-logged · Stripe receipts tile is the bank truth</div>
     </div>
     <div class="kpi-divider"></div>
     <div class="kpi" id="kpi-margin">
@@ -590,6 +590,26 @@
   <!-- FINANCE IA (2026-08-10): the worklog + bookkeeping DUMPS became summary
        CARDS — live one-engine counts, whole card is a door to the full page.
        The lists live at /dashboard/worklog and /dashboard/bookkeeping. -->
+  <!-- DECISION CARDS (#150): owner-only "needs your ruling" — ships hidden;
+       only an owner 200 reveals it (fail-closed like the CSM card). -->
+  <section class="panel" id="section-decision-cards" style="display:none">
+    <div class="panel-header">
+      <h2 class="panel-title">Needs your ruling</h2>
+      <span class="panel-sub" id="dc-sub"></span>
+    </div>
+    <div id="dc-body"><div class="skeleton skeleton-text"></div></div>
+  </section>
+
+  <!-- RECEIVABLES (#150): the missing concept — expected vs received,
+       aging, pending is NEVER cash. -->
+  <section class="panel" id="section-ar">
+    <div class="panel-header">
+      <h2 class="panel-title">Receivables — expected vs received <button class="fin-door" data-findrawer="ar_outstanding" title="show your work">ⓘ work</button></h2>
+      <span class="panel-sub">pending is never cash (R-CASH) · anchor: Xero Balance-Sheet AR</span>
+    </div>
+    <div id="ar-body"><div class="skeleton skeleton-text"></div></div>
+  </section>
+
   <!-- THREE ROAS (#149): cash / contract / LTV side by side, labelled,
        never blended — plus the month verdict. One engine (finance_analysis). -->
   <section class="panel" id="section-roas">

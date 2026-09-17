@@ -552,19 +552,35 @@ def build_snapshot() -> dict:
     current_mrr = (health_result.get("client_health") or {}).get("current_mrr") or 0
     xero_d = xero_result.get("xero") or {}
 
+    # SCRUTINY FIX (#150): the nets must eat the BANDED OpEx — the blended
+    # figure includes tax/statutory + personal (the June $26.5k income-tax
+    # lump class), which silently deflated every "net". Tax is a liability
+    # settlement, not an operating cost; it renders BESIDE, never inside.
+    _opex_banded = xero_d.get("operating_expenses")
+    _opex_note = "blended (bands unavailable)"
+    try:
+        _ob = (xero_d.get("opex_bands") or {}).get("bands") or {}
+        if _ob.get("opex") is not None:
+            _opex_banded = _ob["opex"]
+            _opex_note = (f"OpEx band (tax/statutory "
+                          f"${_ob.get('tax_statutory') or 0:,.0f} + personal "
+                          f"${_ob.get('personal') or 0:,.0f} banded BESIDE)")
+    except Exception:
+        pass
     fin_pos = build_financial_position(
         stripe_cash_30d=stripe_rev,
         xero_revenue=xero_d.get("revenue"),
         xero_cogs=xero_d.get("cogs"),
         xero_gross_profit=xero_d.get("gross_profit"),
         xero_gross_margin_pct=xero_d.get("gross_margin_pct"),
-        xero_opex=xero_d.get("operating_expenses"),
+        xero_opex=_opex_banded,
         xero_net_profit=xero_d.get("net_profit"),
         true_team_cost=true_team_cost,
         ad_spend=ad_spend_resolved["value"],
         current_mrr=current_mrr,
         total_burn=burn.get("total_recurring_burn"),
     )
+    fin_pos["opex_basis"] = _opex_note
     snapshot["financial_position"] = fin_pos
 
     # ── Forward recognized MRR (churn-adjusted, from RECOGNIZED tab) ────────

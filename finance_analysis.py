@@ -243,6 +243,12 @@ def window_report(name: str, basis: str = "activity") -> dict:
     closes = _closes_union(str(w0), str(w1), basis)
     contract_total = sum(float(c.get("contract") or 0) for c in closes)
     contract_missing = [c["person"] for c in closes if not c.get("contract")]
+    # #150: SIGNED vs DERIVED split — a derived contract value (package-term
+    # × MRR) is never rendered as signed; every derived $ is chipped.
+    contract_signed = round(sum(
+        float(c.get("contract") or 0) for c in closes
+        if c.get("contract") and "derived" not in str(c.get("contract_provenance") or "tracker")), 2)
+    contract_derived = round(contract_total - contract_signed, 2)
     cohort_cash = sum(float(c.get("cash") or 0) for c in closes)
     receipts = _receipts_in_window(w0, w1)
     inputs = _ltv_inputs()
@@ -270,17 +276,30 @@ def window_report(name: str, basis: str = "activity") -> dict:
         "cash": {"receipts_in_window": receipts,
                  "cohort_cash_from_closes": round(cohort_cash, 2)},
         "roas": {
-            "cash_roas_activity": _r(receipts.get("total")
-                                     if receipts.get("available") else None),
+            # #150: COHORT is the headline cash figure; the all-receipts
+            # ratio is DEMOTED + relabelled (retainers from old clients are
+            # not returns on this month's ads).
             "cash_roas_cohort": _r(cohort_cash),
+            "receipts_ratio_not_attributable": _r(
+                receipts.get("total") if receipts.get("available") else None),
             "contract_roas": _r(contract_total),
+            "contract_roas_signed_only": _r(contract_signed),
             "ltv_roas": _r(ltv_total),
-            "labels": {"cash_activity": "receipts in window ÷ spend",
-                       "cash_cohort": "cash-to-date from window closes ÷ spend",
-                       "contract": "signed value of window closes ÷ spend",
+            "labels": {"cash_cohort": "the window's closes' own cash ÷ spend "
+                                      "(THE cash ROAS)",
+                       "receipts_ratio": "ALL receipts ÷ spend — not "
+                                         "attributable to this window's ads; "
+                                         "demoted from the headline",
+                       "contract": "contract value of window closes ÷ spend "
+                                   "(signed + derived split shown)",
                        "ltv": "projected LTV of window closes ÷ spend"},
             "never_blended": True},
         "contract": {"total": round(contract_total, 2),
+                     "signed": contract_signed,
+                     "derived": contract_derived,
+                     "derived_note": ("derived = package term × Health-tab "
+                                      "MRR, chipped — not a signed figure"
+                                      if contract_derived else None),
                      "missing": contract_missing},
         "ltv": {"total": round(ltv_total, 2), "inputs": inputs},
         "closes": closes,
@@ -444,8 +463,8 @@ def build_briefing_markdown() -> tuple[str, str]:
         f"- CPL {_money(sep['unit_costs']['cpl'])} · C/Set "
         f"{_money(sep['unit_costs']['cost_per_set'])} · C/Close "
         f"{_money(sep['unit_costs']['cost_per_close'])}",
-        f"- CASH ROAS {r['cash_roas_activity']}× (receipts) / "
-        f"{r['cash_roas_cohort']}× (cohort cash) · CONTRACT ROAS "
+        f"- COHORT CASH ROAS {r['cash_roas_cohort']}× (the closes' own "
+        f"cash) · CONTRACT ROAS "
         f"{r['contract_roas']}× · LTV ROAS {r['ltv_roas']}×",
         f"- LTV inputs: renewal {sep['ltv']['inputs']['renewal_rate_pct']}% "
         f"({sep['ltv']['inputs']['renewal_provenance']}); completion "
@@ -471,7 +490,9 @@ def build_briefing_markdown() -> tuple[str, str]:
               f"- Spend {_money(aug['spend']['amount'])} · "
               f"{aug['funnel']['leads']} leads · {aug['funnel']['closes']} "
               f"closes · CONTRACT ROAS {aug['roas']['contract_roas']}× · "
-              f"CASH ROAS {aug['roas']['cash_roas_activity']}× (receipts)",
+              f"COHORT CASH ROAS {aug['roas']['cash_roas_cohort']}× · receipts "
+              f"ratio {aug['roas']['receipts_ratio_not_attributable']}× "
+              f"(not attributable — demoted)",
               "", "## The four sets (R-A2)"]
     fs = a["four_sets"]
     if fs.get("sessions_note"):
@@ -546,8 +567,10 @@ def handle_finance_command(text: str) -> tuple[str | None, bool]:
             r = rep["roas"]
             return (
                 f"September MTD, three ROAS, never blended: CASH "
-                f"{r['cash_roas_activity']}× (receipts in month) / "
-                f"{r['cash_roas_cohort']}× (the closes' cash so far) · "
+                f"{r['cash_roas_cohort']}× COHORT (the closes' own cash — "
+                f"THE cash figure; all-receipts ratio "
+                f"{r['receipts_ratio_not_attributable']}× is demoted, not "
+                f"attributable to this month's ads) · "
                 f"CONTRACT {r['contract_roas']}× · LTV {r['ltv_roas']}× "
                 f"(inputs: renewal "
                 f"{rep['ltv']['inputs']['renewal_rate_pct']}% "
@@ -578,3 +601,130 @@ def handle_finance_command(text: str) -> tuple[str | None, bool]:
     except Exception as e:
         logger.info("finance drill failed: %s", e)
     return None, False
+
+
+# ── unit economics view (#150 — D3): ratios per cohort / trailing / package ─
+
+def unit_econ_view() -> dict:
+    """LTV:CAC + LTGP:CAC with honest inputs: fully-loaded vs spend-only CAC
+    both present; LTV per package from the config term authority; LTGP via
+    Xero gross margin (FY26 42.9% contribution as the labelled fallback).
+    Benchmark 3:1 labelled 'benchmark, not target'."""
+    import range_unit_economics as RUE
+    from config import PACKAGE_TERMS
+    inputs = _ltv_inputs()
+    try:
+        from snapshot import load_persisted
+        snap = load_persisted() or {}
+        margin = ((snap.get("xero") or {}).get("gross_margin_pct"))
+    except Exception:
+        margin = None
+    margin_prov = (f"Xero P&L gross margin {margin}%" if margin is not None
+                   else "FY26 contribution margin 42.9% (labelled fallback)")
+    margin_val = margin if margin is not None else 42.9
+    out = {"benchmark": {"value": 3.0,
+                         "label": "3:1 — benchmark, not target"},
+           "ltv_inputs": inputs, "margin_provenance": margin_prov,
+           "windows": {}}
+    t = today_sydney()
+    for name, (w0, w1) in (("cohort_month", (t.replace(day=1), t)),
+                           ("trailing_90d", (t - dt.timedelta(days=89), t))):
+        ue = RUE.unit_economics(w0, w1)
+        comp = ue.get("components") or {}
+        closes = _closes_union(str(w0), str(w1), "activity")
+        # per-close LTV from the close's own package where known
+        ltv_total, by_pkg = 0.0, {}
+        for c in closes:
+            cv = c.get("contract")
+            pkg = None
+            try:
+                from snapshot import load_persisted
+                pool = ((load_persisted() or {}).get("active_clients") or {}).get("active") or []
+                row = next((x for x in pool
+                            if c.get("client_row") and x.get("name") == c["client_row"]), None)
+                pkg = (row or {}).get("package")
+            except Exception:
+                pass
+            ltv = _ltv_of(cv, inputs)
+            if ltv:
+                ltv_total += ltv
+                key = (pkg or "unknown").lower()
+                agg = by_pkg.setdefault(key, {"closes": 0, "ltv": 0.0,
+                                              "term_months": PACKAGE_TERMS.get(key)})
+                agg["closes"] += 1
+                agg["ltv"] = round(agg["ltv"] + ltv, 2)
+        n = len(closes)
+        cac_full = comp.get("cac_fully_loaded")
+        cac_spend = comp.get("cac_spend_only")
+        avg_ltv = round(ltv_total / n, 2) if n and ltv_total else None
+        out["windows"][name] = {
+            "window": {"start": str(w0), "end": str(w1), "clock": "activity"},
+            "closes": n,
+            "cac_fully_loaded": cac_full,
+            "cac_spend_only": cac_spend,
+            "cac_loaded_standing": comp.get("cac_loaded"),
+            "cac_labels": comp.get("cac_labels"),
+            "avg_ltv_per_close": avg_ltv,
+            "ltv_to_cac": (round(avg_ltv / cac_full, 2)
+                           if avg_ltv and cac_full else None),
+            "ltgp_to_cac": (round(avg_ltv * margin_val / 100 / cac_full, 2)
+                            if avg_ltv and cac_full else None),
+            "by_package": by_pkg,
+            "engine_30d_reference": {"ltgp_cac": ue.get("ltgp_cac"),
+                                     "ltv_cac": ue.get("ltv_cac"),
+                                     "note": "the standing engine's contract-"
+                                             "based ratios, beside — never "
+                                             "blended with the LTV-projected "
+                                             "pair"},
+        }
+    return out
+
+
+def drawer_ltv_cac() -> dict:
+    ue = unit_econ_view()
+    w = ue["windows"]["cohort_month"]
+    return {
+        "tile": "ltv_cac",
+        "definition": "LTV:CAC — projected lifetime value per close ÷ fully-"
+                      "loaded acquisition cost. Inputs' provenance below; "
+                      "3:1 is a benchmark, not a target.",
+        "formula": ue["ltv_inputs"]["formula"] + " ÷ (spend + commissions + "
+                   "sales tooling)",
+        "clock": "cohort month · activity",
+        "value": w["ltv_to_cac"],
+        "components": [
+            {"label": "avg LTV per close", "value": w["avg_ltv_per_close"],
+             "source": f"renewal {ue['ltv_inputs']['renewal_rate_pct']}% "
+                       f"({ue['ltv_inputs']['renewal_provenance'][:70]}); "
+                       f"completion {ue['ltv_inputs']['in_term_completion_pct']}% "
+                       f"({ue['ltv_inputs']['completion_provenance'][:40]})"},
+            {"label": "CAC fully loaded", "value": w["cac_fully_loaded"],
+             "source": (w.get("cac_labels") or {}).get("cac_fully_loaded")},
+            {"label": "CAC spend-only (beside, never confused)",
+             "value": w["cac_spend_only"],
+             "source": (w.get("cac_labels") or {}).get("cac_spend_only")}],
+        "reconciliation": {"external": "the standing 30d engine ratios",
+                           "reference": w["engine_30d_reference"]},
+    }
+
+
+def drawer_ltgp_cac() -> dict:
+    ue = unit_econ_view()
+    w = ue["windows"]["cohort_month"]
+    return {
+        "tile": "ltgp_cac",
+        "definition": "LTGP:CAC — lifetime GROSS PROFIT (LTV × gross margin) "
+                      "÷ fully-loaded CAC.",
+        "formula": "LTV × margin ÷ CAC(fully loaded)",
+        "clock": "cohort month · activity",
+        "value": w["ltgp_to_cac"],
+        "components": [
+            {"label": "margin", "value": None,
+             "source": ue["margin_provenance"]},
+            {"label": "avg LTV per close", "value": w["avg_ltv_per_close"],
+             "source": "see LTV:CAC drawer"},
+            {"label": "CAC fully loaded", "value": w["cac_fully_loaded"],
+             "source": (w.get("cac_labels") or {}).get("cac_fully_loaded")}],
+        "reconciliation": {"external": "the standing 30d engine ratios",
+                           "reference": w["engine_30d_reference"]},
+    }

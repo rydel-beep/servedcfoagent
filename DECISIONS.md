@@ -2125,3 +2125,43 @@
      measured-vs-placeholder). The month's verdict is decided by CONTRACT
      ROAS + PAYBACK MONTHS from real billing cadence — never by cash ROAS
      alone, never by reassurance.
+
+150. **DATA SCRUTINY — EVERY HEADLINE SHOWS ITS WORK (2026-09-17, Rydel's
+     five findings).** LAW: every finance-dashboard headline tile carries a
+     "show your work" drawer (definition · formula · components with
+     source+ids · clock · reconciliation delta = $0.00 or explained), and no
+     tile renders a bare ambiguous word — "committed"/"net"/"cash"/
+     "revenue"/"spend"/"ROAS" always carry their qualifier (test-pinned).
+     THE FIVE, ANSWERED STRUCTURALLY: (1) "$72k committed" was committed
+     MRR — REVENUE — mislabelled into a cost-belief → "Committed MRR
+     (revenue)" + drawer with all client rows + cross-tab reconciliation.
+     (2) "net" tiles decomposed into THREE labelled nets (cash net MTD
+     bank-basis · operating net MTD with tax/statutory banded BESIDE ·
+     expected month-end projection); the financial_position nets now eat the
+     BANDED OpEx (they silently included tax+personal — the plausible-lie
+     class); the waterfall renders both the P&L net (tax-blended, Xero's
+     line) and the operating net. (3) the workbooks are enumerated at
+     runtime (finance_tabs; new/unmapped tab = surfaced finding) and the
+     RECOGNIZED tab's RENEWAL COLUMNS + Sheet5 are ingested as the SHEET
+     RENEWAL LEDGER — renewed terms re-base the renewal watch and extend
+     committed coverage (labelled lane in the one projection engine;
+     month-to-month extensions stay in the assumed pool as DECIDED);
+     EXTENSION joins the declaration kinds. (4) RECEIVABLES: expected
+     (RECOGNIZED grid + ledger) vs received (Stripe receipts, alias-aware,
+     surname-only never matches) → outstanding/aging/status per client;
+     pending is NEVER cash; anchor = the Xero Balance-Sheet AR line (rode
+     the daily BAS pull — zero extra refreshes); invoice-level Xero AR =
+     registered dependency (scope not granted). (5) LTV:CAC + LTGP:CAC
+     first-class with honest inputs: fully-loaded CAC (spend + commissions
+     + sales tooling config + $0 fixed sales labour, stated) BESIDE
+     spend-only CAC; LTV per package (config PACKAGE_TERMS authority);
+     margin provenance (Xero P&L, FY26 42.9% fallback labelled); 3:1
+     rendered "benchmark, not target". RETIRED/RELABELLED: the all-receipts
+     "cash ROAS" is demoted to "receipts ÷ spend (not attributable)" —
+     COHORT cash ROAS is the headline; contract ROAS renders its
+     signed-vs-derived split with a ⚑ chip on derived values (package-term
+     × MRR is never rendered as signed). LTV:CAC un-gated from the gross-
+     margin read (a needless null when Xero was down). Decision cards
+     (owner-only) consolidate everything only Rydel can rule. Sentinel:
+     tab-change detection + cross-tab drift + AR-vs-anchor drift nightly.
+     READ-ONLY LAW (#148) reaffirmed: zero writes to the tracker/GHL.

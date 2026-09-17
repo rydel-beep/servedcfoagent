@@ -198,7 +198,7 @@ def test_conflict_surfaced_never_merged(monkeypatch):
 # ── three ROAS separation + payback + verdict ───────────────────────────────
 
 def test_three_roas_labelled_never_blended(monkeypatch):
-    rep = {"roas": {"cash_roas_activity": 0.4, "cash_roas_cohort": 0.5,
+    rep = {"roas": {"receipts_ratio_not_attributable": 0.4, "cash_roas_cohort": 0.5,
                     "contract_roas": 4.1, "ltv_roas": 6.0,
                     "labels": {}, "never_blended": True}}
     assert rep["roas"]["never_blended"]
@@ -237,7 +237,7 @@ def test_verdict_decided_by_contract_roas_and_payback(monkeypatch):
                            {"person": "B", "contract": 18300}],
                 "contract": {"total": 36600.0, "missing": []},
                 "roas": {"cash_roas_cohort": 0.6, "contract_roas": 7.32,
-                         "cash_roas_activity": 0.9, "ltv_roas": 9.0},
+                         "receipts_ratio_not_attributable": 0.9, "ltv_roas": 9.0},
                 "ltv": {"inputs": {}}}
     monkeypatch.setattr(F, "window_report", fake_report)
     monkeypatch.setattr(F, "cohort_payback", lambda n: {

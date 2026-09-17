@@ -460,6 +460,10 @@ def refresh() -> dict | None:
     est["calibration_flags"] = _calibration_flags()
     kv_store.put(_KV_ESTIMATE, est)
     _record_calibration(est)
+    # AR anchor (#150): stash the Balance-Sheet Accounts Receivable line for
+    # the receivables engine's reconciliation (rode the same daily pull).
+    if inputs.get("ar_anchor"):
+        kv_store.put("xero:ar_anchor", inputs["ar_anchor"])
     return est
 
 

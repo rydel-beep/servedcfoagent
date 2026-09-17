@@ -832,6 +832,11 @@ def api_chat():
             # — high so 'roas'/'what did I miss' aren't grabbed downstream.
             (__import__('finance_analysis').handle_finance_command, False),
             (__import__('gap_reconcile').handle_gap_command, False),
+            # DATA SCRUTINY (#150): three nets / committed-is-revenue /
+            # who-hasn't-paid / did-X-resign — the label-law drills.
+            (__import__('tile_drawers').handle_net_command, False),
+            (__import__('receivables').handle_ar_command, False),
+            (__import__('finance_tabs').handle_resign_command, False),
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
             (lambda m: __import__('open_loops').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # Pillar 1: 'remind me to X' / 'drop it' (internal reminders only)
@@ -1098,6 +1103,11 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             # — high so 'roas'/'what did I miss' aren't grabbed downstream.
             (__import__('finance_analysis').handle_finance_command, False),
             (__import__('gap_reconcile').handle_gap_command, False),
+            # DATA SCRUTINY (#150): three nets / committed-is-revenue /
+            # who-hasn't-paid / did-X-resign — the label-law drills.
+            (__import__('tile_drawers').handle_net_command, False),
+            (__import__('receivables').handle_ar_command, False),
+            (__import__('finance_tabs').handle_resign_command, False),
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
             (lambda m: __import__('open_loops').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # Pillar 1: 'remind me to X' / 'drop it' (internal reminders only)
@@ -2290,4 +2300,82 @@ def api_finance_analysis_pdf():
     resp.headers["Content-Disposition"] = \
         f"attachment; filename=financial-analysis-{today_sydney()}.pdf"
     resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DATA SCRUTINY (#150): show-your-work drawers, three nets, receivables,
+# unit economics, decision cards. Finance surfaces = require_auth (allowlist
+# walls ad/sales); decision cards = owner-only.
+# ═══════════════════════════════════════════════════════════════════════════
+
+@bp.route("/api/drawer/<tile>", methods=["GET"])
+@require_auth
+def api_drawer(tile):
+    """The show-your-work drawer for a headline tile: definition · formula ·
+    components (source + ids) · clock · reconciliation delta."""
+    import tile_drawers
+    import finance_analysis
+    if tile == "ltv_cac":
+        payload = finance_analysis.drawer_ltv_cac()
+    elif tile == "ltgp_cac":
+        payload = finance_analysis.drawer_ltgp_cac()
+    else:
+        payload = tile_drawers.drawer(tile)
+    resp = jsonify(payload)
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/nets", methods=["GET"])
+@require_auth
+def api_nets():
+    """The three honest nets (Part A2), components summing, tax banded."""
+    import tile_drawers
+    resp = jsonify(tile_drawers.three_nets())
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/ar", methods=["GET"])
+@require_auth
+def api_ar():
+    """Receivables: per-client expected/received/outstanding + aging +
+    the Xero AR anchor + unmatched-payment alias proposals."""
+    import receivables
+    fresh = request.args.get("fresh") == "1"
+    resp = jsonify(receivables.build_ar(fresh=fresh))
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/unit-econ-honest", methods=["GET"])
+@require_auth
+def api_unit_econ_honest():
+    """LTV:CAC + LTGP:CAC with loaded vs spend-only CAC and input provenance
+    (#150 D3) — per cohort month + trailing 90d + by package."""
+    import finance_analysis
+    resp = jsonify(finance_analysis.unit_econ_view())
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/tab-map", methods=["GET"])
+@require_auth
+def api_tab_map():
+    import finance_tabs
+    resp = jsonify({"tab_map": finance_tabs.enumerate_tabs(),
+                    "renewal_ledger": finance_tabs.renewal_ledger(),
+                    "cross_tab": finance_tabs.cross_tab_recon()})
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@bp.route("/api/decision-cards", methods=["GET"])
+@require_owner
+def api_decision_cards():
+    """Owner-only: everything only Rydel can rule, evidence attached."""
+    import decision_cards
+    resp = jsonify(decision_cards.build_cards())
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
     return resp

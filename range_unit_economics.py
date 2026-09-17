@@ -303,16 +303,42 @@ def unit_economics(range_start: str, range_end: str) -> dict:
         comp["cac_loaded"] = cac
         comp["cac_breakdown"] = (f"ad ${ad_spend or 0:,.0f} + closer ${closer_comm:,.0f} + "
                                  f"setter ${setter_comm:,.0f} = ${total_acq:,.0f} ÷ {closes} closes")
+        # #150: FULLY-LOADED CAC adds the sales-tooling share (config-sourced,
+        # provenance on the drawer); SPEND-ONLY CAC renders BESIDE it so the
+        # two are never confused. Sales labour attributable = $0 fixed
+        # (setters + closer are commission-only — stated, not hidden).
+        try:
+            from config import SALES_TOOLING_MONTHLY
+            window_days = comp["window"]["days"]
+            tooling = round(SALES_TOOLING_MONTHLY * window_days / 30.44, 2)
+        except Exception:
+            tooling = 0.0
+        comp["sales_tooling_window"] = tooling
+        comp["cac_fully_loaded"] = round((total_acq + tooling) / closes, 2)
+        comp["cac_spend_only"] = round((ad_spend or 0) / closes, 2)
+        comp["cac_labels"] = {
+            "cac_loaded": "ad spend + commissions (the standing metric)",
+            "cac_fully_loaded": "ad spend + commissions + sales tooling "
+                                f"(${tooling:,.0f} window share of "
+                                "SALES_TOOLING_MONTHLY config) + $0 fixed "
+                                "sales labour (commission-only team)",
+            "cac_spend_only": "Meta spend only — never confuse with loaded"}
+        # SCRUTINY FIX (#150): LTV:CAC needs no margin — it was gated behind
+        # the Xero gross-margin read for no reason (Xero down nulled it).
+        if cac > 0 and comp["avg_contract"]:
+            ltv_cac = round(comp["avg_contract"] / cac, 2)
         if margin is not None and comp["avg_contract"]:
             ltgp = comp["avg_contract"] * (margin / 100)
             comp["ltgp"] = round(ltgp, 2)
             if cac > 0:
                 ltgp_cac = round(ltgp / cac, 2)
-                ltv_cac = round(comp["avg_contract"] / cac, 2)
         if ad_spend and ad_spend > 0:
-            # ROAS = CONTRACTED revenue ÷ Meta spend (Rydel-locked 2026-07-03; the single ROAS).
+            # ROAS = CONTRACTED revenue ÷ Meta spend (Rydel-locked 2026-07-03).
+            # #149 renamed the family: THIS figure is CONTRACT ROAS; cash ROAS
+            # is cohort-only in finance_analysis. Never blended.
             roas = round(contract_total / ad_spend, 2)
-            comp["roas_breakdown"] = (f"${contract_total:,.0f} contracted ÷ ${ad_spend:,.0f} Meta spend")
+            comp["roas_breakdown"] = (f"${contract_total:,.0f} CONTRACTED ÷ ${ad_spend:,.0f} Meta spend "
+                                      f"(contract ROAS — not cash)")
 
     return {
         "ltgp_cac": ltgp_cac,

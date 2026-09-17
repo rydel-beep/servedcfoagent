@@ -167,6 +167,15 @@ def project() -> dict:
         degraded.append({"metric": "forward_projection",
                          "reason": f"declaration store unavailable: {e}"})
 
+    # sheet renewal ledger (#150) — loaded ONCE; kv-cached daily upstream
+    _ledger = {}
+    try:
+        import finance_tabs
+        _ledger = finance_tabs.sheet_renewals_for_projection() or {}
+    except Exception as _le_err:
+        logger.info("renewal ledger unavailable (projection runs without "
+                    "the lane): %s", _le_err)
+
     committed = [0.0] * len(labels)
     oneoff_cash = [0.0] * len(labels)
     assumed_pool = [0.0] * len(labels)
@@ -205,7 +214,7 @@ def project() -> dict:
                     # committed only until the churn effective date's month
                     if dv["effective"] and m0 >= dv["effective"].replace(day=1):
                         val, src = 0.0, "declared churn"
-                elif dv["kind"] == "renewal":
+                elif dv["kind"] in ("renewal", "extension"):
                     if dv.get("cadence") == "one_off":
                         # cash in the start month; no MRR, ever — and the
                         # client's SHEET-committed months ride untouched (a
@@ -256,10 +265,24 @@ def project() -> dict:
                 sheet_v = (srow.get("monthly") or {}).get(label)
                 if sheet_v:
                     val, src = float(sheet_v), "sheet"
+            # SHEET RENEWAL LEDGER (#150): a renewed term recorded in the
+            # RECOGNIZED renewal columns extends committed coverage where the
+            # monthly grid is blank — a LABELLED source lane, never a
+            # double-count (grid months always win above). Month-to-month
+            # extensions carry until=None and stay OUT of committed (the
+            # assumed pool is the honest home for open-ended terms).
+            if val is None and src is None:
+                le = _ledger.get(client_overrides._norm(name))
+                if le and not le.get("extension") and le.get("mrr"):
+                    lf, lu = le.get("from"), le.get("until")
+                    if lf and lu and str(m1) >= lf and str(m0) <= lu:
+                        val, src = float(le["mrr"]), "sheet renewal ledger"
+                        row["source"] = "sheet renewal ledger"
+                        row.setdefault("ledger", le.get("provenance"))
             if val:
                 committed[i] += val
                 covered_until = label
-                if src != "sheet":
+                if src not in ("sheet", "sheet renewal ledger"):
                     row["source"] = "declaration"
         row["committed_until"] = covered_until
         # THE ASSUMED POOL: every month AFTER this client's committed coverage
@@ -278,6 +301,11 @@ def project() -> dict:
                         has_committed = True
                 if (srow.get("monthly") or {}).get(label):
                     has_committed = True
+                _le = _ledger.get(client_overrides._norm(name))
+                if _le and not _le.get("extension") and _le.get("until") \
+                        and str(m0) <= _le["until"] and (_le.get("from") is None
+                                                         or str(m1) >= _le["from"]):
+                    has_committed = True   # ledger coverage ≠ undecided
                 if has_committed:
                     last_committed = i
             for i in range(last_committed + 1, len(labels)):
@@ -310,8 +338,15 @@ def project() -> dict:
                         and (d["start"] is None or d["start"] <= m0_end)
                         and (d["effective"] is None or d["effective"] >= m0_start))]
         recon["declarations_touching_month0"] = touching
+        # ledger coverage touching month 0 is DISCLOSED the same way — the
+        # renewed term legitimately adds committed the grid doesn't carry yet
+        ledger_touch = [v["client"] for v in _ledger.values()
+                        if not v.get("extension") and v.get("mrr")
+                        and v.get("from") and v.get("until")
+                        and v["from"] <= str(m0_end) and v["until"] >= str(m0_start)]
+        recon["ledger_touching_month0"] = ledger_touch
         recon["exact"] = bool(committed and (abs(decl_delta) < 0.01
-                                             or (decl_delta and touching)))
+                                             or (decl_delta and (touching or ledger_touch))))
     except Exception as e:
         degraded.append({"metric": "forward_projection",
                          "reason": f"reconciliation leg failed: {e}"})

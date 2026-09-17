@@ -177,7 +177,8 @@ _CADENCE_MONTHS = {"monthly": 1, "quarterly": 3, "annual": 12}
 
 # THE kinds enum (CSM wave adds downsell/continuity + expansion to the one
 # flow — every consumer references THIS, never a re-typed tuple).
-DECLARATION_KINDS = ("churn", "renewal", "downgrade", "downsell", "expansion")
+DECLARATION_KINDS = ("churn", "renewal", "downgrade", "downsell", "expansion",
+                     "extension")
 EXPANSION_SUBTYPES = ("stepup", "sprint", "ordering", "reservations",
                       "photo_day", "market_intel", "second_venue", "referral")
 # subtypes whose natural shape is a one-off payment (default cadence)
@@ -297,6 +298,37 @@ def preview_declaration(client_name: str, kind: str, effective_date: str | None 
             preview = (f"RENEW {nm}: contract end {old_end or '(none on file)'} → {eff}"
                        f"{delta or ', MRR unchanged'} — clears the renewal warning; "
                        f"re-enters the watch as {eff} approaches")
+    elif kind == "extension":
+        # EXTENSION (#150 — scrutiny wave): the term extended by N months,
+        # same or changed MRR, from the current end date. Converges exactly
+        # like a renewal (End Date + Monthly Recognized).
+        try:
+            ext_months = int(term_months or 0)
+        except (TypeError, ValueError):
+            return None, "extension needs the number of months"
+        if not (1 <= ext_months <= 24):
+            return None, "extension must be 1–24 months"
+        import datetime as _dt
+        try:
+            base_end = (_dt.date.fromisoformat(str(old_end))
+                        if old_end else today_sydney())
+        except ValueError:
+            base_end = today_sydney()
+        new_end = _add_months(base_end, ext_months)
+        ext_mrr = float(new_mrr) if new_mrr is not None else None
+        payload.update({"new_status": "Active",
+                        "new_mrr": ext_mrr,
+                        "effective_date": str(new_end),
+                        "term_months": ext_months,
+                        "start_date": str(base_end),
+                        "subtype": "extension"})
+        preview = (f"EXTEND {nm}: term {old_end or '(no end on file)'} → "
+                   f"{new_end} (+{ext_months}mo)"
+                   + (f", MRR ${ext_mrr:,.0f}/mo" if ext_mrr is not None
+                      else ", MRR unchanged")
+                   + " — clears the renewal warning; re-enters the watch as "
+                     "the extended term ages")
+        new_mrr = ext_mrr if ext_mrr is not None else cur_mrr
     elif kind == "downsell":
         # CONTINUITY (CSM wave): a non-renewal walked down to the Served OS
         # floor instead of churn-to-zero. Amount+cadence normalise via THE one

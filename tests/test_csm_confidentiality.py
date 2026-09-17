@@ -259,8 +259,10 @@ def test_dashboard_js_card_fails_closed():
     root = os.path.join(os.path.dirname(__file__), "..")
     js = open(os.path.join(root, "dashboard/static/js/dashboard.js")).read()
     i_fetch = js.index("fetch('/dashboard/api/csm/card')")
-    i_guard = js.index("sec.style.display = 'none'; return; }   // guard first")
-    i_reveal = js.index("sec.style.display = '';")
+    # search WITHIN the CSM renderer — other fail-closed panels (#150
+    # decision cards) use the same idiom earlier in the file
+    i_guard = js.index("sec.style.display = 'none'; return; }   // guard first", i_fetch)
+    i_reveal = js.index("sec.style.display = '';", i_fetch)
     assert i_fetch < i_guard < i_reveal
     assert "'section-csm-card'" in js
     html = open(os.path.join(root, "dashboard/templates/dashboard.html")).read()

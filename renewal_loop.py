@@ -173,7 +173,9 @@ def _sheet_reflects(ov: dict, srow: dict | None) -> tuple[bool, str | None]:
         return False, None
     if srow is None:
         return False, f"declared {kind} but the sheet row is GONE — verify with Piolo"
-    if kind == "renewal":
+    if kind in ("renewal", "extension"):
+        # extension (#150) converges exactly like a renewal: the sheet's End
+        # Date lands on the extended date (+ Monthly Recognized if declared).
         declared = str(ov.get("effective_date") or "")
         sheet_end = _parse_date_mmddyyyy(srow.get("end") or "")
         if sheet_end and str(sheet_end) == declared:
@@ -247,6 +249,13 @@ def piolo_edit_text(ov: dict) -> str:
             base += (" — convergence auto-clears on End Date + Monthly "
                      "Recognized matching")
         return base
+    if ov["change_type"] == "extension":
+        return (f"MRR contract sheet (Health tab), row '{nm}': set End Date="
+                f"{ov.get('effective_date')} (term EXTENDED "
+                f"+{ov.get('term_months')}mo)"
+                + (f", Monthly Recognized=${float(ov['new_mrr']):,.0f}"
+                   if ov.get("new_mrr") is not None else "")
+                + " — convergence auto-clears on End Date matching")
     if ov["change_type"] == "downsell":
         return (f"MRR contract sheet (Health tab), row '{nm}': set Monthly "
                 f"Recognized=${float(ov.get('new_mrr') or 0):,.0f} "

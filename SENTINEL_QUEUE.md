@@ -34,3 +34,4 @@ P2 = next session on the domain, P3 = when convenient).
   derived-date merge silently skips them. Repro: resolution._norm("St. Ali") !=
   attribution_engine._norm("St. Ali"). Needs a keyed migration session — do
   NOT hot-patch either normalizer. Register: F17.
+- [P2] 2026-09-17T17:18 — **workbook tab change** — unmapped=[{'book': 'ltc', 'tab': 'Closer Payout &amp; KPI'}] changes=[]

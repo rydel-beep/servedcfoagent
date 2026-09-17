@@ -181,3 +181,17 @@ HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "10"))
 # ── Trailing windows (days) ─────────────────────────────────────────────────
 WINDOW_CURRENT = 30
 WINDOW_PREVIOUS = 60  # we subtract current from this to get the prior period
+
+# ── Unit-economics authorities (#150 — one copy, three consumers) ──────────
+# Package term lengths in months (the sheet's Service Term is free text).
+PACKAGE_TERMS = {
+    "growth pro": 6, "scale engine": 6, "se_split": 6,
+    "cafe walk-ins": 3, "cafe walkins": 3, "walk-in": 3,
+    "content scale": 6, "web sub": 1,
+}
+# Sales tooling attributable to acquisition (monthly, AUD) — itemised from
+# the subscriptions override: GHL ~$580 + A-Leads $1,500 + Instantly $13 +
+# ManyChat $39. Owner-tunable via env; provenance renders on the CAC drawer.
+SALES_TOOLING_MONTHLY = float(os.getenv("SALES_TOOLING_MONTHLY", "2132"))
+# FY26 context: commissions ran 6.3% of sales (Rydel's figure, 2026-09-17).
+FY26_COMMISSIONS_PCT_OF_SALES = 6.3

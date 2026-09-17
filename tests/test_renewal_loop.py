@@ -324,11 +324,12 @@ def test_renewal_override_moves_contract_end_in_the_one_engine():
     SAME loop every consumer reads — no side-channel math."""
     src = open(os.path.join(os.path.dirname(__file__), "..",
                             "finance_sheets_pull.py")).read()
-    i = src.index('change_type") == "renewal"')
+    # (#150: extension shares the renewal re-base block)
+    i = src.index('change_type") in ("renewal", "extension")')
     block = src[i - 200:i + 600]
     assert "contract_end = date.fromisoformat" in block
     # membership recomputes from contract_end BELOW the override — order matters
-    assert src.index('change_type") == "renewal"') < src.index("days_to_end = (contract_end - today).days")
+    assert src.index('change_type") in ("renewal", "extension")') < src.index("days_to_end = (contract_end - today).days")
 
 
 def test_declared_chip_states():

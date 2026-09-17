@@ -410,6 +410,12 @@ def pull_client_health() -> dict:
         _ovr_recon = client_overrides.reconciled_recent()
     except Exception:
         _ovr, _ovr_norm, _ovr_recon = {}, (lambda s: s), {}
+    # sheet renewal ledger (#150) — loaded once; kv-cached daily
+    try:
+        import finance_tabs
+        _sheet_ledger = finance_tabs.sheet_renewals_for_projection() or {}
+    except Exception:
+        _sheet_ledger = {}
 
     for row in data_rows:
         name = row[_H_NAME].strip() if len(row) > _H_NAME else ""
@@ -487,11 +493,31 @@ def pull_client_health() -> dict:
             except Exception:
                 pass
 
+        # SHEET RENEWAL LEDGER (#150): a renewal recorded in the RECOGNIZED
+        # renewal columns re-bases this client's term in the ONE engine —
+        # the 2026-09-17 scrutiny found eight renewals (Noodle Asia,
+        # Bluebells, At Thai, …) the watch never saw because it read only
+        # the End Date column. Owner declarations still win (applied below,
+        # after this). Month-to-month extensions don't set an end date —
+        # they mark the renewal DECIDED (watch archives, not nags).
+        _ledger_entry = _sheet_ledger.get(_ovr_norm(name)) if _sheet_ledger else None
+        if _ledger_entry and not _ledger_entry.get("extension"):
+            try:
+                _lu = _ledger_entry.get("until")
+                if _lu:
+                    _lend = date.fromisoformat(_lu)
+                    if contract_end is None or _lend > contract_end:
+                        contract_end = _lend
+                        if _ledger_entry.get("from"):
+                            contract_start = date.fromisoformat(_ledger_entry["from"])
+            except (ValueError, TypeError):
+                pass
+
         # Declared RENEWAL (#135): the new term end overrides the sheet's End
         # Date in the ONE engine — Churn Risk / Renewal Watch membership and
         # days_to_end all recompute from it below (zero side-channel math);
         # an MRR change at renewal applies like a downgrade/upsell.
-        if _ov and _ov.get("change_type") == "renewal":
+        if _ov and _ov.get("change_type") in ("renewal", "extension"):
             if _ov.get("effective_date"):
                 try:
                     contract_end = date.fromisoformat(str(_ov["effective_date"]))
@@ -592,9 +618,9 @@ def pull_client_health() -> dict:
         # from the ORIGINAL start never resets). The client leaves the watch
         # on declaration (archived below) and re-enters as the NEW term ages
         # past the same lead time — a loop, not a one-shot.
-        _renew_ov = (_ov if (_ov and _ov.get("change_type") == "renewal")
+        _renew_ov = (_ov if (_ov and _ov.get("change_type") in ("renewal", "extension"))
                      else _ovr_recon.get(_ovr_norm(name))
-                     if (_ovr_recon.get(_ovr_norm(name)) or {}).get("change_type") == "renewal"
+                     if (_ovr_recon.get(_ovr_norm(name)) or {}).get("change_type") in ("renewal", "extension")
                      else None)
         watch_start = contract_start
         if _renew_ov:
@@ -634,6 +660,16 @@ def pull_client_health() -> dict:
                         "id": _downsell_ov.get("id")},
                     "chip": ("declared ✓ sheet" if _downsell_ov.get("reconciled")
                              else "declared · pending sheet")})
+            elif _ledger_entry and _ledger_entry.get("extension"):
+                # MONTH-TO-MONTH EXTENSION (#150 — the Bluebells case): the
+                # renewal decision is MADE (sheet renewal ledger); the watch
+                # archives it as decided instead of nagging a stale end date.
+                renewal_watch_cleared.append({
+                    **entry, "cleared_by": "sheet renewal ledger — "
+                                           "month-to-month extension",
+                    "declaration": {"kind": "extension",
+                                    "provenance": _ledger_entry.get("provenance")},
+                    "chip": "sheet ledger · extension (month-to-month)"})
             elif elapsed_months >= 4 and total_months >= 4:
                 renewal_watch.append(entry)
             elif _renew_ov:

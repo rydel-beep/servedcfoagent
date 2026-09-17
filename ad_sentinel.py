@@ -452,6 +452,18 @@ def nightly_extras() -> dict | None:
         out["stripe_watch"] = stripe_health.sentinel_watch()
     except Exception as e:
         out["stripe_watch"] = {"error": str(e)[:80]}
+    # DATA SCRUTINY (#150): tab-change detection + renewal-ledger freshness
+    # + cross-tab drift; AR rebuild + AR-vs-Xero anchor drift.
+    try:
+        import finance_tabs
+        out["tabs_watch"] = finance_tabs.sentinel_watch()
+    except Exception as e:
+        out["tabs_watch"] = {"error": str(e)[:80]}
+    try:
+        import receivables
+        out["ar_watch"] = receivables.sentinel_watch()
+    except Exception as e:
+        out["ar_watch"] = {"error": str(e)[:80]}
     # GAP RECONCILIATION (#148/#149): backfill-package convergence + R-GAP
     # authority-scope integrity (gap provenance never leaks outside the
     # window — a leak is a P1 queue item).

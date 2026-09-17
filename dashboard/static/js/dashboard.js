@@ -971,7 +971,15 @@
     } else if (opex != null) {
       rows += `<div class="wf-row"><span class="wf-label">Operating Expenses${pctOf(opex, rev)}</span>${bar(opex, 'cost')}<span class="wf-value" style="color:var(--red)">-${fmt$(opex)}</span></div>`;
     }
-    if (net != null) rows += `<div class="wf-row total"><span class="wf-label">Net Profit${pctOf(net, rev)}</span>${bar(Math.abs(net), net >= 0 ? 'profit' : 'loss')}<span class="wf-value" style="color:${net >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt$(net)}</span></div>`;
+    // #150: the P&L net (Xero's own line) is tax-BLENDED — say so, and show
+    // the operating net (tax banded beside) right under it. Never one bare "Net".
+    if (net != null) {
+      rows += `<div class="wf-row total"><span class="wf-label">Net profit (P&L, tax-blended — Xero's line)${pctOf(net, rev)}</span>${bar(Math.abs(net), net >= 0 ? 'profit' : 'loss')}<span class="wf-value" style="color:${net >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt$(net)}</span></div>`;
+      if (ob && ob.tax_statutory != null) {
+        const opNet = net + (ob.tax_statutory || 0) + (ob.personal || 0);
+        rows += `<div class="wf-row total"><span class="wf-label">Operating net (tax/statutory + personal banded beside)</span>${bar(Math.abs(opNet), opNet >= 0 ? 'profit' : 'loss')}<span class="wf-value" style="color:${opNet >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt$(opNet)}</span></div>`;
+      }
+    }
 
     // OpEx breakdown
     let breakdownHtml = '';
@@ -1125,9 +1133,9 @@
     if (cashInflow != null && totalBurn != null) {
       const netFlow = cashInflow - totalBurn;
       html += `<div class="cash-card">
-        <div class="cash-card-label">Net Cash Flow</div>
+        <div class="cash-card-label">Cash net (30d flow) <button class="fin-door" data-findrawer="three_nets" title="show your work — the three nets">\u24d8</button></div>
         <div class="cash-card-value" style="color:${netFlow >= 0 ? 'var(--green)' : 'var(--red)'}">${netFlow >= 0 ? '+' : ''}${fmt$(netFlow)}</div>
-        <div class="cash-card-sub">Stripe cash minus total burn</div>
+        <div class="cash-card-sub">Stripe 30d receipts − recurring burn (commissions + delivery COGS excluded — see drawer)</div>
       </div>`;
     }
 
@@ -3165,15 +3173,15 @@
     // Dual-basis net — show both if available, otherwise headline
     if (cashB && cashB.monthly_net != null) {
       var cNet = cashB.monthly_net;
-      html += '<div class="kpi"><div class="kpi-label">Cash Net</div><div class="kpi-value' + (cNet < 0 ? ' critical' : '') + '">' + fmt$(cNet) + '</div><div class="kpi-sub">/mo (Stripe)</div></div>';
+      html += '<div class="kpi"><div class="kpi-label">Cash net (receipts − banded OpEx)</div><div class="kpi-value' + (cNet < 0 ? ' critical' : '') + '">' + fmt$(cNet) + '</div><div class="kpi-sub">/mo (Stripe)</div></div>';
     }
     if (recB && recB.monthly_net != null) {
       var rNet = recB.monthly_net;
-      html += '<div class="kpi"><div class="kpi-label">Recognized Net</div><div class="kpi-value' + (rNet < 0 ? ' critical' : '') + '">' + fmt$(rNet) + '</div><div class="kpi-sub">/mo (Xero P&L)</div></div>';
+      html += '<div class="kpi"><div class="kpi-label">Recognized net (Xero P&L)</div><div class="kpi-value' + (rNet < 0 ? ' critical' : '') + '">' + fmt$(rNet) + '</div><div class="kpi-sub">/mo (Xero P&L)</div></div>';
     }
     if (!cashB && !recB && headline.monthly_net != null) {
       var hNet = headline.monthly_net;
-      html += '<div class="kpi"><div class="kpi-label">Monthly Net</div><div class="kpi-value' + (hNet < 0 ? ' critical' : '') + '">' + fmt$(hNet) + '</div><div class="kpi-sub">/mo (' + (headline.basis || '?') + ')</div></div>';
+      html += '<div class="kpi"><div class="kpi-label">Monthly net</div><div class="kpi-value' + (hNet < 0 ? ' critical' : '') + '">' + fmt$(hNet) + '</div><div class="kpi-sub">/mo (' + (headline.basis || '?') + ')</div></div>';
     }
 
     // Cash on hand
@@ -3610,7 +3618,7 @@
 
     // THE HONEST HEADLINE: both figures + the live assumption, never blended
     var html = '<div class="proj-headline">' +
-      'Month 0: <strong>' + fmt$(Math.round(committed[0] || 0)) + ' committed</strong>' +
+      '<button class="fin-door" data-findrawer="committed_mrr" title="show your work">\u24d8</button> Month 0: <strong>' + fmt$(Math.round(committed[0] || 0)) + ' committed MRR (revenue)</strong>' +
       (assumed[0] ? ' + <span class="proj-assumed-fig">' + fmt$(Math.round(assumed[0])) + ' assumed</span>' : '') +
       ' &nbsp;·&nbsp; by ' + esc(p.months[last].split(' ')[0].substring(0, 3) + ' ' + p.months[last].split(' ')[1]) + ': ' +
       '<strong>' + fmt$(Math.round(committed[last] || 0)) + ' committed</strong> + ' +
@@ -3642,7 +3650,7 @@
       '<th class="col-num" style="text-align:right;color:var(--accent);">Assumed @' + pct + '%</th>' +
       '<th class="col-num" style="text-align:right;">Total MRR</th>' +
       (anyOneoff ? '<th class="col-num" style="text-align:right;">One-off cash</th>' : '') +
-      '<th class="col-num" style="text-align:right;">Net</th>' +
+      '<th class="col-num" style="text-align:right;">Net (MRR − recurring burn)</th>' +
       '<th class="col-num" style="text-align:right;">Cash bal.</th></tr></thead><tbody>';
     var runningCash = startingCash;
     for (var i = 0; i < p.months.length; i++) {
@@ -4225,7 +4233,7 @@
   // action / forecast) without moving HTML blocks — safe DOM relocation on load.
   var ZONES = [
     { n: 1, title: 'Am I safe', sub: 'Cash, runway, burn',
-      ids: ['section-csm-card', 'section-cash-position', 'section-bas', 'section-forecast-cash', 'section-forward'] },
+      ids: ['section-decision-cards', 'section-csm-card', 'section-cash-position', 'section-ar', 'section-bas', 'section-forecast-cash', 'section-forward'] },
     { n: 3, title: 'What needs action', sub: 'Alerts, data quality, follow-ups',
       ids: ['section-action-feed', 'section-ops-cards', 'section-actions',
             'section-verdicts', 'section-deficiency', 'section-dq-loss', 'section-churn',
@@ -4516,7 +4524,7 @@
         var pos = cf.cash_positive;
         cb.innerHTML =
           '<div class="fc-big ' + (pos ? 'fc-good' : 'fc-warn') + '">' + (pos ? 'Cash-positive' : 'Cash draining') + '</div>' +
-          '<div class="fc-line">Net <strong>' + fmt$(cf.net_weekly * 52 / 12) + '/mo</strong> · 13-week end ~<strong>' + fmt$(cf.ending_cash) + '</strong> (from ' + fmt$(cf.starting_cash) + ')</div>' +
+          '<div class="fc-line"><button class="fin-door" data-findrawer="forecast_net" title="show your work">\u24d8</button> Forecast net (projection) <strong>' + fmt$(cf.net_weekly * 52 / 12) + '/mo</strong> · 13-week end ~<strong>' + fmt$(cf.ending_cash) + '</strong> (from ' + fmt$(cf.starting_cash) + ')</div>' +
           '<div class="fc-line fc-muted">Static runway ' + (dr.static_runway_months != null ? dr.static_runway_months + 'mo' : '—') +
           ' assumes zero inflow' + (pos ? ' — dynamic view: cash grows.' : (dr.dynamic_runway_months ? ' — dynamic ~' + dr.dynamic_runway_months + 'mo.' : '.')) + '</div>' +
           '<div class="fc-tag">PROJECTION · what-if controls live on the Forward Projection panel</div>';
@@ -4577,6 +4585,94 @@
     } catch (e) { /* cards keep their skeletons; the pages remain reachable */ }
   }
 
+  // ═══ DATA SCRUTINY (#150) — the show-your-work drawer + AR + cards ═══
+  // Every headline shows its work: definition · formula · components with
+  // sources/ids · clock · reconciliation delta ($0.00 or explained).
+  async function finDrawer(tile) {
+    var wrap = document.createElement('div');
+    wrap.className = 'csm-modal';
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:200';
+    wrap.innerHTML = '<div style="background:var(--panel,#141d29);border:1px solid #4a7ab5;border-radius:12px;max-width:640px;max-height:80vh;overflow-y:auto;padding:1rem 1.2rem;font-size:.83rem;line-height:1.5">loading the work…</div>';
+    wrap.addEventListener('click', function (ev) { if (ev.target === wrap) wrap.remove(); });
+    document.body.appendChild(wrap);
+    var box = wrap.firstChild;
+    try {
+      var r = await fetch('/dashboard/api/drawer/' + encodeURIComponent(tile));
+      var d = r.ok ? await r.json() : { error: 'drawer fetch failed (' + r.status + ')' };
+      if (d.error) { box.innerHTML = '<b>drawer unavailable:</b> ' + esc(d.error) + '<br><button class="rw-btn" data-close>close</button>'; }
+      else {
+        var comps = (d.components || []).map(function (c) {
+          return '<tr><td style="padding:.2rem .5rem;border-bottom:1px solid var(--border,#243244)">' + esc(c.label) + '</td>' +
+            '<td style="padding:.2rem .5rem;text-align:right;border-bottom:1px solid var(--border,#243244)">' + (c.value != null ? (typeof c.value === 'number' ? '$' + Math.round(c.value).toLocaleString() : esc(String(c.value))) : '—') + '</td>' +
+            '<td style="padding:.2rem .5rem;font-size:.72rem;opacity:.7;border-bottom:1px solid var(--border,#243244)">' + esc(c.source || '') + '</td></tr>';
+        }).join('');
+        var recon = d.reconciliation ? '<div style="margin-top:.5rem;font-size:.78rem"><b>Reconciliation:</b> ' + esc(d.reconciliation.external || '') +
+          (d.reconciliation.delta != null ? ' · delta $' + d.reconciliation.delta.toLocaleString() : '') +
+          '<div style="opacity:.75">' + esc(d.reconciliation.explained || d.reconciliation.delta_note || d.reconciliation.note || '') + '</div></div>' : '';
+        var inv = d.invariant ? '<div style="font-size:.75rem;opacity:.8;margin-top:.3rem">invariant: ' + (d.invariant.ok ? '✓ components sum to the tile' : '⚠ MISMATCH — do not trust the tile') + '</div>' : '';
+        box.innerHTML = '<div style="font-weight:700;margin-bottom:.3rem">' + esc(d.tile || tile) + (d.value != null ? ' · $' + Math.round(d.value).toLocaleString() : '') + '</div>' +
+          '<div style="font-size:.8rem;margin-bottom:.3rem">' + esc(d.definition || '') + '</div>' +
+          '<div style="font-size:.72rem;opacity:.7;margin-bottom:.4rem">FORMULA: ' + esc(d.formula || '') + ' · CLOCK: ' + esc(d.clock || '') + '</div>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:.78rem">' + comps + '</table>' + inv + recon +
+          '<div style="margin-top:.6rem"><button class="rw-btn" data-close>close</button></div>';
+      }
+      box.querySelectorAll('[data-close]').forEach(function (b) { b.addEventListener('click', function () { wrap.remove(); }); });
+    } catch (e) { box.innerHTML = 'drawer failed: ' + esc(String(e)); }
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('.fin-door[data-findrawer]');
+    if (b) { e.preventDefault(); finDrawer(b.dataset.findrawer); }
+  });
+
+  async function renderAr() {
+    try {
+      var r = await fetch('/dashboard/api/ar');
+      if (!r.ok) return;
+      var d = await r.json();
+      var body = document.getElementById('ar-body');
+      if (!body) return;
+      if (!d.ok) { body.innerHTML = '<div style="font-size:.8rem;opacity:.8">AR unavailable: ' + esc(d.reason || '') + '</div>'; return; }
+      var owing = (d.rows || []).filter(function (x) { return x.outstanding > 0.01; });
+      var agingStr = Object.keys(d.aging).map(function (k) { return k + ': $' + Math.round(d.aging[k]).toLocaleString(); }).join(' · ');
+      body.innerHTML =
+        '<div style="font-size:.85rem;margin-bottom:.4rem"><b>$' + Math.round(d.total_outstanding).toLocaleString() + ' outstanding</b> · aging ' + agingStr +
+        (d.anchor_delta != null ? ' · vs Xero AR anchor Δ $' + Math.round(d.anchor_delta).toLocaleString() : '') + '</div>' +
+        (owing.length ? '<table style="width:100%;border-collapse:collapse;font-size:.78rem"><tr style="opacity:.6;text-transform:uppercase;font-size:.65rem"><td>client</td><td style="text-align:right">outstanding</td><td>status</td><td>oldest unpaid</td><td>next expected</td></tr>' +
+          owing.map(function (x) {
+            return '<tr><td style="padding:.2rem .4rem;border-bottom:1px solid var(--border,#243244)">' + esc(x.client) + '</td>' +
+              '<td style="padding:.2rem .4rem;text-align:right;border-bottom:1px solid var(--border,#243244)">$' + Math.round(x.outstanding).toLocaleString() + '</td>' +
+              '<td style="padding:.2rem .4rem;border-bottom:1px solid var(--border,#243244)">' + esc(x.status) + (x.days_overdue ? ' · ' + x.days_overdue + 'd' : '') + '</td>' +
+              '<td style="padding:.2rem .4rem;border-bottom:1px solid var(--border,#243244)">' + esc(x.oldest_unpaid_month || '—') + '</td>' +
+              '<td style="padding:.2rem .4rem;border-bottom:1px solid var(--border,#243244)">' + esc(x.next_expected || '—') + '</td></tr>';
+          }).join('') + '</table>'
+          : '<div style="font-size:.8rem">every expected payment in the window is received — clear.</div>') +
+        ((d.unmatched_receipts || []).length ? '<div style="font-size:.75rem;margin-top:.4rem;color:var(--amber)">unmatched payments (alias PROPOSED, never auto-assigned): ' +
+          d.unmatched_receipts.map(function (u) { return esc(u.payer) + ' $' + Math.round(u.amount).toLocaleString() + (u.proposed_client ? ' →? ' + esc(u.proposed_client) : ''); }).join(' · ') + '</div>' : '') +
+        '<div style="font-size:.7rem;opacity:.6;margin-top:.3rem">' + esc(d.anchor_note || '') + '</div>';
+    } catch (e) { /* skeleton stays */ }
+  }
+
+  async function renderDecisionCards() {
+    try {
+      var sec = document.getElementById('section-decision-cards');
+      if (!sec) return;
+      var r = await fetch('/dashboard/api/decision-cards');
+      if (!r.ok) { sec.style.display = 'none'; return; }   // non-owner: hidden
+      var d = await r.json();
+      var sub = document.getElementById('dc-sub');
+      if (sub) sub.textContent = d.n + ' ruling(s) waiting — each with its evidence';
+      var body = document.getElementById('dc-body');
+      if (body) body.innerHTML = (d.cards || []).map(function (c) {
+        return '<div style="border:1px solid var(--border,#243244);border-radius:8px;padding:.5rem .7rem;margin:.3rem 0;font-size:.78rem">' +
+          '<b>' + esc(c.title) + '</b><div style="opacity:.8">' + esc(c.known || '') + '</div>' +
+          '<div style="color:var(--amber)">missing: ' + esc(c.missing || '') + '</div>' +
+          '<div style="opacity:.65;font-size:.7rem">evidence: ' + esc(JSON.stringify(c.evidence || {})) + '</div>' +
+          '<div style="margin-top:.2rem">→ ' + esc(c.action || '') + '</div></div>';
+      }).join('') || 'nothing awaiting a ruling.';
+      sec.style.display = '';
+    } catch (e) { /* fail closed — stays hidden */ }
+  }
+
   // THREE ROAS (#149): cash / contract / LTV, labelled, never blended.
   async function renderRoas() {
     try {
@@ -4591,13 +4687,13 @@
         body.innerHTML =
           '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.6rem">' +
           '<div class="csm-tile" style="background:var(--panel,#141d29);border:1px solid var(--border,#243244);border-radius:10px;padding:.7rem .8rem">' +
-            '<div style="font-size:.68rem;text-transform:uppercase;opacity:.6">Cash ROAS</div>' +
-            '<div style="font-size:1.4rem;font-weight:700">' + x(ro.cash_roas_activity) + '</div>' +
-            '<div style="font-size:.7rem;opacity:.65">receipts in window · cohort cash so far ' + x(ro.cash_roas_cohort) + '</div></div>' +
+            '<div style="font-size:.68rem;text-transform:uppercase;opacity:.6">Cohort cash ROAS</div>' +
+            '<div style="font-size:1.4rem;font-weight:700">' + x(ro.cash_roas_cohort) + '</div>' +
+            '<div style="font-size:.7rem;opacity:.65">the closes\' own cash ÷ spend · all-receipts ratio ' + x(ro.receipts_ratio_not_attributable) + ' (not attributable — demoted)</div></div>' +
           '<div style="background:var(--panel,#141d29);border:1px solid #4a7ab5;border-radius:10px;padding:.7rem .8rem">' +
             '<div style="font-size:.68rem;text-transform:uppercase;opacity:.6">Contract ROAS (the deciding clock)</div>' +
             '<div style="font-size:1.4rem;font-weight:700">' + x(ro.contract_roas) + '</div>' +
-            '<div style="font-size:.7rem;opacity:.65">signed value of closes ÷ spend</div></div>' +
+            '<div style="font-size:.7rem;opacity:.65">' + (a.contract && a.contract.derived ? '$' + Math.round(a.contract.signed).toLocaleString() + ' signed + $' + Math.round(a.contract.derived).toLocaleString() + ' <span style="color:var(--amber)">derived⚑</span> (signed-only ' + x(ro.contract_roas_signed_only) + ')' : 'signed value of closes ÷ spend') + '</div></div>' +
           '<div style="background:var(--panel,#141d29);border:1px solid var(--border,#243244);border-radius:10px;padding:.7rem .8rem">' +
             '<div style="font-size:.68rem;text-transform:uppercase;opacity:.6">LTV ROAS</div>' +
             '<div style="font-size:1.4rem;font-weight:700">' + x(ro.ltv_roas) + '</div>' +
@@ -5006,6 +5102,8 @@
     renderForecast();        // Zone 1 cash + Zone 4 MRR projections
     loadActor();             // who's signed in (Rydel / Piolo)
     renderRoas();            // Zone 4 — three ROAS, labelled (#149)
+    renderAr();              // Zone 1 — receivables (#150)
+    renderDecisionCards();   // Zone 1 — owner-only rulings (#150, fail-closed)
     renderCsmCard();         // Zone 1 — OWNER-ONLY CSM card (fail-closed, discreet-aware)
     renderOpsCards();        // Zone 3 — worklog + bookkeeping SUMMARY cards
                              // (the full lists live on /dashboard/worklog and
@@ -5135,7 +5233,8 @@
         (_rwDeclare.client ? ' value="' + esc(_rwDeclare.client) + '"' : '') + '>' +
         '<select id="rw-kind"><option value="churn"' + (k === 'churn' ? ' selected' : '') +
         '>CHURNED</option><option value="renewal"' + (k === 'renewal' ? ' selected' : '') +
-        '>RENEWED</option><option value="downsell"' + (k === 'downsell' ? ' selected' : '') +
+        '>RENEWED</option><option value="extension"' + (k === 'extension' ? ' selected' : '') +
+        '>EXTENDED (term +N months)</option><option value="downsell"' + (k === 'downsell' ? ' selected' : '') +
         '>CONTINUITY (Served OS floor)</option><option value="expansion"' + (k === 'expansion' ? ' selected' : '') +
         '>EXPANSION</option></select></div>' +
       '<div id="rw-suggest" class="rw-suggest"></div>' +
@@ -5153,6 +5252,15 @@
           '<label>Start <input type="date" id="rw-start"></label>' +
           '</div>' +
           '<div class="rw-note">normalisation + committed impact appear in the preview (server-computed): e.g. “$30,000 annual = $2,500/mo committed through the term end”</div>'
+        : k === 'extension'
+        // EXTENSION (#150): term extended by N months from the current end;
+        // MRR unchanged unless a new figure is entered (server-computed).
+        ? '<div class="rw-dec-row">' +
+          '<label>Extend by <input type="number" id="rw-term" min="1" max="24" value="3"> months</label>' +
+          '<label>New MRR $ (optional, blank = unchanged) <input type="number" id="rw-mrr" min="0"></label>' +
+          '<label>Reason (optional) <input type="text" id="rw-reason"></label>' +
+          '</div>' +
+          '<div class="rw-note">the new End Date is derived server-side from the current end + N months; clears the renewal warning</div>'
         : k === 'downsell'
         // CONTINUITY (CSM wave): the non-renewal walked down to the Served OS
         // floor — amount+cadence normalise server-side (the ONE function).
