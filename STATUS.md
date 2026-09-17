@@ -1,5 +1,52 @@
 # STATUS — served-cfo-agent session log
 
+## 2026-09-17 — FINANCE CURRENCY + GAP RECONCILIATION + MONTHLY ANALYSIS (#148/#149)
+
+Deploys → 74bbe0ff SUCCESS. Suite **1084** (+13 tests/test_gap_reconcile).
+Zero writes to the tracker or GHL (grep + token-usage test-pinned).
+
+1. **Currency audit** (dashboard/CURRENCY_AUDIT_2026-09-17.md): the machine
+   ran all month, the humans stopped (no logins since 08-13). SEV1s fixed:
+   MRR snapshots were boot-only (32/45 days missing, unrecoverable — now
+   daily + null-guarded + today healed $72,887.52/38); GHL contacts mirror
+   dead since 07-27 (manual-resync-only — now daily); the sentinel had NO
+   watchdog (now: mutual loop-watching, registry rows, LOUD self-retiring
+   feed items — dead-nightly drill proven: 3 items fire).
+2. **Gap detected + journaled** (#149): tracker close/contract/cash columns
+   silent from **2026-07-24** (last close row 07-23) while GHL closed-stage
+   activity continued — HUMAN gap (mirror healthy); lead INPUT rows never
+   stopped. 08-06→08-12 both-series-zero = the known upstream lead-flow
+   outage, excluded.
+3. **gap_reconcile.py (NEW)** — GHL-primary window ledger: 3 AUTO closes
+   (Orlando Rinaldi 09-09/Food Corp · William Cooney 09-11/Phoenix Hotel ·
+   Harman Singh 09-11) derived through the sanctioned lane with opp/contact/
+   charge ids; 3 PROPOSED (Kristeen Hammond, Michael Pulvirenti, Jay
+   Lunsford US) with missing-evidence named; person→venue bridge via the
+   payment email; dedupe + conflict-surfacing test-pinned; **11-row Piolo
+   backfill package** live as self-retiring queue items + gap sentinel rung.
+4. **finance_analysis.py (NEW)** — three ROAS labelled never blended;
+   Sept MTD: spend $7,183.13 · 145 leads · 3 closes · CASH 3.3× receipts /
+   1.01× cohort · **CONTRACT 5.05× (floor — Harman CV unknown)** · LTV
+   9.35× (inputs provenance-labelled) · **payback ≈ 1 month** (cohort cash
+   crossed spend on Harman's 09-14 payment). Verdict engine cites its
+   deciding figures. Owner briefing v2 (kv-versioned md+PDF, owner-only
+   routes); dashboard ROAS panel (Zone 4); EDITH drills on both lists
+   (roas · which-three-closed · what-did-I-miss · what's-stale).
+5. **Drift sweep** (dashboard/DRIFT_SWEEP_2026-09-17.md): renewal scan
+   clean · projection month-0 EXACT (drift 0.0) · sets partition green but
+   62% of 7d spend UNMAPPED (graphics/retargeting candidates exist + 2 new
+   US sets — Rydel maps) · ZERO R-A2 review sessions since 08-24 · footer
+   mismatch + 6 won-not-on-Health + 6 zero-MRR actives + 7 cash-needs-
+   logging + 4 unmatched payments → Piolo/Rydel register · 56 GHL closed-
+   stage opps still status open (flagged to GHL owner, never re-staged).
+
+**Files:** gap_reconcile.py, finance_analysis.py, scripts/currency_probe.py
+(new); app.py, automations.py, action_feed.py, ad_sentinel.py,
+mrr_snapshot.py, ghl_mirror.py, dashboard/routes.py, dashboard.js,
+dashboard.html, DECISIONS.md (#148/#149), test fixes (footer/BAS/consult
+date-rot), tests/test_gap_reconcile.py (new).
+
+
 ## 2026-08-17 — CSM INVESTMENT: model + measure + hold to 4x (#146)
 
 The CSM-hire cockpit ships as the repo's FIRST owner-only domain. Suite
