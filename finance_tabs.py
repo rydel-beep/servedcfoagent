@@ -76,7 +76,11 @@ def _fetch_xlsx_names(book_id: str) -> list[str] | None:
             return None
         z = zipfile.ZipFile(io.BytesIO(r.content))
         wb = z.read("xl/workbook.xml").decode("utf-8", "replace")
-        return re.findall(r'<sheet[^>]*name="([^"]+)"', wb)
+        import html as _html
+        # prod-caught: workbook.xml XML-escapes names ("Closer Payout &amp;
+        # KPI") — unescape or known tabs read as UNMAPPED
+        return [_html.unescape(n) for n in
+                re.findall(r'<sheet[^>]*name="([^"]+)"', wb)]
     except Exception as e:
         logger.info("tab enumeration failed for %s…: %s", book_id[:8], e)
         return None
