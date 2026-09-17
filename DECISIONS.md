@@ -2165,3 +2165,39 @@
      (owner-only) consolidate everything only Rydel can rule. Sentinel:
      tab-change detection + cross-tab drift + AR-vs-anchor drift nightly.
      READ-ONLY LAW (#148) reaffirmed: zero writes to the tracker/GHL.
+
+151. **VISIBILITY DOCTRINE + R-AR-INTERNAL + R-PAID (2026-09-17 night).**
+     THE SHIPPED-≠-VISIBLE CLASS, named and closed: two reports claimed
+     LTV:CAC/LTGP:CAC "shipped" while the only on-screen cells (the Zone-2
+     KPI strip) read the standing engine's NULLS ("no closes" — tracker
+     won-marks emptied by the gap) below the fold, and the honest engine
+     existed as an API + drawers only. From this ruling on: any metric
+     Rydel asks for by name renders as a TOP-SECTION HEADLINE TILE and is
+     proven visible with the production URL, the tile position, and an
+     owner screenshot of the live deploy in the report (screenshots are
+     report evidence only — never ship-notes/team docs). The two ratios now
+     lead Zone 1 ("Unit economics — LTV:CAC · LTGP:CAC") with the window
+     selector (Sep cohort / trailing 90d / by package), the 3:1 line
+     labelled "benchmark, not target", show-your-work drawers, and the
+     ALWAYS-RENDERED rule: a degraded/fallback input labels the tile,
+     never hides it.
+     R-AR-INTERNAL: receivables/overdue is INTERNAL VISIBILITY ONLY — the
+     system never chases clients: no reminders, no outbound, no GHL
+     workflow/tag/trigger, no client-facing artifact, no "collections"
+     framing. AR may INFORM internal surfaces (renewal watch, CSM health
+     inputs, cash forecast, Piolo cash-LOGGING items) — it never ACTS.
+     Chase-verb + GHL-call grep over the AR module and templates = zero,
+     test-pinned.
+     R-PAID: the three September closes have all PAID (Rydel's word +
+     Stripe evidence) — Orlando Rinaldi/Food Corp Pizza Pasta & Ribs,
+     William Cooney/Phoenix Hotel, Harman Singh/GRAPPINO (venue resolved:
+     tracker row 112, email-exact harmandhillon875@… ↔ ch_3UFOCz…;
+     RECOGNIZED row 2 carries the SIGNED contract $18,300 Growth Pro
+     $3,050/mo — "contract unknown" retired). AR renders the three CURRENT
+     via an owner-confirmed, journaled, EXPIRING first-month-cadence
+     override (their real deposit/proration cadence ≠ the grid's
+     full-month default) — scoped to exactly the three; every other AR row
+     untouched (diff-proven). Payer aliases journaled on the owner's word
+     (Harman Singh→Grappino, William Cooney→Phoenix Hotel, Orlando
+     Rinaldi→Food Corp). R-PROPOSED: Kristeen Hammond, Michael Pulvirenti,
+     Jay Lunsford stay UNRULED — untouched this run.

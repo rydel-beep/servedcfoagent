@@ -4232,8 +4232,8 @@
   // Reorder the flat section list into 4 decision zones (cash safety / operations /
   // action / forecast) without moving HTML blocks — safe DOM relocation on load.
   var ZONES = [
-    { n: 1, title: 'Am I safe', sub: 'Cash, runway, burn',
-      ids: ['section-decision-cards', 'section-csm-card', 'section-cash-position', 'section-ar', 'section-bas', 'section-forecast-cash', 'section-forward'] },
+    { n: 1, title: 'Am I safe', sub: 'Cash, runway, burn, unit economics',
+      ids: ['section-ratio-tiles', 'section-decision-cards', 'section-csm-card', 'section-cash-position', 'section-ar', 'section-bas', 'section-forecast-cash', 'section-forward'] },
     { n: 3, title: 'What needs action', sub: 'Alerts, data quality, follow-ups',
       ids: ['section-action-feed', 'section-ops-cards', 'section-actions',
             'section-verdicts', 'section-deficiency', 'section-dq-loss', 'section-churn',
@@ -4584,6 +4584,65 @@
       }
     } catch (e) { /* cards keep their skeletons; the pages remain reachable */ }
   }
+
+  // RATIO TILES (#151): LTV:CAC + LTGP:CAC as top-section headlines.
+  // ALWAYS rendered — a degraded/fallback input LABELS the tile, never
+  // hides it (the shipped-≠-visible doctrine).
+  var _ratioData = null;
+  function _ratioTile(label, val, drawerKey, subBits) {
+    var v = (val == null) ? '—' : val + '×';
+    var vs3 = (val == null) ? '' :
+      (val >= 3 ? '<span style="color:var(--green);font-size:.7rem"> ≥ 3:1 benchmark</span>'
+                : '<span style="color:var(--amber);font-size:.7rem"> < 3:1 benchmark (not a target)</span>');
+    return '<div style="background:var(--panel,#141d29);border:1px solid #4a7ab5;border-radius:10px;padding:.8rem .9rem;position:relative">' +
+      '<div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;opacity:.65">' + esc(label) +
+      ' <button class="fin-door" data-findrawer="' + esc(drawerKey) + '" title="show your work">ⓘ</button></div>' +
+      '<div style="font-size:1.8rem;font-weight:700">' + v + vs3 + '</div>' +
+      '<div style="font-size:.7rem;opacity:.7;line-height:1.4">' + subBits.map(esc).join(' · ') + '</div></div>';
+  }
+  async function renderRatioTiles() {
+    var body = document.getElementById('ratio-tiles-body');
+    if (!body) return;
+    try {
+      if (!_ratioData) {
+        var r = await fetch('/dashboard/api/unit-econ-honest');
+        if (!r.ok) { body.innerHTML = '<div style="font-size:.8rem">unit-economics engine unreachable (' + r.status + ') — the tile stays, the number does not pretend.</div>'; return; }
+        _ratioData = await r.json();
+      }
+      var d = _ratioData;
+      var sel = (document.getElementById('ratio-window') || {}).value || 'cohort_month';
+      if (sel === 'by_package') {
+        var w = d.windows.cohort_month;
+        var pk = w.by_package || {};
+        body.innerHTML = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.8rem">' +
+          '<tr style="opacity:.6;text-transform:uppercase;font-size:.65rem"><td>package</td><td style="text-align:right">closes</td><td style="text-align:right">Σ LTV</td><td style="text-align:right">term</td></tr>' +
+          (Object.keys(pk).length ? Object.keys(pk).map(function (k) {
+            var p = pk[k];
+            return '<tr><td style="padding:.2rem .4rem">' + esc(k) + '</td><td style="text-align:right">' + p.closes + '</td>' +
+              '<td style="text-align:right">$' + Math.round(p.ltv).toLocaleString() + '</td><td style="text-align:right">' + (p.term_months || '?') + 'mo</td></tr>';
+          }).join('') : '<tr><td colspan="4">no package-attributed closes in the cohort window</td></tr>') +
+          '</table></div><div style="font-size:.7rem;opacity:.65;margin-top:.3rem">LTV inputs: ' + esc(d.ltv_inputs.renewal_provenance) + ' · completion ' + d.ltv_inputs.in_term_completion_pct + '% (' + esc(d.ltv_inputs.completion_provenance) + ')</div>';
+        return;
+      }
+      var w2 = d.windows[sel] || {};
+      var winLabel = (w2.window ? w2.window.start + ' → ' + w2.window.end : sel);
+      body.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:.7rem">' +
+        _ratioTile('LTV : CAC', w2.ltv_to_cac, 'ltv_cac',
+          [winLabel, (w2.closes || 0) + ' closes',
+           'CAC loaded $' + (w2.cac_fully_loaded != null ? Math.round(w2.cac_fully_loaded).toLocaleString() : '—') +
+           ' (spend-only $' + (w2.cac_spend_only != null ? Math.round(w2.cac_spend_only).toLocaleString() : '—') + ')',
+           'renewal input: ' + (d.ltv_inputs.renewal_provenance || '').slice(0, 46)]) +
+        _ratioTile('LTGP : CAC', w2.ltgp_to_cac, 'ltgp_cac',
+          [winLabel, 'margin: ' + (d.margin_provenance || '').slice(0, 58),
+           'avg LTV/close $' + (w2.avg_ltv_per_close != null ? Math.round(w2.avg_ltv_per_close).toLocaleString() : '—')]) +
+        '</div>' + (w2.cac_note ? '<div style="font-size:.7rem;opacity:.6;margin-top:.3rem">' + esc(w2.cac_note) + '</div>' : '');
+    } catch (e) {
+      body.innerHTML = '<div style="font-size:.8rem">ratio tiles failed honestly: ' + esc(String(e)) + '</div>';
+    }
+  }
+  document.addEventListener('change', function (e) {
+    if (e.target && e.target.id === 'ratio-window') renderRatioTiles();
+  });
 
   // ═══ DATA SCRUTINY (#150) — the show-your-work drawer + AR + cards ═══
   // Every headline shows its work: definition · formula · components with
@@ -5101,6 +5160,7 @@
     renderOutflow();         // Outflow truth — bands + accrual/cash toggle
     renderForecast();        // Zone 1 cash + Zone 4 MRR projections
     loadActor();             // who's signed in (Rydel / Piolo)
+    renderRatioTiles();      // Zone 1 TOP — LTV:CAC + LTGP:CAC (#151, always rendered)
     renderRoas();            // Zone 4 — three ROAS, labelled (#149)
     renderAr();              // Zone 1 — receivables (#150)
     renderDecisionCards();   // Zone 1 — owner-only rulings (#150, fail-closed)

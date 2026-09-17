@@ -189,6 +189,17 @@ def build_ar(fresh: bool = False, window_months: int = 3) -> dict:
             status = "overdue" if days_overdue > 0 else "pending"
         if failed_by.get(nn):
             status = "failed-charge"
+        # R-PAID (#151): OWNER-CONFIRMED current — a named client whose real
+        # cadence (deposit / first-month proration) differs from the grid's
+        # full-month expectation renders CURRENT until their next expected
+        # date, with the owner's word + charge ids journaled. Scoped to the
+        # named entries only; expires; everyone else untouched.
+        _pc = (kv_store.get("ar:paid_current") or {}).get(nn)
+        if _pc and str(today) <= str(_pc.get("until") or ""):
+            status = "current"
+            outstanding = 0.0
+            days_overdue = 0
+            oldest_unpaid = None
         nxt = None
         nxt_lbl = (today.replace(day=1) + dt.timedelta(days=32)).replace(day=1)
         if (sheet_clients[name].get("monthly") or {}).get(nxt_lbl.strftime("%B %Y")) \
@@ -196,6 +207,11 @@ def build_ar(fresh: bool = False, window_months: int = 3) -> dict:
             nxt = str(nxt_lbl)
         rows.append({
             "client": name, "status": status,
+            "owner_confirmed": ({"note": f"owner-confirmed paid "
+                                         f"({_pc.get('reason')}); next "
+                                         f"expected {_pc.get('until')}",
+                                 "charge_ids": _pc.get("charge_ids")}
+                                if _pc and status == "current" else None),
             "expected_window": expected_total,
             "received_window": received_total,
             "outstanding": outstanding,

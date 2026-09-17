@@ -590,6 +590,24 @@
   <!-- FINANCE IA (2026-08-10): the worklog + bookkeeping DUMPS became summary
        CARDS — live one-engine counts, whole card is a door to the full page.
        The lists live at /dashboard/worklog and /dashboard/bookkeeping. -->
+  <!-- RATIO TILES (#151): LTV:CAC + LTGP:CAC as TOP-SECTION headlines —
+       ALWAYS rendered (degraded inputs are labelled, never hidden). The
+       shipped-≠-visible fix: any metric Rydel asks for by name lives HERE. -->
+  <section class="panel" id="section-ratio-tiles">
+    <div class="panel-header">
+      <h2 class="panel-title">Unit economics — LTV : CAC · LTGP : CAC</h2>
+      <span class="panel-sub">
+        <select id="ratio-window" style="background:var(--panel,#141d29);color:inherit;border:1px solid var(--border,#243244);border-radius:6px;padding:.15rem .4rem">
+          <option value="cohort_month">September cohort</option>
+          <option value="trailing_90d">Trailing 90d</option>
+          <option value="by_package">By package</option>
+        </select>
+        · 3:1 line = benchmark, not target
+      </span>
+    </div>
+    <div id="ratio-tiles-body"><div class="skeleton skeleton-text"></div></div>
+  </section>
+
   <!-- DECISION CARDS (#150): owner-only "needs your ruling" — ships hidden;
        only an owner 200 reveals it (fail-closed like the CSM card). -->
   <section class="panel" id="section-decision-cards" style="display:none">

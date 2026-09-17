@@ -305,8 +305,13 @@ def rebuild_closes(apply: bool = True) -> dict:
             continue
         seen_people.add(nn)
         hits = _stripe_hits(person, cand["email"], charges)
-        health = _health_row(person, cand["opp_name"] or "", cand.get("email"))
         tracker = _tracker_row_for(person, cand["email"])
+        # the tracker row's BUSINESS name is the evidence-based person→venue
+        # bridge (#151 — the Grappino case: person 'Harman singh', venue
+        # 'Grappino ristorante trattoria', email-exact row)
+        _biz = str((tracker or {}).get("business") or "")
+        health = _health_row(person, (cand["opp_name"] or "") + " " + _biz,
+                             cand.get("email"))
         tracker_close = _parse_date((tracker or {}).get("close_date"))
         entry = {
             "person": person, "close_date": cand["close_date"],

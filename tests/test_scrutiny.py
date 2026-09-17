@@ -250,3 +250,79 @@ def test_ledger_lane_never_double_counts_grid_months(monkeypatch):
     assert out["reconciliation"]["ledger_touching_month0"] == ["Noodle Asia"]
     pc = out["per_client"]["Noodle Asia"]
     assert pc["source"] in ("sheet renewal ledger", "sheet")
+
+
+# ── #151 · visibility + R-AR-INTERNAL + R-PAID ─────────────────────────────
+
+def test_ratio_tiles_top_section_always_rendered():
+    """The shipped-≠-visible fix: the two ratios are TOP-SECTION tiles
+    (first in Zone 1), rendered from the honest engine, and a degraded
+    input labels the tile instead of hiding it."""
+    js = open(os.path.join(_ROOT, "dashboard/static/js/dashboard.js")).read()
+    html = open(os.path.join(_ROOT, "dashboard/templates/dashboard.html")).read()
+    assert 'id="section-ratio-tiles"' in html
+    assert "'section-ratio-tiles'" in js
+    # FIRST in the Zone-1 ids array (the top of the top section)
+    assert "ids: ['section-ratio-tiles'," in js
+    assert "renderRatioTiles()" in js
+    assert "unit-econ-honest" in js
+    # ALWAYS rendered: the failure paths render text, never hide the section
+    assert "the tile stays, the number does not pretend" in js
+    assert "ratio tiles failed honestly" in js
+    assert "benchmark, not target" in html or "benchmark, not target" in js
+    # windows selector present
+    assert 'id="ratio-window"' in html
+    for opt in ("cohort_month", "trailing_90d", "by_package"):
+        assert opt in html
+
+
+def test_ar_internal_only_no_chase_verbs():
+    """R-AR-INTERNAL: the AR module + templates carry no chase/reminder/
+    outbound verbs and no GHL calls; 'collections' framing is banned."""
+    import re as _re
+    chase = _re.compile(r"\b(chase|chasing|remind(er)?s?\b|dunn(ing)?|"
+                        r"collections?\b|send_(email|sms|message)|"
+                        r"notify_client|outbound)", _re.I)
+    for path in ("receivables.py", "dashboard/templates/dashboard.html"):
+        src = open(os.path.join(_ROOT, path)).read()
+        hits = [m.group(0) for m in chase.finditer(src)]
+        assert not hits, f"{path}: chase framing {hits}"
+    src = open(os.path.join(_ROOT, "receivables.py")).read()
+    assert "leadconnector" not in src.lower()
+    assert "ghl_" not in src           # no GHL client import at all
+    assert "never chases" in src or "never counts a pending cent" in src
+
+
+def test_paid_current_override_scoped_and_expiring(monkeypatch):
+    """R-PAID: an owner-confirmed current entry renders CURRENT until its
+    expiry; unlisted clients untouched; expired entries revert."""
+    from helpers import today_sydney
+    t = today_sydney()
+    lbl = t.strftime("%B %Y")
+    clients = {"Phoenix Hotel": {"monthly": {lbl: 3050.0}},
+               "Untouched Cafe": {"monthly": {lbl: 2000.0}}}
+    charges = [_charge("w@phoenixsydney.com.au", "William Cooney", 2227.5,
+                       t.replace(day=11))]
+    _ar_rig(monkeypatch, charges, clients)
+    import kv_store
+    kv_store.put("stripe:payer_aliases", {"William Cooney": "Phoenix Hotel"})
+    nxt = str((t.replace(day=1) + dt.timedelta(days=32)).replace(day=1))
+    kv_store.put("ar:paid_current", {
+        "phoenixhotel": {"until": nxt, "reason": "first-month cadence — "
+                         "deposit + proration (owner word)",
+                         "charge_ids": ["ch_3UAjyf", "ch_3UEMaa"],
+                         "who": "rydel"}})
+    ar = R.build_ar(fresh=True)
+    by = {r["client"]: r for r in ar["rows"]}
+    assert by["Phoenix Hotel"]["status"] == "current"
+    assert by["Phoenix Hotel"]["outstanding"] == 0.0
+    assert by["Phoenix Hotel"]["owner_confirmed"]["charge_ids"]
+    assert by["Untouched Cafe"]["status"] in ("pending", "overdue")   # untouched
+    assert by["Untouched Cafe"]["outstanding"] == 2000.0
+    # expiry: a past 'until' reverts to the schedule truth
+    kv_store.put("ar:paid_current", {
+        "phoenixhotel": {"until": str(t - dt.timedelta(days=1)),
+                         "reason": "expired", "charge_ids": []}})
+    ar2 = R.build_ar(fresh=True)
+    by2 = {r["client"]: r for r in ar2["rows"]}
+    assert by2["Phoenix Hotel"]["status"] != "current"
