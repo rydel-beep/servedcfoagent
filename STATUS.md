@@ -1,5 +1,22 @@
 # STATUS — served-cfo-agent session log
 
+## 2026-09-17 (3) — VISIBILITY FIX (#151): ratios on screen, AR internal-only, three paid closes
+
+Deploys → a4a17bca SUCCESS. Suite **1106**. The shipped-≠-visible class
+named and closed: the ratios Rydel asked for now lead the MORNING-BRIEF
+first screenful (LTV:CAC 11.94× · LTGP:CAC 5.12×, doors + labelled
+fallback margin, owner screenshot on the live deploy) + a Zone-1 panel
+(window selector, 3:1 benchmark line, always rendered). Root cause: the
+old KPI cells read the standing engine's nulls below the fold; the honest
+engine had no tile. R-PAID: Grappino=Harman resolved (tracker row 112
+email-exact + RECOGNIZED row 2 contract $18,300 sheet-recorded); aliases
++ expiring paid-current overrides journaled with charge ids; AR diff =
+exactly three rows → current ($77,698.83→$70,248.83). Contract evidence
+ladder upgraded (RECOGNIZED cell > derived): all three contracts SIGNED
+$54,600, contract ROAS 7.52×. R-AR-INTERNAL grep-pinned (never chases).
+New drill: "what's my LTV to CAC". DECISIONS #151.
+
+
 ## 2026-09-17 (2) — DATA SCRUTINY: headline forensics, tab map, AR, unit economics (#150)
 
 Same-day follow-on to the currency wave. Deploys → c5394f1e SUCCESS. Suite
