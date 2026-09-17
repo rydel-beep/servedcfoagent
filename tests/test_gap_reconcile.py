@@ -157,7 +157,7 @@ def test_close_ledger_auto_requires_payment(monkeypatch):
         {"paid": True, "status": "succeeded", "amount": 165000,
          "created": 1789700000,
          "billing_details": {"email": "ad@x.com", "name": "Already Derived"}}])
-    monkeypatch.setattr(G, "_health_row", lambda n, o: None)
+    monkeypatch.setattr(G, "_health_row", lambda n, o, e=None: None)
     monkeypatch.setattr(G, "_tracker_row_for", lambda n, e: None)
     store["derived:dates"] = {"alreadyderived": {"close_date": {
         "date": "2026-09-09", "provenance": "derived:stripe"}}}
@@ -187,7 +187,7 @@ def test_conflict_surfaced_never_merged(monkeypatch):
          "stage_changed": "2026-09-11 02:00", "close_date": "2026-09-11"}])
     import cash_truth
     monkeypatch.setattr(cash_truth, "_raw_recent_charges", lambda d: [])
-    monkeypatch.setattr(G, "_health_row", lambda n, o: None)
+    monkeypatch.setattr(G, "_health_row", lambda n, o, e=None: None)
     monkeypatch.setattr(G, "_tracker_row_for", lambda n, e: {
         "close_date": "2026-09-05", "contract": "", "cash": ""})
     out = G.rebuild_closes(apply=False)

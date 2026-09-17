@@ -232,7 +232,12 @@ def _stripe_hits(name: str, email: str | None, charges: list[dict]) -> list[dict
     return hits
 
 
-def _health_row(name: str, opp_name: str) -> dict | None:
+def _health_row(name: str, opp_name: str, email: str | None = None) -> dict | None:
+    """Person → client-row bridge. Name tokens first; then the EMAIL bridge
+    (prod-caught: contacts carry person names, client rows carry venue names
+    — the payment email's local/domain often IS the venue, e.g.
+    foodcorppizza@… ↔ 'Food Corp Pizza…'). ≥6-char prefix match, evidence-
+    labelled by the caller."""
     try:
         from snapshot import load_persisted
         snap = load_persisted() or {}
@@ -240,10 +245,19 @@ def _health_row(name: str, opp_name: str) -> dict | None:
                 + ((snap.get("client_health") or {}).get("clients") or []))
         tokens = [t for t in re.split(r"[^a-z0-9]+", (name + " " + opp_name).lower())
                   if len(t) > 3]
+        email_bits = []
+        if email and "@" in email:
+            local, _, domain = email.partition("@")
+            email_bits = [_norm(local), _norm(domain.split(".")[0])]
         best = None
         for c in pool:
             nm = (c.get("name") or "").lower()
+            nn = _norm(nm)
             score = sum(1 for t in tokens if t in nm)
+            for eb in email_bits:
+                if len(eb) >= 6 and (nn.startswith(eb[:10]) or eb.startswith(nn[:10])
+                                     or (len(eb) >= 7 and eb[:7] == nn[:7])):
+                    score += 2
             if score >= 1 and (best is None or score > best[0]):
                 best = (score, c)
         return best[1] if best else None
@@ -291,7 +305,7 @@ def rebuild_closes(apply: bool = True) -> dict:
             continue
         seen_people.add(nn)
         hits = _stripe_hits(person, cand["email"], charges)
-        health = _health_row(person, cand["opp_name"] or "")
+        health = _health_row(person, cand["opp_name"] or "", cand.get("email"))
         tracker = _tracker_row_for(person, cand["email"])
         tracker_close = _parse_date((tracker or {}).get("close_date"))
         entry = {
