@@ -619,9 +619,15 @@ def unit_econ_view() -> dict:
         margin = ((snap.get("xero") or {}).get("gross_margin_pct"))
     except Exception:
         margin = None
-    margin_prov = (f"Xero P&L gross margin {margin}%" if margin is not None
-                   else "FY26 contribution margin 42.9% (labelled fallback)")
-    margin_val = margin if margin is not None else 42.9
+    # prod-caught: a 100% Xero margin = COGS timing (no delivery cost booked
+    # in-month), not truth — implausible reads fall to the labelled FY26 rate
+    if margin is None or margin >= 95:
+        margin_prov = (f"FY26 contribution margin 42.9% (labelled fallback — "
+                       f"Xero read {'unavailable' if margin is None else f'{margin}% (COGS timing, implausible)'})")
+        margin_val = 42.9
+    else:
+        margin_prov = f"Xero P&L gross margin {margin}%"
+        margin_val = margin
     out = {"benchmark": {"value": 3.0,
                          "label": "3:1 — benchmark, not target"},
            "ltv_inputs": inputs, "margin_provenance": margin_prov,
@@ -656,10 +662,30 @@ def unit_econ_view() -> dict:
         n = len(closes)
         cac_full = comp.get("cac_fully_loaded")
         cac_spend = comp.get("cac_spend_only")
+        cac_note = None
+        if cac_full is None and n:
+            # prod-caught: the standing engine counts closes from tracker
+            # won-marks, which the gap left empty — compute the pair from
+            # the SAME components ÷ the union close count, labelled.
+            try:
+                from config import SALES_TOOLING_MONTHLY
+                days = (comp.get("window") or {}).get("days") or 30
+                tooling = SALES_TOOLING_MONTHLY * days / 30.44
+                acq = ((comp.get("ad_spend") or 0)
+                       + (comp.get("closer_comm") or 0)
+                       + (comp.get("setter_comm") or 0))
+                cac_full = round((acq + tooling) / n, 2)
+                cac_spend = round((comp.get("ad_spend") or 0) / n, 2)
+                cac_note = (f"closes from the union engine (n={n}; tracker "
+                            f"won-marks lag — the gap-window class); "
+                            f"components from the standing engine")
+            except Exception:
+                pass
         avg_ltv = round(ltv_total / n, 2) if n and ltv_total else None
         out["windows"][name] = {
             "window": {"start": str(w0), "end": str(w1), "clock": "activity"},
             "closes": n,
+            "cac_note": cac_note,
             "cac_fully_loaded": cac_full,
             "cac_spend_only": cac_spend,
             "cac_loaded_standing": comp.get("cac_loaded"),

@@ -1,5 +1,66 @@
 # STATUS — served-cfo-agent session log
 
+## 2026-09-17 (2) — DATA SCRUTINY: headline forensics, tab map, AR, unit economics (#150)
+
+Same-day follow-on to the currency wave. Deploys → c5394f1e SUCCESS. Suite
+**1103+** (+19 new: test_scrutiny + test_finance_tabs). Zero tracker/GHL
+writes (the #148 law re-proven by the same guards).
+
+1. **THE LAW**: every headline tile shows its work (drawer: definition ·
+   formula · components w/ source+ids · clock · reconciliation delta) and
+   no bare ambiguous label survives (test-pinned grep). "$72,887.52" is now
+   "Committed MRR (revenue)" with all 38 rows + cross-tab recon in its
+   drawer; the "$1.6k net" (the Zone-1 forecast projection tile) is now
+   "Forecast net (projection)" reconciled against THREE actual nets —
+   prod: cash net MTD (bank) +$2,009.09 · operating net MTD −$5,327.67
+   (tax banded BESIDE) · expected month-end +$34,277.82.
+2. **Plausible-lie bugs fixed**: financial_position nets ate BLENDED opex
+   (tax+personal as operating cost) → banded; the waterfall re-blended tax
+   in its own net line → dual net; LTV:CAC un-gated from the margin read;
+   two unlabelled "cash collected" tiles qualified; 100%-margin Xero reads
+   fall to the labelled FY26 42.9%.
+3. **finance_tabs.py (NEW)** — runtime tab enumeration of BOTH workbooks
+   (15 tabs; new/unmapped = surfaced; XML-entity fix prod-caught) + THE
+   SHEET RENEWAL LEDGER (RECOGNIZED cols E–K + Sheet5): 8 renewals the
+   system never saw (Noodle Asia $8,560 08-18→02-18-27 · Bluebells
+   month-to-month extension · Cycho's · At Thai · Panini CO · Walkway ·
+   Raama · Pottery Green) now re-base the renewal watch + extend committed
+   (labelled lane; month-0 exact with ledger disclosure — prod $74,970.85 =
+   recognized + At Thai's ledger MRR). Conflicts surfaced (At Thai,
+   Monty's). EXTENSION joined the declaration kinds. Cross-tab recon:
+   roster $72,887.52/38 vs ACTUAL $107,196.01/45 vs RECOGNIZED
+   $92,796.01/39 vs footer $67,337.52 — 9 deltas caused + owned; 2
+   zero-MRR actives EXPLAINED by ledger renewals (At Thai, Pottery Green).
+4. **receivables.py (NEW)** — expected (grid+ledger) vs received (Stripe,
+   alias-aware) → prod: **$77,698.83 outstanding / 28 clients**; aging
+   sums; Bar Elvina $2,350/9d · Leopard Deli $2,500/9d · Walkway $6,100/40d
+   + the ones nobody named (Panini CO $6,258/71d, Raama $6,200/71d);
+   12 unmatched payments → PROPOSED alias cards; Xero BS AR-line anchor
+   rides the daily BAS pull (invoice-level = registered dependency).
+5. **Unit economics**: fully-loaded CAC (spend+commissions+tooling config,
+   $0 fixed sales labour stated) BESIDE spend-only; LTV per package
+   (config PACKAGE_TERMS authority); LTV:CAC + LTGP:CAC per cohort/T90 w/
+   provenance + 3:1 "benchmark, not target"; union-close fallback for the
+   gap-window CAC (prod-caught). ROAS panel: COHORT cash 1.01× headline,
+   receipts 3.29× demoted "not attributable", contract 5.04× with
+   signed-vs-derived split + ⚑ chips; briefing v3 regenerated.
+6. **decision_cards.py (NEW, owner-only)**: 27 cards live (3 PROPOSED
+   closes · Harman's venue · 6 alias proposals · footer · 2 zero-MRR
+   resolutions · tab conflicts · URGENT renewals (Pizzicotto, Pottery
+   Green, Naan Sense, Firefly) · ad-set mapping · first review session ·
+   GHL 56 open-closed flag).
+7. Sentinel: tabs watch (change detection) + AR watch (anchor drift) ride
+   nightly; all drills live on both EDITH lists (three nets · committed ·
+   who-hasn't-paid · did-X-resign · roas).
+
+**Files:** finance_tabs.py, receivables.py, tile_drawers.py,
+decision_cards.py (new); finance_analysis.py, range_unit_economics.py,
+snapshot.py, forward_projection.py, finance_sheets_pull.py,
+client_overrides.py, renewal_loop.py, xero_pull.py, bas_engine.py,
+ad_sentinel.py, config.py, dashboard/routes.py, dashboard.js,
+dashboard.html, DECISIONS.md (#150), dashboard/SCRUTINY_DIAGNOSIS.md.
+
+
 ## 2026-09-17 — FINANCE CURRENCY + GAP RECONCILIATION + MONTHLY ANALYSIS (#148/#149)
 
 Deploys → 74bbe0ff SUCCESS. Suite **1084** (+13 tests/test_gap_reconcile).
