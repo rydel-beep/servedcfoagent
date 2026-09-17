@@ -554,6 +554,8 @@ def briefing_pdf() -> bytes:
 # ── EDITH drills ────────────────────────────────────────────────────────────
 
 _ROAS_RE = re.compile(r"\broas\b|return on ad spend", re.I)
+_LTV_RE = re.compile(r"ltv.{0,6}(to|:|vs)?.{0,3}cac|ltgp.{0,6}cac|"
+                     r"lifetime value.{0,20}cac", re.I)
 _CLOSES_RE = re.compile(r"(which|what).*(three|3).*(closed|closes)|"
                         r"cash schedule|collection schedule", re.I)
 
@@ -561,6 +563,25 @@ _CLOSES_RE = re.compile(r"(which|what).*(three|3).*(closed|closes)|"
 def handle_finance_command(text: str) -> tuple[str | None, bool]:
     t = (text or "").lower()
     try:
+        if _LTV_RE.search(t):
+            ue = unit_econ_view()
+            c = ue["windows"]["cohort_month"]
+            t90 = ue["windows"]["trailing_90d"]
+            li = ue["ltv_inputs"]
+            return (
+                f"LTV:CAC and LTGP:CAC, both clocks — September cohort: "
+                f"LTV:CAC {c['ltv_to_cac']}× · LTGP:CAC {c['ltgp_to_cac']}× "
+                f"({c['closes']} closes; CAC fully loaded "
+                f"${c['cac_fully_loaded']:,.0f}, spend-only "
+                f"${c['cac_spend_only']:,.0f} beside). Trailing 90d: "
+                f"LTV:CAC {t90['ltv_to_cac']}× · LTGP:CAC "
+                f"{t90['ltgp_to_cac']}×. Inputs: renewal "
+                f"{li['renewal_rate_pct']}% ({li['renewal_provenance'][:70]}); "
+                f"completion {li['in_term_completion_pct']}% "
+                f"({li['completion_provenance'][:45]}); margin "
+                f"{ue['margin_provenance'][:70]}. 3:1 is a benchmark, not a "
+                f"target — the tiles are at the top of the dashboard with "
+                f"their drawers.", True)
         if _ROAS_RE.search(t):
             v = verdict()
             rep = window_report("sep_mtd", "activity")
