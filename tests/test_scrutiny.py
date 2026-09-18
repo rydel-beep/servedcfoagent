@@ -32,11 +32,22 @@ def _kv(monkeypatch):
 
 # ── the label law ───────────────────────────────────────────────────────────
 
+def _all_templates():
+    """#152: the monolith split into landing + area partials — the label law
+    now scans EVERY dashboard template (a strictly wider net)."""
+    import glob
+    out = []
+    for p in glob.glob(os.path.join(_ROOT, "dashboard/templates/**/*.html"),
+                       recursive=True):
+        out.append(open(p).read())
+    return "\n".join(out)
+
+
 def test_no_bare_ambiguous_labels_rendered():
     """The bare labels Rydel misread must be gone; the qualified forms must
-    exist. Greps the RENDERED label strings in JS + HTML."""
+    exist. Greps the RENDERED label strings in JS + ALL templates."""
     js = open(os.path.join(_ROOT, "dashboard/static/js/dashboard.js")).read()
-    html = open(os.path.join(_ROOT, "dashboard/templates/dashboard.html")).read()
+    html = _all_templates()
     # dead bare labels
     for bare in ('>Net Cash Flow<', '"fc-line">Net <strong>',
                  ">Cash Collected <", '>Cash Net<', '>Recognized Net<',
@@ -54,11 +65,21 @@ def test_no_bare_ambiguous_labels_rendered():
 
 def test_headline_tiles_have_doors():
     js = open(os.path.join(_ROOT, "dashboard/static/js/dashboard.js")).read()
-    html = open(os.path.join(_ROOT, "dashboard/templates/dashboard.html")).read()
+    html = _all_templates()
     for tile in ("committed_mrr", "three_nets", "forecast_net",
                  "ar_outstanding"):
         assert f'data-findrawer="{tile}"' in js or f'data-findrawer="{tile}"' in html, tile
     assert "closest('.fin-door[data-findrawer]')" in js
+    # the landing exec tiles carry their doors server-side (#152) — the
+    # drawer key is jinja-bound, so pin it via the built tiles instead
+    landing = open(os.path.join(_ROOT, "dashboard/templates/dashboard.html")).read()
+    assert 'data-findrawer="{{ t.drawer }}"' in landing
+    from dashboard import exec_top
+    drawers = {t["id"]: t["drawer"] for t in exec_top.build_tiles(None)}
+    assert drawers.get("cash_on_hand") == "cash_on_hand"
+    assert drawers.get("ar_outstanding") == "ar_outstanding"
+    assert drawers.get("cash_net_mtd") == "three_nets"
+    assert TD.drawer("cash_on_hand").get("tile") == "cash_on_hand"
 
 
 def test_drawer_registry_unknown_tile_honest():
@@ -255,32 +276,34 @@ def test_ledger_lane_never_double_counts_grid_months(monkeypatch):
 # ── #151 · visibility + R-AR-INTERNAL + R-PAID ─────────────────────────────
 
 def test_ratio_tiles_top_section_always_rendered():
-    """The shipped-≠-visible fix: the two ratios are TOP-SECTION tiles
-    (first in Zone 1), rendered from the honest engine, and a degraded
-    input labels the tile instead of hiding it."""
+    """#151, upgraded by #152: LTV:CAC + LTGP:CAC are SERVER-RENDERED
+    executive-top tiles on the landing page (JS can no longer fail to show
+    them), the unit-econ detail panel survives on its area page, and a
+    degraded input labels the tile instead of hiding it."""
     js = open(os.path.join(_ROOT, "dashboard/static/js/dashboard.js")).read()
-    html = open(os.path.join(_ROOT, "dashboard/templates/dashboard.html")).read()
-    assert 'id="section-ratio-tiles"' in html
-    assert "'section-ratio-tiles'" in js
-    # FIRST in the Zone-1 ids array (the top of the top section)
-    assert "ids: ['section-ratio-tiles'," in js
-    # AND in the FIRST SCREENFUL: the Morning-Brief hero carries both ratio
-    # stats beside MRR and cash (#151 — the shipped-≠-visible fix), refilled
-    # after every hero rebuild
+    landing = open(os.path.join(_ROOT, "dashboard/templates/dashboard.html")).read()
+    econ = open(os.path.join(_ROOT,
+                "dashboard/templates/partials/area_unit-econ.html")).read()
+    # LANDING (#152): the ratios are among the ≤8 server-rendered tiles
+    from dashboard import exec_top
+    ids = [t["id"] for t in exec_top.build_tiles(None)]
+    assert "ltv_cac" in ids and "ltgp_cac" in ids
+    assert "{% for t in exec.tiles %}" in landing and "{{ t.value }}" in landing
+    # DETAIL page: the honest-engine panel + window selector live on
+    assert 'id="section-ratio-tiles"' in econ
+    assert 'id="ratio-window"' in econ
+    for opt in ("cohort_month", "trailing_90d", "by_package"):
+        assert opt in econ
+    # the Morning-Brief hero (brief area page) still carries both ratio
+    # stats, refilled after every hero rebuild (#151 mechanism survives)
     for hid in ('brief-ltvcac', 'brief-ltgpcac'):
         assert hid in js
-    assert js.index('id="brief-ltvcac"') > 0
-    assert js.count("fillHeroRatios()") >= 2   # ratio load + post-brief-rebuild
-    assert "renderRatioTiles()" in js
+    assert js.count("fillHeroRatios()") >= 2   # definition + post-brief-rebuild
     assert "unit-econ-honest" in js
     # ALWAYS rendered: the failure paths render text, never hide the section
     assert "the tile stays, the number does not pretend" in js
     assert "ratio tiles failed honestly" in js
-    assert "benchmark, not target" in html or "benchmark, not target" in js
-    # windows selector present
-    assert 'id="ratio-window"' in html
-    for opt in ("cohort_month", "trailing_90d", "by_package"):
-        assert opt in html
+    assert "benchmark, not target" in econ or "benchmark, not target" in js
 
 
 def test_ar_internal_only_no_chase_verbs():

@@ -1,0 +1,145 @@
+/* ════════════════════════════════════════════════════════════════════════
+   LANDING (dashboard hardening) — the executive top + summary cards.
+   ≤ 8 server-rendered tiles + one verdict line + the card row. Nothing
+   below the cards. Mobile stacks; no horizontal overflow anywhere.
+   ════════════════════════════════════════════════════════════════════════ */
+
+.landing-main { max-width: 1280px; margin: 0 auto; padding: var(--sp-5) var(--sp-4) var(--sp-8); }
+
+/* ── executive tiles ── */
+.exec-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+@media (max-width: 1080px) { .exec-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px)  { .exec-tiles { grid-template-columns: minmax(0, 1fr); } }
+
+.exec-tile {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: var(--sp-4);
+  min-width: 0;
+  overflow: hidden;
+}
+.exec-tile.state-amber    { border-color: rgba(232,180,69,0.45); }
+.exec-tile.state-degraded { border-color: rgba(232,97,107,0.5); background: linear-gradient(var(--red-dim), var(--bg-card)); }
+
+.exec-tile-label {
+  font: 600 var(--fs-caption)/1.3 var(--font-ui);
+  color: var(--text-secondary);
+  letter-spacing: 0.04em; text-transform: uppercase;
+  display: flex; align-items: center; gap: 6px;
+}
+.exec-tile-value {
+  font: 600 var(--fs-value-lg)/1.15 var(--font-display);
+  color: var(--text);
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.exec-tile-sub  { font: 400 var(--fs-caption)/1.45 var(--font-ui); color: var(--text-muted); margin-top: 5px; }
+.exec-tile-note { font: 500 var(--fs-caption)/1.4 var(--font-ui); color: var(--amber); margin-top: 5px; }
+.exec-tile-stamp {
+  font: 400 var(--fs-micro)/1.4 var(--font-ui);
+  color: var(--text-muted); opacity: 0.85;
+  margin-top: 8px; padding-top: 7px;
+  border-top: 1px dashed var(--border);
+}
+.stamp-flag { font-weight: 700; letter-spacing: 0.05em; margin-right: 6px; border-radius: 4px; padding: 1px 5px; }
+.stamp-amber    { color: var(--amber); background: var(--amber-dim); }
+.stamp-degraded { color: var(--red);   background: var(--red-dim); }
+
+.exec-verdict {
+  margin-top: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--bg-inset-strong);
+  border-left: 3px solid var(--brand-bright);
+  border-radius: 6px;
+  font: 500 var(--fs-body)/1.55 var(--font-ui);
+  color: var(--text-secondary);
+}
+.exec-verdict .verdict-mark { color: var(--brand-bright); margin-right: 6px; }
+
+/* ── summary cards ── */
+.landing-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--sp-3);
+  margin-top: var(--sp-6);
+}
+.landing-card {
+  display: block; text-decoration: none;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: var(--sp-4);
+  min-width: 0;
+  transition: border-color .15s, background .15s;
+}
+.landing-card:hover { background: var(--bg-card-hover); border-color: var(--border-hover); }
+.landing-card-title  { font: 600 var(--fs-emphasis)/1.3 var(--font-ui); color: var(--text); }
+.landing-card-signal { font: 400 var(--fs-caption)/1.5 var(--font-ui); color: var(--text-muted); margin-top: 5px; overflow-wrap: anywhere; }
+.landing-card-go     { font: 600 var(--fs-micro)/1 var(--font-ui); color: var(--brand-bright); margin-top: 9px; letter-spacing: 0.03em; }
+.card-owner { border-left: 3px solid var(--purple); }
+
+.landing-foot {
+  margin-top: var(--sp-6);
+  font: 400 var(--fs-micro)/1.5 var(--font-ui);
+  color: var(--text-muted); opacity: 0.8;
+}
+
+/* ── fin-door + drawer modal (shared with sub-pages) ── */
+.fin-door {
+  background: none; border: 1px solid var(--border); border-radius: 5px;
+  color: var(--brand-muted); font-size: 10px; cursor: pointer;
+  padding: 0 5px; line-height: 15px;
+}
+.fin-door:hover { color: var(--brand-bright); border-color: var(--border-hover); }
+.fin-drawer-overlay {
+  position: fixed; inset: 0; background: rgba(4,8,16,0.6); z-index: 300;
+}
+.fin-drawer {
+  position: fixed; top: 8vh; left: 50%; transform: translateX(-50%);
+  width: min(680px, 94vw); max-height: 80vh; overflow-y: auto;
+  background: var(--bg-raised); border: 1px solid var(--border-hover);
+  border-radius: 12px; z-index: 301; padding: 0;
+}
+.fin-drawer-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  font: 600 var(--fs-body)/1 var(--font-ui); color: var(--text);
+  position: sticky; top: 0; background: var(--bg-raised);
+}
+.fin-drawer-head button { background: none; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer; }
+.fin-drawer-body { padding: var(--sp-4); font: 400 var(--fs-body)/1.55 var(--font-ui); color: var(--text-secondary); }
+.fin-drawer-body table { width: 100%; border-collapse: collapse; }
+.fin-drawer-body td { padding: 4px 6px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.fin-drawer-body .fd-def { color: var(--text); margin-bottom: 8px; }
+.fin-drawer-body .fd-sec { margin-top: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; font-size: var(--fs-micro); letter-spacing: 0.05em; }
+.fin-drawer-body pre { overflow-x: auto; background: var(--bg-inset); padding: 8px; border-radius: 6px; }
+
+/* ── sub-page (panel view) chrome ── */
+.panelpage-bar {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+}
+.panelpage-back { color: var(--brand-bright); text-decoration: none; font: 600 var(--fs-body)/1 var(--font-ui); }
+.panelpage-title { font: 600 var(--fs-emphasis)/1 var(--font-ui); color: var(--text); }
+
+/* panel error boundary block */
+.panel-boundary-fail {
+  padding: var(--sp-4);
+  border: 1px dashed rgba(232,97,107,0.5);
+  border-radius: 8px;
+  color: var(--red);
+  font: 500 var(--fs-caption)/1.5 var(--font-ui);
+}
+.panel-boundary-fail button {
+  margin-left: 8px; background: var(--red-dim); color: var(--red);
+  border: 1px solid rgba(232,97,107,0.5); border-radius: 5px;
+  padding: 2px 8px; cursor: pointer; font-size: var(--fs-micro);
+}

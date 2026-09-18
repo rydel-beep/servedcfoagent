@@ -19,7 +19,18 @@ from collections import defaultdict
 
 import requests
 
-from helpers import now_sydney, today_sydney
+import helpers
+
+
+def today_sydney():
+    """Late-bound: a test that monkeypatches helpers.today_sydney while this
+    module first imports must not freeze the patched clock in here forever
+    (the daily-cap counter then keys the wrong day — a real suite flake)."""
+    return helpers.today_sydney()
+
+
+def now_sydney():
+    return helpers.now_sydney()
 
 logger = logging.getLogger(__name__)
 

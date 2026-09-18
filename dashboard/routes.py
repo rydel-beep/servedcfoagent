@@ -54,29 +54,99 @@ def _repetition_failure(reply: str, history: list, user_msg: str) -> bool:
     return False
 
 
-@bp.route("/")
-@require_auth
-def index():
-    """Serve the main dashboard page with the last snapshot inlined.
-
-    Instant paint: the page renders from the embedded snapshot immediately,
-    then the client refreshes from /api/snapshot in the background.
-    """
+def _edith_cfg_json() -> str:
     import json as _json
-    from snapshot import load_persisted
-    snap = load_persisted()
-    # </ must not appear inside an inline <script> block
-    boot = _json.dumps(snap).replace("</", "<\\/") if snap else "null"
     from config import PICOVOICE_ACCESS_KEY
     wake_ppn = os.path.exists(os.path.join(
         os.path.dirname(__file__), "static", "wake", "hey_edith_wasm.ppn"))
-    edith_cfg = _json.dumps({
+    return _json.dumps({
         "picovoiceKey": PICOVOICE_ACCESS_KEY,   # authed page only, by design
         "wakePpnPresent": wake_ppn,
         "wakePpnPath": "/dashboard/static/wake/hey_edith_wasm.ppn",
     })
-    return render_template("dashboard.html", boot_snapshot=boot, edith_cfg=edith_cfg,
-                           asset_v=_ASSET_VERSION)
+
+
+@bp.route("/")
+@require_auth
+def index():
+    """The LANDING page — SERVER-RENDERED TRUTH (dashboard hardening).
+
+    The executive top (≤ 8 tiles + one verdict line) and the summary cards
+    are computed server-side from the one engine's kv-cached blocks and
+    written INTO the HTML. JS enhances (drawers, refresh); it never fills a
+    headline. With JS disabled the page still reads correctly."""
+    from snapshot import load_persisted
+    from dashboard import exec_top
+    from dashboard.auth import is_owner
+    snap = load_persisted()
+    try:
+        owner = is_owner()
+    except Exception:
+        owner = False
+    # CSM card honors DISCREET MODE (#146): owner AND discreet-off
+    try:
+        csm_visible = owner and not bool(session.get(_CSM_DISCREET_KEY))
+    except Exception:
+        csm_visible = False
+    try:
+        exec_data = exec_top.build(snap, owner, csm_visible=csm_visible)
+    except Exception as e:  # the landing page NEVER 500s into a blank
+        logger.exception("exec_top build failed")
+        exec_data = {"tiles": [], "cards": [],
+                     "verdict": {"line": f"executive top failed honestly: {str(e)[:120]}",
+                                 "state": "degraded"},
+                     "snapshot_age": "unknown", "today": ""}
+    degraded_count = len((snap or {}).get("degraded") or [])
+    age = exec_data.get("snapshot_age") or "unknown"
+    status_text = (f"{degraded_count} degraded · {age}" if degraded_count
+                   else f"healthy · {age}")
+    resp = make_response(render_template(
+        "dashboard.html", exec=exec_data, degraded_count=degraded_count,
+        status_text=status_text, edith_cfg=_edith_cfg_json(),
+        asset_v=_ASSET_VERSION))
+    # the HTML carries live values — it must never be served from cache
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+# ── AREA PAGES (IA split): every heavy panel lives on its own page ──────────
+# Card count == page count == the panel inventory (CRASH_DIAGNOSIS.md).
+_AREAS = {
+    "brief":       ("Morning brief (full)", True),
+    "cash":        ("Cash & capital", False),
+    "sales":       ("Ads & sales", True),
+    "unit-econ":   ("Unit economics", True),
+    "projection":  ("Forward projection", False),
+    "renewals":    ("Renewals & churn", False),
+    "outflows":    ("Outflows & BAS", False),
+    "team":        ("Team & strategy", False),
+    "receivables": ("Receivables", False),
+    "decisions":   ("Needs your ruling", False),   # owner-only (checked below)
+    "system":      ("System health", False),
+}
+
+
+@bp.route("/view/<area>")
+@require_auth
+def area_page(area):
+    """A sub-page hosting one area's panels — same renderers, but every panel
+    is an error boundary and absent sections are skipped (body[data-area])."""
+    if area not in _AREAS:
+        return jsonify({"error": "unknown area", "known": sorted(_AREAS)}), 404
+    from dashboard.auth import is_owner
+    if area == "decisions" and not is_owner():
+        return jsonify({"error": "owner only"}), 403
+    import json as _json
+    from snapshot import load_persisted
+    snap = load_persisted()
+    boot = _json.dumps(snap).replace("</", "<\\/") if snap else "null"
+    title, window_bar = _AREAS[area]
+    resp = make_response(render_template(
+        "panel_page.html", area=area, area_title=title,
+        show_window_bar=window_bar, boot_snapshot=boot,
+        edith_cfg=_edith_cfg_json(), asset_v=_ASSET_VERSION))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @bp.route("/login", methods=["GET"])
@@ -2325,6 +2395,54 @@ def api_drawer(tile):
     resp = jsonify(payload)
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     return resp
+
+
+# ── CLIENT TELEMETRY (dashboard hardening): browser crashes reach the same
+# feed as server failures. Auth-gated, rate-limited, no PII beyond route+error.
+@bp.route("/api/client-error", methods=["POST"])
+@require_auth
+def api_client_error():
+    import kv_store
+    from helpers import now_sydney
+    body = request.get_json(silent=True) or {}
+    # rate limit: 60 stored events per rolling hour bucket, server-side
+    hour_key = "telemetry:err_count:" + now_sydney().strftime("%Y-%m-%d-%H")
+    try:
+        count = int(kv_store.get(hour_key) or 0)
+    except Exception:
+        count = 0
+    kv_store.put(hour_key, count + 1)
+    if count >= 60:
+        return jsonify({"ok": True, "stored": False, "reason": "rate-limited"}), 202
+    entry = {
+        "at": now_sydney().isoformat(),
+        "kind": str(body.get("kind") or "unknown")[:40],
+        "detail": str(body.get("detail") or "")[:400],
+        "src": str(body.get("src") or "")[:200],
+        "route": str(body.get("route") or "")[:120],
+        "commit": str(body.get("commit") or "")[:16],
+    }
+    ring = kv_store.get("telemetry:client_errors") or []
+    ring.append(entry)
+    kv_store.put("telemetry:client_errors", ring[-200:])
+    return jsonify({"ok": True, "stored": True})
+
+
+@bp.route("/api/telemetry", methods=["GET"])
+@require_owner
+def api_telemetry():
+    """Owner view: recent client errors + hourly rate + the render-health
+    self-check state (the sentinel's watch reads the same keys)."""
+    import kv_store
+    import render_health
+    ring = kv_store.get("telemetry:client_errors") or []
+    return jsonify({
+        "recent": ring[-50:][::-1],
+        "total_stored": len(ring),
+        "rate": render_health.error_rate_last_hours(6),
+        "render_health": kv_store.get("render_health:last") or
+                         {"note": "no self-check has run yet"},
+    })
 
 
 @bp.route("/api/nets", methods=["GET"])

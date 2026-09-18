@@ -357,7 +357,51 @@ def _drawer_forecast_net() -> dict:
     }
 
 
+def _drawer_cash_on_hand() -> dict:
+    """Per-account Xero bank balances behind the exec-top Cash-on-hand tile
+    (dashboard-hardening wave: server-rendered headline, drawer = the work)."""
+    from snapshot import load_persisted
+    snap = load_persisted() or {}
+    cp = snap.get("cash_position") or {}
+    breakdown = cp.get("cash_in_bank_breakdown") or []
+    comps = [{"label": b.get("name") or b.get("marker"),
+              "value": b.get("balance"),
+              "source": f"Xero Bank Summary closing balance · as of {cp.get('cash_as_of')}"}
+             for b in breakdown]
+    total = cp.get("cash_in_bank")
+    comp_sum = round(sum(c["value"] or 0 for c in comps), 2)
+    return {
+        "tile": "cash_on_hand",
+        "definition": "Cash on hand: the closing balances of the CommBank "
+                      "transaction + online saver + BAS/tax accounts from "
+                      "Xero's Bank Summary. A point-in-time BALANCE — never "
+                      "summed with period flows.",
+        "formula": "Σ per-account Xero closing balances (Amex excluded — "
+                   "it's a liability)",
+        "clock": f"point-in-time · as of {cp.get('cash_as_of') or 'unknown'} "
+                 f"· snapshot {snap.get('generated_at', '')[:16]}",
+        "value": total,
+        "components": comps,
+        "invariant": {"ok": total is not None and comps
+                            and abs((total or 0) - comp_sum) < 0.01,
+                      "tile": total, "component_sum": comp_sum},
+        "reconciliation": {
+            "external": "CommBank via Xero bank feeds",
+            "delta_note": "Xero bank feeds lag the bank by up to a day — "
+                          "the honest limit, stated on the tile",
+            "stripe_beside": {
+                "available": cp.get("stripe_available"),
+                "incoming_settling": cp.get("stripe_incoming"),
+                "in_transit_to_bank": cp.get("stripe_in_transit_to_bank"),
+                "note": "Stripe money states BESIDE bank cash, never inside"}},
+        "degraded": ("live Xero read failed — LAST-KNOWN fallback shown"
+                     if "fallback" in (cp.get("cash_in_bank_note") or "").lower()
+                     else None),
+    }
+
+
 _REGISTRY = {
+    "cash_on_hand": _drawer_cash_on_hand,
     "committed_mrr": _drawer_committed_mrr,
     "meta_spend_mtd": _drawer_spend,
     "cash_collected": _drawer_cash_collected,

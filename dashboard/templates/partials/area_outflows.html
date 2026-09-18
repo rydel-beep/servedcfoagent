@@ -1,0 +1,26 @@
+<section class="panel" id="section-outflow">
+    <div class="panel-header">
+      <h2 class="panel-title">Outflow Truth <span class="win-badge">6mo</span></h2>
+      <div class="panel-badge" id="outflow-badge"></div>
+      <span class="panel-sub">OpEx vs tax/statutory — classified by the ledger's own accounts, never blended</span>
+      <div class="renewal-toolbar">
+        <button class="rw-btn outflow-view-btn active" data-oview="cash" title="the real payment events, flagged in their months (lumpy — when money actually left)">Cash</button>
+        <button class="rw-btn outflow-view-btn" data-oview="accrual" title="OpEx + the month's accrued ATO share from the set-aside math — labelled planning estimate">Accrual</button>
+      </div>
+    </div>
+    <div id="outflow-content"><div class="skeleton skeleton-block"></div></div>
+  </section>
+
+<section class="panel" id="section-waterfall">
+    <div class="panel-header">
+      <h2 class="panel-title">Profit Waterfall</h2>
+      <span class="panel-sub" id="waterfall-period"></span>
+    </div>
+    <div id="waterfall-content"></div>
+  </section>
+
+<section class="panel" id="section-bas">
+    <div class="panel-header"><h2 class="panel-title">BAS &amp; tax set-aside</h2>
+      <div class="panel-badge" id="bas-badge"></div></div>
+    <div id="bas-body"><div class="skeleton skeleton-text"></div></div>
+  </section>

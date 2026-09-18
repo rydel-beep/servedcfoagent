@@ -1,0 +1,1094 @@
+{
+ "passes": [
+  {
+   "name": "cold",
+   "dom": {
+    "#brief-cash": {
+     "present": false
+    },
+    "#brief-mrr": {
+     "present": false
+    },
+    "#brief-active": {
+     "present": false
+    },
+    "#brief-ltvcac": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "11.51\u00d7",
+     "top": 321,
+     "h": 28
+    },
+    "#brief-ltgpcac": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "4.94\u00d7",
+     "top": 321,
+     "h": 28
+    },
+    "#morning-brief": {
+     "present": false
+    },
+    "#section-ratio-tiles": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "UNIT ECONOMICS \u2014 LTV : CAC \u00b7 LTGP : CAC September cohort Trailing 90d By package \u00b7 3:1 line = benchmark, not target LTV : CAC \u24d8 11.51\u00d7 \u2265 3:1 benchmark 2026-09-01 \u2192 2026-09-18 \u00b7 3 closes \u00b7 CAC loaded $2,925 (spend-only $2",
+     "top": 1616,
+     "h": 259
+    },
+    "#section-decision-cards": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "NEEDS YOUR RULING 26 ruling(s) waiting \u2014 each with its evidence PROPOSED close \u2014 Kristeen Hammond (2026-07-31) GHL closed-stage 2026-07-31 (opp 8URegBoxTB\u2026) missing: no Stripe payment found (email-exact + full-name searc",
+     "top": 1616,
+     "h": 2747
+    },
+    "#section-csm-card": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "CSM CSM \u00b7 pre-start \u00b7 next: CSM start in 74d \u00b7 Gate 0 1/7 \u00b7 path to 4x: 68.7% renewal next: Continuity floor tested on live no's (Rydel) open the cockpit \u2192",
+     "top": 4379,
+     "h": 180
+    },
+    "#section-cash-position": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "CASH POSITION LIVE 2.7mo runway CASH ON HAND \u24be $187,613 Xero, as of 2026-09-18 spoken for (ATO est.): $42,877 \u2192 yours: $144,736 AMEX OWING -$32,495 credit-card liability, as of 2026-09-18 \u00b7 not in cash AGGRESSIVE WAR CHE",
+     "top": 4379,
+     "h": 786
+    },
+    "#section-ar": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "RECEIVABLES \u2014 EXPECTED VS RECEIVED \u24d8 work pending is never cash (R-CASH) \u00b7 anchor: Xero Balance-Sheet AR $70,249 outstanding \u00b7 aging 1-7d: $0 \u00b7 31+d: $25,577 \u00b7 8-30d: $44,672 \u00b7 current: $0 \u00b7 vs Xero AR anchor \u0394 $50,427 C",
+     "top": 5181,
+     "h": 1149
+    },
+    "#kpi-strip": {
+     "present": false
+    },
+    "__page": {
+     "height": 16225,
+     "sections": [
+      {
+       "id": "section-nav",
+       "h": 33,
+       "empty": false
+      },
+      {
+       "id": "section-brief",
+       "h": 367,
+       "empty": false
+      },
+      {
+       "id": "section-exec",
+       "h": 409,
+       "empty": false
+      },
+      {
+       "id": "section-capital",
+       "h": 164,
+       "empty": false
+      },
+      {
+       "id": "section-outflow",
+       "h": 356,
+       "empty": false
+      },
+      {
+       "id": "section-ratio-tiles",
+       "h": 259,
+       "empty": false
+      },
+      {
+       "id": "section-decision-cards",
+       "h": 2747,
+       "empty": false
+      },
+      {
+       "id": "section-csm-card",
+       "h": 180,
+       "empty": false
+      },
+      {
+       "id": "section-cash-position",
+       "h": 786,
+       "empty": false
+      },
+      {
+       "id": "section-ar",
+       "h": 1149,
+       "empty": false
+      },
+      {
+       "id": "section-bas",
+       "h": 99,
+       "empty": false
+      },
+      {
+       "id": "section-forecast-cash",
+       "h": 180,
+       "empty": false
+      },
+      {
+       "id": "section-forward",
+       "h": 855,
+       "empty": false
+      },
+      {
+       "id": "section-action-feed",
+       "h": 99,
+       "empty": false
+      },
+      {
+       "id": "section-ops-cards",
+       "h": 148,
+       "empty": false
+      },
+      {
+       "id": "section-actions",
+       "h": 331,
+       "empty": false
+      },
+      {
+       "id": "section-verdicts",
+       "h": 505,
+       "empty": false
+      },
+      {
+       "id": "section-deficiency",
+       "h": 480,
+       "empty": false
+      },
+      {
+       "id": "section-dq-loss",
+       "h": 558,
+       "empty": false
+      },
+      {
+       "id": "section-churn",
+       "h": 322,
+       "empty": false
+      },
+      {
+       "id": "section-stripe-health",
+       "h": 431,
+       "empty": false
+      },
+      {
+       "id": "section-reconciliation",
+       "h": 731,
+       "empty": false
+      },
+      {
+       "id": "section-quality",
+       "h": 80,
+       "empty": false
+      },
+      {
+       "id": "section-kpis",
+       "h": 151,
+       "empty": false
+      },
+      {
+       "id": "section-revenue",
+       "h": 245,
+       "empty": false
+      },
+      {
+       "id": "section-month-perf",
+       "h": 687,
+       "empty": false
+      },
+      {
+       "id": "section-metrics",
+       "h": 372,
+       "empty": false
+      },
+      {
+       "id": "section-funnel",
+       "h": 225,
+       "empty": false
+      },
+      {
+       "id": "section-adlink",
+       "h": 138,
+       "empty": false
+      },
+      {
+       "id": "section-speed-to-lead",
+       "h": 131,
+       "empty": false
+      },
+      {
+       "id": "section-perf-analysis",
+       "h": 603,
+       "empty": false
+      },
+      {
+       "id": "section-setter-deep",
+       "h": 327,
+       "empty": false
+      },
+      {
+       "id": "section-commissions",
+       "h": 246,
+       "empty": false
+      },
+      {
+       "id": "section-waterfall",
+       "h": 468,
+       "empty": false
+      },
+      {
+       "id": "section-trend",
+       "h": 318,
+       "empty": false
+      },
+      {
+       "id": "section-health",
+       "h": 454,
+       "empty": false
+      },
+      {
+       "id": "section-team",
+       "h": 1657,
+       "empty": false
+      },
+      {
+       "id": "section-cohort",
+       "h": 79,
+       "empty": false
+      },
+      {
+       "id": "section-offers",
+       "h": 318,
+       "empty": false
+      },
+      {
+       "id": "section-lead-roi",
+       "h": 740,
+       "empty": false
+      },
+      {
+       "id": "section-reps",
+       "h": 393,
+       "empty": false
+      },
+      {
+       "id": "section-pipeline",
+       "h": 611,
+       "empty": false
+      },
+      {
+       "id": "section-roas",
+       "h": 99,
+       "empty": false
+      },
+      {
+       "id": "section-forecast-mrr",
+       "h": 239,
+       "empty": false
+      }
+     ],
+     "scripts": [
+      "https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js",
+      "https://cdn.jsdelivr.net/npm/marked/marked.min.js",
+      "https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js",
+      "https://web-production-16b16.up.railway.app/dashboard/static/js/dashboard.js?v=38a8c8123b71",
+      "https://web-production-16b16.up.railway.app/dashboard/static/js/chat.js?v=38a8c8123b71",
+      "https://web-production-16b16.up.railway.app/dashboard/static/js/export.js?v=38a8c8123b71",
+      "https://web-production-16b16.up.railway.app/dashboard/static/js/edithnav.js?v=38a8c8123b71",
+      "https://web-production-16b16.up.railway.app/dashboard/static/js/edith.js?v=38a8c8123b71",
+      "https://web-production-16b16.up.railway.app/dashboard/static/js/hud.js?v=38a8c8123b71"
+     ],
+     "title": "Served CFO \u2014 EDITH"
+    },
+    "__timing": {
+     "domContentLoaded": 5075,
+     "load": 5075,
+     "transfer": 28148
+    }
+   },
+   "console": [
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/forecast",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/roas?window=sep_mtd",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/projection",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/ar",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/capital",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/bas",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/unit-econ-honest",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/entrance-audio",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/outflow-bands",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/bas",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/csm/card",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/unit-economics?days=30",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/whoami",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/ops-summary",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/projection",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/action-feed",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/decision-cards",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/voice-status",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "requestfailed",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/memory-status",
+     "err": "net::ERR_ABORTED"
+    },
+    {
+     "type": "error",
+     "text": "projection load failed: TypeError: Failed to fetch\n    at loadProjection (https://web-production-16b16.up.railway.app/dashboard/static/js/dashboard.js?v=38a8c8123b71:3589:21)\n    at renderForwardProjection (https://web-production-16b16.up.railway.app/dashboard/static/js/dashboard.js?v=38a8c8123b71:3611:21)\n    at render (https://web-production-16b16.up.railway.app/dashboard/static/js/dashboard.js?"
+    },
+    {
+     "type": "error",
+     "text": "projection load failed: TypeError: Failed to fetch\n    at loadProjection (https://web-production-16b16.up.railway.app/dashboard/static/js/dashboard.js?v=38a8c8123b71:3589:21)\n    at renderForwardProjection (https://web-production-16b16.up.railway.app/dashboard/static/js/dashboard.js?v=38a8c8123b71:3611:21)\n    at render (https://web-production-16b16.up.railway.app/dashboard/static/js/dashboard.js?"
+    },
+    {
+     "type": "http_error",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/action-feed",
+     "status": 500
+    },
+    {
+     "type": "error",
+     "text": "Failed to load resource: the server responded with a status of 500 ()"
+    }
+   ],
+   "screenshot": "pass1-cold.png"
+  },
+  {
+   "name": "warm",
+   "dom": {
+    "#brief-cash": {
+     "present": false
+    },
+    "#brief-mrr": {
+     "present": false
+    },
+    "#brief-active": {
+     "present": false
+    },
+    "#brief-ltvcac": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "11.51\u00d7",
+     "top": 321,
+     "h": 28
+    },
+    "#brief-ltgpcac": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "4.94\u00d7",
+     "top": 321,
+     "h": 28
+    },
+    "#morning-brief": {
+     "present": false
+    },
+    "#section-ratio-tiles": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "UNIT ECONOMICS \u2014 LTV : CAC \u00b7 LTGP : CAC September cohort Trailing 90d By package \u00b7 3:1 line = benchmark, not target LTV : CAC \u24d8 11.51\u00d7 \u2265 3:1 benchmark 2026-09-01 \u2192 2026-09-18 \u00b7 3 closes \u00b7 CAC loaded $2,925 (spend-only $2",
+     "top": 1615,
+     "h": 259
+    },
+    "#section-decision-cards": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "NEEDS YOUR RULING 26 ruling(s) waiting \u2014 each with its evidence PROPOSED close \u2014 Kristeen Hammond (2026-07-31) GHL closed-stage 2026-07-31 (opp 8URegBoxTB\u2026) missing: no Stripe payment found (email-exact + full-name searc",
+     "top": 1615,
+     "h": 2720
+    },
+    "#section-csm-card": {
+     "present": true,
+     "visible": false,
+     "empty": false,
+     "text": "CSM open the cockpit \u2192",
+     "top": 10,
+     "h": 0
+    },
+    "#section-cash-position": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "CASH POSITION LIVE 2.7mo runway CASH ON HAND \u24be $187,613 Xero, as of 2026-09-18 spoken for (ATO est.): $42,877 \u2192 yours: $144,736 AMEX OWING -$32,495 credit-card liability, as of 2026-09-18 \u00b7 not in cash AGGRESSIVE WAR CHE",
+     "top": 4351,
+     "h": 786
+    },
+    "#section-ar": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "RECEIVABLES \u2014 EXPECTED VS RECEIVED \u24d8 work pending is never cash (R-CASH) \u00b7 anchor: Xero Balance-Sheet AR $70,249 outstanding \u00b7 aging 1-7d: $0 \u00b7 31+d: $25,577 \u00b7 8-30d: $44,672 \u00b7 current: $0 \u00b7 vs Xero AR anchor \u0394 $50,427 C",
+     "top": 4351,
+     "h": 1149
+    },
+    "#kpi-strip": {
+     "present": false
+    },
+    "__page": {
+     "height": 15590,
+     "sections": [
+      {
+       "id": "section-nav",
+       "h": 33,
+       "empty": false
+      },
+      {
+       "id": "section-brief",
+       "h": 367,
+       "empty": false
+      },
+      {
+       "id": "section-exec",
+       "h": 409,
+       "empty": false
+      },
+      {
+       "id": "section-capital",
+       "h": 164,
+       "empty": false
+      },
+      {
+       "id": "section-outflow",
+       "h": 355,
+       "empty": false
+      },
+      {
+       "id": "section-ratio-tiles",
+       "h": 259,
+       "empty": false
+      },
+      {
+       "id": "section-decision-cards",
+       "h": 2720,
+       "empty": false
+      },
+      {
+       "id": "section-csm-card",
+       "h": 0,
+       "empty": false
+      },
+      {
+       "id": "section-cash-position",
+       "h": 786,
+       "empty": false
+      },
+      {
+       "id": "section-ar",
+       "h": 1149,
+       "empty": false
+      },
+      {
+       "id": "section-bas",
+       "h": 99,
+       "empty": false
+      },
+      {
+       "id": "section-forecast-cash",
+       "h": 180,
+       "empty": false
+      },
+      {
+       "id": "section-forward",
+       "h": 855,
+       "empty": false
+      },
+      {
+       "id": "section-action-feed",
+       "h": 99,
+       "empty": false
+      },
+      {
+       "id": "section-ops-cards",
+       "h": 147,
+       "empty": false
+      },
+      {
+       "id": "section-actions",
+       "h": 331,
+       "empty": false
+      },
+      {
+       "id": "section-verdicts",
+       "h": 505,
+       "empty": false
+      },
+      {
+       "id": "section-deficiency",
+       "h": 474,
+       "empty": false
+      },
+      {
+       "id": "section-dq-loss",
+       "h": 558,
+       "empty": false
+      },
+      {
+       "id": "section-churn",
+       "h": 322,
+       "empty": false
+      },
+      {
+       "id": "section-stripe-health",
+       "h": 431,
+       "empty": false
+      },
+      {
+       "id": "section-reconciliation",
+       "h": 731,
+       "empty": false
+      },
+      {
+       "id": "section-quality",
+       "h": 80,
+       "empty": false
+      },
+      {
+       "id": "section-kpis",
+       "h": 151,
+       "empty": false
+      },
+      {
+       "id": "section-revenue",
+       "h": 245,
+       "empty": false
+      },
+      {
+       "id": "section-month-perf",
+       "h": 687,
+       "empty": false
+      },
+      {
+       "id": "section-metrics",
+       "h": 372,
+       "empty": false
+      },
+      {
+       "id": "section-funnel",
+       "h": 224,
+       "empty": false
+      },
+      {
+       "id": "section-adlink",
+       "h": 137,
+       "empty": false
+      },
+      {
+       "id": "section-speed-to-lead",
+       "h": 131,
+       "empty": false
+      },
+      {
+       "id": "section-perf-analysis",
+       "h": 602,
+       "empty": false
+      },
+      {
+       "id": "section-setter-deep",
+       "h": 327,
+       "empty": false
+      },
+      {
+       "id": "section-commissions",
+       "h": 246,
+       "empty": false
+      },
+      {
+       "id": "section-waterfall",
+       "h": 468,
+       "empty": false
+      },
+      {
+       "id": "section-trend",
+       "h": 318,
+       "empty": false
+      },
+      {
+       "id": "section-health",
+       "h": 454,
+       "empty": false
+      },
+      {
+       "id": "section-team",
+       "h": 1657,
+       "empty": false
+      },
+      {
+       "id": "section-cohort",
+       "h": 79,
+       "empty": false
+      },
+      {
+       "id": "section-offers",
+       "h": 318,
+       "empty": false
+      },
+      {
+       "id": "section-lead-roi",
+       "h": 740,
+       "empty": false
+      },
+      {
+       "id": "section-reps",
+       "h": 393,
+       "empty": false
+      },
+      {
+       "id": "section-pipeline",
+       "h": 611,
+       "empty": false
+      },
+      {
+       "id": "section-roas",
+       "h": 99,
+       "empty": false
+      },
+      {
+       "id": "section-forecast-mrr",
+       "h": 239,
+       "empty": false
+      }
+     ],
+     "scripts": [
+      "https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js",
+      "https://cdn.jsdelivr.net/npm/marked/marked.min.js",
+      "https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js",
+      "https://web-production-16b16.up.railway.app/dashboard/static/js/dashboard.js?v=38a8c8123b71",
+      "https://web-production-16b16.up.railway.app/dashboard/static/js/chat.js?v=38a8c8123b71",
+      "https://web-production-16b16.up.railway.app/dashboard/static/js/export.js?v=38a8c8123b71",
+      "https://web-production-16b16.up.railway.app/dashboard/static/js/edithnav.js?v=38a8c8123b71",
+      "https://web-production-16b16.up.railway.app/dashboard/static/js/edith.js?v=38a8c8123b71",
+      "https://web-production-16b16.up.railway.app/dashboard/static/js/hud.js?v=38a8c8123b71"
+     ],
+     "title": "Served CFO \u2014 EDITH"
+    },
+    "__timing": {
+     "domContentLoaded": 2626,
+     "load": 2626,
+     "transfer": 28157
+    }
+   },
+   "console": [
+    {
+     "type": "http_error",
+     "url": "https://web-production-16b16.up.railway.app/dashboard/api/action-feed",
+     "status": 500
+    },
+    {
+     "type": "error",
+     "text": "Failed to load resource: the server responded with a status of 500 ()"
+    }
+   ],
+   "screenshot": "pass2-warm.png"
+  },
+  {
+   "name": "post-hero-rebuild",
+   "dom": {
+    "#brief-cash": {
+     "present": false
+    },
+    "#brief-mrr": {
+     "present": false
+    },
+    "#brief-active": {
+     "present": false
+    },
+    "#brief-ltvcac": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "11.51\u00d7",
+     "top": 321,
+     "h": 28
+    },
+    "#brief-ltgpcac": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "4.94\u00d7",
+     "top": 321,
+     "h": 28
+    },
+    "#morning-brief": {
+     "present": false
+    },
+    "#section-ratio-tiles": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "UNIT ECONOMICS \u2014 LTV : CAC \u00b7 LTGP : CAC September cohort Trailing 90d By package \u00b7 3:1 line = benchmark, not target LTV : CAC \u24d8 11.51\u00d7 \u2265 3:1 benchmark 2026-09-01 \u2192 2026-09-18 \u00b7 3 closes \u00b7 CAC loaded $2,925 (spend-only $2",
+     "top": 1615,
+     "h": 259
+    },
+    "#section-decision-cards": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "NEEDS YOUR RULING 26 ruling(s) waiting \u2014 each with its evidence PROPOSED close \u2014 Kristeen Hammond (2026-07-31) GHL closed-stage 2026-07-31 (opp 8URegBoxTB\u2026) missing: no Stripe payment found (email-exact + full-name searc",
+     "top": 1615,
+     "h": 2720
+    },
+    "#section-csm-card": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "CSM CSM \u00b7 pre-start \u00b7 next: CSM start in 74d \u00b7 Gate 0 1/7 \u00b7 path to 4x: 68.7% renewal next: Continuity floor tested on live no's (Rydel) open the cockpit \u2192",
+     "top": 4351,
+     "h": 179
+    },
+    "#section-cash-position": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "CASH POSITION LIVE 2.7mo runway CASH ON HAND \u24be $187,613 Xero, as of 2026-09-18 spoken for (ATO est.): $42,877 \u2192 yours: $144,736 AMEX OWING -$32,495 credit-card liability, as of 2026-09-18 \u00b7 not in cash AGGRESSIVE WAR CHE",
+     "top": 4351,
+     "h": 786
+    },
+    "#section-ar": {
+     "present": true,
+     "visible": true,
+     "empty": false,
+     "text": "RECEIVABLES \u2014 EXPECTED VS RECEIVED \u24d8 work pending is never cash (R-CASH) \u00b7 anchor: Xero Balance-Sheet AR $70,249 outstanding \u00b7 aging 1-7d: $0 \u00b7 31+d: $25,577 \u00b7 8-30d: $44,672 \u00b7 current: $0 \u00b7 vs Xero AR anchor \u0394 $50,427 C",
+     "top": 5153,
+     "h": 1149
+    },
+    "#kpi-strip": {
+     "present": false
+    },
+    "__page": {
+     "height": 16259,
+     "sections": [
+      {
+       "id": "section-nav",
+       "h": 33,
+       "empty": false
+      },
+      {
+       "id": "section-brief",
+       "h": 367,
+       "empty": false
+      },
+      {
+       "id": "section-exec",
+       "h": 409,
+       "empty": false
+      },
+      {
+       "id": "section-capital",
+       "h": 164,
+       "empty": false
+      },
+      {
+       "id": "section-outflow",
+       "h": 355,
+       "empty": false
+      },
+      {
+       "id": "section-ratio-tiles",
+       "h": 259,
+       "empty": false
+      },
+      {
+       "id": "section-decision-cards",
+       "h": 2720,
+       "empty": false
+      },
+      {
+       "id": "section-csm-card",
+       "h": 179,
+       "empty": false
+      },
+      {
+       "id": "section-cash-position",
+       "h": 786,
+       "empty": false
+      },
+      {
+       "id": "section-ar",
+       "h": 1149,
+       "empty": false
+      },
+      {
+       "id": "section-bas",
+       "h": 536,
+       "empty": false
+      },
+      {
+       "id": "section-forecast-cash",
+       "h": 180,
+       "empty": false
+      },
+      {
+       "id": "section-forward",
+       "h": 855,
+       "empty": false
+      },
+      {
+       "id": "section-action-feed",
+       "h": 99,
+       "empty": false
+      },
+      {
+       "id": "section-ops-cards",
+       "h": 147,
+       "empty": false
+      },
+      {
+       "id": "section-actions",
+       "h": 331,
+       "empty": false
+      },
+      {
+       "id": "section-verdicts",
+       "h": 505,
+       "empty": false
+      },
+      {
+       "id": "section-deficiency",
+       "h": 474,
+       "empty": false
+      },
+      {
+       "id": "section-dq-loss",
+       "h": 558,
+       "empty": false
+      },
+      {
+       "id": "section-churn",
+       "h": 322,
+       "empty": false
+      },
+      {
+       "id": "section-stripe-health",
+       "h": 431,
+       "empty": false
+      },
+      {
+       "id": "section-reconciliation",
+       "h": 731,
+       "empty": false
+      },
+      {
+       "id": "section-quality",
+       "h": 80,
+       "empty": false
+      },
+      {
+       "id": "section-kpis",
+       "h": 151,
+       "empty": false
+      },
+      {
+       "id": "section-revenue",
+       "h": 245,
+       "empty": false
+      },
+      {
+       "id": "section-month-perf",
+       "h": 687,
+       "empty": false
+      },
+      {
+       "id": "section-metrics",
+       "h": 372,
+       "empty": false
+      },
+      {
+       "id": "section-funnel",
+       "h": 224,
+       "empty": false
+      },
+      {
+       "id": "section-adlink",
+       "h": 137,
+       "empty": false
+      },
+      {
+       "id": "section-speed-to-lead",
+       "h": 131,
+       "empty": false
+      },
+      {
+       "id": "section-perf-analysis",
+       "h": 602,
+       "empty": false
+      },
+      {
+       "id": "section-setter-deep",
+       "h": 327,
+       "empty": false
+      },
+      {
+       "id": "section-commissions",
+       "h": 246,
+       "empty": false
+      },
+      {
+       "id": "section-waterfall",
+       "h": 468,
+       "empty": false
+      },
+      {
+       "id": "section-trend",
+       "h": 318,
+       "empty": false
+      },
+      {
+       "id": "section-health",
+       "h": 454,
+       "empty": false
+      },
+      {
+       "id": "section-team",
+       "h": 1657,
+       "empty": false
+      },
+      {
+       "id": "section-cohort",
+       "h": 79,
+       "empty": false
+      },
+      {
+       "id": "section-offers",
+       "h": 318,
+       "empty": false
+      },
+      {
+       "id": "section-lead-roi",
+       "h": 740,
+       "empty": false
+      },
+      {
+       "id": "section-reps",
+       "h": 393,
+       "empty": false
+      },
+      {
+       "id": "section-pipeline",
+       "h": 611,
+       "empty": false
+      },
+      {
+       "id": "section-roas",
+       "h": 303,
+       "empty": false
+      },
+      {
+       "id": "section-forecast-mrr",
+       "h": 239,
+       "empty": false
+      }
+     ],
+     "scripts": [
+      "https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js",
+      "https://cdn.jsdelivr.net/npm/marked/marked.min.js",
+      "https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js",
+      "https://web-production-16b16.up.railway.app/dashboard/static/js/dashboard.js?v=38a8c8123b71",
+      "https://web-production-16b16.up.railway.app/dashboard/static/js/chat.js?v=38a8c8123b71",
+      "https://web-production-16b16.up.railway.app/dashboard/static/js/export.js?v=38a8c8123b71",
+      "https://web-production-16b16.up.railway.app/dashboard/static/js/edithnav.js?v=38a8c8123b71",
+      "https://web-production-16b16.up.railway.app/dashboard/static/js/edith.js?v=38a8c8123b71",
+      "https://web-production-16b16.up.railway.app/dashboard/static/js/hud.js?v=38a8c8123b71"
+     ],
+     "title": "Served CFO \u2014 EDITH"
+    },
+    "__timing": {
+     "domContentLoaded": 2626,
+     "load": 2626,
+     "transfer": 28157
+    }
+   },
+   "console": [],
+   "screenshot": "pass3-rebuild.png"
+  }
+ ],
+ "meta": {
+  "base": "https://web-production-16b16.up.railway.app",
+  "utc": "2026-09-17T23:49:22Z",
+  "post_login_url": "https://web-production-16b16.up.railway.app/dashboard/",
+  "cold_wallclock_s": 5.08,
+  "warm_wallclock_s": 2.63
+ }
+}

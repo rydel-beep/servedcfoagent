@@ -1,0 +1,100 @@
+<section class="panel alert-panel" id="section-speed-to-lead" style="display:none;">
+    <div id="speed-to-lead-content"></div>
+  </section>
+
+<section class="panel" id="section-funnel">
+      <div class="panel-header">
+        <h2 class="panel-title">Sales Funnel</h2>
+        <span class="panel-sub"><span class="win-badge" id="funnel-window-label">30d</span></span>
+      </div>
+      <div class="funnel-visual" id="funnel-bars"></div>
+      <div class="funnel-stats" id="funnel-stats"></div>
+    </section>
+
+<section class="panel" id="section-setter-deep">
+      <div class="panel-header">
+        <h2 class="panel-title">Setter Deep Dive</h2>
+        <span class="panel-sub">full pipeline breakdown</span>
+      </div>
+      <div id="setter-deep-content"></div>
+    </section>
+
+<section class="panel" id="section-pipeline">
+      <div class="panel-header">
+        <h2 class="panel-title">GHL Pipeline <span class="win-badge live">LIVE</span></h2>
+        <div class="panel-badge" id="pipeline-badge"></div>
+      </div>
+      <div id="pipeline-content"></div>
+    </section>
+
+<section class="panel" id="section-dq-loss">
+      <div class="panel-header">
+        <h2 class="panel-title">DQ & Loss Intelligence</h2>
+        <span class="panel-sub">why deals don't close</span>
+      </div>
+      <div id="dq-loss-content"></div>
+    </section>
+
+<section class="panel" id="section-offers">
+      <div class="panel-header">
+        <h2 class="panel-title">Offer Mix</h2>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="chart-offers" height="220"></canvas>
+      </div>
+    </section>
+
+<section class="panel" id="section-lead-roi">
+      <div class="panel-header">
+        <h2 class="panel-title">Lead Source ROI</h2>
+        <span class="panel-sub">cost-per-close by source</span>
+      </div>
+      <div id="lead-roi-table"></div>
+      <div class="lead-roi-note" id="lead-roi-note"></div>
+    </section>
+
+<section class="panel" id="section-reps">
+    <div class="panel-header">
+      <h2 class="panel-title">Rep Performance <span class="win-badge" id="win-badge-reps">30d</span></h2>
+      <span class="panel-sub" id="reps-sparkline-status"></span>
+    </div>
+    <div class="grid-2" style="gap:20px;">
+      <div class="rep-section">
+        <h3 class="rep-heading">Setters</h3>
+        <div class="table-scroll">
+        <table class="data-table" id="table-setters">
+          <thead><tr><th>Name</th><th>Dials</th><th>Sets</th><th>D/S</th><th>Show%</th><th>Trend</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        </div>
+      </div>
+      <div class="rep-section">
+        <h3 class="rep-heading">Closers</h3>
+        <div class="table-scroll">
+        <table class="data-table" id="table-closers">
+          <thead><tr><th>Name</th><th>Shows</th><th>Closes</th><th>Rate</th><th>Comm</th><th>Trend</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+<section class="panel" id="section-commissions">
+      <div class="panel-header">
+        <h2 class="panel-title">Commission Tracker <span class="win-badge" id="win-badge-comm">30d</span></h2>
+        <span class="panel-sub">MTD owed</span>
+      </div>
+      <div class="commission-summary" id="commission-summary"></div>
+      <div id="commission-detail"></div>
+      <details class="disclosure" id="commission-disclosure">
+        <summary>Per-deal commission detail</summary>
+        <div id="commission-detail-expanded"></div>
+      </details>
+    </section>
+
+<section class="panel" id="section-adlink">
+  <h2>Ad Tracking</h2>
+  <p class="adlink-line">The creative scoreboard, drill-downs and flags now live on their own dashboard.</p>
+  <a class="adlink-btn" href="/ads" target="_blank" rel="noopener">Open SERVED AD TRACKING →</a>
+</section>

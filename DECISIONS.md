@@ -2201,3 +2201,68 @@
      (Harman Singh→Grappino, William Cooney→Phoenix Hotel, Orlando
      Rinaldi→Food Corp). R-PROPOSED: Kristeen Hammond, Michael Pulvirenti,
      Jay Lunsford stay UNRULED — untouched this run.
+
+## #152 — DASHBOARD HARDENING: server-rendered truth · crash isolation · the real-browser gate (2026-09-18)
+
+**The named failure (Phase 0, dashboard/CRASH_DIAGNOSIS.md):** three reports
+claimed ratios "visible"; the page was a 16,225px client-rendered scroll wall
+where every headline was filled by a single 5,600-line JS pass with 40
+unguarded sequential calls — one early throw blanked everything after it
+while server tests stayed green. Phase 0 (real browser, owner session,
+production URL) found /dashboard/api/action-feed 500ing on EVERY load
+(int severity key → jsonify sort_keys TypeError; the panel skeleton'd
+silently for days), live TypeErrors in loadProjection, and edith.js arming a
+getUserMedia mic loop on every page load by default.
+
+**Rulings (structural, test-pinned):**
+1. **Server-rendered headlines.** The landing page is the EXECUTIVE TOP —
+   8 tiles (cash on hand · committed MRR (revenue) · AR outstanding
+   (internal) · cash net MTD (bank basis) · operating net MTD (tax banded
+   beside) · LTV:CAC · LTGP:CAC · cohort cash ROAS) + ONE verdict line,
+   computed server-side (dashboard/exec_top.py) from kv-cached engine blocks
+   (refresh rides the 2h loop; the request path only reads) and written INTO
+   the HTML. JS enhances (drawers, refresh) and never fills. Undefined is a
+   labelled state, never a blank. HTML is Cache-Control: no-store.
+2. **Every panel is an error boundary.** The orchestrator is a table of
+   (section, renderer) pairs; absent sections skip, a throw fails into an
+   honest in-place block + client telemetry, siblings render. Drilled: an
+   injected throwing renderer left all siblings rendering, zero uncaught.
+3. **"Visible" = the real-browser gate's artefact — nothing else counts.**
+   scripts/render_gate.py (Playwright/Chromium, owner session, production
+   URL, no injection): 8 tiles present with values or labelled states ·
+   stamps on every tile · card links resolve 200 · area-page render smoke ·
+   zero console errors/pageerrors/5xx · mobile no-overflow · JS-DISABLED
+   pass proves server-render · post-hero-rebuild hold. Artefacts (DOM
+   assertions + screenshots) → dashboard/evidence/gate-<commit>/. Railway
+   has no preview envs on this plan, so the gate runs immediately
+   post-deploy; FAIL = revert (`git revert HEAD && git push` — the build
+   gate keeps the old build serving meanwhile). No report may claim a tile
+   visible without this artefact; owner screenshots stay report-evidence
+   only.
+4. **Client errors are telemetry.** First script on every page hooks
+   onerror/unhandledrejection/asset failures → POST /dashboard/api/
+   client-error (auth-gated, rate-limited, route+error only, no PII) → kv
+   ring + hourly buckets. render_health.py (rides the refresh loop):
+   landing self-check (8 tiles or S1 feed item) · client-error-rate spike
+   watch · per-tile freshness watch → feed:extra:render_health. Severity is
+   ALWAYS "S1"/"S2"/"S3" (_norm_severity — the 500's class is pinned).
+5. **Freshness stamps everywhere.** Every exec tile carries source · as-of ·
+   pulled-at; stale > threshold renders AMBER "stale", a failed source
+   renders DEGRADED with the reason. Cash on hand = Xero per-account closing
+   balances riding the existing 2h snapshot pull (no new refresh-burning
+   path), honest limit on the tile: bank feeds lag up to a day.
+6. **The landing screen is ≤ 8 tiles + verdict + summary cards — nothing
+   below the cards.** Every heavy panel moved to its URL-addressable page
+   (/dashboard/view/<area> — brief, cash, sales, unit-econ, projection,
+   renewals, outflows, team, receivables, decisions [owner-only], system) +
+   worklog/bookkeeping/csm. Card count == page count == panel inventory
+   (test-pinned). The old LTV/LTGP KPI-strip cells (standing-engine nulls)
+   are REMOVED — one rendering path, the honest engine.
+7. **Voice is opt-in.** edith-wake/edith-clap default OFF; no getUserMedia,
+   no always-on AudioContext loop on load. The reactor click boots EDITH;
+   owner-exclusivity unchanged.
+
+**Supersedes:** #151's "hero stats + fillHeroRatios" mechanism (the ratios
+now render server-side on the landing page — a strictly stronger guarantee;
+the #151 tests are updated to pin the new law). The section-ops-cards /
+section-csm-card panels became landing summary cards.

@@ -1888,7 +1888,7 @@
       log('clap arm deferred (mic not available yet):', e && e.name);
       var retry = function() {
         document.removeEventListener('pointerdown', retry, true);
-        if (lsGet('edith-clap', '1') === '1') armClap();
+        if (lsGet('edith-clap', '0') === '1') armClap();
       };
       document.addEventListener('pointerdown', retry, true);
       return;
@@ -1998,7 +1998,7 @@
     if (!_calib) return;
     _calib.el.remove();
     _calib = null;
-    if (lsGet('edith-clap', '1') !== '1') disarmClap();
+    if (lsGet('edith-clap', '0') !== '1') disarmClap();
   }
 
   // ═════════════════════════════════════════════════════════
@@ -2055,8 +2055,8 @@
     el.innerHTML =
       '<div class="jh-title">EDITH</div>' +
       '<div class="jh-row"><b>Click orb / hold V or Space</b> talk &middot; <b>Esc</b> stop &middot; <b>B</b> brief</div>' +
-      '<div class="jh-row"><label><input type="checkbox" id="ep-wake" ' + (lsGet('edith-wake', '1') === '1' ? 'checked' : '') + '> &#127908; Wake word: "' + wakePhrase() + '"' + (CFG.picovoiceKey ? '' : ' <span class="ep-dim">(browser mode)</span>') + '</label></div>' +
-      '<div class="jh-row"><label><input type="checkbox" id="ep-clap" ' + (lsGet('edith-clap', '1') === '1' ? 'checked' : '') + '> &#128079; Double-clap wake</label> <button class="ep-preset" id="ep-calib" style="margin-left:8px;">calibrate</button></div>' +
+      '<div class="jh-row"><label><input type="checkbox" id="ep-wake" ' + (lsGet('edith-wake', '0') === '1' ? 'checked' : '') + '> &#127908; Wake word: "' + wakePhrase() + '"' + (CFG.picovoiceKey ? '' : ' <span class="ep-dim">(browser mode)</span>') + '</label></div>' +
+      '<div class="jh-row"><label><input type="checkbox" id="ep-clap" ' + (lsGet('edith-clap', '0') === '1' ? 'checked' : '') + '> &#128079; Double-clap wake</label> <button class="ep-preset" id="ep-calib" style="margin-left:8px;">calibrate</button></div>' +
       '<div class="jh-row"><label><input type="checkbox" id="ep-convo" ' + (lsGet('edith-convo', '1') === '1' ? 'checked' : '') + '> Conversation mode</label></div>' +
       '<div class="jh-row"><label><input type="checkbox" id="ep-cine" ' + (lsGet('edith-cinematic', '1') === '1' ? 'checked' : '') + '> Cinematic mode</label></div>' +
       '<div class="jh-row"><label><input type="checkbox" id="ep-stark" ' + (lsGet('edith-stark', '1') === '1' ? 'checked' : '') + '> Stark mode (Shift+S)</label></div>' +
@@ -2342,8 +2342,15 @@
     initEntranceTrigger();
     loadBootVisuals();
     await Promise.all([refreshVoiceStatus(), refreshMusicStatus()]);
-    if (lsGet('edith-wake', '1') === '1') armWakeWord();
-    if (lsGet('edith-clap', '1') === '1') armClap();        // double-clap wake, on-device
+    // VOICE IS OPT-IN (dashboard hardening 1.3): NO mic loop on page load.
+    // Wake-word + double-clap default OFF ('0') — they arm only when the
+    // user has explicitly enabled them in the voice panel (stored '1'), or
+    // after a reactor-click boot this session. The always-on getUserMedia
+    // analyser loop on every data-page load was Phase-0's "page permanently
+    // busy" finding. Owner-exclusivity of the voice surface is unchanged
+    // (server-enforced).
+    if (lsGet('edith-wake', '0') === '1') armWakeWord();
+    if (lsGet('edith-clap', '0') === '1') armClap();        // double-clap wake, on-device
   })();
 
 })();

@@ -1,0 +1,38 @@
+<section class="panel" id="section-forward">
+    <div class="panel-header">
+      <h2 class="panel-title">Forward Projection <span class="win-badge" id="proj-horizon-badge">12mo</span></h2>
+      <span class="panel-sub">committed vs assumed — a declaration converts a guess into a commitment</span>
+    </div>
+    <div class="control-group" id="proj-controls">
+      <label class="control-label" for="proj-renew-slider">Renewal assumption</label>
+      <input type="range" id="proj-renew-slider" min="0" max="100" step="5" value="0">
+      <span id="proj-renew-pct" class="control-readout">0%</span>
+      <span class="control-hint">WHAT-IF on the ASSUMED layer only &mdash; committed never moves with this slider. Historical: 0/12 re-signed.</span>
+    </div>
+    <div id="forward-projection-body"><div class="skeleton skeleton-block"></div></div>
+  </section>
+
+<section class="panel" id="section-trend">
+    <div class="panel-header">
+      <h2 class="panel-title">MRR Trajectory</h2>
+      <span class="panel-sub">Oct 2025 — Sep 2026</span>
+    </div>
+    <div class="chart-wrap chart-wide">
+      <canvas id="chart-mrr-trend"></canvas>
+    </div>
+  </section>
+
+<section class="panel" id="section-revenue">
+      <div class="panel-header">
+        <h2 class="panel-title">Revenue Views</h2>
+        <span class="panel-sub">same money, different lenses</span>
+      </div>
+      <div class="revenue-bars" id="revenue-bars"></div>
+      <div class="revenue-note" id="revenue-note"></div>
+    </section>
+
+<section class="panel" id="section-forecast-mrr">
+    <div class="panel-header"><h2 class="panel-title">Where we're headed — MRR</h2>
+      <span class="panel-sub">projection · base / best / worst</span></div>
+    <div id="forecast-mrr-body"><div class="skeleton skeleton-text"></div></div>
+  </section>

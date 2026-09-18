@@ -524,62 +524,98 @@
     _lazyObserver.observe(el);
   }
 
-  // ── Render ───────────────────────────────────────────────
+  // ── Render — EVERY PANEL IS AN ERROR BOUNDARY (dashboard hardening) ─────
+  // The Phase-0 named failure: 40 unguarded sequential calls meant one early
+  // throw halted every renderer after it while server tests stayed green.
+  // Now: table-driven; a panel absent from this page is skipped (the IA
+  // split serves areas on their own pages); a panel that THROWS fails into
+  // an honest in-place block + client telemetry, and its siblings render.
+  function boundary(sectionId, name, fn) {
+    if (sectionId && !document.getElementById(sectionId)) return;  // not on this page
+    try { fn(); }
+    catch (e) {
+      console.error('[panel boundary]', name, e);
+      try {
+        if (window.__reportClientError) window.__reportClientError({
+          kind: 'panel_boundary',
+          detail: name + ': ' + String(e && (e.stack || e.message) || e).slice(0, 350) });
+      } catch (t) { /* telemetry never breaks the boundary */ }
+      var el = sectionId && document.getElementById(sectionId);
+      if (el) {
+        var block = el.querySelector(':scope > .panel-boundary-fail');
+        if (!block) {
+          block = document.createElement('div');
+          block.className = 'panel-boundary-fail';
+          el.appendChild(block);
+        }
+        block.textContent = 'Panel unavailable — ' +
+          String((e && e.message) || e).slice(0, 140) + ' ';
+        var btn = document.createElement('button');
+        btn.textContent = 'retry';
+        btn.addEventListener('click', function () { location.reload(); });
+        block.appendChild(btn);
+      }
+    }
+  }
+
+  // section id → renderer. null section = page-chrome renderers (guarded, never skipped).
+  function panelTable(snap) {
+    return [
+      [null,                     'status',        function () { renderStatus(snap); }],
+      ['section-brief',          'morningBrief',  function () { renderMorningBrief(snap); fillHeroRatios(); }],
+      ['section-exec',           'execSummary',   function () { renderExecSummary(snap); }],
+      ['section-actions',        'actionItems',   function () { renderActionItems(snap); }],
+      ['section-kpis',           'kpis',          function () { renderKPIs(snap); renderDerivedClients(snap); }],
+      ['section-month-perf',     'monthPerf',     function () { renderMonthPerformance(snap); }],
+      ['section-perf-analysis',  'perfAnalysis',  function () { renderPerfAnalysis(snap); }],
+      ['section-trend',          'mrrTrend',      function () { renderMRRTrend(snap); }],
+      ['section-waterfall',      'waterfall',     function () { renderWaterfall(snap); }],
+      ['section-cash-position',  'cashPosition',  function () { renderCashPosition(snap); }],
+      ['section-stripe-health',  'stripeHealth',  function () { renderStripeHealth(snap); }],
+      ['section-speed-to-lead',  'speedToLead',   function () { renderSpeedToLead(snap); }],
+      ['section-revenue',        'revenueViews',  function () { renderRevenueViews(snap); }],
+      ['section-churn',          'churnRisk',     function () { renderChurnRisk(snap); }],
+      ['section-reconciliation', 'reconciliation', function () { renderReconciliation(snap); }],
+      ['section-health',         'clientHealth',  function () { renderClientHealth(snap); }],
+      ['section-verdicts',       'verdicts',      function () { renderVerdicts(snap); }],
+      ['section-funnel',         'funnel',        function () { renderFunnel(snap); }],
+      ['section-setter-deep',    'setterDeep',    function () { renderSetterDeepDive(snap); }],
+      ['section-pipeline',       'pipeline',      function () { renderPipeline(snap); }],
+      ['section-dq-loss',        'dqLoss',        function () { renderDQLoss(snap); }],
+      ['section-offers',         'offerChart',    function () { lazyRender('section-offers', function () { boundary('section-offers', 'offerChart:lazy', function () { renderOfferChart(snap); }); }); }],
+      ['section-lead-roi',       'leadSourceROI', function () { renderLeadSourceROI(snap); }],
+      ['section-commissions',    'commissions',   function () { renderCommissions(snap); renderCommissionDetail(snap); }],
+      ['section-metrics',        'metrics',       function () { renderMetrics(snap); }],
+      ['section-reps',           'reps',          function () { renderSetters(snap); renderClosers(snap); }],
+      ['section-cohort',         'cohort',        function () { lazyRender('section-cohort', function () { boundary('section-cohort', 'cohort:lazy', function () { renderCohortRetention(snap); }); }); }],
+      ['section-forward',        'forwardProjection', function () { renderForwardProjection(snap); }],
+      ['section-deficiency',     'deficiency',    function () { renderDeficiency(snap); }],
+      ['section-team',           'teamModel',     function () { renderTeamModel(snap); renderTeamRoster(snap); }],
+      ['section-quality',        'quality',       function () { renderQuality(snap); }]
+    ];
+  }
+
   function render(snap) {
     if (!snap) return;
     currentSnap = snap;
     window.__CURRENT_SNAP__ = snap;  // read-only handle for the voice layer
 
-    renderStatus(snap);
-    renderMorningBrief(snap);
-    fillHeroRatios();        // #151 — the hero rebuild wipes the ratio stats
-    renderExecSummary(snap);
-    renderActionItems(snap);
-    renderKPIs(snap);
-    renderMonthPerformance(snap);
-    renderPerfAnalysis(snap);
-    renderMRRTrend(snap);
-    renderWaterfall(snap);
-    renderCashPosition(snap);
-    renderStripeHealth(snap);
-    renderSpeedToLead(snap);
-    renderRevenueViews(snap);
-    renderChurnRisk(snap);
-    renderReconciliation(snap);
-    renderDerivedClients(snap);
-    renderClientHealth(snap);
-    renderVerdicts(snap);
-    renderFunnel(snap);
-    renderSetterDeepDive(snap);
-    renderPipeline(snap);
-    renderDQLoss(snap);
-    lazyRender('section-offers', function() { renderOfferChart(snap); });
-    renderLeadSourceROI(snap);
-    renderCommissions(snap);
-    renderCommissionDetail(snap);
-    renderMetrics(snap);
-    renderSetters(snap);
-    renderClosers(snap);
-    lazyRender('section-cohort', function() { renderCohortRetention(snap); });
-    renderForwardProjection(snap);
-    renderDeficiency(snap);
-    renderTeamModel(snap);
-    renderTeamRoster(snap);
-    renderQuality(snap);
+    panelTable(snap).forEach(function (row) { boundary(row[0], row[1], row[2]); });
 
-    if (snap.generated_at) {
-      $('#chat-context').textContent = timeAgo(snap.generated_at);
-    }
-
-    renderKpiTrends();
-    renderChatChips(snap);
-    countUpKpis();
-    animateKpiDeltas();
+    boundary(null, 'chrome', function () {
+      if (snap.generated_at && $('#chat-context')) {
+        $('#chat-context').textContent = timeAgo(snap.generated_at);
+      }
+      renderKpiTrends();
+      renderChatChips(snap);
+      countUpKpis();
+      animateKpiDeltas();
+    });
 
     try { window.dispatchEvent(new CustomEvent('edith:data')); } catch (e) {}
 
     // Render-integrity check: detect duplicated elements
-    checkRenderIntegrity();
+    boundary(null, 'integrity', function () { checkRenderIntegrity(); });
   }
 
   function checkRenderIntegrity() {
@@ -888,23 +924,9 @@
     }
     $('#sub-margin').textContent = margin != null ? benchLabel(snap, 'gross_margin_floor', 'benchmark: ') : '';
 
-    // LTGP:CAC
-    const ltgpcac = get(h, 'ltgp_cac.value');
-    const ltgpEl = document.getElementById('val-ltgpcac-kpi');
-    if (ltgpEl) {
-      ltgpEl.textContent = fmtX(ltgpcac);
-      ltgpEl.className = 'kpi-value ' + statusClass(get(h, 'ltgp_cac.status'));
-    }
-    $('#sub-ltgpcac').textContent = ltgpcac != null ? benchLabel(snap, 'ltgp_cac_target', 'benchmark: ') : 'gross profit / acq cost';
-
-    // LTV:CAC
-    const ltvcac = get(h, 'ltv_to_cac.value');
-    const ltvcacEl = document.getElementById('val-ltvcac');
-    if (ltvcacEl) {
-      ltvcacEl.textContent = fmtX(ltvcac);
-      ltvcacEl.className = 'kpi-value';
-    }
-    $('#sub-ltvcac').textContent = ltvcac != null ? 'full revenue / acq cost' : '';
+    // LTV:CAC / LTGP:CAC KPI cells REMOVED (hardening 2.3) — the standing
+    // engine's nulls rendered "—" here; the ONE rendering path is the honest
+    // engine (exec-top server tiles + section-ratio-tiles).
 
     // Active Clients — only set fallback here; renderDerivedClients overwrites with split count
     if (!snap.active_clients) {
@@ -2766,8 +2788,8 @@
     const c = res.components || {};
     setMetric('val-cac', res.cac_loaded != null ? fmt$(res.cac_loaded) : '—', '');
     setMetric('val-ltgpcac', res.ltgp_cac != null ? fmtX(res.ltgp_cac) : '—', ueStatus(res.ltgp_cac, 3, 2));
-    setMetric('val-ltgpcac-kpi', res.ltgp_cac != null ? fmtX(res.ltgp_cac) : '—', ueStatus(res.ltgp_cac, 3, 2));
-    setMetric('val-ltvcac', res.ltv_cac != null ? fmtX(res.ltv_cac) : '—', ueStatus(res.ltv_cac, 3, 2));
+    // val-ltgpcac-kpi / val-ltvcac KPI cells removed (hardening 2.3 — one
+    // rendering path: the honest engine). setMetric is null-safe anyway.
     setMetric('val-roas', res.roas != null ? fmtX(res.roas) : '—', ueStatus(res.roas, 3, 2));
     // Breakdown on hover (window + components + basis) — every displayed ratio inspectable.
     const win = (c.window ? c.window.days + 'd (' + c.window.start + '→' + c.window.end + ')' : days + 'd');
@@ -2785,8 +2807,8 @@
     // data (both read rangeEcon now). Guard against missing snap; no recursion (neither
     // calls applyRangeEconomics).
     if (typeof currentSnap !== 'undefined' && currentSnap) {
-      renderMonthPerformance(currentSnap);
-      renderFunnel(currentSnap);
+      boundary('section-month-perf', 'monthPerf:window', function () { renderMonthPerformance(currentSnap); });
+      boundary('section-funnel', 'funnel:window', function () { renderFunnel(currentSnap); });
     }
   }
 
@@ -4110,7 +4132,7 @@
   }
 
   // ── Refresh ──────────────────────────────────────────────
-  $('#btn-refresh').addEventListener('click', async function() {
+  if ($('#btn-refresh')) $('#btn-refresh').addEventListener('click', async function() {
     if (refreshCooldown) return;
     const btn = this;
     btn.disabled = true;
@@ -4143,7 +4165,7 @@
   });
 
   // ── Briefing PDF download ────────────────────────────────
-  $('#btn-briefing-pdf').addEventListener('click', async function() {
+  if ($('#btn-briefing-pdf')) $('#btn-briefing-pdf').addEventListener('click', async function() {
     const btn = this;
     btn.disabled = true;
     btn.classList.add('loading');
@@ -4218,7 +4240,7 @@
   });
 
   // ── Collapsible ──────────────────────────────────────────
-  $('#toggle-quality').addEventListener('click', function() {
+  if ($('#toggle-quality')) $('#toggle-quality').addEventListener('click', function() {
     const body = $('#quality-body');
     const icon = $('#collapse-icon');
     if (body.style.display === 'none') {
@@ -4263,6 +4285,9 @@
       ids: ['section-roas', 'section-forecast-mrr'] },
   ];
   function applyZones() {
+    // Area pages (IA split) host ONE area's panels in document order — the
+    // decision-zone re-grouping only applies to a page hosting everything.
+    if (document.body && document.body.dataset.area) return;
     var main = document.getElementById('main');
     if (!main || main.dataset.zoned) return;
     ZONES.forEach(function (z) {
@@ -5188,36 +5213,38 @@
     } else if (!currentSnap) {
       _showError(true);
     }
-    applyZones();            // relocate sections into decision zones (once)
-    renderActionFeed();      // Zone 3 — the consolidated action feed
-    renderBas();             // Zone 1 — BAS & tax set-aside (estimates, labelled)
-    renderOutflow();         // Outflow truth — bands + accrual/cash toggle
-    renderForecast();        // Zone 1 cash + Zone 4 MRR projections
-    loadActor();             // who's signed in (Rydel / Piolo)
-    renderRatioTiles();      // Zone 1 TOP — LTV:CAC + LTGP:CAC (#151, always rendered)
-    renderRoas();            // Zone 4 — three ROAS, labelled (#149)
-    renderAr();              // Zone 1 — receivables (#150)
-    renderDecisionCards();   // Zone 1 — owner-only rulings (#150, fail-closed)
-    renderCsmCard();         // Zone 1 — OWNER-ONLY CSM card (fail-closed, discreet-aware)
-    renderOpsCards();        // Zone 3 — worklog + bookkeeping SUMMARY cards
-                             // (the full lists live on /dashboard/worklog and
-                             //  /dashboard/bookkeeping — finance IA 2026-08-10)
-    renderCapital();         // The deciding layer — idle-cash bleed + allocation ritual
+    // Each self-fetching panel rides its own boundary (skipped when its
+    // section is not on this page; a throw fails in place, never cascades).
+    boundary(null,                    'zones',        applyZones);   // no-op on area pages
+    boundary('section-action-feed',   'actionFeed',   renderActionFeed);
+    boundary('section-bas',           'bas',          renderBas);
+    boundary('section-outflow',       'outflow',      renderOutflow);
+    boundary(null,                    'forecast',     renderForecast);  // its two targets self-check
+    boundary(null,                    'actor',        loadActor);
+    boundary('section-ratio-tiles',   'ratioTiles',   renderRatioTiles);
+    boundary('section-roas',          'roas',         renderRoas);
+    boundary('section-ar',            'ar',           renderAr);
+    boundary('section-decision-cards', 'decisionCards', renderDecisionCards);
+    boundary('section-csm-card',      'csmCard',      renderCsmCard);
+    boundary('section-ops-cards',     'opsCards',     renderOpsCards);
+    boundary('section-capital',       'capital',      renderCapital);
     if (hadSnap) _setUpdating(false);
-    if (historyData && historyData.length > 1) {
+    if (historyData && historyData.length > 1 && $('#reps-sparkline-status')) {
       $('#reps-sparkline-status').textContent = historyData.length + ' days of history';
     }
   }
 
   (async function init() {
-    initNavigation();
-    initGlobalWindowSelector();
-    initHiringForm();
-    initRosterControls();
-    initProjectionControls();
-    initMetricTips();
-    initKeyboardShortcuts();
-    initRenewalLoop();
+    // every init is a boundary — a missing element on an area page (the IA
+    // split) or a throw in one init can never halt the others
+    boundary(null, 'init:navigation',      initNavigation);
+    boundary(null, 'init:windowSelector',  initGlobalWindowSelector);
+    boundary(null, 'init:hiringForm',      initHiringForm);
+    boundary(null, 'init:rosterControls',  initRosterControls);
+    boundary(null, 'init:projection',      initProjectionControls);
+    boundary(null, 'init:metricTips',      initMetricTips);
+    boundary(null, 'init:keyboard',        initKeyboardShortcuts);
+    boundary(null, 'init:renewalLoop',     initRenewalLoop);
     var retry = document.getElementById('error-retry');
     if (retry) retry.addEventListener('click', function() { _showError(false); loadAll(); });
     // Instant paint: render the server-inlined snapshot before any fetch

@@ -254,19 +254,33 @@ def test_security_replay_covers_csm(monkeypatch):
 
 
 def test_dashboard_js_card_fails_closed():
-    """Structural JS: the guard (non-200 → hidden) fires BEFORE the reveal,
-    the section ships hidden, and the zone map carries the card."""
+    """#152 SUPERSESSION (dashboard hardening): the CSM card is now
+    SERVER-RENDERED on the landing page — the fail-closed gate moved from JS
+    (fetch → guard → reveal) to the server (is_owner AND discreet-off decide
+    whether the card exists in the HTML at all), a strictly stronger
+    guarantee: a non-owner's HTML never contains the card. The JS guard
+    idiom is still pinned for the legacy renderer (area pages), and the
+    server gate is pinned here."""
     root = os.path.join(os.path.dirname(__file__), "..")
     js = open(os.path.join(root, "dashboard/static/js/dashboard.js")).read()
     i_fetch = js.index("fetch('/dashboard/api/csm/card')")
-    # search WITHIN the CSM renderer — other fail-closed panels (#150
-    # decision cards) use the same idiom earlier in the file
     i_guard = js.index("sec.style.display = 'none'; return; }   // guard first", i_fetch)
     i_reveal = js.index("sec.style.display = '';", i_fetch)
     assert i_fetch < i_guard < i_reveal
     assert "'section-csm-card'" in js
+    # server-side gate: no owner → no CSM card; owner + discreet → no card
+    from dashboard import exec_top
+    assert not any(c["id"] == "csm" for c in exec_top.build_cards(None, owner=False))
+    assert not any(c["id"] == "csm" for c in
+                   exec_top.build_cards(None, owner=False, csm_visible=True))
+    assert not any(c["id"] == "csm" for c in
+                   exec_top.build_cards(None, owner=True, csm_visible=False))
+    assert any(c["id"] == "csm" for c in
+               exec_top.build_cards(None, owner=True, csm_visible=True))
+    # the landing template renders cards ONLY from the server-built context
     html = open(os.path.join(root, "dashboard/templates/dashboard.html")).read()
-    assert 'id="section-csm-card" style="display:none"' in html
+    assert "{% for c in exec.cards %}" in html
+    assert 'id="section-csm-card"' not in html
 
 
 def test_config_journal_masks_director_values(monkeypatch):

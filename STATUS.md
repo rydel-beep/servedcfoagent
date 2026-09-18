@@ -242,3 +242,43 @@ conductor's own enrolment ledger, (c) fallback: any `seq-*` / `*-active` tag.
 STATUS.md (new — this file).
 **Tests:** suite BEFORE: 671 passed. Target file: 17 passed (5 new PD tests + voucher).
 Suite AFTER: 676 passed (671 baseline + 5 new), 0 failures.
+
+---
+
+## 2026-09-18 — DASHBOARD HARDENING (#152): server-rendered truth · crash isolation · real-browser gate
+
+**Phase 0 named the failure** (dashboard/CRASH_DIAGNOSIS.md): 16,225px scroll
+wall, every headline client-filled by a 40-call unguarded orchestrator;
+/api/action-feed had been 500ing on EVERY prod load for days (int severity →
+jsonify sort_keys crash) with the panel silently skeleton'd; edith armed a
+getUserMedia mic loop on every load; Phase-0 artefacts in
+dashboard/evidence/phase0/.
+
+**What shipped:**
+- dashboard/exec_top.py — server-rendered EXECUTIVE TOP: 8 tiles + verdict +
+  summary cards baked into the landing HTML (kv-cached engine blocks, refresh
+  rides the 2h loop + boot warm; request path read-only; freshness stamp per
+  tile; undefined = labelled state). Landing = tiles + verdict + cards, ≤ 8
+  tiles, nothing below the cards. Cache-Control: no-store.
+- IA split: /dashboard/view/<area> pages (brief · cash · sales · unit-econ ·
+  projection · renewals · outflows · team · receivables · decisions
+  [owner-only] · system) from partials/area_*.html; card count == page count
+  (test-pinned); CSM card server-gated owner+discreet (#146 honored).
+- dashboard.js: boundary() orchestrator — per-panel try/catch, absent
+  sections skip, failures render "Panel unavailable — {reason} · retry" +
+  telemetry; applyZones skipped on area pages; old LTV/LTGP KPI cells
+  REMOVED (one rendering path).
+- Voice OPT-IN: edith-wake/edith-clap default OFF (no mic loop on load).
+- Telemetry: partials/telemetry.html (FIRST script) → POST /api/client-error
+  (auth-gated, rate-limited) → kv ring + hourly buckets; render_health.py
+  watches (self-check S1 · error-rate spike · tile freshness) →
+  feed:extra:render_health.
+- scripts/render_gate.py — THE deploy gate (Playwright, owner session, prod
+  URL): 8-tile assertion, labelled-state law, card links 200, area render
+  smoke, zero console errors, mobile no-overflow, JS-DISABLED server-render
+  proof, post-rebuild hold. Artefacts → dashboard/evidence/gate-<commit>/.
+  Drilled: broken build BLOCKED (exit 1) · forced client error reached
+  telemetry · injected throwing panel isolated (siblings rendered, zero
+  uncaught).
+- action_feed._norm_severity + gap_reconcile severity "S2" — the prod 500
+  fixed at both ends.

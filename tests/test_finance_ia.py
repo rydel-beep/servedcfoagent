@@ -148,15 +148,17 @@ def test_pages_owner_in_scoped_roles_out(monkeypatch):
 # ── layout reflow + default-view contracts (structural) ──────────────────────
 
 def test_dashboard_no_longer_dumps_the_lists():
+    """#152 upgrade: the worklog/bookkeeping cards are now SERVER-RENDERED
+    landing summary cards (exec_top.build_cards) — the dumps stay gone and
+    the cards link the pages, one tier stronger than the JS ops-cards."""
     html = open(os.path.join(ROOT, "dashboard", "templates", "dashboard.html")).read()
     assert "section-collab-queue" not in html          # the dumps are GONE
     assert "collab-log-body" not in html
-    assert "section-ops-cards" in html                 # the cards are in
-    assert 'href="/dashboard/worklog"' in html and 'href="/dashboard/bookkeeping"' in html
+    from dashboard import exec_top
+    hrefs = {c["href"] for c in exec_top.build_cards(None, owner=True)}
+    assert "/dashboard/worklog" in hrefs and "/dashboard/bookkeeping" in hrefs
     js = open(os.path.join(ROOT, "dashboard", "static", "js", "dashboard.js")).read()
-    assert "'section-ops-cards'" in js                 # zone map carries the cards
     assert "'section-collab-queue'" not in js
-    assert "renderOpsCards()" in js
 
 
 def test_pages_default_views_are_active_first():

@@ -183,6 +183,20 @@ def _scheduled_refresh_loop() -> None:
             automations.publish_feed_state()   # dead jobs → LOUD feed items
         except Exception as e:  # noqa: BLE001
             logger.warning("watchdog publish failed: %s", e)
+        # SERVER-RENDERED TRUTH (dashboard hardening): rebuild the exec-top
+        # kv caches on the same cadence (the landing page only READS them),
+        # then run the render-health watches (self-check · client-error
+        # rate · tile freshness → feed items).
+        try:
+            from dashboard import exec_top
+            exec_top.refresh_cache()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("exec_top cache refresh failed: %s", e)
+        try:
+            import render_health
+            render_health.tick()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("render_health tick failed: %s", e)
 
 
 def _email_cadence_loop() -> None:
@@ -891,6 +905,35 @@ def _deferred_startup():
                              name="bas-boot-tick").start()
         except Exception as _e:
             logger.error("BAS boot tick skipped: %s", _e)
+        # SERVER-RENDERED TRUTH: warm the exec-top kv caches once at boot so
+        # the landing page has fresh blocks before the first 2h tick. kv
+        # single-flight (put_if_absent hour stamp) keeps 2 workers from
+        # double-computing; staggered behind boot by 45s so it never delays
+        # first paint (the page renders labelled "first refresh pending"
+        # states until then — honest, not blank).
+        try:
+            def _exec_top_warm():
+                import sys as _sys
+                import time as _t
+                if "pytest" in _sys.modules:   # never churn engines inside a test process
+                    return
+                _t.sleep(45)
+                try:
+                    import kv_store as _kv
+                    from helpers import now_sydney as _ns
+                    stamp = "exec:cache:warm:" + _ns().strftime("%Y-%m-%d-%H")
+                    if not _kv.put_if_absent(stamp, {"by": os.getpid()}):
+                        return
+                    from dashboard import exec_top as _et
+                    _et.refresh_cache()
+                    import render_health as _rh
+                    _rh.tick()
+                except Exception as _e2:
+                    logger.error("exec-top boot warm failed: %s", _e2)
+            threading.Thread(target=_exec_top_warm, daemon=True,
+                             name="exec-top-warm").start()
+        except Exception as _e:
+            logger.error("exec-top boot warm skipped: %s", _e)
         _startup_refresh()
         _start_scheduled_refresh()
     _start_email_cadence()

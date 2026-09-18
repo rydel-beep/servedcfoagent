@@ -1,0 +1,52 @@
+<section class="panel" id="section-team">
+    <div class="panel-header">
+      <h2 class="panel-title">Team & Hiring Power</h2>
+      <span class="panel-sub">current team cost + hiring affordability</span>
+    </div>
+    <div id="team-body"></div>
+
+    <!-- Editable Team Roster (scratch modeling layer) -->
+    <div id="roster-section" style="margin-top:18px;">
+      <div class="roster-header">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="roster-header-title">Team Roster</span>
+          <span class="roster-modeling-badge" id="roster-mode-badge" style="display:none;">Modeling</span>
+        </div>
+        <div class="roster-controls">
+          <label class="roster-fx-label">
+            AUD:PHP
+            <input type="number" id="roster-fx-rate" value="44" step="0.1" class="roster-fx-input">
+          </label>
+          <button id="roster-reset" class="roster-btn" title="Reset to actual sheet data">Reset</button>
+        </div>
+      </div>
+      <div id="roster-table-wrap"></div>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button id="roster-add" class="roster-btn roster-btn-accent">+ Add person</button>
+      </div>
+      <div id="roster-readout"></div>
+    </div>
+
+    <div id="hiring-form" style="margin-top:12px;">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Model hires:</div>
+      <div id="hire-roles-list"></div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button id="hire-add-role" style="padding:5px 12px;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:11px;cursor:pointer;">+ Add role</button>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:12px;margin-bottom:8px;">Model raises:</div>
+      <div id="raise-list"></div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button id="raise-add" style="padding:5px 12px;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:11px;cursor:pointer;">+ Add raise</button>
+        <button id="hire-submit" style="padding:5px 14px;background:var(--accent);border:none;border-radius:6px;color:white;font-size:12px;cursor:pointer;">Analyze</button>
+      </div>
+      <div id="hiring-result" style="margin-top:10px;"></div>
+    </div>
+  </section>
+
+<section class="panel" id="section-deficiency">
+    <div class="panel-header">
+      <h2 class="panel-title">Growth Constraints</h2>
+      <span class="panel-sub">ranked by impact</span>
+    </div>
+    <div id="deficiency-body"></div>
+  </section>

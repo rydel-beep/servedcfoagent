@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Served CFO — EDITH</title>
+<title>{{ area_title }} — Served CFO</title>
 {% include "partials/telemetry.html" %}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,13 +11,13 @@
 <link rel="stylesheet" href="/dashboard/static/css/dashboard.css?v={{ asset_v }}">
 <link rel="stylesheet" href="/dashboard/static/css/hud.css?v={{ asset_v }}">
 <link rel="stylesheet" href="/dashboard/static/css/landing.css?v={{ asset_v }}">
-<!-- SERVER-RENDERED TRUTH: no chart/render library on the landing page.
-     marked+purify load DEFERRED for the chat panel only — a blocked CDN
-     can no longer take the page down (values are already in the HTML). -->
+<!-- deferred: a blocked CDN degrades charts, never the page (renderers are
+     boundary-guarded and Chart-guarded) -->
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 </head>
-<body data-page="landing">
+<body data-page="panel" data-area="{{ area }}">
 
 <header class="header">
   <div class="header-left">
@@ -27,14 +27,17 @@
   </div>
   <div class="header-right">
     <div class="status-pill" id="status-pill">
-      <span class="status-dot {{ 'dot-degraded' if degraded_count else 'dot-ok' }}" id="status-dot"></span>
-      <span id="status-text">{{ status_text }}</span>
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">Loading...</span>
     </div>
-    <button class="icon-btn" id="btn-refresh" title="Reload the page (values are server-rendered at request time)">
+    <button class="icon-btn" id="btn-refresh" title="Refresh data">
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M13.65 2.35A7.96 7.96 0 008 0C3.58 0 .01 3.58.01 8S3.58 16 8 16c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 018 14 6 6 0 012 8a6 6 0 016-6c1.66 0 3.14.69 4.22 1.78L9 7h7V0l-2.35 2.35z" fill="currentColor"/></svg>
     </button>
     <button class="icon-btn" id="btn-briefing-pdf" title="Download CFO Briefing PDF">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11zm-6-7c0 1.66-1.34 3-3 3s-3-1.34-3-3 1.34-3 3-3 3 1.34 3 3z" fill="currentColor"/></svg>
+    </button>
+    <button class="icon-btn" id="btn-export-sales" title="Export Sales Summary" style="display:none">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" fill="currentColor"/></svg>
     </button>
     <button class="icon-btn" id="btn-chat-toggle" title="Chat with EDITH">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z" fill="currentColor"/></svg>
@@ -42,51 +45,52 @@
   </div>
 </header>
 
-<main class="main landing-main" id="main">
+<div class="panelpage-bar">
+  <a class="panelpage-back" href="/dashboard/">← Dashboard</a>
+  <span class="panelpage-title">{{ area_title }}</span>
+</div>
 
-  <!-- ═══ EXECUTIVE TOP — server-rendered; JS enhances, never fills ═══ -->
-  <section class="exec-top" id="exec-top">
-    <div class="exec-tiles" id="exec-tiles">
-      {% for t in exec.tiles %}
-      <div class="exec-tile state-{{ t.state }}" id="tile-{{ t.id }}" data-state="{{ t.state }}">
-        <div class="exec-tile-label">{{ t.label }}
-          {% if t.drawer %}<button class="fin-door" data-findrawer="{{ t.drawer }}" title="show your work">ⓘ</button>{% endif %}
-        </div>
-        <div class="exec-tile-value">{{ t.value }}</div>
-        {% if t.sub %}<div class="exec-tile-sub">{{ t.sub }}</div>{% endif %}
-        {% if t.sr_note %}<div class="exec-tile-note">⚠ {{ t.sr_note }}</div>{% endif %}
-        <div class="exec-tile-stamp">
-          {% if t.state == 'amber' %}<span class="stamp-flag stamp-amber">stale</span>{% endif %}
-          {% if t.state == 'degraded' %}<span class="stamp-flag stamp-degraded">DEGRADED</span>{% endif %}
-          {{ t.stamp }}
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-    <div class="exec-verdict state-{{ exec.verdict.state }}" id="exec-verdict">
-      <span class="verdict-mark">▸</span> {{ exec.verdict.line }}
-    </div>
-  </section>
+{% if show_window_bar %}
+<div class="global-window-bar" id="global-window-bar">
+  <span class="global-window-label">Window:</span>
+  <button class="global-window-btn" data-window="7">7d</button>
+  <button class="global-window-btn" data-window="14">14d</button>
+  <button class="global-window-btn active" data-window="30">30d</button>
+  <button class="global-window-btn" data-window="60">60d</button>
+  <button class="global-window-btn" data-window="90">90d</button>
+  <span class="global-window-note" id="global-window-note"></span>
+</div>
+{% endif %}
 
-  <!-- ═══ SUMMARY CARDS — every heavy panel lives on its page ═══ -->
-  <section class="landing-cards" id="landing-cards">
-    {% for c in exec.cards %}
-    <a class="landing-card{% if c.owner_only %} card-owner{% endif %}" id="card-{{ c.id }}" href="{{ c.href }}">
-      <div class="landing-card-title">{{ c.title }}</div>
-      <div class="landing-card-signal">{{ c.signal }}</div>
-      <div class="landing-card-go">open →</div>
-    </a>
-    {% endfor %}
-  </section>
-
-  <div class="landing-foot">
-    snapshot pulled {{ exec.snapshot_age }} · {{ exec.today }} Sydney ·
-    values server-rendered at page load — refresh reloads them
-  </div>
-
+<main class="main" id="main">
+{% include "partials/area_" + area + ".html" %}
 </main>
 
-<!-- Chat panel (EDITH) — enhancement lane -->
+<!-- Global error state -->
+<div class="error-banner" id="error-banner" style="display:none;">
+  <span id="error-banner-text">Couldn't load the dashboard data.</span>
+  <button id="error-retry" class="roster-btn roster-btn-accent">Retry</button>
+</div>
+
+<!-- Metric definition tooltip -->
+<div class="metric-tip" id="metric-tip" style="display:none;"></div>
+
+<!-- Sales Summary Export Modal -->
+<div class="modal-overlay" id="export-overlay"></div>
+<div class="export-modal" id="export-modal">
+  <div class="export-modal-header">
+    <span class="export-modal-title">Sales Performance Summary</span>
+    <span class="export-modal-period" id="export-period"></span>
+    <button class="export-modal-close" id="export-close">&times;</button>
+  </div>
+  <pre class="export-modal-body" id="export-body"></pre>
+  <div class="export-modal-footer">
+    <button class="export-copy-btn" id="export-copy">Copy to Clipboard</button>
+    <span class="export-copied" id="export-copied">Copied!</span>
+  </div>
+</div>
+
+<!-- Chat Panel -->
 <div class="chat-overlay" id="chat-overlay"></div>
 <div class="chat-panel" id="chat-panel">
   <div class="chat-header">
@@ -105,17 +109,7 @@
   </div>
 </div>
 
-<!-- Drawer modal (show-your-work) -->
-<div class="fin-drawer-overlay" id="fin-drawer-overlay" style="display:none"></div>
-<div class="fin-drawer" id="fin-drawer" style="display:none">
-  <div class="fin-drawer-head">
-    <span id="fin-drawer-title">show your work</span>
-    <button id="fin-drawer-close">&times;</button>
-  </div>
-  <div class="fin-drawer-body" id="fin-drawer-body"></div>
-</div>
-
-<!-- EDITH ambient HUD + orb (decorative; VOICE IS OPT-IN — reactor click) -->
+<!-- EDITH ambient HUD + orb — voice is OPT-IN (reactor click) -->
 <div id="edith-hud" data-state="idle">
   <div class="eh-brk eh-tl"></div><div class="eh-brk eh-tr"></div>
   <div class="eh-brk eh-bl"></div><div class="eh-brk eh-br"></div>
@@ -145,10 +139,13 @@
   <div id="eh-cap"></div>
 </div>
 
-<script>window.__EDITH_CFG__ = {{ edith_cfg | default('{}') | safe }};</script>
-<script defer src="/dashboard/static/js/landing.js?v={{ asset_v }}"></script>
-<script defer src="/dashboard/static/js/chat.js?v={{ asset_v }}"></script>
-<script defer src="/dashboard/static/js/edith.js?v={{ asset_v }}"></script>
-<script defer src="/dashboard/static/js/hud.js?v={{ asset_v }}"></script>
+<script>window.__SNAP__ = {{ boot_snapshot | default('null') | safe }};
+window.__EDITH_CFG__ = {{ edith_cfg | default('{}') | safe }};</script>
+<script src="/dashboard/static/js/dashboard.js?v={{ asset_v }}"></script>
+<script src="/dashboard/static/js/chat.js?v={{ asset_v }}"></script>
+<script src="/dashboard/static/js/export.js?v={{ asset_v }}"></script>
+<script src="/dashboard/static/js/edithnav.js?v={{ asset_v }}"></script>
+<script src="/dashboard/static/js/edith.js?v={{ asset_v }}"></script>
+<script src="/dashboard/static/js/hud.js?v={{ asset_v }}"></script>
 </body>
 </html>

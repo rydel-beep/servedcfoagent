@@ -1,0 +1,116 @@
+<section class="kpi-strip" id="section-kpis">
+    <div class="kpi" id="kpi-mrr">
+      <div class="kpi-label">Total MRR <span class="info-icon" data-metric="current_mrr">&#9432;</span></div>
+      <div class="kpi-value" id="val-sheet-mrr">—</div>
+      <div class="kpi-sub" id="sub-sheet-mrr"></div>
+    </div>
+    <div class="kpi-divider"></div>
+    <div class="kpi" id="kpi-stripe">
+      <div class="kpi-label">Stripe MRR</div>
+      <div class="kpi-value" id="val-stripe-mrr">—</div>
+      <div class="kpi-sub" id="sub-stripe-mrr"></div>
+    </div>
+    <div class="kpi-divider"></div>
+    <div class="kpi" id="kpi-cash">
+      <div class="kpi-label">Cash collected (tracker cells) <span class="info-icon" data-metric="stripe_cash_collected_30d">&#9432;</span></div>
+      <div class="kpi-value" id="val-cash">—</div>
+      <div class="kpi-sub"><span class="win-badge">30d</span> team-logged · Stripe receipts tile is the bank truth</div>
+    </div>
+    <div class="kpi-divider"></div>
+    <div class="kpi" id="kpi-margin">
+      <div class="kpi-label">Gross Margin <span class="info-icon" data-metric="gross_margin_pct">&#9432;</span></div>
+      <div class="kpi-value" id="val-margin">—</div>
+      <div class="kpi-sub" id="sub-margin"></div>
+    </div>
+    <!-- LTV:CAC / LTGP:CAC KPI cells REMOVED (dashboard hardening 2.3):
+         they read the standing engine's nulls and rendered "—" — the ONE
+         rendering path is the honest engine (exec-top tiles + the
+         section-ratio-tiles panel below). -->
+    <div class="kpi-divider"></div>
+    <div class="kpi" id="kpi-clients">
+      <div class="kpi-label">Active Clients <span class="info-icon" data-metric="active_client_count">&#9432;</span></div>
+      <div class="kpi-value" id="val-clients">—</div>
+      <div class="kpi-sub" id="sub-clients"></div>
+    </div>
+  </section>
+
+<section class="panel" id="section-ratio-tiles">
+    <div class="panel-header">
+      <h2 class="panel-title">Unit economics — LTV : CAC · LTGP : CAC</h2>
+      <span class="panel-sub">
+        <select id="ratio-window" style="background:var(--panel,#141d29);color:inherit;border:1px solid var(--border,#243244);border-radius:6px;padding:.15rem .4rem">
+          <option value="cohort_month">September cohort</option>
+          <option value="trailing_90d">Trailing 90d</option>
+          <option value="by_package">By package</option>
+        </select>
+        · 3:1 line = benchmark, not target
+      </span>
+    </div>
+    <div id="ratio-tiles-body"><div class="skeleton skeleton-text"></div></div>
+  </section>
+
+<section class="panel" id="section-roas">
+    <div class="panel-header">
+      <h2 class="panel-title">ROAS — three clocks, never blended</h2>
+      <span class="panel-sub" id="roas-sub">September MTD · activity clock</span>
+    </div>
+    <div id="roas-body"><div class="skeleton skeleton-text"></div></div>
+    <div id="roas-verdict" style="font-size:.82rem;line-height:1.45;margin-top:.5rem;opacity:.9"></div>
+  </section>
+
+<section class="panel" id="section-metrics">
+      <div class="panel-header">
+        <h2 class="panel-title">Unit Economics</h2>
+      </div>
+      <div class="metrics-grid" id="metrics-grid">
+        <div class="metric-row">
+          <span class="metric-label">Revenue (Xero P&L)</span>
+          <span class="metric-value" id="val-revenue">—</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Net Profit</span>
+          <span class="metric-value" id="val-netprofit">—</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Payback Period</span>
+          <span class="metric-value" id="val-payback">—</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">LTGP:CAC</span>
+          <span class="metric-value" id="val-ltgpcac">—</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Sales Velocity</span>
+          <span class="metric-value" id="val-velocity">—</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">CAC (loaded)</span>
+          <span class="metric-value" id="val-cac">—</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Ad Spend <span id="adspend-src" style="font-size:11px;opacity:0.65"></span></span>
+          <span class="metric-value" id="val-adspend">—</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">ROAS <span style="font-size:11px;opacity:0.65">(Meta)</span></span>
+          <span class="metric-value" id="val-roas">—</span>
+        </div>
+      </div>
+    </section>
+
+<section class="panel" id="section-month-perf">
+    <div class="panel-header">
+      <h2 class="panel-title">Month Performance</h2>
+      <div class="panel-badge" id="month-perf-badge"></div>
+    </div>
+    <div class="month-perf-grid" id="month-perf-grid"></div>
+    <div class="month-perf-reads" id="month-perf-reads"></div>
+  </section>
+
+<section class="panel" id="section-perf-analysis">
+    <div class="panel-header">
+      <h2 class="panel-title">Performance Analysis <span class="win-badge" id="win-badge-perf">30d</span></h2>
+      <div class="window-tabs" id="window-tabs"></div>
+    </div>
+    <div id="perf-analysis-content"></div>
+  </section>

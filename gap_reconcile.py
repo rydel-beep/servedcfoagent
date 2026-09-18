@@ -511,7 +511,7 @@ def build_backfill_package() -> dict:
     items = []
     for r in rows[:20]:
         items.append({
-            "severity": 2, "category": "data_quality",
+            "severity": "S2", "category": "data_quality",
             "title": f"tracker backfill — {r['person']}",
             "detail": "; ".join(r["edits"])[:180],
             "action": "restore the tracker row at source (READ-ONLY law: "

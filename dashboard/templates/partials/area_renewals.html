@@ -1,0 +1,40 @@
+<section class="panel" id="section-churn">
+      <div class="panel-header">
+        <h2 class="panel-title">Churn Risk <span class="win-badge live">LIVE</span></h2>
+        <div class="panel-badge" id="churn-badge"></div>
+        <div class="renewal-toolbar">
+          <button class="rw-btn renewal-scan-trigger" id="renewal-scan-btn"
+                  title="Pull the MRR contract sheet fresh and reconcile it against dashboard declarations">Scan sheet</button>
+          <button class="rw-btn rw-btn-owner" id="renewal-declare-btn"
+                  title="Declare a client churned or renewed (owner only — the sheet stays Piolo's)">Declare…</button>
+        </div>
+      </div>
+      <div class="churn-summary" id="churn-summary"></div>
+      <div id="renewal-declare-panel" class="renewal-declare" style="display:none"></div>
+      <div id="renewal-result" class="renewal-result" style="display:none"></div>
+      <div class="churn-list" id="churn-list"></div>
+    </section>
+
+<section class="panel" id="section-health">
+      <div class="panel-header">
+        <h2 class="panel-title">Client Health <span class="win-badge live">LIVE</span></h2>
+        <div class="panel-badge" id="health-badge"></div>
+      </div>
+      <div class="health-summary" id="health-summary"></div>
+      <div class="client-list" id="client-list"></div>
+    </section>
+
+<section class="panel" id="section-cohort">
+    <details class="disclosure">
+      <summary class="disclosure-title">Cohort Retention <span class="panel-sub">clients by sign-up month</span></summary>
+      <div id="cohort-grid" class="table-scroll"></div>
+    </details>
+  </section>
+
+<section class="panel" id="section-reconciliation" style="display:none;">
+    <div class="panel-header">
+      <h2 class="panel-title">Client Reconciliation</h2>
+      <div class="panel-badge" id="recon-badge"></div>
+    </div>
+    <div id="recon-content"></div>
+  </section>

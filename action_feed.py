@@ -16,6 +16,18 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def _norm_severity(sev) -> str:
+    """Severity is ALWAYS 'S1'/'S2'/'S3'. Feed channels have posted bare ints
+    (2) — which put an int key beside str keys in `counts` and made Flask's
+    sort_keys jsonify throw a 500 on the whole feed. Never again."""
+    s = str(sev or "S3").upper().strip()
+    if s in ("S1", "S2", "S3"):
+        return s
+    if s in ("1", "2", "3"):
+        return "S" + s
+    return "S3"
+
 # Data-quality flags worth an action, mapped to plain-language "what to do".
 _DQ_ACTIONS = {
     "client_reconciliation": "Add the won deals to the Health roster so MRR + client count include them.",
@@ -136,14 +148,15 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
                        "feed:extra:tracker_backfill",
                        "feed:extra:ads_discussion", "feed:extra:voice",
                        "feed:extra:ads_decisions",   # Board v2: pending moves
-                       "feed:extra:stripe")          # Stripe canary failures
+                       "feed:extra:stripe",          # Stripe canary failures
+                       "feed:extra:render_health")   # browser/render watches
                                                      # (self-retiring on OK)
     try:
         import kv_store
         for ch_key in _EXTRA_CHANNELS:
             for it in (kv_store.get(ch_key) or []):
                 if isinstance(it, dict) and it.get("title"):
-                    items.append({"severity": it.get("severity", "S3"),
+                    items.append({"severity": _norm_severity(it.get("severity")),
                                   "category": it.get("category", "info"),
                                   "title": str(it["title"])[:160],
                                   "action": str(it.get("action") or "")[:240]})
@@ -164,7 +177,10 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
 
     counts = {"S1": 0, "S2": 0, "S3": 0}
     for it in ranked:
-        counts[it["severity"]] = counts.get(it["severity"], 0) + 1
+        # severity keys must be strings — an int key here (a feed channel
+        # posting severity 2) made jsonify(sort_keys) throw 500 on the whole
+        # feed (Phase-0 crash diagnosis, dashboard-hardening wave)
+        counts[_norm_severity(it["severity"])] = counts.get(_norm_severity(it["severity"]), 0) + 1
 
     # THE FIVE LANES (ACTION_TRIAGE_REPORT, Rydel-confirmed): the zone renders
     # lanes; `items` stays the full raw ranked list (compat + the audit trail).

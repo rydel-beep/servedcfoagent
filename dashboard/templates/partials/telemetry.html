@@ -1,0 +1,41 @@
+<!-- CLIENT TELEMETRY (dashboard hardening): browser crashes reach the same
+     feed as server failures. FIRST script on the page — before any external
+     resource — so nothing can crash ahead of it. No PII: route + error only.
+     Client-side cap 12/load; the server endpoint rate-limits again. -->
+<script>
+(function () {
+  var COMMIT = '{{ asset_v }}';
+  var sent = 0, MAX = 12;
+  function post(p) {
+    if (sent++ >= MAX) return;
+    try {
+      p.route = location.pathname; p.commit = COMMIT;
+      var body = JSON.stringify(p);
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon('/dashboard/api/client-error',
+          new Blob([body], { type: 'application/json' }));
+      } else {
+        fetch('/dashboard/api/client-error', { method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: body, keepalive: true }).catch(function () {});
+      }
+    } catch (e) { /* telemetry never breaks the page */ }
+  }
+  window.__reportClientError = post;
+  window.addEventListener('error', function (e) {
+    if (e && e.target && e.target !== window && (e.target.src || e.target.href)) {
+      post({ kind: 'asset_error',
+             detail: String(e.target.src || e.target.href).slice(0, 300) });
+      return;
+    }
+    post({ kind: 'uncaught',
+           detail: String((e && e.message) || '').slice(0, 400),
+           src: String((e && e.filename) || '').slice(0, 200) + ':' + ((e && e.lineno) || 0) });
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e && e.reason;
+    post({ kind: 'unhandled_rejection',
+           detail: String((r && (r.stack || r.message)) || r).slice(0, 400) });
+  });
+})();
+</script>

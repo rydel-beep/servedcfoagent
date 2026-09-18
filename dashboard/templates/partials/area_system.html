@@ -1,0 +1,53 @@
+<section class="panel panel-muted" id="section-quality">
+    <div class="panel-header clickable" id="toggle-quality">
+      <h2 class="panel-title">Data Quality</h2>
+      <span class="collapse-icon" id="collapse-icon">+</span>
+    </div>
+    <div class="quality-body" id="quality-body" style="display:none;">
+      <div id="degraded-list"></div>
+      <div id="quality-meta"></div>
+    </div>
+  </section>
+
+<section class="panel" id="section-render-health">
+  <div class="panel-header">
+    <h2 class="panel-title">Render health &amp; client telemetry</h2>
+    <span class="panel-sub">browser crashes reach the same feed as server failures</span>
+  </div>
+  <div id="render-health-body"><div class="skeleton skeleton-text"></div></div>
+  <script>
+  (function () {
+    function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+    fetch('/dashboard/api/telemetry').then(function (r) {
+      if (r.status === 403) return { ownerOnly: true };
+      return r.ok ? r.json() : null;
+    }).then(function (d) {
+      var el = document.getElementById('render-health-body');
+      if (!el) return;
+      if (!d) { el.innerHTML = '<div class="panel-boundary-fail">telemetry unavailable — the endpoint failed (honest state, not hidden)</div>'; return; }
+      if (d.ownerOnly) { el.innerHTML = '<div style="font-size:12px;opacity:.8">Client-error detail is owner-only. The sentinel still watches the rate for everyone.</div>'; return; }
+      var rh = d.render_health || {};
+      var html = '<div style="font-size:13px;margin-bottom:8px"><b>Landing self-check:</b> ' +
+        (rh.ok === true ? '✓ server-rendered tiles healthy' :
+         rh.ok === false ? '⚠ FAILING — ' + esc((rh.problems || []).join('; ')) :
+         esc(rh.note || 'not yet run')) +
+        (rh.at ? ' <span style="opacity:.6">(' + esc(rh.at).slice(0, 16) + ')</span>' : '') + '</div>';
+      var rate = (d.rate || {}).per_hour || {};
+      html += '<div style="font-size:12px;opacity:.85;margin-bottom:8px"><b>Client errors/hour:</b> ' +
+        Object.keys(rate).map(function (k) { return k + ': ' + rate[k]; }).join(' · ') + '</div>';
+      var rec = d.recent || [];
+      html += '<div style="font-size:12px"><b>Recent (' + (d.total_stored || 0) + ' stored):</b></div>';
+      if (!rec.length) html += '<div style="font-size:12px;opacity:.7">none recorded — quiet is healthy</div>';
+      rec.slice(0, 12).forEach(function (e) {
+        html += '<div style="font-size:11px;opacity:.8;padding:3px 0;border-bottom:1px solid var(--border)">' +
+          esc(e.at).slice(0, 16) + ' · <b>' + esc(e.kind) + '</b> · ' + esc(e.route) +
+          ' · ' + esc((e.detail || '').slice(0, 120)) + '</div>';
+      });
+      el.innerHTML = html;
+    }).catch(function () {
+      var el = document.getElementById('render-health-body');
+      if (el) el.innerHTML = '<div class="panel-boundary-fail">telemetry fetch failed</div>';
+    });
+  })();
+  </script>
+</section>
