@@ -191,7 +191,7 @@ def build_tiles(snap: dict | None) -> list[dict]:
                    or "unavailable" in (cp.get("cash_in_bank_note") or "").lower()
         n_acct = len(cp.get("cash_in_bank_breakdown") or []) or None
         state = "degraded" if degraded or bal is None else \
-                ("amber" if (snap_age or 99) > SNAP_AMBER_HOURS else "ok")
+                ("amber" if (snap_age if snap_age is not None else 99) > SNAP_AMBER_HOURS else "ok")
         tiles.append(_tile(
             "cash_on_hand", "Cash on hand (Xero bank balances)",
             _fmt_money(bal),
@@ -216,7 +216,7 @@ def build_tiles(snap: dict | None) -> list[dict]:
             "contracted monthly revenue — never a cost",
             f"Finance-sheet Health tab + declarations + renewal ledger · pulled {_fmt_age(snap_age)}",
             "degraded" if mrr is None else
-            ("amber" if (snap_age or 99) > SNAP_AMBER_HOURS else "ok"),
+            ("amber" if (snap_age if snap_age is not None else 99) > SNAP_AMBER_HOURS else "ok"),
             drawer="committed_mrr"))
     except Exception as e:  # noqa: BLE001
         tiles.append(_tile("committed_mrr", "Committed MRR (revenue)", "—",
