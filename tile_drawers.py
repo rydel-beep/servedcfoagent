@@ -400,8 +400,73 @@ def _drawer_cash_on_hand() -> dict:
     }
 
 
+def _drawer_burn_ex_tax() -> dict:
+    """COMPASS 1.2: the projection page's burn line — OpEx ex-tax ex-
+    acquisition (measured band), tax accrual BESIDE, net burn, runway."""
+    import kv_store as _kv
+    d = (_kv.get("compass:defaults") or {}).get("items") or {}
+    opex = (d.get("opex_monthly_ex_tax") or {})
+    from snapshot import load_persisted
+    snap = load_persisted() or {}
+    cp = snap.get("cash_position") or {}
+    mrr = (snap.get("client_health") or {}).get("current_mrr")
+    net_burn = round((opex.get("value") or 0) - (mrr or 0), 2) \
+        if opex.get("value") is not None else None
+    cash_ex = round((cp.get("cash_in_bank") or 0) - (cp.get("tax_reserved") or 0), 2)
+    runway = (round(cash_ex / -net_burn, 1)
+              if net_burn is not None and net_burn < 0 else None)
+    return {
+        "tile": "burn_ex_tax",
+        "definition": "Monthly burn = OpEx ex-tax, ex-acquisition (spend + "
+                      "commissions modelled separately). The tax accrual is "
+                      "BESIDE, never inside (outflow-truth law).",
+        "formula": "outflow-truth OpEx band − advertising − commissions "
+                   "(both explicit elsewhere); net burn = OpEx − committed "
+                   "MRR recognised; runway = cash ex tax set-aside ÷ net burn",
+        "clock": "trailing full months · measured",
+        "value": opex.get("value"),
+        "components": [
+            {"label": "OpEx ex-tax ex-acquisition", "value": opex.get("value"),
+             "source": opex.get("provenance")},
+            {"label": "committed MRR (revenue) recognised", "value": mrr,
+             "source": "Health-tab committed layer"},
+            {"label": "net burn (negative = the book covers OpEx)",
+             "value": net_burn, "source": "derived above"},
+            {"label": "cash ex tax set-aside", "value": cash_ex,
+             "source": "Xero bank balances − set-aside"}],
+        "reconciliation": {
+            "external": "BAS set-aside logic (tax accrual, quarterly settle)",
+            "delta_note": "tax never appears inside any burn figure — a BAS "
+                          "accrual month leaves OpEx unchanged (drilled)"},
+    }
+
+
+def _drawer_booked_calls() -> dict:
+    """Pulse tile door: the consult roster for the next 7 days (read-only)."""
+    import compass_engine
+    bc = compass_engine.booked_calls_next_7d()
+    return {
+        "tile": "booked_calls",
+        "definition": "Consults scheduled in the next 7 days — GHL kept "
+                      "appointments (cancelled never counts). READ-ONLY.",
+        "formula": "count of kept GHL appointments with startTime in "
+                   "[now, now+7d] from the appointment cache",
+        "clock": "next 7 days · point-in-time",
+        "value": bc.get("count"),
+        "components": [{"label": c.get("formatted") or c.get("when"),
+                        "value": None,
+                        "source": f"status: {c.get('status') or 'kept'}"}
+                       for c in (bc.get("consults") or [])],
+        "reconciliation": {"external": bc.get("source"),
+                           "delta_note": "the roster page carries the same "
+                                         "cache — one source"},
+    }
+
+
 _REGISTRY = {
     "cash_on_hand": _drawer_cash_on_hand,
+    "burn_ex_tax": _drawer_burn_ex_tax,
+    "booked_calls": _drawer_booked_calls,
     "committed_mrr": _drawer_committed_mrr,
     "meta_spend_mtd": _drawer_spend,
     "cash_collected": _drawer_cash_collected,

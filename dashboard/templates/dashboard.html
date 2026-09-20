@@ -63,6 +63,22 @@
       </div>
       {% endfor %}
     </div>
+    <!-- SALES PULSE (compass): the ≤8 amendment — 8 executive + 3 pulse -->
+    {% if exec.pulse %}
+    <div class="pulse-strip" id="pulse-strip">
+      {% for t in exec.pulse %}
+      <div class="pulse-tile state-{{ t.state }}" id="tile-{{ t.id }}" data-state="{{ t.state }}">
+        <span class="pulse-label">{{ t.label }}</span>
+        <span class="pulse-value">{{ t.value }}</span>
+        <span class="pulse-sub">{{ t.sub }}</span>
+        <span class="exec-tile-stamp" style="border:none;padding:0;margin:0">
+          {% if t.state == 'amber' %}<span class="stamp-flag stamp-amber">stale</span>{% endif %}
+          {% if t.state == 'degraded' %}<span class="stamp-flag stamp-degraded">DEGRADED</span>{% endif %}
+          {{ t.stamp }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
     <div class="exec-verdict state-{{ exec.verdict.state }}" id="exec-verdict">
       <span class="verdict-mark">▸</span> {{ exec.verdict.line }}
     </div>

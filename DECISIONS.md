@@ -2266,3 +2266,57 @@ getUserMedia mic loop on every page load by default.
 now render server-side on the landing page — a strictly stronger guarantee;
 the #151 tests are updated to pin the new law). The section-ops-cards /
 section-csm-card panels became landing summary cards.
+
+## #153 — THE SCALING COMPASS: forward + backward planning on measured rates (2026-09-20)
+
+**The goal:** given the rates we've MEASURED, what spend, leads, calls,
+closes, cash and people does a target take — and which constraint binds
+each month. The compass for 2027.
+
+**Rulings:**
+1. **compass_engine.py is the scenario engine's forward-model extension**
+   (the sanctioned scenario lane): every run is a LABELLED hypothetical;
+   the module reads ONLY the standing engines (attribution funnel,
+   meta_spend, union closes, forward_projection book, outflow bands,
+   CSM B1 renewal, config authorities) — nothing recomputed locally,
+   nothing ever written to actuals. Measured defaults carry
+   {value, n, window, provenance, assumption} — every control on /scale
+   shows them, with "reset to measured".
+2. **The equation, per month:** Spend ÷ CPL(S) → leads ×set → calls ×show
+   → shows ×close → clients ×cash-schedule/MRR per package − the cliff
+   (assumed pool × (1−resign); month-0 == present MRR truth, identity-
+   tested). CPL(S) = CPL₀(S/S₀)^ε — NEVER linear; the account's own ε fit
+   (≈1.19, n=9) is confounded and SURFACED, planning default 0.2 labelled.
+3. **Costs:** commissions = % of NEW-deal cash only (FY26 6.3%; the
+   in-window 28.8% read disagrees — distorted by lagging tracker cash,
+   surfaced never averaged; the 'Closer Payout & KPI' tab holds a payout
+   projection grid, NOT a structure — finding). OpEx ex-tax ex-acquisition
+   (the outflow band minus advertising minus commissions — double-count
+   guard). TAX accrual BESIDE, never inside burn (drilled).
+4. **CAC discipline:** cohort CAC (lead-month numerator ÷ eventual closes
+   via the measured lag curve) ≠ period CAC — both shown, never conflated
+   (tested). Client-financed check = 30-day cash ÷ CAC vs 2.0 (benchmark,
+   not target). Capital dip = min cumulative position vs cash ex set-aside.
+5. **BINDING CONSTRAINT per month** — first true of LEADS (CPL > 2×CPL₀) ·
+   SALES CAPACITY · DELIVERY CAPACITY · CASH (< buffer) · RETENTION (churn
+   ≥ new), each named WITH its number; none binding → "LEADS (spend is the
+   lever)". Hire cards dated by the lead time (order-by month), costs flow
+   into OpEx from start month, ramp halves capacity (all tested).
+6. **SCENARIO PINS are never declarations** (tested: a toggle moves the
+   book by exactly its MRR and creates zero overrides). "Commit as Plan
+   2027" = a VERSIONED plan-of-record labelled "never actuals"; the
+   pacing view reads plan vs the one engine's actuals with cause hints.
+7. **Surfaces:** /dashboard/scale (owner-only; server-rendered first paint
+   from the kv-cached Base run) · the SALES PULSE strip on the landing
+   (amendment to the hardening ≤8 law: 8 executive + 3 pulse — show rate,
+   close rate, booked calls next 7d from the GHL appointment cache,
+   READ-ONLY, kept status only) · the projection page gains the EXPIRING
+   TERMS panel (30/60/90; declared=ACTUAL chip; toggle=SCENARIO pin;
+   Declare… one click away) + the BURN box (OpEx ex-tax; tax beside;
+   runway). All gate-asserted; uncertainty bands are honest Monte Carlo
+   (rates sampled with their n; CPL lognormal; deterministic seed).
+8. **Calibration is a standing watch:** monthly backtest (rates frozen at
+   month start, actual spend, predicted vs actual per stage, MAPE) +
+   plan-variance + capacity-threshold watches → feed:extra:compass. The
+   first backtest is HONEST about its roughness (leads ±44%; closes ±193%
+   — the August tracker-gap month and small n; stated on the tab).

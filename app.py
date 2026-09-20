@@ -197,6 +197,13 @@ def _scheduled_refresh_loop() -> None:
             render_health.tick()
         except Exception as e:  # noqa: BLE001
             logger.warning("render_health tick failed: %s", e)
+        # THE SCALING COMPASS: measured defaults + pulse + the Base first-
+        # paint run (monthly backtest kv-stamped inside).
+        try:
+            import compass_engine
+            compass_engine.refresh_cache()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("compass refresh failed: %s", e)
 
 
 def _email_cadence_loop() -> None:
@@ -928,6 +935,8 @@ def _deferred_startup():
                     _et.refresh_cache()
                     import render_health as _rh
                     _rh.tick()
+                    import compass_engine as _ce
+                    _ce.refresh_cache()
                 except Exception as _e2:
                     logger.error("exec-top boot warm failed: %s", _e2)
             threading.Thread(target=_exec_top_warm, daemon=True,

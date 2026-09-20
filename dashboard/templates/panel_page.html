@@ -63,6 +63,24 @@
 {% endif %}
 
 <main class="main" id="main">
+{% if burn_box %}
+<!-- COMPASS 1.2 — BURN, ACCURATE (server-rendered): OpEx ex-tax; the tax
+     accrual is BESIDE, never inside; net burn + runway; drawer + stamp. -->
+<section class="panel" id="section-burn-accurate">
+  <div class="panel-header">
+    <h2 class="panel-title">Burn &amp; runway (ex-tax)
+      <button class="fin-door" data-findrawer="burn_ex_tax" title="show your work">ⓘ</button></h2>
+    <span class="panel-sub">{{ burn_box.stamp }}</span>
+  </div>
+  <div class="scale-hero">
+    <div class="h"><b>{{ burn_box.opex }}</b><span>monthly OpEx ex-tax, ex-acquisition (measured band)</span></div>
+    <div class="h"><b>{{ burn_box.tax_line }}</b><span>tax accrual BESIDE — never inside burn (BAS set-aside logic)</span></div>
+    <div class="h"><b>{{ burn_box.net_burn }}</b><span>net burn (OpEx − committed MRR recognised)</span></div>
+    <div class="h"><b>{{ burn_box.runway }}</b><span>runway = cash ex tax set-aside ÷ net burn</span></div>
+  </div>
+  <div class="scale-note" style="margin-top:6px">{{ burn_box.note }}</div>
+</section>
+{% endif %}
 {% include "partials/area_" + area + ".html" %}
 </main>
 

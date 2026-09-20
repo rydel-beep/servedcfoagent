@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Scaling Compass — Served CFO</title>
+{% include "partials/telemetry.html" %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/dashboard/static/css/dashboard.css?v={{ asset_v }}">
+<link rel="stylesheet" href="/dashboard/static/css/landing.css?v={{ asset_v }}">
+</head>
+<body data-page="scale">
+
+<header class="header">
+  <div class="header-left">
+    <div class="reactor"></div>
+    <h1 class="wordmark">EDITH</h1>
+    <span class="wordmark-sub">Scaling Compass</span>
+  </div>
+  <div class="header-right">
+    <a class="panelpage-back" href="/dashboard/">← Dashboard</a>
+  </div>
+</header>
+
+<main class="scale-main" id="main">
+
+<!-- ═══ SERVER-RENDERED FIRST PAINT: the Base run headline (hardening law:
+     JS enhances, never fills a headline) ═══ -->
+<section class="scale-section" id="scale-hero">
+  <h3>The compass — Base scenario on YOUR measured rates</h3>
+  {% if hero %}
+  <div class="scale-hero">
+    <div class="h"><b>{{ hero.end_mrr }}</b><span>net MRR at {{ hero.end_month }} (Base, measured defaults)</span></div>
+    <div class="h"><b>{{ hero.capital_dip }}</b><span>capital dip (min cash position vs today ex set-aside)</span></div>
+    <div class="h"><b>{{ hero.next_binding }}</b><span>the binding constraint NEXT MONTH — {{ hero.next_binding_why }}</span></div>
+  </div>
+  <div class="scale-note" style="margin-top:6px">
+    constraint months across the horizon: {{ hero.bind_summary }} ·
+    Base computed {{ base_computed }} · every run is a LABELLED SCENARIO — never actuals ·
+    calibration: {{ backtest_verdict }}
+  </div>
+  {% else %}
+  <div class="panel-boundary-fail">Base run not yet computed — the scheduled refresh
+    builds it (labelled state, not a blank). The inputs panel and solver still work.</div>
+  {% endif %}
+</section>
+
+<div class="scale-grid">
+  <!-- ── INPUTS: every control carries its measured default + n + provenance ── -->
+  <aside class="scale-inputs" id="scale-inputs">
+    <h3>Inputs <button class="scale-btn" id="btn-reset-all" title="reset every control to its measured default">reset all to measured</button></h3>
+    <div id="inputs-body"><div class="skeleton skeleton-text"></div></div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="scale-btn" id="btn-run">Run forward →</button>
+      <label class="scale-note" style="display:flex;align-items:center;gap:4px">
+        <input type="checkbox" id="chk-bands"> show ranges (P25/P75)
+      </label>
+    </div>
+    <div class="scale-note" id="run-status" style="margin-top:6px"></div>
+  </aside>
+
+  <div>
+    <!-- ── TARGET SOLVER ── -->
+    <section class="scale-section" id="scale-solver">
+      <h3>Target solver — backward mode</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">
+        <div class="scale-ctl" style="min-width:150px"><label>target</label>
+          <select id="tgt-kind">
+            <option value="mrr">net MRR by month</option>
+            <option value="cash_month">cash collected in month</option>
+            <option value="cash_cumulative">cumulative cash by month</option>
+          </select></div>
+        <div class="scale-ctl"><label>month</label><input id="tgt-month" type="month" value="2027-12"></div>
+        <div class="scale-ctl"><label>value ($)</label><input id="tgt-value" type="number" value="150000" step="5000"></div>
+        <button class="scale-btn" id="btn-solve">Solve required inputs →</button>
+      </div>
+      <div id="solver-out" class="scale-note" style="margin-top:8px"></div>
+    </section>
+
+    <!-- ── ROADMAP (the month-by-month table = the plan and its weakest link) ── -->
+    <section class="scale-section" id="scale-roadmap">
+      <h3>Roadmap to Dec 2027 <span class="scale-note" id="roadmap-label"></span></h3>
+      <div class="scale-table-wrap" id="roadmap-wrap"><div class="skeleton skeleton-block"></div></div>
+    </section>
+
+    <!-- ── FUNNEL + MONEY + TEAM views ── -->
+    <section class="scale-section" id="scale-money">
+      <h3>Money view — CAC · LTGP:CAC · payback · client-financed check</h3>
+      <div class="scale-table-wrap" id="money-wrap"><div class="skeleton skeleton-text"></div></div>
+      <div class="scale-note" id="money-note"></div>
+    </section>
+
+    <section class="scale-section" id="scale-team">
+      <h3>Team view — utilisation &amp; hire cards</h3>
+      <div id="team-wrap"><div class="skeleton skeleton-text"></div></div>
+    </section>
+
+    <!-- ── SCENARIOS + PLAN ── -->
+    <section class="scale-section" id="scale-scenarios">
+      <h3>Scenarios &amp; Plan 2027</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">
+        <div class="scale-ctl"><label>name</label><input id="sc-name" placeholder="Base 2027"></div>
+        <button class="scale-btn" id="btn-save-sc">Save current inputs</button>
+        <button class="scale-btn" id="btn-compare-sc">Compare saved…</button>
+        <button class="scale-btn" id="btn-commit-plan" title="labelled plan-of-record — never actuals">Commit as Plan 2027</button>
+        <a class="scale-btn" id="btn-pdf" href="/dashboard/api/scale/scenario-pdf" target="_blank" rel="noopener" style="text-decoration:none">Briefing PDF (Base)</a>
+      </div>
+      <div id="sc-out" class="scale-note" style="margin-top:8px"></div>
+      <div id="pacing-out" style="margin-top:8px"></div>
+    </section>
+
+    <!-- ── CALIBRATION (server-rendered verdict; table on demand) ── -->
+    <section class="scale-section" id="scale-calibration">
+      <h3>Calibration — the model vs the last 3 months</h3>
+      <div class="scale-note">{{ backtest_verdict }}</div>
+      <div class="scale-table-wrap" id="backtest-wrap"></div>
+    </section>
+  </div>
+</div>
+
+<div class="landing-foot">
+  every figure here is a LABELLED SCENARIO computed through the compass lane of the scenario
+  engine — nothing on this page can write a declaration, the tracker, GHL, or any actuals store.
+</div>
+
+</main>
+
+<!-- drawer modal (shared) -->
+<div class="fin-drawer-overlay" id="fin-drawer-overlay" style="display:none"></div>
+<div class="fin-drawer" id="fin-drawer" style="display:none">
+  <div class="fin-drawer-head"><span id="fin-drawer-title">show your work</span>
+    <button id="fin-drawer-close">&times;</button></div>
+  <div class="fin-drawer-body" id="fin-drawer-body"></div>
+</div>
+
+<script>
+window.__SCALE_DEFAULTS__ = {{ defaults_json | safe }};
+window.__SCALE_BASE_RUN__ = {{ base_run_json | safe }};
+window.__SCALE_BACKTEST__ = {{ backtest_json | safe }};
+</script>
+<script defer src="/dashboard/static/js/landing.js?v={{ asset_v }}"></script>
+<script defer src="/dashboard/static/js/scale.js?v={{ asset_v }}"></script>
+</body>
+</html>

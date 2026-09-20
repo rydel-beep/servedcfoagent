@@ -282,3 +282,29 @@ dashboard/evidence/phase0/.
   uncaught).
 - action_feed._norm_severity + gap_reconcile severity "S2" — the prod 500
   fixed at both ends.
+
+---
+
+## 2026-09-20 — THE SCALING COMPASS (#153): /scale tab · sales pulse · expiring terms
+
+- compass_engine.py: measured defaults (CPL $88.5 n=345 · set 14.8% · show
+  90.2% · close 28.3% n=46 · lag [0.73,0.27,0] n=22 · renewal B1 midpoint
+  61% [22.7–100] · commissions FY26 6.3% (28.8% in-window read surfaced as
+  distorted) · OpEx ex-tax ex-acquisition $45.3k/mo · ε default 0.2 with
+  the confounded 1.19 fit surfaced) + the monthly equation forward run +
+  bisection target solver + Monte Carlo bands + 3-month backtest +
+  scenario/plan-of-record store. Scenario lane only — never actuals.
+- /dashboard/scale (owner-only): server-rendered Base hero; inputs with
+  provenance chips + reset-to-measured; roadmap table to Dec 2027 with the
+  BINDING CONSTRAINT named per month; money view (cohort vs period CAC);
+  team view + hire cards; scenarios compare/commit; calibration table;
+  briefing PDF.
+- Landing: SALES PULSE strip (show rate · close rate · booked calls 7d
+  from GHL appointment cache, read-only) under the 8 exec tiles.
+- Projection page: EXPIRING TERMS panel (30/60/90; scenario-pin toggles →
+  preview API, journal NOTHING; Declare… adjacent) + BURN box (ex-tax,
+  tax beside, runway).
+- Watches → feed:extra:compass: monthly backtest drift · Plan-2027
+  variance · capacity threshold inside hire lead time.
+- Gate: pulse-strip assertion + /scale first-paint pass + projection area
+  smoke. Suite: [filled at deploy]. DECISIONS #153.

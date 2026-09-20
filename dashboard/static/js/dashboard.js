@@ -530,6 +530,32 @@
   // Now: table-driven; a panel absent from this page is skipped (the IA
   // split serves areas on their own pages); a panel that THROWS fails into
   // an honest in-place block + client telemetry, and its siblings render.
+  // Chart.js loads DEFERRED on area pages (a blocked CDN can no longer take
+  // the page down) — a renderer that needs it re-queues itself for window
+  // load instead of throwing.
+  function whenChartReady(sectionId, name, fn) {
+    if (window.Chart) { fn(); return; }
+    var el = sectionId && document.getElementById(sectionId);
+    if (el && !el.querySelector('.chart-pending-note')) {
+      var n = document.createElement('div');
+      n.className = 'chart-pending-note';
+      n.style.cssText = 'font-size:11px;opacity:.6';
+      n.textContent = 'chart library loading…';
+      el.appendChild(n);
+    }
+    window.addEventListener('load', function () {
+      var note = el && el.querySelector('.chart-pending-note');
+      if (note) note.remove();
+      if (window.Chart) { boundary(sectionId, name + ':chart', fn); }
+      else if (el) {
+        var b = document.createElement('div');
+        b.className = 'panel-boundary-fail';
+        b.textContent = 'chart library failed to load (CDN blocked) — the numbers above are unaffected';
+        el.appendChild(b);
+      }
+    }, { once: true });
+  }
+
   function boundary(sectionId, name, fn) {
     if (sectionId && !document.getElementById(sectionId)) return;  // not on this page
     try { fn(); }
@@ -568,7 +594,7 @@
       ['section-kpis',           'kpis',          function () { renderKPIs(snap); renderDerivedClients(snap); }],
       ['section-month-perf',     'monthPerf',     function () { renderMonthPerformance(snap); }],
       ['section-perf-analysis',  'perfAnalysis',  function () { renderPerfAnalysis(snap); }],
-      ['section-trend',          'mrrTrend',      function () { renderMRRTrend(snap); }],
+      ['section-trend',          'mrrTrend',      function () { whenChartReady('section-trend', 'mrrTrend', function () { renderMRRTrend(snap); }); }],
       ['section-waterfall',      'waterfall',     function () { renderWaterfall(snap); }],
       ['section-cash-position',  'cashPosition',  function () { renderCashPosition(snap); }],
       ['section-stripe-health',  'stripeHealth',  function () { renderStripeHealth(snap); }],
@@ -582,7 +608,7 @@
       ['section-setter-deep',    'setterDeep',    function () { renderSetterDeepDive(snap); }],
       ['section-pipeline',       'pipeline',      function () { renderPipeline(snap); }],
       ['section-dq-loss',        'dqLoss',        function () { renderDQLoss(snap); }],
-      ['section-offers',         'offerChart',    function () { lazyRender('section-offers', function () { boundary('section-offers', 'offerChart:lazy', function () { renderOfferChart(snap); }); }); }],
+      ['section-offers',         'offerChart',    function () { lazyRender('section-offers', function () { whenChartReady('section-offers', 'offerChart', function () { boundary('section-offers', 'offerChart:lazy', function () { renderOfferChart(snap); }); }); }); }],
       ['section-lead-roi',       'leadSourceROI', function () { renderLeadSourceROI(snap); }],
       ['section-commissions',    'commissions',   function () { renderCommissions(snap); renderCommissionDetail(snap); }],
       ['section-metrics',        'metrics',       function () { renderMetrics(snap); }],
@@ -5228,6 +5254,7 @@
     boundary('section-csm-card',      'csmCard',      renderCsmCard);
     boundary('section-ops-cards',     'opsCards',     renderOpsCards);
     boundary('section-capital',       'capital',      renderCapital);
+    boundary('section-expiring',      'expiring',     renderExpiring);
     if (hadSnap) _setUpdating(false);
     if (historyData && historyData.length > 1 && $('#reps-sparkline-status')) {
       $('#reps-sparkline-status').textContent = historyData.length + ' days of history';
@@ -5253,6 +5280,88 @@
     }
     await loadAll();
   })();
+
+
+  // ── COMPASS Part 1: EXPIRING TERMS panel (projection page) ────────────────
+  // Toggles are SCENARIO PINS ONLY — they call the scenario-lane preview API
+  // and journal NOTHING; the Declare flow is the only path to actuals.
+  var _expPins = {};
+  var _expDays = 30;
+  async function renderExpiring() {
+    var box = document.getElementById('exp-rows');
+    if (!box) return;
+    try {
+      var r = await fetch('/dashboard/api/scale/expiring?days=' + _expDays);
+      if (!r.ok) { box.innerHTML = '<div class="panel-boundary-fail">expiring list unavailable (' + r.status + ')</div>'; return; }
+      var d = await r.json();
+      var lbl = document.getElementById('exp-window-label');
+      if (lbl) lbl.textContent = _expDays + 'd';
+      var html = '';
+      (d.rows || []).forEach(function (row) {
+        var key = row.client;
+        var declared = row.declared === 'renewal' || row.declared === 'extension';
+        var chip = declared
+          ? '<span class="exp-chip exp-chip-actual">ACTUAL — declared ' + esc(row.declared) + '</span>'
+          : (_expPins[key]
+             ? '<span class="exp-chip exp-chip-scenario">SCENARIO pin — resigns same deal</span>'
+             : '<span class="exp-chip exp-chip-slider">slider rate</span>');
+        html += '<div class="exp-row"><strong style="min-width:170px">' + esc(row.client) + '</strong>' +
+          '<span>' + esc(row.package || '—') + '</span>' +
+          '<span>$' + Math.round(row.mrr || 0).toLocaleString() + '/mo</span>' +
+          '<span>ends ' + esc(row.term_end) + ' · ' + row.days_left + 'd left</span>' + chip +
+          (declared ? '' :
+            '<label style="margin-left:auto;cursor:pointer"><input type="checkbox" class="exp-toggle" data-client="' + esc(key) + '"' +
+            (_expPins[key] ? ' checked' : '') + '> resigns same deal</label>' +
+            '<button class="rw-btn rw-inline" data-rw-client="' + esc(key) + '" data-rw-kind="renewal">Declare…</button>') +
+          '</div>';
+      });
+      if (!(d.rows || []).length) html = '<div class="scale-note">no terms end inside this window</div>';
+      box.innerHTML = html;
+      var pinned = Object.keys(_expPins).filter(function (k) { return _expPins[k]; }).length;
+      var eff = document.getElementById('exp-effective');
+      if (eff) eff.textContent = d.expiring + ' expiring \u00b7 ' + d.declared + ' declared (ACTUAL) \u00b7 ' +
+        pinned + ' toggled (SCENARIO) \u00b7 rest at the slider rate \u2014 ' + (d.note || '');
+      await expiringPreview();
+    } catch (e) {
+      box.innerHTML = '<div class="panel-boundary-fail">expiring panel failed: ' + esc(String(e)) + '</div>';
+    }
+  }
+  async function expiringPreview() {
+    var out = document.getElementById('exp-preview');
+    if (!out) return;
+    var pins = {};
+    Object.keys(_expPins).forEach(function (k) { if (_expPins[k]) pins[k] = true; });
+    if (!Object.keys(pins).length) { out.textContent = ''; return; }
+    out.textContent = 'previewing scenario pins\u2026';
+    try {
+      var slider = document.getElementById('proj-renew-slider');
+      var r = await fetch('/dashboard/api/scale/expiring-preview', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pins: pins, slider_pct: slider ? +slider.value : null })
+      });
+      if (!r.ok) { out.textContent = 'preview unavailable (' + r.status + ')'; return; }
+      var d = await r.json();
+      var n = d.book_mrr.length - 1;
+      var mid = Math.min(5, n);
+      var dMid = d.book_mrr[mid] - d.book_mrr_unpinned[mid];
+      var dEnd = d.book_mrr[n] - d.book_mrr_unpinned[n];
+      out.innerHTML = '<b>SCENARIO preview:</b> pins move the book +$' + Math.round(dMid).toLocaleString() +
+        '/mo at month ' + mid + ' \u00b7 +$' + Math.round(dEnd).toLocaleString() + '/mo at month ' + n +
+        ' (resign rate applied to the rest: ' + Math.round(d.resign_rate_applied * 100) + '%) \u2014 ' + esc(d.label);
+    } catch (e) { out.textContent = 'preview failed: ' + String(e); }
+  }
+  document.addEventListener('change', function (e) {
+    var t = e.target.closest('.exp-toggle');
+    if (!t) return;
+    _expPins[t.dataset.client] = t.checked;
+    boundary('section-expiring', 'expiring:toggle', function () { renderExpiring(); });
+  });
+  document.addEventListener('click', function (e) {
+    var w = e.target.closest('.exp-win');
+    if (!w) return;
+    _expDays = +w.dataset.days || 30;
+    boundary('section-expiring', 'expiring:window', function () { renderExpiring(); });
+  });
 
   // ── RENEWAL & CHURN TRUTH LOOP (#135): scan · declare · converge ──────────
   // The dashboard NEVER writes the sheet. Scan = fresh pull + diff + verdict
@@ -5599,6 +5708,13 @@
       if (!_rwOwner && dbtn) dbtn.style.display = 'none';
     } catch (e) { /* server still enforces */ }
   }
+
+  // deferred Chart.js: once loaded, draw the forward chart the first render skipped
+  window.addEventListener('load', function () {
+    if (window.Chart && currentSnap && document.getElementById('forward-chart') && !_forwardChart) {
+      boundary('section-forward', 'forward:chartkick', function () { renderForwardProjection(currentSnap); });
+    }
+  }, { once: true });
 
   // Auto-refresh every 10 minutes
   setInterval(async () => {

@@ -387,6 +387,13 @@ def build_cards(snap: dict | None, owner: bool,
     card("brief", "Morning brief (full)", "/dashboard/view/brief",
          "the long-form read · exec summary · verdicts")
     if owner:
+        base_run = (kv_store.get("compass:base_run") or {}).get("run") or {}
+        m = (base_run.get("months") or [{}])[0]
+        bind = (m.get("binding_constraint") or {}).get("name")
+        card("scale", "Scaling compass", "/dashboard/scale",
+             (f"next month's binding constraint: {bind}" if bind
+              else "forward + backward planning on measured rates"),
+             owner_only=True)
         card("decisions", "Needs your ruling", "/dashboard/view/decisions",
              (f"{(dec or {}).get('count', '—')} need your ruling"
               if dec else (dec_err or "not yet built")), owner_only=True)
@@ -401,11 +408,53 @@ def build_cards(snap: dict | None, owner: bool,
     return cards
 
 
+def build_pulse() -> list[dict]:
+    """SALES PULSE (compass wave — the ≤8 rule amendment: 8 executive + 3
+    pulse): show rate · close rate (t30) · booked calls next 7 days. Server-
+    rendered from the compass kv cache; small-n honesty on the face."""
+    p = kv_store.get("compass:pulse") or {}
+    age = _age_h(p.get("computed_at"))
+    out = []
+
+    def rate_tile(tid, label, block, denom_word):
+        block = block or {}
+        v, n = block.get("value"), block.get("n")
+        if v is not None:
+            val = f"{v * 100:.0f}%"
+            sub = f"n={n} {denom_word} · trailing 30d" + \
+                  (" · SMALL n — read with care" if (n or 0) < 15 else "")
+            state = _state_for(age, None)
+        else:
+            val, sub, state = "—", (p.get("error") or
+                                    "not yet computed — first refresh pending"), "degraded"
+        out.append({"id": tid, "label": label, "value": val, "sub": sub,
+                    "stamp": f"one attribution engine · computed {_fmt_age(age)}",
+                    "state": state, "drawer": None})
+
+    rate_tile("pulse_show_rate", "Show rate (verified)",
+              p.get("show_rate"), "sets")
+    rate_tile("pulse_close_rate", "Close rate (÷ shows)",
+              p.get("close_rate"), "verified shows")
+    bc = p.get("booked_calls_7d") or {}
+    n = bc.get("count")
+    out.append({"id": "pulse_booked_calls",
+                "label": "Booked calls · next 7 days",
+                "value": str(n) if n is not None else "—",
+                "sub": ("consults on the GHL calendar (kept status, "
+                        "read-only)" if n is not None else
+                        str(bc.get("error") or "appointment cache pending")),
+                "stamp": f"GHL appointment cache · computed {_fmt_age(age)}",
+                "state": "degraded" if n is None else _state_for(age, None),
+                "drawer": "booked_calls"})
+    return out
+
+
 def build(snap: dict | None, owner: bool,
           csm_visible: bool | None = None) -> dict:
     """Everything the landing template needs, computed server-side."""
     return {
         "tiles": build_tiles(snap),
+        "pulse": build_pulse(),
         "verdict": build_verdict(),
         "cards": build_cards(snap, owner, csm_visible=csm_visible),
         "generated_at": (snap or {}).get("generated_at"),

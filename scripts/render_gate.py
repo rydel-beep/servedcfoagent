@@ -79,6 +79,11 @@ def login(page):
 
 
 PROBE_JS = """() => {
+  const pulse = Array.from(document.querySelectorAll('.pulse-tile')).map(el => ({
+    id: el.id,
+    value: (el.querySelector('.pulse-value')?.innerText || '').trim(),
+    sub: (el.querySelector('.pulse-sub')?.innerText || '').trim(),
+  }));
   const tiles = Array.from(document.querySelectorAll('.exec-tile')).map(el => ({
     id: el.id,
     state: el.dataset.state,
@@ -93,7 +98,7 @@ PROBE_JS = """() => {
   }));
   const nav = performance.getEntriesByType('navigation')[0];
   return {
-    tiles, cards,
+    tiles, cards, pulse,
     verdict: (document.getElementById('exec-verdict')?.innerText || '').trim(),
     height: document.body.scrollHeight,
     scrollW: document.documentElement.scrollWidth,
@@ -118,6 +123,15 @@ def assert_landing(name, probe, console, expect_dcl=None, check_console=True):
         fail(f"{name}: verdict line empty")
     if len(probe.get("cards") or []) < 12:
         fail(f"{name}: only {len(probe.get('cards') or [])} summary cards (expected ≥12 for owner)")
+    # SALES PULSE (compass): 3 tiles, each a value or a labelled state
+    pulse = probe.get("pulse") or []
+    if len(pulse) != 3:
+        fail(f"{name}: {len(pulse)} pulse tiles, expected 3")
+    for t in pulse:
+        if not t["value"]:
+            fail(f"{name}: pulse tile {t['id']} EMPTY")
+        if t["value"] == "—" and not t["sub"]:
+            fail(f"{name}: pulse tile {t['id']} shows '—' with no labelled reason")
     if check_console:
         errs = [c for c in console if c["type"] in ("error", "pageerror", "http")]
         for e in errs:
@@ -185,7 +199,30 @@ def main():
         # PASS 7 — area-page RENDER smoke (fetch-200 isn't render-proof):
         # load a representative sample in the real browser; any pageerror,
         # console error or visible boundary-failure block fails the gate.
-        for area in ("unit-econ", "sales", "receivables", "system"):
+        # PASS 8 — the /scale tab (compass): server-rendered first paint,
+        # zero console errors, no tripped boundaries
+        log.clear()
+        page.goto(BASE + "/dashboard/scale", wait_until="load")
+        time.sleep(4)
+        sprobe = page.evaluate(
+            """() => ({
+                 hero: (document.getElementById('scale-hero')?.innerText || '').trim().slice(0, 200),
+                 inputs: !!document.querySelector('#inputs-body .scale-ctl'),
+                 roadmap_or_state: (document.getElementById('roadmap-wrap')?.innerText || '').trim().length > 0
+                   || (document.querySelector('#scale-hero .panel-boundary-fail')?.innerText || '').length > 0,
+                 boundaries: Array.from(document.querySelectorAll('.panel-boundary-fail')).map(e => e.innerText.slice(0, 100)),
+               })""")
+        page.screenshot(path=os.path.join(evd, "scale.png"), full_page=True)
+        REPORT["passes"]["scale"] = {"probe": sprobe, "console": list(log)}
+        if not sprobe.get("hero"):
+            fail("scale: hero section empty (first paint must be server-rendered)")
+        if not sprobe.get("inputs"):
+            fail("scale: inputs panel did not render controls")
+        for e in [c for c in log if c["type"] in ("error", "pageerror", "http")]:
+            fail(f"scale console/{e['type']}: {str(e.get('text') or e)[:160]}")
+        log.clear()
+
+        for area in ("unit-econ", "sales", "receivables", "system", "projection"):
             log.clear()
             page.goto(BASE + "/dashboard/view/" + area, wait_until="load")
             time.sleep(4)

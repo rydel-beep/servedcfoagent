@@ -174,9 +174,12 @@ def test_card_count_equals_page_count():
     # every area page has a card; the three standalone pages too
     for area in _AREAS:
         assert f"/dashboard/view/{area}" in hrefs, f"area {area} has no landing card"
-    for page in ("/dashboard/worklog", "/dashboard/bookkeeping", "/dashboard/csm"):
+    for page in ("/dashboard/worklog", "/dashboard/bookkeeping",
+                 "/dashboard/csm", "/dashboard/scale"):
         assert page in hrefs
-    assert len(hrefs) == len(_AREAS) + 3          # no dead links, no orphans
+    # areas + worklog/bookkeeping/csm + /scale (compass) — no dead links,
+    # no orphans
+    assert len(hrefs) == len(_AREAS) + 4
     # non-owner never sees owner-only cards
     anon_cards = exec_top.build_cards(None, owner=False)
     assert not any(c.get("owner_only") for c in anon_cards)

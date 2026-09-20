@@ -149,7 +149,8 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
                        "feed:extra:ads_discussion", "feed:extra:voice",
                        "feed:extra:ads_decisions",   # Board v2: pending moves
                        "feed:extra:stripe",          # Stripe canary failures
-                       "feed:extra:render_health")   # browser/render watches
+                       "feed:extra:render_health",   # browser/render watches
+                       "feed:extra:compass")         # compass drift/variance/capacity
                                                      # (self-retiring on OK)
     try:
         import kv_store

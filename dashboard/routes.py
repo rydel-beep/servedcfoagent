@@ -141,12 +141,256 @@ def area_page(area):
     snap = load_persisted()
     boot = _json.dumps(snap).replace("</", "<\\/") if snap else "null"
     title, window_bar = _AREAS[area]
+    burn_box = _burn_box() if area == "projection" else None
     resp = make_response(render_template(
         "panel_page.html", area=area, area_title=title,
-        show_window_bar=window_bar, boot_snapshot=boot,
+        show_window_bar=window_bar, boot_snapshot=boot, burn_box=burn_box,
         edith_cfg=_edith_cfg_json(), asset_v=_ASSET_VERSION))
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+def _burn_box() -> dict | None:
+    """COMPASS 1.2 — the projection page's server-rendered burn line
+    (OpEx ex-tax; tax accrual BESIDE; net burn; runway). Guarded: a failed
+    read renders an honest degraded box, never a crash."""
+    try:
+        import kv_store
+        from snapshot import load_persisted
+        from dashboard.exec_top import _age_h, _fmt_age
+        d = (kv_store.get("compass:defaults") or {})
+        opex = (d.get("items") or {}).get("opex_monthly_ex_tax") or {}
+        snap = load_persisted() or {}
+        cp = snap.get("cash_position") or {}
+        mrr = (snap.get("client_health") or {}).get("current_mrr")
+        ov = opex.get("value")
+        net_burn = round((ov or 0) - (mrr or 0), 2) if ov is not None else None
+        cash_ex = round((cp.get("cash_in_bank") or 0)
+                        - (cp.get("tax_reserved") or 0), 2)
+        if net_burn is not None and net_burn > 0:
+            runway = f"{cash_ex / net_burn:.1f} mo"
+        elif net_burn is not None:
+            runway = "∞ (the book covers OpEx)"
+        else:
+            runway = "—"
+        tax = cp.get("tax_reserved")
+        return {
+            "opex": f"${ov:,.0f}/mo" if ov is not None else "— (not yet measured)",
+            "tax_line": f"${tax:,.0f} set aside" if tax else "set-aside logic",
+            "net_burn": (f"${net_burn:,.0f}/mo" if net_burn is not None else "—"),
+            "runway": runway,
+            "stamp": f"measured band · computed {_fmt_age(_age_h(d.get('computed_at')))}",
+            "note": ("OpEx here excludes ad spend + commissions (modelled "
+                     "explicitly in the compass) and ALL tax — the accrual "
+                     "settles quarterly via BAS and never hides inside burn."),
+        }
+    except Exception as e:  # noqa: BLE001
+        logger.warning("burn box failed: %s", e)
+        return {"opex": "—", "tax_line": "—", "net_burn": "—", "runway": "—",
+                "stamp": "degraded", "note": f"burn box failed honestly: {str(e)[:80]}"}
+
+
+# ── THE SCALING COMPASS (/scale — owner-only) ───────────────────────────────
+
+@bp.route("/scale")
+@require_owner
+def scale_page():
+    """The compass tab. First paint is SERVER-RENDERED from the kv-cached
+    Base run (hardening doctrine); interactivity is the bounded JS layer."""
+    import json as _json
+    import kv_store
+    import compass_engine
+    base = kv_store.get("compass:base_run") or {}
+    defaults = kv_store.get(compass_engine.K_DEFAULTS) or {}
+    backtest = kv_store.get(compass_engine.K_BACKTEST) or {}
+    run = base.get("run")
+    hero = None
+    if run and run.get("months"):
+        last = run["months"][-1]
+        binds = {}
+        for m in run["months"]:
+            nm = (m.get("binding_constraint") or {}).get("name", "—")
+            binds[nm] = binds.get(nm, 0) + 1
+        hero = {
+            "end_month": last["month"],
+            "end_mrr": f"${last['net_mrr']:,.0f}",
+            "capital_dip": (f"${run['capital_dip']:,.0f}"
+                            if run.get("capital_dip") is not None else "—"),
+            "next_binding": (run["months"][0].get("binding_constraint")
+                             or {}).get("name", "—"),
+            "next_binding_why": (run["months"][0].get("binding_constraint")
+                                 or {}).get("why", ""),
+            "bind_summary": " · ".join(f"{k}×{v}" for k, v in binds.items()),
+        }
+    resp = make_response(render_template(
+        "scale.html", asset_v=_ASSET_VERSION,
+        hero=hero, base_computed=base.get("computed_at"),
+        backtest_verdict=(backtest.get("verdict") or "backtest pending"),
+        defaults_json=_json.dumps(defaults).replace("</", "<\\/"),
+        base_run_json=_json.dumps(run or None).replace("</", "<\\/"),
+        backtest_json=_json.dumps(backtest or None).replace("</", "<\\/")))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@bp.route("/api/scale/defaults", methods=["GET"])
+@require_owner
+def api_scale_defaults():
+    import compass_engine
+    return jsonify({"defaults": compass_engine.measured_defaults(),
+                    "inputs": compass_engine.default_inputs()})
+
+
+@bp.route("/api/scale/run", methods=["POST"])
+@require_owner
+def api_scale_run():
+    import compass_engine
+    body = request.get_json(silent=True) or {}
+    return jsonify(compass_engine.forward(body.get("inputs") or {}))
+
+
+@bp.route("/api/scale/solve", methods=["POST"])
+@require_owner
+def api_scale_solve():
+    import compass_engine
+    body = request.get_json(silent=True) or {}
+    return jsonify(compass_engine.solve(body.get("target") or {},
+                                        body.get("inputs") or {}))
+
+
+@bp.route("/api/scale/bands", methods=["POST"])
+@require_owner
+def api_scale_bands():
+    import compass_engine
+    body = request.get_json(silent=True) or {}
+    return jsonify(compass_engine.bands(body.get("inputs") or {}))
+
+
+@bp.route("/api/scale/backtest", methods=["GET"])
+@require_owner
+def api_scale_backtest():
+    import compass_engine
+    import kv_store
+    if request.args.get("fresh") == "1":
+        return jsonify(compass_engine.backtest())
+    return jsonify(kv_store.get(compass_engine.K_BACKTEST)
+                   or {"note": "backtest pending — the monthly watch runs it"})
+
+
+@bp.route("/api/scale/scenarios", methods=["GET", "POST"])
+@require_owner
+def api_scale_scenarios():
+    import compass_engine
+    if request.method == "GET":
+        return jsonify(compass_engine.list_scenarios(
+            full=request.args.get("full") == "1"))
+    body = request.get_json(silent=True) or {}
+    return jsonify(compass_engine.save_scenario(
+        body.get("name") or "", body.get("inputs") or {},
+        body.get("note") or ""))
+
+
+@bp.route("/api/scale/commit-plan", methods=["POST"])
+@require_owner
+def api_scale_commit_plan():
+    import compass_engine
+    from dashboard.auth import current_actor
+    body = request.get_json(silent=True) or {}
+    if not body.get("confirm"):
+        return jsonify({"error": "pass confirm:true — committing a plan of "
+                                 "record is explicit (it stays a labelled "
+                                 "scenario; never actuals)"}), 400
+    actor = (current_actor() or {}).get("user", "owner")
+    return jsonify(compass_engine.commit_plan(body.get("name") or "", actor))
+
+
+@bp.route("/api/scale/scenario-pdf", methods=["GET"])
+@require_owner
+def api_scale_scenario_pdf():
+    """Owner-only briefing PDF of a saved scenario (or the Base run)."""
+    import compass_engine
+    import kv_store
+    name = request.args.get("name") or ""
+    if name:
+        sc = (kv_store.get(compass_engine.K_SCENARIOS) or {}).get(name)
+        if not sc:
+            return jsonify({"error": f"unknown scenario '{name}'"}), 404
+        run = compass_engine.forward(sc["inputs"])
+        title = f"Scenario: {name}"
+    else:
+        run = (kv_store.get("compass:base_run") or {}).get("run")
+        title = "Base scenario (measured defaults)"
+        if not run:
+            return jsonify({"error": "base run not yet computed"}), 503
+    try:
+        from fpdf import FPDF
+
+        def _latin(s):
+            return str(s).replace("—", "-").replace("·", "-").replace("×", "x") \
+                .encode("latin-1", "replace").decode("latin-1")
+        pdf = FPDF()
+        pdf.add_page(orientation="L")
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.multi_cell(0, 8, _latin(f"THE SCALING COMPASS - {title}"),
+                       new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 8)
+        pdf.multi_cell(0, 5, _latin(
+            f"LABELLED SCENARIO - never actuals. Capital dip "
+            f"{run.get('capital_dip')}. {run.get('label')}"),
+            new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "B", 7)
+        hdr = ["month", "spend", "leads", "calls", "closes", "new MRR",
+               "net MRR", "cash in", "net cash", "position", "binding"]
+        w = [18, 22, 18, 18, 18, 24, 24, 24, 24, 26, 60]
+        for h, wd in zip(hdr, w):
+            pdf.cell(wd, 6, _latin(h), border=1)
+        pdf.ln()
+        pdf.set_font("Helvetica", "", 7)
+        for m in run["months"]:
+            vals = [m["month"], f"{m['spend']:,.0f}", f"{m['leads']:,.0f}",
+                    f"{m['calls_booked']:,.0f}", f"{m['closes']:.1f}",
+                    f"{m['mrr_new']:,.0f}", f"{m['net_mrr']:,.0f}",
+                    f"{m['cash_in']:,.0f}", f"{m['net_cash']:,.0f}",
+                    f"{m['position']:,.0f}",
+                    (m.get("binding_constraint") or {}).get("name", "")]
+            for v, wd in zip(vals, w):
+                pdf.cell(wd, 5, _latin(v), border=1)
+            pdf.ln()
+        data = bytes(pdf.output())
+        resp = make_response(data)
+        resp.headers["Content-Type"] = "application/pdf"
+        resp.headers["Content-Disposition"] = "attachment; filename=scaling-compass.pdf"
+        return resp
+    except Exception as e:  # noqa: BLE001
+        logger.warning("scenario pdf failed: %s", e)
+        return jsonify({"error": f"pdf failed: {str(e)[:120]}"}), 500
+
+
+@bp.route("/api/scale/plan-vs-actual", methods=["GET"])
+@require_owner
+def api_scale_plan_vs_actual():
+    import compass_engine
+    return jsonify(compass_engine.plan_vs_actual())
+
+
+@bp.route("/api/scale/expiring", methods=["GET"])
+@require_auth
+def api_scale_expiring():
+    import compass_engine
+    days = min(max(int(request.args.get("days", 30)), 7), 120)
+    return jsonify(compass_engine.expiring(days))
+
+
+@bp.route("/api/scale/expiring-preview", methods=["POST"])
+@require_auth
+def api_scale_expiring_preview():
+    """SCENARIO pins preview — journal NOTHING; stateless compute."""
+    import compass_engine
+    body = request.get_json(silent=True) or {}
+    slider = body.get("slider_pct")
+    return jsonify(compass_engine.expiring_preview(
+        body.get("pins") or {},
+        float(slider) if slider is not None else None))
 
 
 @bp.route("/login", methods=["GET"])
