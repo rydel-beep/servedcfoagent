@@ -1,0 +1,584 @@
+{
+ "base": "https://web-production-16b16.up.railway.app",
+ "passes": {
+  "cold": {
+   "probe": {
+    "tiles": [
+     {
+      "id": "tile-cash_on_hand",
+      "state": "ok",
+      "value": "$188,473.38",
+      "sub": "3 accounts \u00b7 Xero bank feeds can lag the bank by up to a day",
+      "note": "",
+      "stamp": "Xero closing balances \u00b7 as of 2026-09-20 \u00b7 pulled 0m ago"
+     },
+     {
+      "id": "tile-committed_mrr",
+      "state": "ok",
+      "value": "$72,887.52",
+      "sub": "35 active clients \u00b7 contracted monthly revenue \u2014 never a cost",
+      "note": "",
+      "stamp": "Finance-sheet Health tab + declarations + renewal ledger \u00b7 pulled 0m ago"
+     },
+     {
+      "id": "tile-ar_outstanding",
+      "state": "ok",
+      "value": "$70,248.83",
+      "sub": "25 clients owing \u00b7 pending is never cash \u00b7 internal visibility only",
+      "note": "",
+      "stamp": "expected (RECOGNIZED grid + renewal ledger) \u2212 received (Stripe) \u00b7 built 24m ago"
+     },
+     {
+      "id": "tile-cash_net_mtd",
+      "state": "ok",
+      "value": "$2,869.53",
+      "sub": "MTD \u00b7 bank-balance delta",
+      "note": "",
+      "stamp": "three-nets engine (Stripe receipts \u2212 banded outflows) \u00b7 computed 24m ago"
+     },
+     {
+      "id": "tile-operating_net_mtd",
+      "state": "ok",
+      "value": "$-4,126.20",
+      "sub": "tax banded beside: $0.00 \u2014 never inside",
+      "note": "",
+      "stamp": "three-nets engine (Stripe receipts \u2212 banded outflows) \u00b7 computed 24m ago"
+     },
+     {
+      "id": "tile-ltv_cac",
+      "state": "ok",
+      "value": "10.07\u00d7",
+      "sub": "Sep cohort \u00b7 3 closes \u00b7 CAC loaded $3,345 \u00b7 spend-only $2,878",
+      "note": "",
+      "stamp": "honest unit-econ engine \u00b7 cohort clock \u00b7 computed 24m ago"
+     },
+     {
+      "id": "tile-ltgp_cac",
+      "state": "ok",
+      "value": "4.32\u00d7",
+      "sub": "margin: FY26 contribution margin 42.9% (labelled fallback \u2014 Xero read 100.0% (COGS timing, implausible)) \u00b7 3:1 = benchmark, not target",
+      "note": "",
+      "stamp": "honest unit-econ engine \u00b7 cohort clock \u00b7 computed 24m ago"
+     },
+     {
+      "id": "tile-cohort_cash_roas",
+      "state": "ok",
+      "value": "0.84\u00d7",
+      "sub": "cohort clock \u2014 cash from this window's closes \u00f7 this window's ad spend",
+      "note": "",
+      "stamp": "finance-analysis engine \u00b7 computed 24m ago"
+     }
+    ],
+    "cards": [
+     {
+      "id": "card-sales",
+      "href": "/dashboard/view/sales",
+      "title": "Ads & sales"
+     },
+     {
+      "id": "card-receivables",
+      "href": "/dashboard/view/receivables",
+      "title": "Receivables"
+     },
+     {
+      "id": "card-renewals",
+      "href": "/dashboard/view/renewals",
+      "title": "Renewals & churn"
+     },
+     {
+      "id": "card-projection",
+      "href": "/dashboard/view/projection",
+      "title": "Forward projection"
+     },
+     {
+      "id": "card-outflows",
+      "href": "/dashboard/view/outflows",
+      "title": "Outflows & BAS"
+     },
+     {
+      "id": "card-unit_econ",
+      "href": "/dashboard/view/unit-econ",
+      "title": "Unit economics (detail)"
+     },
+     {
+      "id": "card-cash",
+      "href": "/dashboard/view/cash",
+      "title": "Cash & capital"
+     },
+     {
+      "id": "card-team",
+      "href": "/dashboard/view/team",
+      "title": "Team & strategy"
+     },
+     {
+      "id": "card-brief",
+      "href": "/dashboard/view/brief",
+      "title": "Morning brief (full)"
+     },
+     {
+      "id": "card-scale",
+      "href": "/dashboard/scale",
+      "title": "Scaling compass"
+     },
+     {
+      "id": "card-decisions",
+      "href": "/dashboard/view/decisions",
+      "title": "Needs your ruling"
+     },
+     {
+      "id": "card-csm",
+      "href": "/dashboard/csm",
+      "title": "CSM"
+     },
+     {
+      "id": "card-worklog",
+      "href": "/dashboard/worklog",
+      "title": "Work log"
+     },
+     {
+      "id": "card-bookkeeping",
+      "href": "/dashboard/bookkeeping",
+      "title": "Bookkeeping queue"
+     },
+     {
+      "id": "card-system",
+      "href": "/dashboard/view/system",
+      "title": "System health"
+     }
+    ],
+    "pulse": [
+     {
+      "id": "tile-pulse_show_rate",
+      "value": "100%",
+      "sub": "n=29 sets \u00b7 trailing 30d"
+     },
+     {
+      "id": "tile-pulse_close_rate",
+      "value": "10%",
+      "sub": "n=29 verified shows \u00b7 trailing 30d"
+     },
+     {
+      "id": "tile-pulse_booked_calls",
+      "value": "12",
+      "sub": "consults on the GHL calendar (kept status, read-only)"
+     }
+    ],
+    "verdict": "\u25b8 The negative in-month cash position IS the expected Growth Pro timing signature, and the numbers prove it: CONTRACT ROAS 6.32\u00d7 ($54,600 signed on $8,633 spend) with cohort cash at 0.84\u00d7 so far; on the closes' real billing cadence the cohort's cumulative cash crosses this month's spend in 2026-10 (payback \u2248 2 months). The deciding figures: contract ROAS and payback months \u2014 not reassurance.",
+    "height": 1041,
+    "scrollW": 1440,
+    "innerW": 1440,
+    "dcl": 514
+   },
+   "console": []
+  },
+  "warm": {
+   "probe": {
+    "tiles": [
+     {
+      "id": "tile-cash_on_hand",
+      "state": "ok",
+      "value": "$188,473.38",
+      "sub": "3 accounts \u00b7 Xero bank feeds can lag the bank by up to a day",
+      "note": "",
+      "stamp": "Xero closing balances \u00b7 as of 2026-09-20 \u00b7 pulled 0m ago"
+     },
+     {
+      "id": "tile-committed_mrr",
+      "state": "ok",
+      "value": "$72,887.52",
+      "sub": "35 active clients \u00b7 contracted monthly revenue \u2014 never a cost",
+      "note": "",
+      "stamp": "Finance-sheet Health tab + declarations + renewal ledger \u00b7 pulled 0m ago"
+     },
+     {
+      "id": "tile-ar_outstanding",
+      "state": "ok",
+      "value": "$70,248.83",
+      "sub": "25 clients owing \u00b7 pending is never cash \u00b7 internal visibility only",
+      "note": "",
+      "stamp": "expected (RECOGNIZED grid + renewal ledger) \u2212 received (Stripe) \u00b7 built 24m ago"
+     },
+     {
+      "id": "tile-cash_net_mtd",
+      "state": "ok",
+      "value": "$2,869.53",
+      "sub": "MTD \u00b7 bank-balance delta",
+      "note": "",
+      "stamp": "three-nets engine (Stripe receipts \u2212 banded outflows) \u00b7 computed 24m ago"
+     },
+     {
+      "id": "tile-operating_net_mtd",
+      "state": "ok",
+      "value": "$-4,126.20",
+      "sub": "tax banded beside: $0.00 \u2014 never inside",
+      "note": "",
+      "stamp": "three-nets engine (Stripe receipts \u2212 banded outflows) \u00b7 computed 24m ago"
+     },
+     {
+      "id": "tile-ltv_cac",
+      "state": "ok",
+      "value": "10.07\u00d7",
+      "sub": "Sep cohort \u00b7 3 closes \u00b7 CAC loaded $3,345 \u00b7 spend-only $2,878",
+      "note": "",
+      "stamp": "honest unit-econ engine \u00b7 cohort clock \u00b7 computed 24m ago"
+     },
+     {
+      "id": "tile-ltgp_cac",
+      "state": "ok",
+      "value": "4.32\u00d7",
+      "sub": "margin: FY26 contribution margin 42.9% (labelled fallback \u2014 Xero read 100.0% (COGS timing, implausible)) \u00b7 3:1 = benchmark, not target",
+      "note": "",
+      "stamp": "honest unit-econ engine \u00b7 cohort clock \u00b7 computed 24m ago"
+     },
+     {
+      "id": "tile-cohort_cash_roas",
+      "state": "ok",
+      "value": "0.84\u00d7",
+      "sub": "cohort clock \u2014 cash from this window's closes \u00f7 this window's ad spend",
+      "note": "",
+      "stamp": "finance-analysis engine \u00b7 computed 24m ago"
+     }
+    ],
+    "cards": [
+     {
+      "id": "card-sales",
+      "href": "/dashboard/view/sales",
+      "title": "Ads & sales"
+     },
+     {
+      "id": "card-receivables",
+      "href": "/dashboard/view/receivables",
+      "title": "Receivables"
+     },
+     {
+      "id": "card-renewals",
+      "href": "/dashboard/view/renewals",
+      "title": "Renewals & churn"
+     },
+     {
+      "id": "card-projection",
+      "href": "/dashboard/view/projection",
+      "title": "Forward projection"
+     },
+     {
+      "id": "card-outflows",
+      "href": "/dashboard/view/outflows",
+      "title": "Outflows & BAS"
+     },
+     {
+      "id": "card-unit_econ",
+      "href": "/dashboard/view/unit-econ",
+      "title": "Unit economics (detail)"
+     },
+     {
+      "id": "card-cash",
+      "href": "/dashboard/view/cash",
+      "title": "Cash & capital"
+     },
+     {
+      "id": "card-team",
+      "href": "/dashboard/view/team",
+      "title": "Team & strategy"
+     },
+     {
+      "id": "card-brief",
+      "href": "/dashboard/view/brief",
+      "title": "Morning brief (full)"
+     },
+     {
+      "id": "card-scale",
+      "href": "/dashboard/scale",
+      "title": "Scaling compass"
+     },
+     {
+      "id": "card-decisions",
+      "href": "/dashboard/view/decisions",
+      "title": "Needs your ruling"
+     },
+     {
+      "id": "card-csm",
+      "href": "/dashboard/csm",
+      "title": "CSM"
+     },
+     {
+      "id": "card-worklog",
+      "href": "/dashboard/worklog",
+      "title": "Work log"
+     },
+     {
+      "id": "card-bookkeeping",
+      "href": "/dashboard/bookkeeping",
+      "title": "Bookkeeping queue"
+     },
+     {
+      "id": "card-system",
+      "href": "/dashboard/view/system",
+      "title": "System health"
+     }
+    ],
+    "pulse": [
+     {
+      "id": "tile-pulse_show_rate",
+      "value": "100%",
+      "sub": "n=29 sets \u00b7 trailing 30d"
+     },
+     {
+      "id": "tile-pulse_close_rate",
+      "value": "10%",
+      "sub": "n=29 verified shows \u00b7 trailing 30d"
+     },
+     {
+      "id": "tile-pulse_booked_calls",
+      "value": "12",
+      "sub": "consults on the GHL calendar (kept status, read-only)"
+     }
+    ],
+    "verdict": "\u25b8 The negative in-month cash position IS the expected Growth Pro timing signature, and the numbers prove it: CONTRACT ROAS 6.32\u00d7 ($54,600 signed on $8,633 spend) with cohort cash at 0.84\u00d7 so far; on the closes' real billing cadence the cohort's cumulative cash crosses this month's spend in 2026-10 (payback \u2248 2 months). The deciding figures: contract ROAS and payback months \u2014 not reassurance.",
+    "height": 1041,
+    "scrollW": 1440,
+    "innerW": 1440,
+    "dcl": 599
+   },
+   "console": []
+  },
+  "card_links": {
+   "/dashboard/view/sales": 200,
+   "/dashboard/view/receivables": 200,
+   "/dashboard/view/renewals": 200,
+   "/dashboard/view/projection": 200,
+   "/dashboard/view/outflows": 200,
+   "/dashboard/view/unit-econ": 200,
+   "/dashboard/view/cash": 200,
+   "/dashboard/view/team": 200,
+   "/dashboard/view/brief": 200,
+   "/dashboard/scale": 200,
+   "/dashboard/view/decisions": 200,
+   "/dashboard/csm": 200,
+   "/dashboard/worklog": 200,
+   "/dashboard/bookkeeping": 200,
+   "/dashboard/view/system": 200
+  },
+  "scale": {
+   "probe": {
+    "hero": "The compass \u2014 Base scenario on YOUR measured rates\n$159,240\nnet MRR at 2027-12 (Base, measured defaults)\n$197,956\ncapital dip (min cash position vs today ex set-aside)\nLEADS (spend is the lever)\nthe b",
+    "inputs": true,
+    "roadmap_or_state": true,
+    "boundaries": []
+   },
+   "console": []
+  },
+  "area_unit-econ": {
+   "probe": {
+    "boundaries": [],
+    "sections": 6
+   },
+   "console": []
+  },
+  "area_sales": {
+   "probe": {
+    "boundaries": [],
+    "sections": 10
+   },
+   "console": []
+  },
+  "area_receivables": {
+   "probe": {
+    "boundaries": [],
+    "sections": 1
+   },
+   "console": []
+  },
+  "area_system": {
+   "probe": {
+    "boundaries": [],
+    "sections": 2
+   },
+   "console": []
+  },
+  "area_projection": {
+   "probe": {
+    "boundaries": [],
+    "sections": 6
+   },
+   "console": []
+  },
+  "mobile": {
+   "probe": {
+    "tiles": [
+     {
+      "id": "tile-cash_on_hand",
+      "state": "ok",
+      "value": "$188,473.38",
+      "sub": "3 accounts \u00b7 Xero bank feeds can lag the bank by up to a day",
+      "note": "",
+      "stamp": "Xero closing balances \u00b7 as of 2026-09-20 \u00b7 pulled 0m ago"
+     },
+     {
+      "id": "tile-committed_mrr",
+      "state": "ok",
+      "value": "$72,887.52",
+      "sub": "35 active clients \u00b7 contracted monthly revenue \u2014 never a cost",
+      "note": "",
+      "stamp": "Finance-sheet Health tab + declarations + renewal ledger \u00b7 pulled 0m ago"
+     },
+     {
+      "id": "tile-ar_outstanding",
+      "state": "ok",
+      "value": "$70,248.83",
+      "sub": "25 clients owing \u00b7 pending is never cash \u00b7 internal visibility only",
+      "note": "",
+      "stamp": "expected (RECOGNIZED grid + renewal ledger) \u2212 received (Stripe) \u00b7 built 24m ago"
+     },
+     {
+      "id": "tile-cash_net_mtd",
+      "state": "ok",
+      "value": "$2,869.53",
+      "sub": "MTD \u00b7 bank-balance delta",
+      "note": "",
+      "stamp": "three-nets engine (Stripe receipts \u2212 banded outflows) \u00b7 computed 24m ago"
+     },
+     {
+      "id": "tile-operating_net_mtd",
+      "state": "ok",
+      "value": "$-4,126.20",
+      "sub": "tax banded beside: $0.00 \u2014 never inside",
+      "note": "",
+      "stamp": "three-nets engine (Stripe receipts \u2212 banded outflows) \u00b7 computed 24m ago"
+     },
+     {
+      "id": "tile-ltv_cac",
+      "state": "ok",
+      "value": "10.07\u00d7",
+      "sub": "Sep cohort \u00b7 3 closes \u00b7 CAC loaded $3,345 \u00b7 spend-only $2,878",
+      "note": "",
+      "stamp": "honest unit-econ engine \u00b7 cohort clock \u00b7 computed 24m ago"
+     },
+     {
+      "id": "tile-ltgp_cac",
+      "state": "ok",
+      "value": "4.32\u00d7",
+      "sub": "margin: FY26 contribution margin 42.9% (labelled fallback \u2014 Xero read 100.0% (COGS timing, implausible)) \u00b7 3:1 = benchmark, not target",
+      "note": "",
+      "stamp": "honest unit-econ engine \u00b7 cohort clock \u00b7 computed 24m ago"
+     },
+     {
+      "id": "tile-cohort_cash_roas",
+      "state": "ok",
+      "value": "0.84\u00d7",
+      "sub": "cohort clock \u2014 cash from this window's closes \u00f7 this window's ad spend",
+      "note": "",
+      "stamp": "finance-analysis engine \u00b7 computed 24m ago"
+     }
+    ],
+    "cards": [
+     {
+      "id": "card-sales",
+      "href": "/dashboard/view/sales",
+      "title": "Ads & sales"
+     },
+     {
+      "id": "card-receivables",
+      "href": "/dashboard/view/receivables",
+      "title": "Receivables"
+     },
+     {
+      "id": "card-renewals",
+      "href": "/dashboard/view/renewals",
+      "title": "Renewals & churn"
+     },
+     {
+      "id": "card-projection",
+      "href": "/dashboard/view/projection",
+      "title": "Forward projection"
+     },
+     {
+      "id": "card-outflows",
+      "href": "/dashboard/view/outflows",
+      "title": "Outflows & BAS"
+     },
+     {
+      "id": "card-unit_econ",
+      "href": "/dashboard/view/unit-econ",
+      "title": "Unit economics (detail)"
+     },
+     {
+      "id": "card-cash",
+      "href": "/dashboard/view/cash",
+      "title": "Cash & capital"
+     },
+     {
+      "id": "card-team",
+      "href": "/dashboard/view/team",
+      "title": "Team & strategy"
+     },
+     {
+      "id": "card-brief",
+      "href": "/dashboard/view/brief",
+      "title": "Morning brief (full)"
+     },
+     {
+      "id": "card-scale",
+      "href": "/dashboard/scale",
+      "title": "Scaling compass"
+     },
+     {
+      "id": "card-decisions",
+      "href": "/dashboard/view/decisions",
+      "title": "Needs your ruling"
+     },
+     {
+      "id": "card-csm",
+      "href": "/dashboard/csm",
+      "title": "CSM"
+     },
+     {
+      "id": "card-worklog",
+      "href": "/dashboard/worklog",
+      "title": "Work log"
+     },
+     {
+      "id": "card-bookkeeping",
+      "href": "/dashboard/bookkeeping",
+      "title": "Bookkeeping queue"
+     },
+     {
+      "id": "card-system",
+      "href": "/dashboard/view/system",
+      "title": "System health"
+     }
+    ],
+    "pulse": [
+     {
+      "id": "tile-pulse_show_rate",
+      "value": "100%",
+      "sub": "n=29 sets \u00b7 trailing 30d"
+     },
+     {
+      "id": "tile-pulse_close_rate",
+      "value": "10%",
+      "sub": "n=29 verified shows \u00b7 trailing 30d"
+     },
+     {
+      "id": "tile-pulse_booked_calls",
+      "value": "12",
+      "sub": "consults on the GHL calendar (kept status, read-only)"
+     }
+    ],
+    "verdict": "\u25b8 The negative in-month cash position IS the expected Growth Pro timing signature, and the numbers prove it: CONTRACT ROAS 6.32\u00d7 ($54,600 signed on $8,633 spend) with cohort cash at 0.84\u00d7 so far; on the closes' real billing cadence the cohort's cumulative cash crosses this month's spend in 2026-10 (payback \u2248 2 months). The deciding figures: contract ROAS and payback months \u2014 not reassurance.",
+    "height": 3448,
+    "scrollW": 390,
+    "innerW": 390,
+    "dcl": 634
+   },
+   "console": []
+  },
+  "nojs": {
+   "tile_count": 8,
+   "verdict_present": true
+  }
+ },
+ "fails": [],
+ "commit": "5977c6b24b29",
+ "utc": "2026-09-20T12:33:43Z",
+ "ok": true
+}
