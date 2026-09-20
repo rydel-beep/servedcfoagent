@@ -37,3 +37,5 @@ P2 = next session on the domain, P3 = when convenient).
 - [P2] 2026-09-17T17:18 — **workbook tab change** — unmapped=[{'book': 'ltc', 'tab': 'Closer Payout &amp; KPI'}] changes=[]
 - [P2] 2026-09-20T21:37 — **workbook tab change** — unmapped=[{'book': 'ltc', 'tab': 'Health'}, {'book': 'ltc', 'tab': 'Intake Log'}, {'book': 'ltc', 'tab': 'US Leads (Akila)'}, {'book': 'ltc', 'tab': 'Removed Rows'}] changes=[]
 - [P2] 2026-09-20T21:38 — **workbook tab change** — unmapped=[{'book': 'ltc', 'tab': 'Health'}, {'book': 'ltc', 'tab': 'Intake Log'}, {'book': 'ltc', 'tab': 'US Leads (Akila)'}, {'book': 'ltc', 'tab': 'Removed Rows'}] changes=[]
+- [P2] 2026-09-20T22:31 — **workbook tab change** — unmapped=[{'book': 'ltc', 'tab': 'Health'}, {'book': 'ltc', 'tab': 'Intake Log'}, {'book': 'ltc', 'tab': 'US Leads (Akila)'}, {'book': 'ltc', 'tab': 'Removed Rows'}] changes=[]
+- [P2] 2026-09-20T22:31 — **workbook tab change** — unmapped=[{'book': 'ltc', 'tab': 'Health'}, {'book': 'ltc', 'tab': 'Intake Log'}, {'book': 'ltc', 'tab': 'US Leads (Akila)'}, {'book': 'ltc', 'tab': 'Removed Rows'}] changes=[]

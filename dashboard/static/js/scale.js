@@ -71,11 +71,15 @@
       }
       html += provChip(c.item) + '</div>';
     });
-    // deal mix (read-only display; measured)
+    // deal mix — editable per package (shares normalised by the engine)
     var mix = CURRENT.deal_mix || {};
-    html += '<div class="scale-ctl"><label>deal mix (measured)</label><div class="scale-prov">' +
-      Object.keys(mix).map(function (k) { return esc(k) + ' ' + Math.round(mix[k] * 100) + '%'; }).join(' · ') +
-      '</div>' + provChip('deal_mix') + '</div>';
+    html += '<div class="scale-ctl"><label>deal mix by package (shares — engine normalises)</label>';
+    Object.keys(mix).forEach(function (k) {
+      html += '<div style="display:flex;gap:6px;align-items:center;margin:2px 0">' +
+        '<span class="scale-prov" style="min-width:110px">' + esc(k) + '</span>' +
+        '<input type="number" step="0.05" min="0" max="1" data-mix="' + esc(k) + '" value="' + mix[k] + '" style="width:80px;background:var(--bg-inset-strong);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:2px 6px"></div>';
+    });
+    html += provChip('deal_mix') + '</div>';
     var lag = CURRENT.lag_curve || [];
     html += '<div class="scale-ctl"><label>lag curve (t / t+1 / t+2)</label><div class="scale-prov">' +
       lag.map(function (x) { return Math.round(x * 100) + '%'; }).join(' / ') + '</div>' + provChip('lag_curve') + '</div>';
@@ -85,6 +89,11 @@
   }
 
   document.addEventListener('input', function (e) {
+    var mx = e.target.closest('[data-mix]');
+    if (mx && CURRENT) {
+      guard('mix', function () { CURRENT.deal_mix[mx.dataset.mix] = +mx.value || 0; });
+      return;
+    }
     var t = e.target.closest('[data-ctl]');
     if (!t || !CURRENT) return;
     var c = CTLS.find(function (x) { return x.k === t.dataset.ctl; });
@@ -128,7 +137,7 @@
     var html = '<table class="scale-table"><thead><tr>' +
       '<th>month</th><th>spend</th><th>CPL</th><th>leads</th><th>calls</th><th>shows</th><th>closes</th>' +
       '<th>new MRR</th><th>churn</th><th>net MRR</th>' + (p25 ? '<th>MRR P25–P75</th>' : '') +
-      '<th>cash in</th><th>costs</th><th>net cash</th><th>position</th><th>CAC (period)</th><th>LTGP:CAC</th>' +
+      '<th>cash: new cohort</th><th>cash: existing book</th><th>cash in</th><th>costs</th><th>net cash</th><th>position</th><th>CAC (period, loaded)</th><th>CAC (spend-only)</th><th>LTGP:CAC</th>' +
       '<th>heads</th><th>binding constraint</th></tr></thead><tbody>';
     LAST_RUN.months.forEach(function (m, i) {
       var b = m.binding_constraint || {};
@@ -139,8 +148,9 @@
         '<td>' + fmtN(m.closes, 1) + '</td><td>' + fmt$(m.mrr_new) + '</td><td>' + fmt$(m.churn_mrr) + '</td>' +
         '<td><b>' + fmt$(m.net_mrr) + '</b></td>' +
         (p25 ? '<td>' + fmt$(p25[i]) + '–' + fmt$(p75[i]) + '</td>' : '') +
+        '<td>' + fmt$(m.cash_new_cohort) + '</td><td>' + fmt$(m.cash_existing_book) + '</td>' +
         '<td>' + fmt$(m.cash_in) + '</td><td>' + fmt$(m.costs_total) + '</td><td>' + fmt$(m.net_cash) + '</td>' +
-        '<td>' + fmt$(m.position) + '</td><td>' + fmt$(m.cac_period) + '</td><td>' + fmtN(m.ltgp_cac, 2) + '×</td>' +
+        '<td>' + fmt$(m.position) + '</td><td>' + fmt$(m.cac_period) + '</td><td>' + fmt$(m.cac_period_spend_only) + '</td><td>' + fmtN(m.ltgp_cac, 2) + '×</td>' +
         '<td>' + fmtN((heads.setters || 0) + (heads.closers || 0) + (heads.delivery || 0), 1) + '</td>' +
         '<td class="' + bcls + '" title="' + esc(b.why || '') + '">' + esc(b.name || '') + ' — ' + esc((b.why || '').slice(0, 60)) + '</td></tr>';
     });
@@ -151,9 +161,9 @@
     var wrap = $('money-wrap');
     if (!wrap || !LAST_RUN) return;
     var html = '<table class="scale-table"><thead><tr><th>lead month</th><th>cohort CAC (loaded)</th>' +
-      '<th>eventual closes</th><th>payback (months)</th></tr></thead><tbody>';
+      '<th>cohort CAC (spend-only)</th><th>eventual closes</th><th>payback (months)</th></tr></thead><tbody>';
     (LAST_RUN.cohorts || []).forEach(function (c) {
-      html += '<tr><td>' + c.lead_month + '</td><td>' + fmt$(c.cac_cohort) + '</td><td>' +
+      html += '<tr><td>' + c.lead_month + '</td><td>' + fmt$(c.cac_cohort) + '</td><td>' + fmt$(c.cac_cohort_spend_only) + '</td><td>' +
         fmtN(c.closes_eventual, 1) + '</td><td>' + (c.payback_months == null ? 'beyond the schedule' : c.payback_months) + '</td></tr>';
     });
     wrap.innerHTML = html + '</tbody></table>';

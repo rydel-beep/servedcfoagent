@@ -761,6 +761,8 @@ def forward(inputs: dict, _book: dict | None = None) -> dict:
         # stated; sales-role hires would move this.
         acq = row["spend"] + commissions + tooling
         cac_period = round(acq / n_closes, 2) if n_closes >= 0.05 else None
+        cac_period_spend_only = round(row["spend"] / n_closes, 2) \
+            if n_closes >= 0.05 else None
         # LTGP per close (mix-weighted)
         ltgp_close = sum(mix[p] * float((pkgs.get(p) or {}).get("contract") or 0)
                          * float((pkgs.get(p) or {}).get("gross_margin_pct") or FY26_MARGIN_PCT) / 100
@@ -814,6 +816,7 @@ def forward(inputs: dict, _book: dict | None = None) -> dict:
             "net_cash": round(net, 2),
             "position": round(position, 2),
             "cac_period": cac_period,
+            "cac_period_spend_only": cac_period_spend_only,
             "ltgp_cac": ltgp_cac,
             "client_financed_check": client_financed,
             "utilisation": util,
@@ -830,6 +833,7 @@ def forward(inputs: dict, _book: dict | None = None) -> dict:
         comm_est = comm_rate * n_ev * sum(
             mix[p] * float((pkgs.get(p) or {}).get("contract") or 0) for p in mix)
         cac_cohort = round((meta["spend"] + comm_est + tooling) / n_ev, 2)
+        cac_cohort_spend_only = round(meta["spend"] / n_ev, 2)
         # payback: cumulative mix-weighted cash schedule vs CAC
         cum, payback = 0.0, None
         contract_mix = sum(mix[p] * float((pkgs.get(p) or {}).get("contract") or 0) for p in mix)
@@ -842,6 +846,7 @@ def forward(inputs: dict, _book: dict | None = None) -> dict:
             if payback is None and cum >= cac_cohort:
                 payback = off + 1
         cohorts.append({"lead_month": meta["month"], "cac_cohort": cac_cohort,
+                        "cac_cohort_spend_only": cac_cohort_spend_only,
                         "closes_eventual": round(n_ev, 2),
                         "payback_months": payback})
 
@@ -1309,8 +1314,12 @@ def expiring_preview(pins: dict | None, slider_pct: float | None,
     m0 = _month_add(str(today_sydney())[:7], 1)
     with_pins = book_state(horizon_months, m0, resign, pins or {})
     without = book_state(horizon_months, m0, resign, {})
+    # per-month MRR the pins moved from the slider lane to committed-like
+    # continuation — the chart overlay shifts exactly this between layers
+    pin_add = [round(a - b, 2) for a, b in zip(with_pins["mrr"], without["mrr"])]
     return {"start_month": m0,
             "book_mrr": with_pins["mrr"], "book_mrr_unpinned": without["mrr"],
+            "pin_add": pin_add,
             "resign_rate_applied": resign,
             "label": "SCENARIO PREVIEW — pins journal nothing; the "
                      "declaration flow is the only path to actuals"}

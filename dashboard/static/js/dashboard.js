@@ -5331,7 +5331,7 @@
     if (!out) return;
     var pins = {};
     Object.keys(_expPins).forEach(function (k) { if (_expPins[k]) pins[k] = true; });
-    if (!Object.keys(pins).length) { out.textContent = ''; return; }
+    if (!Object.keys(pins).length) { out.textContent = ''; overlayScenarioBook(null); return; }
     out.textContent = 'previewing scenario pins\u2026';
     try {
       var slider = document.getElementById('proj-renew-slider');
@@ -5348,7 +5348,43 @@
       out.innerHTML = '<b>SCENARIO preview:</b> pins move the book +$' + Math.round(dMid).toLocaleString() +
         '/mo at month ' + mid + ' \u00b7 +$' + Math.round(dEnd).toLocaleString() + '/mo at month ' + n +
         ' (resign rate applied to the rest: ' + Math.round(d.resign_rate_applied * 100) + '%) \u2014 ' + esc(d.label);
+      overlayScenarioBook(d);
     } catch (e) { out.textContent = 'preview failed: ' + String(e); }
+  }
+  // LIVE CHART UPDATE (1.1): the preview's book path rides the forward chart
+  // as a labelled dashed SCENARIO line — the actual layers stay untouched,
+  // and clearing the pins removes it. Journals nothing.
+  function overlayScenarioBook(d) {
+    boundary('section-forward', 'expiring:overlay', function () {
+      if (!_forwardChart || !_projData) return;
+      var LBL = 'SCENARIO book (pins) \u2014 journals nothing';
+      var ds = _forwardChart.data.datasets;
+      for (var i = ds.length - 1; i >= 0; i--) {
+        if (ds[i].label === LBL) ds.splice(i, 1);
+      }
+      if (d && d.pin_add && d.pin_add.some(function (x) { return Math.abs(x) > 0.01; })) {
+        // align preview months (start_month + k) to the chart's month labels
+        var ym = d.start_month.split('-');
+        var y = +ym[0], mo = +ym[1];
+        var byYm = {};
+        d.book_mrr.forEach(function (v, k) {
+          var mm = mo + k, yy = y + Math.floor((mm - 1) / 12);
+          mm = (mm - 1) % 12 + 1;
+          byYm[yy + '-' + (mm < 10 ? '0' + mm : mm)] = v;
+        });
+        var months = { January: '01', February: '02', March: '03', April: '04', May: '05', June: '06',
+                       July: '07', August: '08', September: '09', October: '10', November: '11', December: '12' };
+        var data = (_projData.months || []).map(function (lbl) {
+          var parts = String(lbl).split(' ');
+          var key = parts[1] + '-' + (months[parts[0]] || '00');
+          return byYm[key] != null ? byYm[key] : null;
+        });
+        ds.push({ label: LBL, type: 'line', data: data,
+                  borderColor: '#9D8CFF', borderDash: [6, 4], borderWidth: 2,
+                  pointRadius: 0, fill: false, tension: 0.2 });
+      }
+      _forwardChart.update();
+    });
   }
   document.addEventListener('change', function (e) {
     var t = e.target.closest('.exp-toggle');

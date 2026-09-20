@@ -401,3 +401,30 @@ def test_gate_asserts_compass_headlines():
     assert "pulse tiles, expected 3" in gate
     assert "/dashboard/scale" in gate
     assert "first paint must be server-rendered" in gate
+
+
+def test_spend_only_cac_beside_loaded_never_conflated(stub_defaults):
+    """3.4 — loaded vs spend-only shown BOTH, for period and cohort CAC."""
+    run = CE.forward(_base_inputs(stub_defaults))
+    m = next(m for m in run["months"] if m.get("cac_period"))
+    assert m["cac_period_spend_only"] is not None
+    assert m["cac_period_spend_only"] < m["cac_period"]   # loaded carries more
+    c = run["cohorts"][0]
+    assert c["cac_cohort_spend_only"] < c["cac_cohort"]
+
+
+def test_preview_pin_add_matches_book_delta(monkeypatch):
+    fake_proj = {"months": ["October 2026", "November 2026", "December 2026"],
+                 "committed": [50000.0, 40000.0, 40000.0],
+                 "assumed_pool": [10000.0, 13000.0, 13000.0],
+                 "oneoff_cash": [0.0, 0.0, 0.0],
+                 "per_client": {"Cafe X": {"mrr_now": 2000.0,
+                                           "committed_until": "October 2026"}}}
+    import forward_projection
+    monkeypatch.setattr(forward_projection, "project", lambda: fake_proj)
+    out = CE.expiring_preview({"Cafe X": True}, slider_pct=0.0,
+                              horizon_months=3)
+    assert out["pin_add"][0] == 0.0
+    assert out["pin_add"][1] == 2000.0
+    assert [a - b for a, b in zip(out["book_mrr"], out["book_mrr_unpinned"])] \
+        == out["pin_add"]
