@@ -103,7 +103,7 @@ def index():
     resp = make_response(render_template(
         "dashboard.html", exec=exec_data, degraded_count=degraded_count,
         status_text=status_text, edith_cfg=_edith_cfg_json(),
-        asset_v=_ASSET_VERSION))
+        defs_json=_defs_json(), asset_v=_ASSET_VERSION))
     # the HTML carries live values — it must never be served from cache
     resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -145,7 +145,8 @@ def area_page(area):
     resp = make_response(render_template(
         "panel_page.html", area=area, area_title=title,
         show_window_bar=window_bar, boot_snapshot=boot, burn_box=burn_box,
-        edith_cfg=_edith_cfg_json(), asset_v=_ASSET_VERSION))
+        edith_cfg=_edith_cfg_json(), defs_json=_defs_json(),
+        asset_v=_ASSET_VERSION))
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
@@ -222,8 +223,23 @@ def scale_page():
                                  or {}).get("why", ""),
             "bind_summary": " · ".join(f"{k}×{v}" for k, v in binds.items()),
         }
+    # SIMPLE VIEW first paint — the simulator chain server-rendered from the
+    # measured defaults (kv reads only; JS recomputes on edit)
+    sim = None
+    conf = {}
+    acc = None
+    try:
+        sim = compass_engine.simulate_month()
+        items = (defaults.get("items") or {})
+        conf = {k: compass_engine.confidence_word((items.get(k) or {}).get("n"))
+                for k in ("set_rate", "show_rate", "close_rate", "cpl")}
+        acc = compass_engine.accuracy_sentence()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("scale simple first-paint failed: %s", e)
     resp = make_response(render_template(
-        "scale.html", asset_v=_ASSET_VERSION,
+        "scale.html", asset_v=_ASSET_VERSION, defs_json=_defs_json(),
+        sim=sim, conf=conf, acc_sentence=acc,
+        sim_json=_json.dumps(sim).replace("</", "<\\/"),
         hero=hero, base_computed=base.get("computed_at"),
         backtest_verdict=(backtest.get("verdict") or "backtest pending"),
         defaults_json=_json.dumps(defaults).replace("</", "<\\/"),
@@ -231,6 +247,53 @@ def scale_page():
         backtest_json=_json.dumps(backtest or None).replace("</", "<\\/")))
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+_DEFS_CACHE = None
+
+
+def _defs_json() -> str:
+    """The registry, JSON-encoded once per process for template injection."""
+    global _DEFS_CACHE
+    if _DEFS_CACHE is None:
+        import json as _json
+        from dashboard import definitions
+        _DEFS_CACHE = _json.dumps(definitions.load()).replace("</", "<\\/")
+    return _DEFS_CACHE
+
+
+@bp.route("/definitions")
+@require_auth
+def definitions_page():
+    """The legend — auto-generated from the ONE registry, grouped by screen."""
+    from dashboard import definitions
+    reg = definitions.load()
+    resp = make_response(render_template(
+        "definitions.html", groups=reg.get("groups") or {},
+        entries=reg.get("entries") or {}, asset_v=_ASSET_VERSION))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@bp.route("/api/definitions", methods=["GET"])
+@require_auth
+def api_definitions():
+    from dashboard import definitions
+    return jsonify(definitions.load())
+
+
+@bp.route("/api/scale/simulate", methods=["POST"])
+@require_owner
+def api_scale_simulate():
+    """The simulator's server truth — the gate compares the page's arithmetic
+    against this (math shown must equal math computed)."""
+    import compass_engine
+    body = request.get_json(silent=True) or {}
+    return jsonify(compass_engine.simulate_month(
+        body.get("inputs") or {},
+        spend=body.get("spend"),
+        cpl_override=body.get("cpl"),
+        cpl_curve=bool(body.get("cpl_curve"))))
 
 
 @bp.route("/api/scale/defaults", methods=["GET"])
@@ -1163,6 +1226,7 @@ def api_chat():
             (__import__('timeline_adapter').handle_timeline_signals, False),  # complaints/praise from the Timeline signals log
             (__import__('timeline_adapter').handle_timeline_events, False),   # upcoming client events + countdowns
             (__import__('automations').handle_automation_health, False),      # P3: automation-health registry truth
+            (__import__('dashboard.definitions', fromlist=['x']).handle_explain_command, False),  # 'what is/explain X' → the ONE definitions registry
             (__import__('notion_content').handle_content_list, False),        # P4: what emails/lead magnets went out this week
             (__import__('email_pipeline').handle_pipeline_query, False),     # Email engine: what's pending my review / pipeline state
             (capacity_engine.handle_capacity_command, False),  # hiring/capacity/raise/afford questions
@@ -1434,6 +1498,7 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             (__import__('timeline_adapter').handle_timeline_signals, False),  # complaints/praise from the Timeline signals log
             (__import__('timeline_adapter').handle_timeline_events, False),   # upcoming client events + countdowns
             (__import__('automations').handle_automation_health, False),      # P3: automation-health registry truth
+            (__import__('dashboard.definitions', fromlist=['x']).handle_explain_command, False),  # 'what is/explain X' → the ONE definitions registry
             (__import__('notion_content').handle_content_list, False),        # P4: what emails/lead magnets went out this week
             (__import__('email_pipeline').handle_pipeline_query, False),     # Email engine: what's pending my review / pipeline state
             (capacity_engine.handle_capacity_command, False),

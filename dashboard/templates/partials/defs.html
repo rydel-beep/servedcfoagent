@@ -1,0 +1,6 @@
+<!-- EXPLAIN EVERYTHING: the one definitions registry, injected server-side,
+     + the "?" help button. defs.js turns this into hover tooltips, tap
+     sheets, the "?" mode, the tour, and keyboard-focus explanations. -->
+<button id="defs-help-btn" title="What is this? Explanations, the tour, and the definitions page" aria-label="Help and explanations">?</button>
+<script>window.__DEFS__ = {{ defs_json | default('null') | safe }};</script>
+<script defer src="/dashboard/static/js/defs.js?v={{ asset_v }}"></script>

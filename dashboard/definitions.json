@@ -1,0 +1,1116 @@
+{
+ "version": 1,
+ "note": "ONE registry — every tooltip, tap sheet, legend row and EDITH explanation reads this file. Plain English only.",
+ "groups": {
+  "landing": "The dashboard front page",
+  "scale": "The scaling compass",
+  "areas": "The detail pages",
+  "projection": "Forward projection page",
+  "drawers": "The 'show your work' windows"
+ },
+ "entries": {
+  "cash_on_hand": {
+   "name": "Cash on hand",
+   "kind": "metric",
+   "screen": "landing",
+   "meaning": "The money sitting in the business bank accounts right now.",
+   "computed": "The closing balances of the three CommBank accounts (everyday, saver, and the tax account), read from Xero.",
+   "default_from": "Xero's bank feeds — they can run up to a day behind the bank.",
+   "selector": "#tile-cash_on_hand",
+   "drawer": "cash_on_hand"
+  },
+  "committed_mrr": {
+   "name": "Committed monthly revenue",
+   "kind": "metric",
+   "screen": "landing",
+   "meaning": "The recurring revenue clients are signed up to pay each month — money coming IN, never a cost.",
+   "computed": "Adds up every active client's monthly amount from the finance sheet, including renewals that are recorded there.",
+   "default_from": "the finance workbook's client list, refreshed every couple of hours.",
+   "selector": "#tile-committed_mrr",
+   "drawer": "committed_mrr"
+  },
+  "ar_outstanding": {
+   "name": "Money owed to us",
+   "kind": "metric",
+   "screen": "landing",
+   "meaning": "What clients were expected to have paid by now but haven't. For your eyes — the system never chases anyone.",
+   "computed": "What each client's plan says they should have paid so far, minus what has actually landed in Stripe.",
+   "default_from": "the finance workbook's payment plans matched against real Stripe payments.",
+   "selector": "#tile-ar_outstanding",
+   "drawer": "ar_outstanding"
+  },
+  "cash_net_mtd": {
+   "name": "Cash gained or lost this month",
+   "kind": "metric",
+   "screen": "landing",
+   "meaning": "How much the bank balance has actually moved since the 1st of the month.",
+   "computed": "Today's bank balance minus the balance at the start of the month.",
+   "default_from": "the bank balances Xero reports.",
+   "selector": "#tile-cash_net_mtd",
+   "drawer": "three_nets"
+  },
+  "operating_net_mtd": {
+   "name": "Operating profit this month",
+   "kind": "metric",
+   "screen": "landing",
+   "meaning": "Money collected this month minus normal running costs — tax money is shown next to it, never mixed in.",
+   "computed": "Stripe payments received this month, minus this month's running costs (wages, tools, ads). Tax set-asides sit beside the number.",
+   "default_from": "Stripe payments and the cost categories in Xero.",
+   "selector": "#tile-operating_net_mtd",
+   "drawer": "three_nets"
+  },
+  "ltv_cac": {
+   "name": "Lifetime value vs cost to win a client",
+   "kind": "metric",
+   "screen": "landing",
+   "meaning": "For every dollar spent winning a client, how many dollars they pay us over their whole contract.",
+   "computed": "The average full contract value of new clients, divided by the full cost of winning one (ads plus commissions plus sales tools).",
+   "default_from": "this month's signed clients and ad spend.",
+   "good": "3-to-1 is a common healthy benchmark, not a target.",
+   "selector": "#tile-ltv_cac",
+   "drawer": "ltv_cac"
+  },
+  "ltgp_cac": {
+   "name": "Lifetime profit vs cost to win a client",
+   "kind": "metric",
+   "screen": "landing",
+   "meaning": "Like the tile beside it, but counts only the PROFIT in each contract after delivery costs.",
+   "computed": "Contract value times the profit margin, divided by the cost of winning the client.",
+   "default_from": "this month's signed clients; the margin uses last year's 42.9% until this year's books settle.",
+   "good": "3-to-1 is a common healthy benchmark, not a target.",
+   "selector": "#tile-ltgp_cac",
+   "drawer": "ltgp_cac"
+  },
+  "cohort_cash_roas": {
+   "name": "Cash back on this month's ads",
+   "kind": "metric",
+   "screen": "landing",
+   "meaning": "Of the money spent on ads this month, how much cash the clients those ads produced have paid so far.",
+   "computed": "Cash collected from this month's new clients, divided by this month's ad spend. It starts low and climbs as instalments land.",
+   "default_from": "Stripe payments from this month's signed clients and the Meta ads bill.",
+   "selector": "#tile-cohort_cash_roas"
+  },
+  "pulse_show_rate": {
+   "name": "Show rate",
+   "kind": "metric",
+   "screen": "landing",
+   "meaning": "Of the sales calls booked recently, how many people actually turned up.",
+   "computed": "Calls attended divided by calls booked, over the last 30 days.",
+   "default_from": "the lead tracker; the small count is shown next to it — a handful of calls makes this jumpy.",
+   "selector": "#tile-pulse_show_rate"
+  },
+  "pulse_close_rate": {
+   "name": "Close rate",
+   "kind": "metric",
+   "screen": "landing",
+   "meaning": "Of the people who turned up to a call recently, how many signed.",
+   "computed": "New clients divided by attended calls, over the last 30 days.",
+   "default_from": "the lead tracker and the signed-deal list; small counts make it jumpy.",
+   "selector": "#tile-pulse_close_rate"
+  },
+  "pulse_booked_calls": {
+   "name": "Booked calls, next 7 days",
+   "kind": "metric",
+   "screen": "landing",
+   "meaning": "How many sales calls are on the calendar for the coming week.",
+   "computed": "Counts upcoming appointments in the booking system; cancelled ones never count.",
+   "default_from": "the GHL calendar — read-only, nothing is ever changed there.",
+   "selector": "#tile-pulse_booked_calls",
+   "drawer": "booked_calls"
+  },
+  "exec_verdict": {
+   "name": "The verdict line",
+   "kind": "metric",
+   "screen": "landing",
+   "meaning": "One sentence on whether this month's ad spend is working, decided by the numbers underneath.",
+   "computed": "Compares signed contract value and collected cash against the month's ad spend, and says when the cash catches up.",
+   "selector": "#exec-verdict"
+  },
+  "card_sales": {
+   "name": "Ads & sales",
+   "kind": "page",
+   "screen": "landing",
+   "meaning": "Everything about the ad-to-client pipeline: the funnel, the sales team, sources, and this month's closes.",
+   "selector": "#card-sales"
+  },
+  "card_receivables": {
+   "name": "Receivables",
+   "kind": "page",
+   "screen": "landing",
+   "meaning": "Who owes what, and how overdue it is. Your visibility only — nobody gets chased automatically.",
+   "selector": "#card-receivables"
+  },
+  "card_renewals": {
+   "name": "Renewals & churn",
+   "kind": "page",
+   "screen": "landing",
+   "meaning": "Which clients are coming up to the end of their term, who renewed, and who's at risk.",
+   "selector": "#card-renewals"
+  },
+  "card_projection": {
+   "name": "Forward projection",
+   "kind": "page",
+   "screen": "landing",
+   "meaning": "Where monthly revenue goes from here: what's locked in, what's still undecided, and the terms ending soon.",
+   "selector": "#card-projection"
+  },
+  "card_outflows": {
+   "name": "Outflows & BAS",
+   "kind": "page",
+   "screen": "landing",
+   "meaning": "Where the money goes each month — running costs in one lane, tax and personal in their own lanes.",
+   "selector": "#card-outflows"
+  },
+  "card_unit_econ": {
+   "name": "Unit economics",
+   "kind": "page",
+   "screen": "landing",
+   "meaning": "The cost of winning a client versus what they're worth, in detail.",
+   "selector": "#card-unit_econ"
+  },
+  "card_cash": {
+   "name": "Cash & capital",
+   "kind": "page",
+   "screen": "landing",
+   "meaning": "Bank position, runway, and where spare cash could work harder.",
+   "selector": "#card-cash"
+  },
+  "card_team": {
+   "name": "Team & strategy",
+   "kind": "page",
+   "screen": "landing",
+   "meaning": "Team cost, hiring headroom, and the biggest growth constraints.",
+   "selector": "#card-team"
+  },
+  "card_brief": {
+   "name": "Morning brief",
+   "kind": "page",
+   "screen": "landing",
+   "meaning": "The long-form daily read: summary, actions, and verdicts.",
+   "selector": "#card-brief"
+  },
+  "card_scale": {
+   "name": "Scaling compass",
+   "kind": "page",
+   "screen": "landing",
+   "meaning": "Plan 2027: type a spend or a target and see leads, calls, clients, cash and hires.",
+   "selector": "#card-scale"
+  },
+  "card_decisions": {
+   "name": "Needs your ruling",
+   "kind": "page",
+   "screen": "landing",
+   "meaning": "Items only you can decide — each with its evidence.",
+   "selector": "#card-decisions"
+  },
+  "card_csm": {
+   "name": "Client success",
+   "kind": "page",
+   "screen": "landing",
+   "meaning": "The client-success cockpit (only you can see this card).",
+   "selector": "#card-csm"
+  },
+  "card_worklog": {
+   "name": "Work log",
+   "kind": "page",
+   "screen": "landing",
+   "meaning": "What the system and the team changed, when.",
+   "selector": "#card-worklog"
+  },
+  "card_bookkeeping": {
+   "name": "Bookkeeping queue",
+   "kind": "page",
+   "screen": "landing",
+   "meaning": "Money entries waiting for Piolo to fix at the source.",
+   "selector": "#card-bookkeeping"
+  },
+  "card_system": {
+   "name": "System health",
+   "kind": "page",
+   "screen": "landing",
+   "meaning": "Whether the data feeding every number is fresh and the pages are rendering cleanly.",
+   "selector": "#card-system"
+  },
+  "section-brief": {
+   "name": "Morning brief",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "The 60-second daily read: cash, revenue, clients and the two value-for-money ratios.",
+   "selector": "#section-brief"
+  },
+  "section-exec": {
+   "name": "Executive summary",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "A few sentences on the state of the business, written from the live numbers.",
+   "selector": "#section-exec"
+  },
+  "section-actions": {
+   "name": "Action items",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Things the numbers say need doing, ranked.",
+   "selector": "#section-actions"
+  },
+  "section-kpis": {
+   "name": "Key numbers strip",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "The headline numbers side by side: revenue, cash collected, margin, active clients.",
+   "selector": "#section-kpis"
+  },
+  "section-capital": {
+   "name": "Capital allocation",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Whether spare cash is sitting idle and where it could work harder.",
+   "selector": "#section-capital"
+  },
+  "section-cash-position": {
+   "name": "Cash position",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Bank balances, Stripe money on its way, tax set aside, and how many months the cash lasts.",
+   "selector": "#section-cash-position"
+  },
+  "section-stripe-health": {
+   "name": "Stripe health",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Payments, failures and refunds over the last 30 days.",
+   "selector": "#section-stripe-health"
+  },
+  "section-forward": {
+   "name": "Forward projection",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Monthly revenue projected ahead: the locked-in part never moves with the slider; the undecided part does.",
+   "selector": "#section-forward"
+  },
+  "section-trend": {
+   "name": "Revenue trend",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Monthly recurring revenue over the past year.",
+   "selector": "#section-trend"
+  },
+  "section-revenue": {
+   "name": "Revenue views",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "The same money seen two ways: what landed in the bank vs what the books recognise. Never added together.",
+   "selector": "#section-revenue"
+  },
+  "section-churn": {
+   "name": "Churn risk",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Clients whose term is ending and what's declared about them; the sheet stays Piolo's to edit.",
+   "selector": "#section-churn"
+  },
+  "section-month-perf": {
+   "name": "Month performance",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "This month vs last: leads, calls, clients, cash.",
+   "selector": "#section-month-perf"
+  },
+  "section-waterfall": {
+   "name": "Profit waterfall",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "From revenue down to profit, step by step, with tax shown in its own lane.",
+   "selector": "#section-waterfall"
+  },
+  "section-outflow": {
+   "name": "Outflow truth",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Each month's money-out split into running costs, tax, and personal — never blended.",
+   "selector": "#section-outflow"
+  },
+  "section-commissions": {
+   "name": "Commission tracker",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "What the setters and closer are owed this month, per deal.",
+   "selector": "#section-commissions"
+  },
+  "section-metrics": {
+   "name": "Unit economics panel",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Revenue, profit, cost per client and payback, from the books.",
+   "selector": "#section-metrics"
+  },
+  "section-perf-analysis": {
+   "name": "Performance analysis",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "The funnel across different time windows.",
+   "selector": "#section-perf-analysis"
+  },
+  "section-speed-to-lead": {
+   "name": "Speed to lead",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "How fast new leads get their first call — slow kills conversion.",
+   "selector": "#section-speed-to-lead"
+  },
+  "section-funnel": {
+   "name": "Sales funnel",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Leads to calls to shows to clients, as a funnel.",
+   "selector": "#section-funnel"
+  },
+  "section-setter-deep": {
+   "name": "Setter deep dive",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Each setter's pipeline in detail.",
+   "selector": "#section-setter-deep"
+  },
+  "section-health": {
+   "name": "Client health",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Every active client and how their account is doing.",
+   "selector": "#section-health"
+  },
+  "section-verdicts": {
+   "name": "Verdicts",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Plain-language calls the system is confident about, with the leaks it sees.",
+   "selector": "#section-verdicts"
+  },
+  "section-team": {
+   "name": "Team & hiring power",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Current team cost and what a new hire would do to the numbers.",
+   "selector": "#section-team"
+  },
+  "section-deficiency": {
+   "name": "Growth constraints",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "What's most holding growth back, ranked by impact.",
+   "selector": "#section-deficiency"
+  },
+  "section-pipeline": {
+   "name": "Sales pipeline",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Deals by stage in the CRM, read-only.",
+   "selector": "#section-pipeline"
+  },
+  "section-dq-loss": {
+   "name": "Lost-deal intelligence",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Why deals didn't close, grouped by reason.",
+   "selector": "#section-dq-loss"
+  },
+  "section-offers": {
+   "name": "Offer mix",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Which packages new clients are buying.",
+   "selector": "#section-offers"
+  },
+  "section-lead-roi": {
+   "name": "Lead source ROI",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "What each lead source costs per signed client.",
+   "selector": "#section-lead-roi"
+  },
+  "section-reps": {
+   "name": "Rep performance",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Setters and closers side by side: volume, conversion, trend.",
+   "selector": "#section-reps"
+  },
+  "section-cohort": {
+   "name": "Client retention grid",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "How long clients from each signing month stayed.",
+   "selector": "#section-cohort"
+  },
+  "section-reconciliation": {
+   "name": "Client reconciliation",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Where two systems disagree about a client — flagged, never silently merged.",
+   "selector": "#section-reconciliation"
+  },
+  "section-quality": {
+   "name": "Data quality",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Which data sources are healthy and which are limping.",
+   "selector": "#section-quality"
+  },
+  "section-action-feed": {
+   "name": "What needs action",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Everything needing a decision, in one ranked feed.",
+   "selector": "#section-action-feed"
+  },
+  "section-bas": {
+   "name": "BAS & tax set-aside",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "The tax bill building up this quarter and the money set aside for it.",
+   "selector": "#section-bas"
+  },
+  "section-forecast-cash": {
+   "name": "Cash runway forecast",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Where the bank balance is heading over the next 13 weeks.",
+   "selector": "#section-forecast-cash"
+  },
+  "section-forecast-mrr": {
+   "name": "Revenue forecast",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Where monthly revenue is heading under best, base and worst cases.",
+   "selector": "#section-forecast-mrr"
+  },
+  "section-ratio-tiles": {
+   "name": "Value-for-money ratios",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Lifetime value and profit vs the cost of winning a client, by window.",
+   "selector": "#section-ratio-tiles"
+  },
+  "section-decision-cards": {
+   "name": "Needs your ruling",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Decisions waiting for you, each with its evidence.",
+   "selector": "#section-decision-cards"
+  },
+  "section-ar": {
+   "name": "Receivables detail",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Expected vs received per client, with how overdue each is.",
+   "selector": "#section-ar"
+  },
+  "section-roas": {
+   "name": "Three ways to read ad returns",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Cash-back, contract-value and lifetime views of the same ad spend — labelled, never blended.",
+   "selector": "#section-roas"
+  },
+  "section-csm-card": {
+   "name": "Client success card",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Shortcut to the client-success cockpit (owner only).",
+   "selector": "#section-csm-card"
+  },
+  "section-ops-cards": {
+   "name": "Work log & bookkeeping",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Shortcuts to the work log and the bookkeeping queue.",
+   "selector": "#section-ops-cards"
+  },
+  "section-adlink": {
+   "name": "Ad tracking link",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "The creative scoreboard lives on its own page.",
+   "selector": "#section-adlink"
+  },
+  "section-expiring": {
+   "name": "Terms ending soon",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Clients whose contract ends in the window — declare what's real, or flip the what-if switch to see the effect.",
+   "selector": "#section-expiring"
+  },
+  "section-burn-accurate": {
+   "name": "Burn & runway",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "What it costs to run the business each month (tax excluded and shown beside), and how long the cash lasts.",
+   "selector": "#section-burn-accurate"
+  },
+  "section-render-health": {
+   "name": "Page health",
+   "kind": "panel",
+   "screen": "areas",
+   "meaning": "Whether the dashboard itself is rendering cleanly in people's browsers.",
+   "selector": "#section-render-health"
+  },
+  "burn_opex": {
+   "name": "Monthly running cost",
+   "kind": "metric",
+   "screen": "projection",
+   "meaning": "What it costs to run the business for a month — wages, tools, delivery — with tax and ad spend counted elsewhere.",
+   "computed": "The average of recent months' running costs from the books, minus ads and commissions (they're shown in their own places).",
+   "default_from": "the last few months of Xero, categorised by account.",
+   "selector": "#section-burn-accurate .h:nth-child(1)",
+   "drawer": "burn_ex_tax"
+  },
+  "burn_tax": {
+   "name": "Tax set aside",
+   "kind": "metric",
+   "screen": "projection",
+   "meaning": "Money reserved for the tax bill — kept beside the running costs, never hidden inside them.",
+   "computed": "The set-aside the BAS estimate says to hold.",
+   "selector": "#section-burn-accurate .h:nth-child(2)",
+   "drawer": "burn_ex_tax"
+  },
+  "burn_net": {
+   "name": "Net burn",
+   "kind": "metric",
+   "screen": "projection",
+   "meaning": "Running costs minus the recurring revenue that's locked in — negative means the client base covers the costs.",
+   "computed": "Monthly running cost minus committed monthly revenue.",
+   "selector": "#section-burn-accurate .h:nth-child(3)",
+   "drawer": "burn_ex_tax"
+  },
+  "burn_runway": {
+   "name": "Runway",
+   "kind": "metric",
+   "screen": "projection",
+   "meaning": "How many months the cash lasts if nothing changes.",
+   "computed": "Cash in the bank (minus the tax set-aside) divided by the net burn.",
+   "selector": "#section-burn-accurate .h:nth-child(4)",
+   "drawer": "burn_ex_tax"
+  },
+  "exp_toggle": {
+   "name": "'Resigns same deal' switch",
+   "kind": "lever",
+   "screen": "projection",
+   "meaning": "A what-if switch: see the future as if this client renews on the same deal. It changes the picture on screen only.",
+   "changing": "The chart and totals update as if they renew — but NOTHING is recorded. Use Declare… to record a real renewal.",
+   "selector": ".exp-toggle"
+  },
+  "exp_chip_actual": {
+   "name": "'Declared' tag",
+   "kind": "chip",
+   "screen": "projection",
+   "meaning": "This client's renewal or extension has been properly recorded — it counts for real.",
+   "selector": ".exp-chip-actual"
+  },
+  "exp_chip_scenario": {
+   "name": "'What-if' tag",
+   "kind": "chip",
+   "screen": "projection",
+   "meaning": "You've flipped the switch on this client — the picture assumes they renew, but nothing is recorded.",
+   "selector": ".exp-chip-scenario"
+  },
+  "exp_chip_slider": {
+   "name": "'Slider rate' tag",
+   "kind": "chip",
+   "screen": "projection",
+   "meaning": "No decision on this client yet — the picture applies the renewal percentage from the slider.",
+   "selector": ".exp-chip-slider"
+  },
+  "exp_window": {
+   "name": "Window buttons (30/60/90)",
+   "kind": "control",
+   "screen": "projection",
+   "meaning": "How far ahead to look for contracts ending.",
+   "changing": "Shows clients whose terms end within that many days.",
+   "selector": ".exp-win"
+  },
+  "exp_effective": {
+   "name": "The tally line",
+   "kind": "metric",
+   "screen": "projection",
+   "meaning": "How many terms are ending, how many renewals are recorded, how many are what-ifs, and what rate applies to the rest.",
+   "selector": "#exp-effective"
+  },
+  "sim_spend": {
+   "name": "Monthly ad spend",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "How much goes into ads each month in this what-if.",
+   "changing": "Leads update from it (spend divided by cost per lead) — and everything downstream follows.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker.",
+   "selector": "#sim-spend"
+  },
+  "sim_cpl": {
+   "name": "Cost per lead",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "What one lead costs from ads.",
+   "computed": "Ad spend divided by the number of leads it produced.",
+   "changing": "With CPL unlocked, typing a new value recomputes whichever of spend/leads is not locked.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker.",
+   "selector": "#sim-cpl"
+  },
+  "sim_leads": {
+   "name": "Leads per month",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "How many new enquiries a month of that spend buys.",
+   "computed": "Ad spend divided by cost per lead.",
+   "changing": "Typing a leads number works backwards to the spend needed at the current cost per lead.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker.",
+   "selector": "#sim-leads"
+  },
+  "sim_lock": {
+   "name": "Lock",
+   "kind": "lever",
+   "screen": "scale",
+   "meaning": "Pins one of the three numbers so edits move the other two around it.",
+   "changing": "The locked field never changes; the other two answer your edits.",
+   "selector": ".sim-lock"
+  },
+  "sim_cpl_mode": {
+   "name": "'CPL rises as spend grows' switch",
+   "kind": "lever",
+   "screen": "scale",
+   "meaning": "Off (normal): cost per lead stays fixed so you can see the straight spend-to-leads relationship. On: it climbs as spend grows, the way ad platforms really behave.",
+   "changing": "On, big spend numbers buy fewer leads per dollar — the curve bends and the field shows the effective cost per lead at that spend.",
+   "default_from": "the climb rate is an assumption you can change (the account's own history was too noisy to trust).",
+   "selector": "#sim-cpl-mode"
+  },
+  "sim_sentence": {
+   "name": "The one-line result",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "The three numbers in one sentence, always current.",
+   "selector": "#sim-sentence"
+  },
+  "sim_chart": {
+   "name": "Leads vs spend chart",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "The straight (or bending) line from spend to leads, with your current point marked.",
+   "selector": "#sim-chart"
+  },
+  "chain_calls": {
+   "name": "How many calls does that book?",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "Leads times the booking rate — how many turn into a booked sales call.",
+   "computed": "Leads × the rate at which leads book calls.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker; the count it's based on is written beside it.",
+   "selector": "#chain-calls"
+  },
+  "chain_shows": {
+   "name": "How many turn up?",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "Booked calls times the turn-up rate.",
+   "computed": "Calls × the rate at which booked people actually attend.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker.",
+   "selector": "#chain-shows"
+  },
+  "chain_clients": {
+   "name": "How many sign?",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "People who turned up times the close rate — new clients per month.",
+   "computed": "Shows × the close rate. Your 35% belief goes here if you want it.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker.",
+   "selector": "#chain-clients"
+  },
+  "chain_cash": {
+   "name": "What do they pay us?",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "The cash those new clients pay — this month's deposits now, the rest over their contract — plus the monthly revenue they add.",
+   "computed": "New clients × the package mix × what each package pays up front and over its term.",
+   "default_from": "real deposits and contract values from recent signed clients.",
+   "selector": "#chain-cash"
+  },
+  "chain_cost": {
+   "name": "What does it cost us?",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "The full cost of winning those clients, and the value-for-money ratios.",
+   "computed": "Ad spend + sales commissions + sales tools, divided by the new clients — then contract profit divided by that cost.",
+   "default_from": "commissions use last year's actual 6.3% of sales.",
+   "selector": "#chain-cost"
+  },
+  "show_math": {
+   "name": "Show the math",
+   "kind": "lever",
+   "screen": "scale",
+   "meaning": "Prints the arithmetic behind every step with the actual numbers, so you can check any line by hand.",
+   "changing": "Turns the worked arithmetic on or off. What it prints is exactly what the page computed.",
+   "selector": "#chk-show-math"
+  },
+  "i_want": {
+   "name": "I want…",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "Type the result you want — leads, calls, clients, cash or added revenue — and it works backwards to the spend required.",
+   "computed": "Runs the same chain in reverse at the current rates.",
+   "changing": "Also shows what has to be true at every step, and what a better close rate would save.",
+   "selector": "#iwant-row"
+  },
+  "ctl_spend_start": {
+   "name": "Monthly ad spend (plan)",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "The spend the longer-range plan starts from.",
+   "changing": "Every planned month scales from it.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker, unless marked as an assumption.",
+   "selector": "[data-def='ctl_spend_start']"
+  },
+  "ctl_spend_shape": {
+   "name": "Spend shape",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "Whether planned spend stays flat or ramps monthly.",
+   "changing": "Flat holds it; ramp grows it by the percentage each month.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker, unless marked as an assumption.",
+   "selector": "[data-def='ctl_spend_shape']"
+  },
+  "ctl_ramp_pct": {
+   "name": "Ramp % per month",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "How fast planned spend grows, if ramping.",
+   "changing": "Higher grows spend—and every downstream number—faster.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker, unless marked as an assumption.",
+   "selector": "[data-def='ctl_ramp_pct']"
+  },
+  "ctl_cpl0": {
+   "name": "Cost per lead (plan)",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "The cost per lead the plan assumes at today's spend.",
+   "changing": "Cheaper leads mean more leads for the same money.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker, unless marked as an assumption.",
+   "selector": "[data-def='ctl_cpl0']"
+  },
+  "ctl_epsilon": {
+   "name": "How fast CPL climbs",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "How quickly leads get more expensive as spend grows. 0 = never; higher = faster.",
+   "changing": "Raise it and big spend plans buy fewer leads per dollar.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker, unless marked as an assumption.",
+   "selector": "[data-def='ctl_epsilon']"
+  },
+  "ctl_set_rate": {
+   "name": "Booking rate",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "The share of leads that book a call.",
+   "changing": "More bookings per lead moves every later number up.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker, unless marked as an assumption.",
+   "selector": "[data-def='ctl_set_rate']"
+  },
+  "ctl_show_rate": {
+   "name": "Turn-up rate",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "The share of booked calls where the person attends.",
+   "changing": "Fewer no-shows means more chances to close.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker, unless marked as an assumption.",
+   "selector": "[data-def='ctl_show_rate']"
+  },
+  "ctl_close_rate": {
+   "name": "Close rate (plan)",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "The share of attended calls that sign.",
+   "changing": "Your strongest lever — small changes move everything.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker, unless marked as an assumption.",
+   "selector": "[data-def='ctl_close_rate']"
+  },
+  "ctl_renewal_rate": {
+   "name": "Renewal rate",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "The share of clients who continue after their term ends.",
+   "changing": "Higher keeps the client base from shrinking as terms end.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker, unless marked as an assumption.",
+   "selector": "[data-def='ctl_renewal_rate']"
+  },
+  "ctl_commission": {
+   "name": "Commission share",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "The slice of new-client cash paid as sales commissions.",
+   "changing": "Raising it increases the cost of each new client.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker, unless marked as an assumption.",
+   "selector": "[data-def='ctl_commission']"
+  },
+  "ctl_opex": {
+   "name": "Running costs per month",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "Monthly cost of running the business — tax, ads and commissions all counted elsewhere.",
+   "changing": "Higher costs shorten runway and deepen any cash dip.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker, unless marked as an assumption.",
+   "selector": "[data-def='ctl_opex']"
+  },
+  "ctl_buffer": {
+   "name": "Minimum cash buffer",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "The bank balance the plan must never dip below.",
+   "changing": "The plan flags CASH as the blocker in any month below it.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker, unless marked as an assumption.",
+   "selector": "[data-def='ctl_buffer']"
+  },
+  "ctl_hire_lead": {
+   "name": "Hiring lead time",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "Weeks between deciding to hire and the person starting.",
+   "changing": "Longer lead time means hire warnings appear earlier.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker, unless marked as an assumption.",
+   "selector": "[data-def='ctl_hire_lead']"
+  },
+  "ctl_deal_mix": {
+   "name": "Deal mix",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "The share of new clients on each package.",
+   "changing": "Shifting mix changes what an average new client pays.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker, unless marked as an assumption.",
+   "selector": "[data-def='ctl_deal_mix']"
+  },
+  "ctl_lag_curve": {
+   "name": "Time from lead to signing",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "How a month's leads spread their signings over that month and the next two.",
+   "changing": "Measured from recent deals; it shifts when cash arrives.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker, unless marked as an assumption.",
+   "selector": "[data-def='ctl_lag_curve']"
+  },
+  "ctl_lanes": {
+   "name": "Markets (AU / US)",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "Where the leads come from.",
+   "changing": "US leads currently borrow the AU rates — the ad bill can't be split by country yet.",
+   "default_from": "measured from your last 90 days of ads and the lead tracker, unless marked as an assumption.",
+   "selector": "[data-def='ctl_lanes']"
+  },
+  "accuracy_sentence": {
+   "name": "How accurate is this?",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "One sentence on how close this model's predictions were to what actually happened over the last three months.",
+   "computed": "The model is re-run on each past month's real spend and compared with what really happened at every step.",
+   "selector": "#accuracy-sentence"
+  },
+  "confidence_word": {
+   "name": "Confidence word",
+   "kind": "chip",
+   "screen": "scale",
+   "meaning": "'Solid', 'fair' or 'rough' next to a rate — how much data sits behind it. Rough means treat it as a guess.",
+   "computed": "Solid needs a good-sized count; rough means only a handful of examples.",
+   "selector": ".conf-word"
+  },
+  "presets": {
+   "name": "Presets",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "One-click starting points: today's run-rate, +50% spend, or the saved Base 2027.",
+   "changing": "Loads those numbers into the simulator — nothing is saved until you save it.",
+   "selector": "#sim-presets"
+  },
+  "solver": {
+   "name": "Target solver",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "Type a revenue or cash target and a month; it finds the spend path that gets there, or says what breaks first.",
+   "selector": "#scale-solver",
+   "changing": "Type a different target or month and it re-finds the spend path — or tells you what breaks first."
+  },
+  "roadmap": {
+   "name": "The month-by-month plan",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "Every month to Dec 2027: spend, leads, calls, clients, cash, costs, bank position — and the one thing holding that month back.",
+   "selector": "#scale-roadmap"
+  },
+  "money_view": {
+   "name": "Money view",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "Cost per client (with and without commissions), payback time, and whether early payments cover the cost of winning clients.",
+   "selector": "#scale-money"
+  },
+  "team_view": {
+   "name": "Team view",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "How loaded each role is month by month, and when to hire.",
+   "selector": "#scale-team"
+  },
+  "hire_card": {
+   "name": "Hire card",
+   "kind": "chip",
+   "screen": "scale",
+   "meaning": "A dated instruction: hire this role by this month so they're productive when the workload arrives.",
+   "computed": "When a role's workload passes 100%, the card counts back the hiring lead time.",
+   "selector": ".hire-card"
+  },
+  "ranges": {
+   "name": "Show ranges",
+   "kind": "lever",
+   "screen": "scale",
+   "meaning": "Shows a realistic band around the forecast instead of a single line — wide bands mean thin data.",
+   "changing": "Runs the plan many times with the rates wobbled by how well-measured they are.",
+   "selector": "#chk-bands"
+  },
+  "scenarios": {
+   "name": "Scenarios",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "Save a set of inputs under a name, and compare saved sets side by side.",
+   "selector": "#scale-scenarios",
+   "changing": "Saving stores the current inputs under the name; comparing runs each saved set and shows the end results side by side."
+  },
+  "commit_plan": {
+   "name": "Commit as Plan 2027",
+   "kind": "lever",
+   "screen": "scale",
+   "meaning": "Freezes a scenario as the plan of record so the dashboard can track actuals against it. It is a plan — never the actual books.",
+   "changing": "Creates a new version of the plan; the pacing table starts comparing every month against it.",
+   "selector": "#btn-commit-plan"
+  },
+  "pacing": {
+   "name": "Plan vs actual",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "Each month's plan next to what really happened, with a hint at why they differ.",
+   "selector": "#pacing-out"
+  },
+  "calibration": {
+   "name": "Calibration table",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "Predicted vs actual for each of the last three months, step by step.",
+   "selector": "#scale-calibration"
+  },
+  "capital_dip": {
+   "name": "Capital dip",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "The lowest the bank balance goes across the whole plan — the cash you must be able to survive.",
+   "computed": "The minimum of the projected month-end bank positions.",
+   "selector": "[data-def='capital_dip']"
+  },
+  "binding_constraint": {
+   "name": "The blocker",
+   "kind": "chip",
+   "screen": "scale",
+   "meaning": "The one thing holding growth back that month: lead volume, sales capacity, delivery capacity, cash, or client losses — always named with the number that caused it.",
+   "selector": "[data-def='binding_constraint']"
+  },
+  "level_simple": {
+   "name": "Simple view",
+   "kind": "page",
+   "screen": "scale",
+   "meaning": "The three questions: what does spend buy, what does it turn into, what do you want. Nothing else.",
+   "selector": "#level-simple"
+  },
+  "level_advanced": {
+   "name": "Advanced",
+   "kind": "page",
+   "screen": "scale",
+   "meaning": "The detailed levers: cash timing, deal mix, commissions, capacity, ranges, market lanes.",
+   "selector": "#level-advanced"
+  },
+  "level_plan": {
+   "name": "Plan",
+   "kind": "page",
+   "screen": "scale",
+   "meaning": "Saved scenarios, the month-by-month roadmap, committing Plan 2027, and plan-vs-actual tracking.",
+   "selector": "#level-plan"
+  },
+  "drawer_cash_on_hand": {
+   "name": "Cash on hand — the working",
+   "kind": "panel",
+   "screen": "drawers",
+   "meaning": "The per-account bank balances behind the tile and when they were read.",
+   "selector": "[data-findrawer='cash_on_hand']"
+  },
+  "drawer_committed_mrr": {
+   "name": "Committed revenue — the working",
+   "kind": "panel",
+   "screen": "drawers",
+   "meaning": "Every client's monthly amount, where each came from, and the cross-checks.",
+   "selector": "[data-findrawer='committed_mrr']"
+  },
+  "drawer_meta_spend_mtd": {
+   "name": "Ad spend — the working",
+   "kind": "panel",
+   "screen": "drawers",
+   "meaning": "The Meta spend behind the number, day by day.",
+   "selector": "[data-findrawer='meta_spend_mtd']"
+  },
+  "drawer_cash_collected": {
+   "name": "Cash collected — the working",
+   "kind": "panel",
+   "screen": "drawers",
+   "meaning": "Stripe's bank-truth payments beside the team-logged tracker cells — two different things, labelled.",
+   "selector": "[data-findrawer='cash_collected']"
+  },
+  "drawer_ar_outstanding": {
+   "name": "Money owed — the working",
+   "kind": "panel",
+   "screen": "drawers",
+   "meaning": "Per client: what was expected, what arrived, and how overdue.",
+   "selector": "[data-findrawer='ar_outstanding']"
+  },
+  "drawer_forecast_net": {
+   "name": "Forecast net — the working",
+   "kind": "panel",
+   "screen": "drawers",
+   "meaning": "The projection's assumptions and the three real month figures it must track.",
+   "selector": "[data-findrawer='forecast_net']"
+  },
+  "drawer_three_nets": {
+   "name": "The three nets — the working",
+   "kind": "panel",
+   "screen": "drawers",
+   "meaning": "Bank movement, operating profit, and expected month-end — three different questions, never blended.",
+   "selector": "[data-findrawer='three_nets']"
+  },
+  "drawer_burn_ex_tax": {
+   "name": "Burn — the working",
+   "kind": "panel",
+   "screen": "drawers",
+   "meaning": "How the monthly running cost is built and why tax and ads sit outside it.",
+   "selector": "[data-findrawer='burn_ex_tax']"
+  },
+  "drawer_booked_calls": {
+   "name": "Booked calls — the roster",
+   "kind": "panel",
+   "screen": "drawers",
+   "meaning": "Every upcoming consult in the next 7 days with its time.",
+   "selector": "[data-findrawer='booked_calls']"
+  },
+  "drawer_ltv_cac": {
+   "name": "Lifetime value ratio — the working",
+   "kind": "panel",
+   "screen": "drawers",
+   "meaning": "The inputs behind the ratio: contract values, costs, and the renewal figure with how much data backs it.",
+   "selector": "[data-findrawer='ltv_cac']"
+  },
+  "drawer_ltgp_cac": {
+   "name": "Lifetime profit ratio — the working",
+   "kind": "panel",
+   "screen": "drawers",
+   "meaning": "Same as the value ratio but after delivery costs; the margin source is stated.",
+   "selector": "[data-findrawer='ltgp_cac']"
+  }
+ }
+}

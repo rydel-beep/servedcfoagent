@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Definitions — Served CFO</title>
+{% include "partials/telemetry.html" %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/dashboard/static/css/dashboard.css?v={{ asset_v }}">
+<link rel="stylesheet" href="/dashboard/static/css/landing.css?v={{ asset_v }}">
+</head>
+<body data-page="definitions">
+<header class="header">
+  <div class="header-left"><div class="reactor"></div><h1 class="wordmark">EDITH</h1>
+    <span class="wordmark-sub">Definitions</span></div>
+  <div class="header-right"><a class="panelpage-back" href="/dashboard/">← Dashboard</a></div>
+</header>
+<main class="legend-main">
+  <p class="scale-note">Every number, switch and tag on the dashboard, explained in plain
+  English — the same text the hover pop-ups use. Generated from one registry, so this page
+  is always complete. Hover anything anywhere, or press the "?" button on any page.</p>
+  {% for gid, gname in groups.items() %}
+  <section class="legend-group">
+    <h2>{{ gname }}</h2>
+    {% for eid, e in entries.items() if e.screen == gid %}
+    <div class="legend-entry" id="def-{{ eid }}">
+      <div class="dt-name">{{ e.name }}<span class="kind">{{ e.kind }}</span></div>
+      <div class="dt-meaning">{{ e.meaning }}</div>
+      {% if e.computed %}<div class="dt-row"><b>How it’s worked out:</b> {{ e.computed }}</div>{% endif %}
+      {% if e.changing %}<div class="dt-row"><b>If you change it:</b> {{ e.changing }}</div>{% endif %}
+      {% if e.default_from %}<div class="dt-row"><b>Where it comes from:</b> {{ e.default_from }}</div>{% endif %}
+      {% if e.good %}<div class="dt-row"><b>What good looks like:</b> {{ e.good }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </section>
+  {% endfor %}
+</main>
+</body>
+</html>

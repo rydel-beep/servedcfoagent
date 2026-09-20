@@ -196,6 +196,34 @@ def main():
                 fail(f"card link {h} → {st}")
         log.clear()
 
+        # TOOLTIP sample on the LANDING (registry-driven, keyboard-accessible)
+        page.goto(BASE + "/dashboard/", wait_until="load")
+        time.sleep(2)
+        tip_hits = page.evaluate(
+            """async () => {
+                 const targets = ['#tile-cash_on_hand', '#tile-ltv_cac',
+                                  '#tile-pulse_booked_calls', '#card-scale',
+                                  '#exec-verdict'];
+                 let ok = 0;
+                 for (const sel of targets) {
+                   const el = document.querySelector(sel);
+                   if (!el) continue;
+                   el.dispatchEvent(new MouseEvent('mouseover', {bubbles: true}));
+                   await new Promise(r => setTimeout(r, 450));
+                   const t = document.getElementById('defs-tip');
+                   if (t && t.style.display === 'block' && t.innerText.length > 20) ok++;
+                   el.dispatchEvent(new MouseEvent('mouseout', {bubbles: true}));
+                   await new Promise(r => setTimeout(r, 60));
+                 }
+                 return ok;
+               }""")
+        REPORT["passes"]["tooltips_landing"] = {"rendered": tip_hits, "of": 5}
+        if tip_hits < 5:
+            fail(f"landing: only {tip_hits}/5 sampled tooltips rendered from the registry")
+        if not page.evaluate("() => !!document.getElementById('defs-help-btn')"):
+            fail("landing: the '?' help button is missing")
+        log.clear()
+
         # PASS 7 — area-page RENDER smoke (fetch-200 isn't render-proof):
         # load a representative sample in the real browser; any pageerror,
         # console error or visible boundary-failure block fails the gate.
@@ -211,7 +239,50 @@ def main():
                  roadmap_or_state: (document.getElementById('roadmap-wrap')?.innerText || '').trim().length > 0
                    || (document.querySelector('#scale-hero .panel-boundary-fail')?.innerText || '').length > 0,
                  boundaries: Array.from(document.querySelectorAll('.panel-boundary-fail')).map(e => e.innerText.slice(0, 100)),
+                 sim_triad: !!document.getElementById('sim-triad'),
+                 sim_spend: +(document.getElementById('sim-spend')?.value || 0),
+                 sim_leads: +(document.getElementById('sim-leads')?.value || 0),
+                 chain_clients: (document.getElementById('chain-clients-v')?.innerText || '').trim(),
+                 accuracy: (document.getElementById('accuracy-sentence')?.innerText || '').trim().slice(0, 120),
+                 advanced_closed: !document.getElementById('level-advanced')?.open,
+                 plan_closed: !document.getElementById('level-plan')?.open,
                })""")
+        # SIMULATOR MATH PARITY: the page's rendered chain must equal the
+        # server's simulate endpoint for the same inputs (math shown ==
+        # math computed — the trust mechanism)
+        if sprobe.get("sim_triad") and sprobe.get("sim_spend"):
+            server = page.evaluate(
+                """async (spend) => {
+                     const r = await fetch('/dashboard/api/scale/simulate', {
+                       method: 'POST', headers: {'Content-Type': 'application/json'},
+                       body: JSON.stringify({spend: spend})});
+                     return r.ok ? await r.json() : null;
+                   }""", sprobe["sim_spend"])
+            REPORT["passes"]["sim_parity"] = {"page": sprobe, "server": server}
+            if server:
+                if abs(server["leads"] - sprobe["sim_leads"]) > 1.5:
+                    fail(f"scale: page leads {sprobe['sim_leads']} ≠ server {server['leads']} (math parity)")
+                try:
+                    page_clients = float(sprobe["chain_clients"])
+                    if abs(server["clients"] - page_clients) > 0.15:
+                        fail(f"scale: page clients {page_clients} ≠ server {server['clients']} (math parity)")
+                except ValueError:
+                    fail(f"scale: chain clients not numeric: {sprobe['chain_clients']!r}")
+        else:
+            fail("scale: simulator triad missing or unbaked (server-render law)")
+        if not sprobe.get("accuracy"):
+            fail("scale: accuracy sentence missing from the top of the simulator")
+        if not (sprobe.get("advanced_closed") and sprobe.get("plan_closed")):
+            fail("scale: Advanced/Plan must ship collapsed (Simple is the default)")
+        # TOOLTIPS: hover the first exec-tile-equivalent (a chain card) and a
+        # registry-tagged element → the defs tip must render
+        page.hover("#chain-clients")
+        time.sleep(0.6)
+        tip_vis = page.evaluate(
+            "() => { const t = document.getElementById('defs-tip');"
+            " return t && t.style.display === 'block' && t.innerText.length > 20; }")
+        if not tip_vis:
+            fail("scale: hover tooltip did not render from the registry")
         page.screenshot(path=os.path.join(evd, "scale.png"), full_page=True)
         REPORT["passes"]["scale"] = {"probe": sprobe, "console": list(log)}
         if not sprobe.get("hero"):

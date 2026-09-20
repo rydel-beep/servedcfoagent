@@ -2320,3 +2320,40 @@ each month. The compass for 2027.
    plan-variance + capacity-threshold watches → feed:extra:compass. The
    first backtest is HONEST about its roughness (leads ±44%; closes ±193%
    — the August tracker-gap month and small n; stated on the tab).
+
+## #154 — EXPLAIN EVERYTHING · SIMULATE DIRECTLY · SIMPLIFY (2026-09-21)
+
+Rydel's three complaints, fixed structurally:
+
+1. **ONE DEFINITIONS REGISTRY** (dashboard/definitions.json, 142 entries):
+   every rendered metric, control, chip, lane and lever carries a plain-
+   English entry (meaning · how it's worked out · what changing it does ·
+   where the default comes from · what good looks like). It FEEDS the hover
+   tooltips + tap sheets (defs.js), the "?" mode, the auto-generated
+   /dashboard/definitions legend, the first-run tours, and EDITH's "what
+   is/explain X" drill (both handler lists). GRANULARITY RULING: element-
+   level on the modern surfaces; panel-level on the legacy area sections
+   (their own ⓘ icons keep the engine definitions underneath). 100%
+   COVERAGE IS A BUILD GATE (test builds the inventory from the code) and
+   a render_health rung re-checks after every deploy. TEAM LANGUAGE ONLY —
+   the jargon grep on registry text is a test. No tooltip text may live
+   anywhere else.
+2. **THE SIMULATOR** at the top of /scale: Spend ↔ CPL ↔ Leads, three
+   linked fields with locks (CPL locked by default; edit any unlocked
+   field and the others answer). CONSTANT CPL BY DEFAULT — the measured
+   climb curve is an opt-in toggle, labelled. The chain runs as question-
+   headed cards (calls → shows → signings → cash/MRR → cost) with rates
+   editable inline, sample size IN WORDS (solid/fair/rough), and per-field
+   reset. "Show the math" prints the arithmetic with the live numbers.
+   "I want…" inverts the same chain (leads/calls/clients/cash/MRR →
+   required spend + what has to be true + the 35%-close delta). NO SECOND
+   MODEL: compass_engine.simulate_month() is the server truth (identity-
+   tested equal to forward()'s first month under a collapsed lag; the
+   gate asserts the page's rendered numbers == the endpoint — math shown
+   is math computed). What-ifs write nothing (tested).
+3. **THREE LEVELS**: SIMPLE (default; server-rendered first paint —
+   accuracy sentence, triad, chain, I-want, presets) · ADVANCED
+   (collapsed: inputs detail, solver, money, team, ranges, calibration) ·
+   PLAN (collapsed: scenarios, roadmap, Plan-2027 pacing). Section
+   headings are questions. The backtest verdict renders as ONE plain
+   sentence at the top with per-rate confidence words.

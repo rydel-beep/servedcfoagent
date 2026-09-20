@@ -110,6 +110,21 @@ def tick() -> dict:
         items.extend(_freshness_items())
     except Exception as e:  # noqa: BLE001
         logger.warning("render_health self_check failed: %s", e)
+    # EXPLAIN-EVERYTHING rung: the definitions registry must keep 100%
+    # coverage of the rendered elements after every deploy
+    try:
+        from dashboard import definitions
+        missing, total = definitions.coverage_check()
+        if missing:
+            items.append({"severity": "S2", "category": "render_health",
+                          "title": f"definitions registry lost coverage — "
+                                   f"{len(missing)}/{total} elements "
+                                   f"unexplained (first: {missing[0]})",
+                          "action": "add the missing entries to "
+                                    "dashboard/definitions.json — every "
+                                    "element must carry its explanation"})
+    except Exception as e:  # noqa: BLE001
+        logger.info("definitions coverage watch failed: %s", e)
     try:
         rate = error_rate_last_hours(1)
         out["spike"] = rate["total"]

@@ -308,3 +308,20 @@ dashboard/evidence/phase0/.
   variance · capacity threshold inside hire lead time.
 - Gate: pulse-strip assertion + /scale first-paint pass + projection area
   smoke. Suite: [filled at deploy]. DECISIONS #153.
+
+---
+
+## 2026-09-21 — EXPLAIN · SIMULATE · SIMPLIFY (#154)
+
+- dashboard/definitions.json (142 plain-English entries) + definitions.py
+  (coverage inventory from code, jargon grep, EDITH explain drill) +
+  defs.js (hover 300ms / keyboard focus / long-press tap sheet / "?" mode
+  / first-run tours) + /dashboard/definitions legend (auto-generated) —
+  100% coverage is a build gate + a render_health watch.
+- compass_engine.simulate_month (the simulator's server truth; identity ==
+  forward month-1), confidence_word, accuracy_sentence (plain words).
+- /scale reshaped: SIMPLE (server-rendered triad + question-headed chain +
+  show-the-math + I-want + presets) / ADVANCED (collapsed) / PLAN
+  (collapsed). Gate now asserts math parity (page == server), tooltip
+  render (5/5 landing sample + scale), collapsed defaults, accuracy line.
+- Suite: [at deploy]. DECISIONS #154.

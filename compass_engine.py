@@ -1325,6 +1325,106 @@ def expiring_preview(pins: dict | None, slider_pct: float | None,
                      "declaration flow is the only path to actuals"}
 
 
+def simulate_month(inputs: dict | None = None, spend: float | None = None,
+                   cpl_override: float | None = None,
+                   cpl_curve: bool = False) -> dict:
+    """THE SIMULATOR's single-month chain — the SAME formulas as forward()
+    with the lag collapsed to this month (identity-tested against forward's
+    first month under lag [1,0,0]). Constant CPL by default; the measured
+    curve only when cpl_curve=True. Pure arithmetic on the engine's measured
+    defaults — a labelled what-if, writes nothing."""
+    inp = {**default_inputs(), **(inputs or {})}
+    S = float(spend if spend is not None else inp["spend_path"].get("start") or 0)
+    S0 = float(inp["spend_path"].get("start") or 1.0) or 1.0
+    cpl0 = float(cpl_override if cpl_override is not None else inp["cpl0"])
+    eps = float(inp["epsilon"]) if cpl_curve else 0.0
+    cpl_eff = cpl0 * ((S / S0) ** eps if S > 0 and eps else 1.0)
+    leads = S / cpl_eff if cpl_eff > 0 else 0.0
+    calls = leads * float(inp["set_rate"])
+    shows = calls * float(inp["show_rate"])
+    clients = shows * float(inp["close_rate"])
+    pkgs = inp["packages"]
+    mix = _norm_mix(inp["deal_mix"], pkgs)
+    contract_mix = sum(mix[p] * float((pkgs.get(p) or {}).get("contract") or 0)
+                       for p in mix)
+    mrr_mix = sum(mix[p] * float((pkgs.get(p) or {}).get("mrr") or 0) for p in mix)
+    m0_share = sum(mix[p] * ((pkgs.get(p) or {}).get("cash_schedule") or [0])[0]
+                   for p in mix)
+    margin_mix = sum(mix[p] * float((pkgs.get(p) or {}).get("gross_margin_pct")
+                                    or FY26_MARGIN_PCT) / 100 for p in mix)
+    cash_now = clients * m0_share * contract_mix
+    cash_term = clients * contract_mix
+    mrr_added = clients * mrr_mix
+    comm_rate = float(inp["commission_pct_of_cash"])
+    tooling = float(inp["sales_tooling_monthly"])
+    commissions_term = comm_rate * cash_term
+    cac = ((S + commissions_term + tooling) / clients) if clients >= 0.01 else None
+    cac_spend_only = (S / clients) if clients >= 0.01 else None
+    ltgp_per_client = contract_mix * margin_mix
+    return {"spend": round(S, 2), "cpl_effective": round(cpl_eff, 2),
+            "cpl_base": round(cpl0, 2), "cpl_curve": bool(cpl_curve),
+            "leads": round(leads, 1), "calls": round(calls, 1),
+            "shows": round(shows, 1), "clients": round(clients, 2),
+            "cash_this_month": round(cash_now, 2),
+            "cash_over_term": round(cash_term, 2),
+            "mrr_added": round(mrr_added, 2),
+            "commissions_over_term": round(commissions_term, 2),
+            "cac": round(cac, 2) if cac else None,
+            "cac_spend_only": round(cac_spend_only, 2) if cac_spend_only else None,
+            "ltgp_per_client": round(ltgp_per_client, 2),
+            "ltgp_cac": round(ltgp_per_client / cac, 2) if cac else None,
+            "mix": {k: round(v, 3) for k, v in mix.items()},
+            "contract_avg": round(contract_mix, 2),
+            "mrr_avg": round(mrr_mix, 2),
+            "margin_avg": round(margin_mix, 4),
+            "tooling": tooling,
+            "comm_rate": comm_rate,
+            "epsilon": float(inp["epsilon"]),
+            "spend_baseline": S0,
+            "m0_share": round(m0_share, 4),
+            "rates": {"set": inp["set_rate"], "show": inp["show_rate"],
+                      "close": inp["close_rate"]},
+            "label": "what-if — never the books"}
+
+
+def confidence_word(n) -> str:
+    """Sample-size honesty IN WORDS (the registry's language)."""
+    if n is None:
+        return "rough"
+    n = int(n)
+    if n >= 60:
+        return "solid"
+    if n >= 20:
+        return "fair"
+    return "rough"
+
+
+def accuracy_sentence() -> str:
+    """The backtest verdict as ONE plain sentence for the top of the
+    simulator — real numbers, no jargon."""
+    bt = kv_store.get(K_BACKTEST) or {}
+    mape = bt.get("mape_pct") or {}
+    if not any(v is not None for v in mape.values()):
+        return ("This model hasn't been scored against real months yet — "
+                "treat it as a compass, not a speedometer.")
+    bits = []
+    if mape.get("leads") is not None:
+        bits.append(f"within about ±{mape['leads']:.0f}% on leads")
+    if mape.get("closes") is not None:
+        # translate the % into clients-per-month at the current run rate
+        rows = bt.get("months") or []
+        actuals = [r["closes"]["actual"] for r in rows if r.get("closes")]
+        avg = (sum(actuals) / len(actuals)) if actuals else None
+        if avg is not None:
+            off = round(avg * mape["closes"] / 100)
+            bits.append(f"about ±{max(off, 1):.0f} client(s) a month on signings")
+        else:
+            bits.append(f"±{mape['closes']:.0f}% on signings")
+    return ("Over the last 3 months this model was " + " and ".join(bits) +
+            " — a compass, not a speedometer (one of those months had a "
+            "patchy tracker).")
+
+
 def sentinel_watch() -> list[dict]:
     """The compass's sentinel rung → feed:extra:compass: backtest drift ·
     plan-vs-actual variance · capacity threshold inside the hire lead time."""
