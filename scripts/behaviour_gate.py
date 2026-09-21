@@ -230,8 +230,13 @@ def run_travelling(page, evd, shots):
         # settling, evaluate() dies with "execution context was destroyed" —
         # which reads like a broken page and is really just a race. Settle,
         # then read; retry once.
+        #
+        # And WAIT FOR THE STAGES. Reading before the page has painted them
+        # reported "leads on screen 0 ≠ engine 175" against a page that
+        # renders 175 perfectly well — a gate that races is a gate that lies.
         try:
             page.wait_for_load_state("load", timeout=20000)
+            page.wait_for_selector(".tv-stage", timeout=20000)
         except Exception:
             pass
         try:

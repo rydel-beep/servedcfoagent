@@ -231,7 +231,16 @@ def main():
         # zero console errors, no tripped boundaries
         log.clear()
         page.goto(BASE + "/dashboard/scale", wait_until="load")
-        time.sleep(4)
+        # The inputs panel is fetched, so WAIT FOR IT rather than sleeping a
+        # fixed 4s and hoping. Under load the fetch took longer than the
+        # sleep and the gate reported a panel that renders perfectly well as
+        # "did not render controls" — the same fixed-sleep flaw the
+        # behaviour gate had on the travelling actions.
+        try:
+            page.wait_for_selector("#inputs-body .scale-ctl", timeout=20000)
+        except Exception:
+            pass
+        time.sleep(2)
         sprobe = page.evaluate(
             """() => ({
                  hero: (document.getElementById('scale-hero')?.innerText || '').trim().slice(0, 200),
