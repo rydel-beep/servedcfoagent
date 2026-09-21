@@ -367,9 +367,15 @@ a.s-verdict:hover { background: var(--bg-card-hover); }
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
-/* Decorative HUD rings must never eat a click. (Phase 0: the orb's ring SVG
-   was sitting on top of the Outflows card on the landing.) */
-#eh-rings, #eh-halo1, #eh-halo2, #eh-wave, #eh-shards, #eh-scan { pointer-events: none; }
+/* THE ORB IS DECORATION AND MUST NEVER EAT A CLICK.
+   #eh-stage is a fixed 240x240 visual parked bottom-right at --z-orb, and
+   it sat directly on top of the landing's "Outflows & BAS" card — the card
+   could not be clicked at all. hud.js binds no handler to it (it listens on
+   window and document only), so the whole stage is click-through. Naming
+   the rings alone was not enough: the wrapper caught the click instead. */
+#eh-stage, #eh-orbwrap, #eh-rings, #eh-halo1, #eh-halo2,
+#eh-core, #eh-pl, #eh-wave, #eh-cap, #eh-tick,
+#eh-shards, #eh-scan, #eh-radar { pointer-events: none; }
 
 @media (max-width: 560px) {
   .s-main { padding: var(--sp-4) var(--sp-3) var(--sp-8); }

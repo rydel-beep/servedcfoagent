@@ -537,3 +537,34 @@ def test_the_ads_board_is_read_defensively_before_it_loads():
     off a null state.board."""
     js = _read("dashboard", "static", "js", "adsapp.js")
     assert "state.board.scoreboard." not in js
+
+
+def test_the_orb_never_eats_a_click():
+    """#eh-stage is a fixed 240x240 decoration at --z-orb parked bottom-right.
+    It sat on top of the landing's Outflows card, which could not be clicked
+    at all. hud.js binds no handler to it, so the whole stage is
+    click-through — the WRAPPER too, not just the rings."""
+    css = _read("dashboard", "static", "css", "served.css")
+    block = css[css.index("#eh-stage, #eh-orbwrap"):]
+    block = block[:block.index("}") + 1]
+    for el in ("#eh-stage", "#eh-orbwrap", "#eh-rings", "#eh-core"):
+        assert el in block, el
+    assert "pointer-events: none" in block
+    js = _read("dashboard", "static", "js", "hud.js")
+    assert "stage.addEventListener" not in js
+
+
+def test_the_window_buttons_route_every_renderer_through_a_boundary():
+    """7d/14d/30d/60d/90d re-render five shared panels. Called bare, the
+    first renderer to meet a node its page does not own threw and the rest
+    never ran. Each call goes through boundary(), which skips a panel that
+    is not on this page and reports a real failure as telemetry."""
+    js = _read("dashboard", "static", "js", "dashboard.js")
+    i = js.index("// Re-render window-aware sections")
+    block = js[i:i + 1600]
+    for fn in ("renderPerfAnalysis", "renderFunnel", "renderSetters",
+               "renderClosers", "renderCommissionDetail", "applyRangeEconomics"):
+        assert f"{fn}(current" in block or f"{fn}(currentWindow)" in block, fn
+        # …and none of them is called bare on its own line
+        assert f"\n          {fn}(" not in block, f"{fn} is called outside a boundary"
+    assert block.count("boundary(") >= 6

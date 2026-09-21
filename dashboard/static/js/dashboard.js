@@ -1705,27 +1705,32 @@
         this.classList.add('active');
         // Show note for non-30d windows about financial data
         const note = $('#global-window-note');
-        if (currentWindow !== 30) {
-          note.textContent = 'Financial data (P&L, Cash) shown for trailing 30d only';
-        } else {
-          note.textContent = '';
+        if (note) {
+          note.textContent = currentWindow !== 30
+            ? 'Financial data (P&L, Cash) shown for trailing 30d only' : '';
         }
         // Window badges reflect the selected window everywhere
         ['win-badge-perf', 'win-badge-comm', 'win-badge-reps'].forEach(function(id) {
           var el = document.getElementById(id);
           if (el) el.textContent = currentWindow + 'd';
         });
-        // Re-render window-aware sections
+        // Re-render window-aware sections. EACH THROUGH ITS BOUNDARY: these
+        // renderers are shared across area pages, so on any given page some
+        // of their nodes do not exist. Called bare, the first one to meet a
+        // missing node threw and the rest never ran — which is exactly what
+        // the real-seat audit caught on brief, ads & sales and unit
+        // economics. The boundary skips a panel that is not on this page and
+        // reports a genuine failure as telemetry.
         if (currentSnap) {
           activeWindow = currentWindow;
-          renderPerfAnalysis(currentSnap);
-          renderFunnel(currentSnap);
-          renderSetters(currentSnap);
-          renderClosers(currentSnap);
-          renderCommissionDetail(currentSnap);
+          boundary('section-month-perf', 'perf analysis (window)', function () { renderPerfAnalysis(currentSnap); });
+          boundary('section-funnel', 'funnel (window)', function () { renderFunnel(currentSnap); });
+          boundary('section-reps', 'setters (window)', function () { renderSetters(currentSnap); });
+          boundary('section-reps', 'closers (window)', function () { renderClosers(currentSnap); });
+          boundary(null, 'commission detail (window)', function () { renderCommissionDetail(currentSnap); });
         }
         // Economics tiles recompute for the new window via the same engine.
-        applyRangeEconomics(currentWindow);
+        boundary(null, 'range economics (window)', function () { applyRangeEconomics(currentWindow); });
       });
     });
   }
@@ -1737,6 +1742,12 @@
     const windows = get(snap, 'sales.windows') || [];
     const tabsEl = $('#window-tabs');
     const content = $('#perf-analysis-content');
+    // This panel lives on ONE area page. The window buttons call this
+    // renderer from every page that carries them, so on the others these
+    // nodes simply do not exist — and writing into them threw, killing the
+    // rest of the re-render. (The real-seat audit's 7d/14d/30d/60d/90d
+    // errors on brief, ads & sales and unit economics were all this.)
+    if (!tabsEl || !content) return;
 
     if (windows.length === 0) {
       tabsEl.innerHTML = '';
