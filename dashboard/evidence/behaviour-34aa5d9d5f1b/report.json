@@ -381,19 +381,19 @@
      },
      "window_d21": {
       "url": "/dashboard/scale/travelling?s=eyJzcGVuZF9wYXRoIjp7InNoYXBlIjoiZmxhdCIsInN0YXJ0IjoxMDIxNS4yOX0sImNwbDAiOjg4LjMyLCJzZXRfcmF0ZSI6MC4xNDcsInNob3dfcmF0ZSI6MC45MDIsImNsb3NlX3JhdGUiOjAuMjgyNn0%3D&window=d21&compare=scenario",
-      "stages": 0,
-      "verdict": "",
-      "compare": "",
-      "window": "",
-      "progress": "",
-      "leads": "",
-      "closed": "",
-      "bars": 0,
-      "read": 0,
-      "gap": ""
+      "stages": 10,
+      "verdict": "On course to beat the client plan, 7 projected against 3 planned. Volume is above plan (95 leads ahead); show rate is 71% against 90% planned.",
+      "compare": "scenario",
+      "window": "d21",
+      "progress": "Day 21 of 21",
+      "leads": "175",
+      "closed": "planned 28%, actual 18%",
+      "bars": 4,
+      "read": 657,
+      "gap": "Your biggest gap is close rate: 18% against 28% planned. Closing it would be worth about 2 clients and $8,972 this window."
      },
      "engine_match": {
-      "screen": 0,
+      "screen": 175,
       "engine": 175
      },
      "compare_usual": {
@@ -749,13 +749,9 @@
    }
   }
  ],
- "fails": [
-  "travelling: the window control did not switch",
-  "travelling: the 21-day window shows progress ''",
-  "travelling: leads on screen 0 \u2260 engine 175"
- ],
+ "fails": [],
  "commit": "34aa5d9d5f1b",
- "utc": "2026-09-21T13:34:29Z",
+ "utc": "2026-09-21T13:39:05Z",
  "console_errors": [],
- "ok": false
+ "ok": true
 }
