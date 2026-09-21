@@ -115,7 +115,10 @@ def run_pass(page, name, evd, shots):
     if s2["chart_point"] >= 0 and abs(s2["chart_point"] - s2["leads"]) > 2:
         fail(f"{name}: chart point {s2['chart_point']} ≠ leads {s2['leads']}")
 
-    # 4 · DRAG the chart → spend + leads follow
+    # 4 · DRAG the chart → spend + leads follow (scroll it into the
+    # viewport first — mouse events off-viewport dispatch nowhere)
+    page.locator("#sim-chart").scroll_into_view_if_needed()
+    time.sleep(0.3)
     box = page.evaluate("""() => { const r = document.getElementById('sim-chart').getBoundingClientRect();
                                    return {x: r.left, y: r.top, w: r.width, h: r.height}; }""")
     page.mouse.move(box["x"] + box["w"] * 0.8, box["y"] + box["h"] * 0.5)

@@ -203,19 +203,34 @@
   }
 
   // ── PARITY ON SETTLE: the engine re-checks; on real mismatch it WINS ────
+  // STALE-RESPONSE GUARD: a check sent for an earlier state must never
+  // clobber a newer one (the behaviour gate caught exactly that race on
+  // real network latency — an in-flight CPL check overwrote a fresh
+  // target-mode solve).
   var settleTimer = null;
+  var settleSeq = 0;
   function settleCheck() {
     clearTimeout(settleTimer);
     settleTimer = setTimeout(async function () {
+      var seq = ++settleSeq;
+      var sent = { spend: simState.spend, cpl: simState.cpl,
+                   curve: simState.curve, set: simState.set,
+                   show: simState.show, close: simState.close };
       try {
         var r = await fetch('/dashboard/api/scale/simulate', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ spend: simState.spend, cpl: simState.cpl,
-            cpl_curve: simState.curve,
-            inputs: { set_rate: simState.set, show_rate: simState.show,
-                      close_rate: simState.close } }) });
+          body: JSON.stringify({ spend: sent.spend, cpl: sent.cpl,
+            cpl_curve: sent.curve,
+            inputs: { set_rate: sent.set, show_rate: sent.show,
+                      close_rate: sent.close } }) });
         if (!r.ok) return;
         var server = await r.json();
+        // superseded by a newer check, or the state moved since we sent —
+        // this response may only be compared against the state it was for
+        if (seq !== settleSeq || sent.spend !== simState.spend ||
+            sent.cpl !== simState.cpl || sent.curve !== simState.curve ||
+            sent.set !== simState.set || sent.show !== simState.show ||
+            sent.close !== simState.close) return;
         var c = currentChain();
         var off = Math.abs(server.leads - c.leads) > 1.5 ||
                   Math.abs(server.clients - c.clients) > 0.15;
