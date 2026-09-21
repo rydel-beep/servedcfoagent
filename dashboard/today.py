@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 K_WEEK = "today:cache:week"        # this week's leads + consults booked
 K_SPEND = "today:cache:spend"      # ad spend MTD vs plan
 K_TRAVEL = "today:cache:travelling"  # the travelling verdict line
+K_TRENDS = "today:cache:trends"    # the day-level 30-day series per tile
 K_LASTSEEN = "today:last_seen"     # {user: iso} — for "since you last looked"
 
 # The eight, in the order Rydel reads them. Six are MOVED from exec_top.
@@ -109,6 +110,15 @@ def refresh_cache() -> dict:
     kv_store.put(K_SPEND, out["spend"])
     out["travelling"] = _wrap(_travel, "travelling")
     kv_store.put(K_TRAVEL, out["travelling"])
+
+    def _trends():
+        """Day-level history is a 38 MB file read line by line — that is
+        loop work, not page-load work. TODAY reads the answer."""
+        import trend
+        return {tid: trend.sparkline(field, 30)
+                for tid, (field, _p, _pol, _u) in TREND_SPEC.items() if field}
+    out["trends"] = _wrap(_trends, "trends")
+    kv_store.put(K_TRENDS, out["trends"])
     logger.info("today caches refreshed: %s",
                 {k: ("err" if v.get("error") else "ok") for k, v in out.items()})
     return out
@@ -189,14 +199,13 @@ def build(snap: dict | None, owner: bool) -> dict:
             sperr or "not yet computed — first refresh pending", "", "degraded"))
 
     # ── trend + delta on every tile ──
+    cached_trends = (kv_store.get(K_TRENDS) or {}).get("data") or {}
     for t in tiles:
         field, plan_key, polarity, unit = TREND_SPEC.get(t["id"], ("", "", "gain", "money"))
-        try:
-            t["trend"] = trend.sparkline(field, 30) if field else {
-                "points": [], "days": 0,
-                "note": "no day-level history is kept for this one yet"}
-        except Exception as e:  # noqa: BLE001
-            t["trend"] = {"points": [], "days": 0, "note": f"trend unavailable ({str(e)[:40]})"}
+        t["trend"] = cached_trends.get(t["id"]) or {
+            "points": [], "days": 0,
+            "note": ("no day-level history is kept for this one yet" if not field
+                     else "the trend has not been computed yet — first refresh pending")}
         try:
             ref_actual = t.get("raw")
             if t["id"] == "ad_spend" and spd:
@@ -213,7 +222,8 @@ def build(snap: dict | None, owner: bool) -> dict:
                 d = {"state": "flat", "word": "no committed plan to pace against",
                      "basis": "plan", "value": None}
             else:
-                d = trend.delta(ref_actual, field, plan_key, polarity, unit)
+                d = _delta_from_cache(ref_actual, cached_trends.get(t["id"]),
+                                      plan_key, polarity, unit)
             t["delta"] = d
         except Exception as e:  # noqa: BLE001
             t["delta"] = {"state": "flat", "word": f"comparison unavailable ({str(e)[:40]})",
@@ -243,11 +253,50 @@ def build(snap: dict | None, owner: bool) -> dict:
     }
 
 
+def _delta_from_cache(actual, spark, plan_key, polarity, unit):
+    """The same comparison trend.delta makes, but off the series the loop
+    already computed — so the page never re-reads the history file."""
+    import trend as _t
+    if actual is None:
+        return {"state": "flat", "word": "no figure to compare", "basis": "none",
+                "value": None}
+    row = _t._plan_for_month(str(today_sydney())[:7]) if plan_key else None
+    if row and row.get(plan_key) is not None:
+        ref, basis = row[plan_key], f"the committed plan (v{row.get('_version')})"
+    elif spark and spark.get("first") is not None:
+        ref = spark["first"]
+        basis = f"where it stood on {(spark.get('span') or '').split(' → ')[0]}"
+    else:
+        return {"state": "flat", "word": "nothing to compare against yet",
+                "basis": "no plan committed and not enough history", "value": None}
+    diff = actual - ref
+    mag = (f"${abs(diff):,.0f}" if unit == "money"
+           else f"{abs(diff):.2f}×" if unit == "ratio"
+           else f"{abs(diff):,.0f}")
+    if abs(diff) < (abs(ref) * 0.005 if ref else 0.005):
+        return {"state": "flat", "word": f"level with {basis}", "basis": basis,
+                "value": round(diff, 2)}
+    if polarity == "cost":
+        return {"state": "bad" if diff > 0 else "good",
+                "word": f"{mag} {'over' if diff > 0 else 'under'} {basis}",
+                "basis": basis, "value": round(diff, 2)}
+    return {"state": "good" if diff > 0 else "bad",
+            "word": f"{mag} {'above' if diff > 0 else 'below'} {basis}",
+            "basis": basis, "value": round(diff, 2)}
+
+
 def _rulings(owner: bool) -> dict:
     """Needs your ruling — the count, and the top three NAMED."""
     if not owner:
         return {"count": None, "cards": [], "hidden": True}
     try:
+        # from the kv cache the loop writes — building the cards is an engine
+        # call and must never happen on a page load.
+        cached = (kv_store.get("exec:cache:decisions") or {}).get("data") or {}
+        if cached.get("top3") is not None:
+            return {"count": cached.get("count"), "hidden": False,
+                    "cards": cached.get("top3") or [],
+                    "href": "/dashboard/view/decisions"}
         import decision_cards
         cards = (decision_cards.build_cards() or {}).get("cards") or []
         def _why(c):

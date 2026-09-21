@@ -1,7 +1,7 @@
 {
  "commit": "1b8e7a8a7331",
  "base": "https://web-production-16b16.up.railway.app",
- "utc": "2026-09-21T12:13:47Z",
+ "utc": "2026-09-21T12:17:11Z",
  "scans": {
   "works": {
    "pages": {
@@ -9,13 +9,13 @@
      "status": 200,
      "tiles": 12,
      "panels": 3,
-     "ok": false
+     "ok": true
     },
     "sales-board": {
      "status": 200,
      "tiles": 23,
      "panels": 8,
-     "ok": false
+     "ok": true
     },
     "landing": {
      "status": 200,
@@ -27,13 +27,13 @@
      "status": 200,
      "tiles": 2,
      "panels": 5,
-     "ok": false
+     "ok": true
     },
     "cash": {
      "status": 200,
      "tiles": 1,
      "panels": 4,
-     "ok": false
+     "ok": true
     },
     "sales": {
      "status": 200,
@@ -45,7 +45,7 @@
      "status": 200,
      "tiles": 1,
      "panels": 6,
-     "ok": false
+     "ok": true
     },
     "projection": {
      "status": 200,
@@ -75,7 +75,7 @@
      "status": 200,
      "tiles": 1,
      "panels": 2,
-     "ok": false
+     "ok": true
     },
     "decisions": {
      "status": 200,
@@ -132,7 +132,7 @@
      "ok": true
     }
    },
-   "ok": false
+   "ok": true
   },
   "agrees_with_itself": {
    "keys": 39,
@@ -181,7 +181,7 @@
    "ok": true
   },
   "agrees_with_reality": {
-   "at": "2026-09-21T22:16:10.070688+10:00",
+   "at": "2026-09-21T22:19:57.749937+10:00",
    "checks": [
     {
      "detail": "cent-exact at $363.02",
@@ -268,416 +268,15 @@
    "ok": true
   }
  },
- "findings": [
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "today: cash_on_hand rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/today"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "today: committed_mrr rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/today"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "today: ar_outstanding rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/today"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "today: cash_net_mtd rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/today"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "today: ltv_cac rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/today"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "today: ltgp_cac rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/today"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "today: week_flow rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/today"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "today: ad_spend rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/today"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "today: travelling_verdict rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/today"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "today: pulse_show_rate rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/today"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "today: pulse_close_rate rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/today"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "today: pulse_booked_calls rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/today"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: sales_leads rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: sales_shows_confirmed rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: sales_closes rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: sales_cash rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: sales_unmarked_1 rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: setter_akila rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: setter_maran rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: setter_coby rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: pipeline_1 rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: pipeline_2 rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: pipeline_3 rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: pipeline_4 rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: pipeline_5 rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: pipeline_6 rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: pipeline_7 rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: pipeline_8 rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: pipeline_9 rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: pipeline_10 rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: pipeline_11 rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: pipeline_12 rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: pipeline_13 rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: pipeline_14 rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "sales-board: pipeline_15 rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/sales"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "brief: cash_on_hand rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/view/brief"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "brief: committed_mrr rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/view/brief"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "cash: cash_on_hand rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/view/cash"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "unit-econ: ue_gross_margin rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/view/unit-econ"
-   ]
-  },
-  {
-   "scan": "scan1",
-   "sev": "SEV2",
-   "class": "BROKEN",
-   "title": "team: cash_on_hand rendered empty",
-   "detail": "a tile must carry a value or a labelled state",
-   "surfaces": [
-    "/dashboard/view/team"
-   ]
-  }
- ],
+ "findings": [],
  "health_row": {
   "commit": "1b8e7a8a7331",
-  "runtime_s": 145.4,
-  "scan1_ok": false,
+  "runtime_s": 169.0,
+  "scan1_ok": true,
   "scan2_ok": true,
   "scan3_ok": true,
-  "findings": 40,
-  "top": "today: cash_on_hand rendered empty",
+  "findings": 0,
+  "top": null,
   "pages": 21
  }
 }

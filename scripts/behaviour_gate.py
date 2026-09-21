@@ -225,8 +225,17 @@ def run_travelling(page, evd, shots):
     page.wait_for_load_state("load")
     time.sleep(2.5)
 
-    def tv_state():
-        return page.evaluate("""() => ({
+    def tv_state(_retry=True):
+        # Changing the comparator NAVIGATES. If the navigation is still
+        # settling, evaluate() dies with "execution context was destroyed" —
+        # which reads like a broken page and is really just a race. Settle,
+        # then read; retry once.
+        try:
+            page.wait_for_load_state("load", timeout=20000)
+        except Exception:
+            pass
+        try:
+            return page.evaluate("""() => ({
           url: location.pathname + location.search,
           stages: document.querySelectorAll('.tv-stage').length,
           verdict: (document.querySelector('.tv-verdict')?.innerText || '').trim(),
@@ -239,6 +248,11 @@ def run_travelling(page, evd, shots):
           read: (document.querySelector('[data-def=tv_read] p')?.innerText || '').trim().length,
           gap: (document.querySelector('[data-def=tv_gap]')?.innerText || '').trim(),
         })""")
+        except Exception:
+            if not _retry:
+                raise
+            time.sleep(1.5)
+            return tv_state(_retry=False)
 
     s1 = tv_state()
     steps["opened"] = s1
@@ -278,9 +292,14 @@ def run_travelling(page, evd, shots):
         steps["engine_match"] = {"screen": shown, "engine": eng_leads}
 
     # 3 · switch the comparator → the plan side changes
+    before_url = page.url
     page.select_option("[data-def=tv_compare] select", "usual")
+    try:
+        page.wait_for_url(lambda u: u != before_url, timeout=15000)
+    except Exception:
+        pass
     page.wait_for_load_state("load")
-    time.sleep(2.5)
+    time.sleep(1.0)
     s3 = tv_state()
     steps["compare_usual"] = s3
     if s3["compare"] != "usual":
@@ -307,23 +326,48 @@ def run_travelling(page, evd, shots):
     time.sleep(0.3)
 
     # 6 · the two actions
+    clear_text(page, "tv-action-out")
     page.click("#tv-remodel")
-    time.sleep(2.5)
-    out = page.evaluate("() => (document.getElementById('tv-action-out')?.innerText || '').trim()")
+    out = wait_for_text(page, "tv-action-out", "Loaded into the compass")
     steps["remodel"] = out
     if "Loaded into the compass" not in out:
         fail(f"travelling: re-model from actuals did not report back ({out[:80]})")
     if "rate" not in out.lower():
         fail("travelling: re-model did not name the rates it loaded")
+    clear_text(page, "tv-action-out")      # never read the last reply as this one
     page.click("#tv-save")
-    time.sleep(2.5)
-    out2 = page.evaluate("() => (document.getElementById('tv-action-out')?.innerText || '').trim()")
+    out2 = wait_for_text(page, "tv-action-out", "Saved")
     steps["save"] = out2
     if "Saved" not in out2:
         fail(f"travelling: save this check did not confirm ({out2[:80]})")
     if shots:
         page.screenshot(path=os.path.join(evd, "travelling-2-actions.png"), full_page=True)
     return steps
+
+
+
+def wait_for_text(page, el_id, needle, timeout=15.0):
+    """Wait for an element to actually SAY something, rather than sleeping a
+    fixed 2.5s and hoping. A gate that flakes on latency teaches nothing —
+    and worse, a late reply can land in the output just as the NEXT
+    assertion reads it, so one slow call makes two checks lie. (This is the
+    stale-response class #155 fixed in the simulator; the gate had it too.)"""
+    end = time.time() + timeout
+    last = ""
+    while time.time() < end:
+        last = page.evaluate(
+            "(id) => (document.getElementById(id)?.innerText || '').trim()", el_id)
+        if needle.lower() in (last or "").lower():
+            return last
+        time.sleep(0.25)
+    return last
+
+
+def clear_text(page, el_id):
+    """Empty an output element before triggering the next action, so a late
+    reply from the PREVIOUS one can never be mistaken for this one's."""
+    page.evaluate("(id) => { const e = document.getElementById(id); if (e) e.innerText = ''; }",
+                  el_id)
 
 
 def run_required_rate(page, name, evd, shots):

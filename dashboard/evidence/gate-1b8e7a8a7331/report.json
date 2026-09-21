@@ -10,7 +10,7 @@
       "value": "$188,473.38",
       "sub": "3 accounts \u00b7 Xero bank feeds can lag the bank by up to a day",
       "note": "",
-      "stamp": "Xero closing balances \u00b7 as of 2026-09-21 \u00b7 pulled 0m ago"
+      "stamp": "Xero closing balances \u00b7 as of 2026-09-21 \u00b7 pulled 6m ago"
      },
      {
       "id": "tile-committed_mrr",
@@ -18,7 +18,7 @@
       "value": "$72,887.52",
       "sub": "35 active clients \u00b7 contracted monthly revenue \u2014 never a cost",
       "note": "",
-      "stamp": "Finance-sheet Health tab + declarations + renewal ledger \u00b7 pulled 0m ago"
+      "stamp": "Finance-sheet Health tab + declarations + renewal ledger \u00b7 pulled 6m ago"
      },
      {
       "id": "tile-ar_outstanding",
@@ -26,7 +26,7 @@
       "value": "$70,248.83",
       "sub": "25 clients owing \u00b7 pending is never cash \u00b7 internal visibility only",
       "note": "",
-      "stamp": "expected (RECOGNIZED grid + renewal ledger) \u2212 received (Stripe) \u00b7 built 0m ago"
+      "stamp": "expected (RECOGNIZED grid + renewal ledger) \u2212 received (Stripe) \u00b7 built 6m ago"
      },
      {
       "id": "tile-cash_net_mtd",
@@ -34,7 +34,7 @@
       "value": "$1,118.84",
       "sub": "MTD \u00b7 bank-balance delta",
       "note": "",
-      "stamp": "three-nets engine (Stripe receipts \u2212 banded outflows) \u00b7 computed 0m ago"
+      "stamp": "three-nets engine (Stripe receipts \u2212 banded outflows) \u00b7 computed 6m ago"
      },
      {
       "id": "tile-operating_net_mtd",
@@ -42,7 +42,7 @@
       "value": "$-1,706.20",
       "sub": "tax banded beside: $0.00 \u2014 never inside",
       "note": "",
-      "stamp": "three-nets engine (Stripe receipts \u2212 banded outflows) \u00b7 computed 0m ago"
+      "stamp": "three-nets engine (Stripe receipts \u2212 banded outflows) \u00b7 computed 6m ago"
      },
      {
       "id": "tile-ltv_cac",
@@ -50,7 +50,7 @@
       "value": "9.58\u00d7",
       "sub": "Sep cohort \u00b7 3 closes \u00b7 CAC loaded $3,516 \u00b7 spend-only $3,025",
       "note": "",
-      "stamp": "honest unit-econ engine \u00b7 cohort clock \u00b7 computed 0m ago"
+      "stamp": "honest unit-econ engine \u00b7 cohort clock \u00b7 computed 6m ago"
      },
      {
       "id": "tile-ltgp_cac",
@@ -58,7 +58,7 @@
       "value": "4.11\u00d7",
       "sub": "margin: FY26 contribution margin 42.9% (labelled fallback \u2014 Xero read 100.0% (COGS timing, implausible)) \u00b7 3:1 = benchmark, not target",
       "note": "",
-      "stamp": "honest unit-econ engine \u00b7 cohort clock \u00b7 computed 0m ago"
+      "stamp": "honest unit-econ engine \u00b7 cohort clock \u00b7 computed 6m ago"
      },
      {
       "id": "tile-cohort_cash_roas",
@@ -66,7 +66,7 @@
       "value": "0.80\u00d7",
       "sub": "cohort clock \u2014 cash from this window's closes \u00f7 this window's ad spend",
       "note": "",
-      "stamp": "finance-analysis engine \u00b7 computed 0m ago"
+      "stamp": "finance-analysis engine \u00b7 computed 6m ago"
      }
     ],
     "cards": [
@@ -167,7 +167,7 @@
     "height": 1103,
     "scrollW": 1440,
     "innerW": 1440,
-    "dcl": 2968
+    "dcl": 2842
    },
    "console": []
   },
@@ -180,7 +180,7 @@
       "value": "$188,473.38",
       "sub": "3 accounts \u00b7 Xero bank feeds can lag the bank by up to a day",
       "note": "",
-      "stamp": "Xero closing balances \u00b7 as of 2026-09-21 \u00b7 pulled 0m ago"
+      "stamp": "Xero closing balances \u00b7 as of 2026-09-21 \u00b7 pulled 6m ago"
      },
      {
       "id": "tile-committed_mrr",
@@ -188,7 +188,7 @@
       "value": "$72,887.52",
       "sub": "35 active clients \u00b7 contracted monthly revenue \u2014 never a cost",
       "note": "",
-      "stamp": "Finance-sheet Health tab + declarations + renewal ledger \u00b7 pulled 0m ago"
+      "stamp": "Finance-sheet Health tab + declarations + renewal ledger \u00b7 pulled 6m ago"
      },
      {
       "id": "tile-ar_outstanding",
@@ -196,7 +196,7 @@
       "value": "$70,248.83",
       "sub": "25 clients owing \u00b7 pending is never cash \u00b7 internal visibility only",
       "note": "",
-      "stamp": "expected (RECOGNIZED grid + renewal ledger) \u2212 received (Stripe) \u00b7 built 0m ago"
+      "stamp": "expected (RECOGNIZED grid + renewal ledger) \u2212 received (Stripe) \u00b7 built 6m ago"
      },
      {
       "id": "tile-cash_net_mtd",
@@ -204,7 +204,7 @@
       "value": "$1,118.84",
       "sub": "MTD \u00b7 bank-balance delta",
       "note": "",
-      "stamp": "three-nets engine (Stripe receipts \u2212 banded outflows) \u00b7 computed 0m ago"
+      "stamp": "three-nets engine (Stripe receipts \u2212 banded outflows) \u00b7 computed 6m ago"
      },
      {
       "id": "tile-operating_net_mtd",
@@ -212,7 +212,7 @@
       "value": "$-1,706.20",
       "sub": "tax banded beside: $0.00 \u2014 never inside",
       "note": "",
-      "stamp": "three-nets engine (Stripe receipts \u2212 banded outflows) \u00b7 computed 0m ago"
+      "stamp": "three-nets engine (Stripe receipts \u2212 banded outflows) \u00b7 computed 6m ago"
      },
      {
       "id": "tile-ltv_cac",
@@ -220,7 +220,7 @@
       "value": "9.58\u00d7",
       "sub": "Sep cohort \u00b7 3 closes \u00b7 CAC loaded $3,516 \u00b7 spend-only $3,025",
       "note": "",
-      "stamp": "honest unit-econ engine \u00b7 cohort clock \u00b7 computed 0m ago"
+      "stamp": "honest unit-econ engine \u00b7 cohort clock \u00b7 computed 6m ago"
      },
      {
       "id": "tile-ltgp_cac",
@@ -228,7 +228,7 @@
       "value": "4.11\u00d7",
       "sub": "margin: FY26 contribution margin 42.9% (labelled fallback \u2014 Xero read 100.0% (COGS timing, implausible)) \u00b7 3:1 = benchmark, not target",
       "note": "",
-      "stamp": "honest unit-econ engine \u00b7 cohort clock \u00b7 computed 0m ago"
+      "stamp": "honest unit-econ engine \u00b7 cohort clock \u00b7 computed 6m ago"
      },
      {
       "id": "tile-cohort_cash_roas",
@@ -236,7 +236,7 @@
       "value": "0.80\u00d7",
       "sub": "cohort clock \u2014 cash from this window's closes \u00f7 this window's ad spend",
       "note": "",
-      "stamp": "finance-analysis engine \u00b7 computed 0m ago"
+      "stamp": "finance-analysis engine \u00b7 computed 6m ago"
      }
     ],
     "cards": [
@@ -337,7 +337,7 @@
     "height": 1103,
     "scrollW": 1440,
     "innerW": 1440,
-    "dcl": 541
+    "dcl": 534
    },
    "console": []
   },
@@ -371,7 +371,7 @@
     "sim_triad": true,
     "sim_spend": 10206,
     "sim_leads": 116,
-    "chain_clients": "",
+    "chain_clients": "4.3",
     "accuracy": "Over the last 3 months this model was within about \u00b144% on leads and about \u00b110 client(s) a month on signings \u2014 a compass",
     "advanced_closed": true,
     "plan_closed": true
@@ -422,7 +422,7 @@
     "sim_triad": true,
     "sim_spend": 10206,
     "sim_leads": 116,
-    "chain_clients": "",
+    "chain_clients": "4.3",
     "accuracy": "Over the last 3 months this model was within about \u00b144% on leads and about \u00b110 client(s) a month on signings \u2014 a compass",
     "advanced_closed": true,
     "plan_closed": true
@@ -473,7 +473,7 @@
       "value": "$188,473.38",
       "sub": "3 accounts \u00b7 Xero bank feeds can lag the bank by up to a day",
       "note": "",
-      "stamp": "Xero closing balances \u00b7 as of 2026-09-21 \u00b7 pulled 0m ago"
+      "stamp": "Xero closing balances \u00b7 as of 2026-09-21 \u00b7 pulled 6m ago"
      },
      {
       "id": "tile-committed_mrr",
@@ -481,7 +481,7 @@
       "value": "$72,887.52",
       "sub": "35 active clients \u00b7 contracted monthly revenue \u2014 never a cost",
       "note": "",
-      "stamp": "Finance-sheet Health tab + declarations + renewal ledger \u00b7 pulled 0m ago"
+      "stamp": "Finance-sheet Health tab + declarations + renewal ledger \u00b7 pulled 6m ago"
      },
      {
       "id": "tile-ar_outstanding",
@@ -489,7 +489,7 @@
       "value": "$70,248.83",
       "sub": "25 clients owing \u00b7 pending is never cash \u00b7 internal visibility only",
       "note": "",
-      "stamp": "expected (RECOGNIZED grid + renewal ledger) \u2212 received (Stripe) \u00b7 built 0m ago"
+      "stamp": "expected (RECOGNIZED grid + renewal ledger) \u2212 received (Stripe) \u00b7 built 6m ago"
      },
      {
       "id": "tile-cash_net_mtd",
@@ -497,7 +497,7 @@
       "value": "$1,118.84",
       "sub": "MTD \u00b7 bank-balance delta",
       "note": "",
-      "stamp": "three-nets engine (Stripe receipts \u2212 banded outflows) \u00b7 computed 0m ago"
+      "stamp": "three-nets engine (Stripe receipts \u2212 banded outflows) \u00b7 computed 6m ago"
      },
      {
       "id": "tile-operating_net_mtd",
@@ -505,7 +505,7 @@
       "value": "$-1,706.20",
       "sub": "tax banded beside: $0.00 \u2014 never inside",
       "note": "",
-      "stamp": "three-nets engine (Stripe receipts \u2212 banded outflows) \u00b7 computed 0m ago"
+      "stamp": "three-nets engine (Stripe receipts \u2212 banded outflows) \u00b7 computed 6m ago"
      },
      {
       "id": "tile-ltv_cac",
@@ -513,7 +513,7 @@
       "value": "9.58\u00d7",
       "sub": "Sep cohort \u00b7 3 closes \u00b7 CAC loaded $3,516 \u00b7 spend-only $3,025",
       "note": "",
-      "stamp": "honest unit-econ engine \u00b7 cohort clock \u00b7 computed 0m ago"
+      "stamp": "honest unit-econ engine \u00b7 cohort clock \u00b7 computed 6m ago"
      },
      {
       "id": "tile-ltgp_cac",
@@ -521,7 +521,7 @@
       "value": "4.11\u00d7",
       "sub": "margin: FY26 contribution margin 42.9% (labelled fallback \u2014 Xero read 100.0% (COGS timing, implausible)) \u00b7 3:1 = benchmark, not target",
       "note": "",
-      "stamp": "honest unit-econ engine \u00b7 cohort clock \u00b7 computed 0m ago"
+      "stamp": "honest unit-econ engine \u00b7 cohort clock \u00b7 computed 6m ago"
      },
      {
       "id": "tile-cohort_cash_roas",
@@ -529,7 +529,7 @@
       "value": "0.80\u00d7",
       "sub": "cohort clock \u2014 cash from this window's closes \u00f7 this window's ad spend",
       "note": "",
-      "stamp": "finance-analysis engine \u00b7 computed 0m ago"
+      "stamp": "finance-analysis engine \u00b7 computed 6m ago"
      }
     ],
     "cards": [
@@ -630,7 +630,7 @@
     "height": 3524,
     "scrollW": 390,
     "innerW": 390,
-    "dcl": 1165
+    "dcl": 2458
    },
    "console": []
   },
@@ -639,10 +639,8 @@
    "verdict_present": true
   }
  },
- "fails": [
-  "scale: chain clients not numeric: ''"
- ],
+ "fails": [],
  "commit": "1b8e7a8a7331",
- "utc": "2026-09-21T12:13:44Z",
- "ok": false
+ "utc": "2026-09-21T12:17:11Z",
+ "ok": true
 }

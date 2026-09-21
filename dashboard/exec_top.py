@@ -98,8 +98,18 @@ def refresh_cache() -> dict:
         import decision_cards
         cards = decision_cards.build_cards() or {}
         items = cards.get("cards") or []
+        def _why(c):
+            for k in ("action", "missing", "known"):
+                v = c.get(k)
+                if isinstance(v, str) and v.strip():
+                    return v[:110]
+            return ""
         return {"count": len(items),
-                "top": (items[0].get("title") if items else None)}
+                "top": (items[0].get("title") if items else None),
+                # TODAY names the top three; building the cards is an engine
+                # call, so it happens HERE on the loop, never on a page load.
+                "top3": [{"title": c.get("title"), "why": _why(c)}
+                         for c in items[:3]]}
     out["decisions"] = _wrap(_decisions, "decisions")
     kv_store.put(K_DECISIONS, out["decisions"])
 
