@@ -1,0 +1,69 @@
+{
+ "base": "https://web-production-16b16.up.railway.app",
+ "passes": [
+  {
+   "name": "cold",
+   "steps": {
+    "initial": {
+     "spend": 0,
+     "cpl": 0,
+     "leads": 0,
+     "sentence": "",
+     "chart_point": -1,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": ""
+    }
+   }
+  },
+  {
+   "name": "warm",
+   "steps": {
+    "initial": {
+     "spend": 0,
+     "cpl": 0,
+     "leads": 0,
+     "sentence": "",
+     "chart_point": -1,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": ""
+    }
+   }
+  },
+  {
+   "name": "third",
+   "steps": {
+    "initial": {
+     "spend": 0,
+     "cpl": 0,
+     "leads": 0,
+     "sentence": "",
+     "chart_point": -1,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": ""
+    }
+   }
+  }
+ ],
+ "fails": [
+  "cold: leads output empty at load",
+  "warm: leads output empty at load",
+  "third: leads output empty at load",
+  "console: console: Failed to load resource: the server responded with a status of 500 ()",
+  "console: console: Failed to load resource: the server responded with a status of 500 ()",
+  "console: console: Failed to load resource: the server responded with a status of 500 ()"
+ ],
+ "commit": "ee37879af9d9",
+ "utc": "2026-09-21T04:42:10Z",
+ "console_errors": [
+  "console: Failed to load resource: the server responded with a status of 500 ()",
+  "console: Failed to load resource: the server responded with a status of 500 ()",
+  "console: Failed to load resource: the server responded with a status of 500 ()"
+ ],
+ "ok": false
+}

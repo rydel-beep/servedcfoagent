@@ -240,6 +240,19 @@ def scale_page():
     ns = None
     try:
         ns = (kv_store.get("compass:north_star") or {}).get("data")
+        # normalise whatever shape the cache holds — a missing lever key
+        # 500'd this page once (jinja Undefined arithmetic); the route now
+        # guarantees the template's contract regardless of cache age
+        if ns:
+            for lv in ns.get("levers") or []:
+                for k in ("required", "plan", "actual", "note"):
+                    lv.setdefault(k, None)
+            for k in ("actual", "plan", "pace", "verdict", "plan_src",
+                      "metric_label", "constraint"):
+                ns.setdefault(k, None)
+            ns.setdefault("pinned", {})
+            if not ns.get("verdict"):
+                ns["verdict"] = "pacing is being recomputed — the next refresh fills this in"
     except Exception:
         ns = None
     # LOGIC VERIFIED badge — reads the last behaviour-gate pass (kv)
