@@ -63,6 +63,27 @@ def main():
                 seen_finding.add(key)
                 findings.append(f)
 
+    # A navigation is a page load, judged by the page budget — not the 500ms
+    # interaction budget. Applied to every run, so BEFORE and AFTER are read
+    # by the same yardstick.
+    slow_nav = set()
+    for p in pages:
+        for c in (p.get("controls_tested") or []):
+            if (c.get("verdict") == "SLOW" and c.get("navigated")
+                    and (c.get("ms") or 0) <= 2000):
+                c["verdict"] = "WORKS"
+                c["reclassified"] = "a navigation inside the page budget"
+                label = (c.get("label") or c.get("id") or "")
+                slow_nav.add((p.get("name"), label.split("\n")[0][:40]))
+    keep = []
+    for f in findings:
+        if f["class"] == "SLOW" and f["title"].startswith("slow control"):
+            lbl = f["title"].split("\u201c")[-1].rstrip("\u201d").split("\n")[0][:40]
+            if (f["page"], lbl) in slow_nav:
+                continue
+        keep.append(f)
+    findings[:] = keep
+
     desktop = [p for p in pages if not p.get("mobile")]
     mobile = [p for p in pages if p.get("mobile")]
     by_class: dict = {}

@@ -615,8 +615,19 @@ def audit_page(page, name, path, expect, job, evd, mobile=False, log=None,
             finding("SEV1", "BROKEN", name, f"control errors: “{c['label'] or c['id']}”",
                     r.get("detail", "")[:200], "fix the handler")
         elif r["verdict"] == "SLOW":
-            finding("SEV3", "SLOW", name, f"slow control: “{c['label'] or c['id']}”",
-                    f"{r['ms']}ms (budget 500ms)", "make the interaction optimistic")
+            # Clicking a nav link is a PAGE LOAD, not an interaction. Judging
+            # it by the 500ms interaction budget marks every link on every
+            # page slow and drowns the register in noise.
+            budget = 2000 if r.get("navigated") else 500
+            if r["ms"] > budget:
+                kind = "navigation" if r.get("navigated") else "control"
+                finding("SEV3", "SLOW", name,
+                        f"slow {kind}: “{c['label'] or c['id']}”",
+                        f"{r['ms']}ms (budget {budget}ms)",
+                        "trim the destination page" if r.get("navigated")
+                        else "make the interaction optimistic")
+            else:
+                c["verdict"] = "WORKS"
     probe["controls_tested"] = tested
     probe["controls"] = len(probe["controls"])
     return probe

@@ -277,7 +277,7 @@ def build_tiles(snap: dict | None) -> list[dict]:
                 tid, label, _fmt_money(v), sub,
                 f"three-nets engine (Stripe receipts − banded outflows) · computed {_fmt_age(nets_age)}",
                 "degraded" if (nets_err or v is None) else _state_for(nets_age, nets_err),
-                drawer="three_nets",
+                drawer="three_nets", raw=v,
                 sr_note=(nets_err or ("not yet computed — first refresh pending"
                                       if nets is None else ""))))
         except Exception as e:  # noqa: BLE001
@@ -310,7 +310,7 @@ def build_tiles(snap: dict | None) -> list[dict]:
             tiles.append(_tile(
                 tid, label, val, sub,
                 f"honest unit-econ engine · cohort clock · computed {_fmt_age(unit_age)}",
-                state, drawer=tid,
+                state, drawer=tid, raw=v,
                 sr_note=(unit_err or "")))
     except Exception as e:  # noqa: BLE001
         for tid, label in (("ltv_cac", "LTV : CAC"), ("ltgp_cac", "LTGP : CAC")):
@@ -329,7 +329,7 @@ def build_tiles(snap: dict | None) -> list[dict]:
             val, sub,
             f"finance-analysis engine · computed {_fmt_age(roas_age)}",
             "degraded" if (roas_err or v is None and roas is None) else _state_for(roas_age, roas_err),
-            drawer=None, sr_note=roas_err or ""))
+            drawer=None, raw=v, sr_note=roas_err or ""))
     except Exception as e:  # noqa: BLE001
         tiles.append(_tile("cohort_cash_roas", "Cohort cash ROAS (Sep MTD)",
                            "—", str(e)[:80], "", "degraded"))
@@ -450,7 +450,7 @@ def build_pulse() -> list[dict]:
                                     "not yet computed — first refresh pending"), "degraded"
         out.append({"id": tid, "label": label, "value": val, "sub": sub,
                     "stamp": f"one attribution engine · computed {_fmt_age(age)}",
-                    "state": state, "drawer": None})
+                    "state": state, "drawer": None, "raw": v})
 
     rate_tile("pulse_show_rate", "Show rate (confirmed)",
               p.get("show_rate"), "consults due")
@@ -466,7 +466,7 @@ def build_pulse() -> list[dict]:
                         str(bc.get("error") or "appointment cache pending")),
                 "stamp": f"GHL appointment cache · computed {_fmt_age(age)}",
                 "state": "degraded" if n is None else _state_for(age, None),
-                "drawer": "booked_calls"})
+                "drawer": "booked_calls", "raw": n})
     return out
 
 

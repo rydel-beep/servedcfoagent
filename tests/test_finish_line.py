@@ -483,3 +483,19 @@ def test_the_required_rate_readout_always_compares_to_the_measured_rate():
     assert "function measuredRate" in js
     assert "sol.measured = m;" in js
     assert "sol.points = (sol.required - m) * 100;" in js
+
+
+def test_every_executive_tile_publishes_a_comparable_value():
+    """Scan 2 compares NUMBERS. Five of the eight headline tiles published
+    none — so the consistency matrix had been checking three of them, and
+    TODAY's deltas had nothing to work with on the rest."""
+    from dashboard import exec_top
+    tiles = exec_top.build_tiles({})
+    missing = [t["id"] for t in tiles
+               if t.get("raw") is None and t.get("value") not in ("—", "", None)]
+    assert not missing, f"tiles with a value but no data-value: {missing}"
+    src = _read("dashboard", "exec_top.py")
+    for tid in ("cash_net_mtd", "ltv_cac", "cohort_cash_roas"):
+        assert tid in src
+    # the pulse publishes its numbers too
+    assert '"drawer": None, "raw": v}' in src
