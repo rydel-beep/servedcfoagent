@@ -1,0 +1,448 @@
+{
+ "base": "https://web-production-16b16.up.railway.app",
+ "passes": [
+  {
+   "name": "cold",
+   "steps": {
+    "initial": {
+     "spend": 10180,
+     "cpl": 88.01,
+     "leads": 116,
+     "sentence": "At $10,180/mo and $88.01 per lead \u2192 116 leads/month.",
+     "chart_point": 116,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "17"
+    },
+    "after_spend_15000": {
+     "spend": 15000,
+     "cpl": 88.01,
+     "leads": 170,
+     "sentence": "At $15,000/mo and $88.01 per lead \u2192 170 leads/month.",
+     "chart_point": 170,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "25"
+    },
+    "after_cpl_120": {
+     "spend": 15000,
+     "cpl": 120,
+     "leads": 125,
+     "sentence": "At $15,000/mo and $120.00 per lead \u2192 125 leads/month.",
+     "chart_point": 125,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "18"
+    },
+    "after_drag": {
+     "spend": 49963,
+     "cpl": 120,
+     "leads": 416,
+     "sentence": "At $49,963/mo and $120.00 per lead \u2192 416 leads/month.",
+     "chart_point": 416,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "61"
+    },
+    "after_target_40calls": {
+     "spend": 32653,
+     "cpl": 120,
+     "leads": 272,
+     "sentence": "To get 40 booked calls/month at $120.00/lead, a 14.7% booking rate, 90.2% turn-up and 28.3% close \u2014 you need $32,653/mo.",
+     "chart_point": 272,
+     "cpl_disabled": true,
+     "spend_disabled": true,
+     "cpl_note": "",
+     "calls": "40"
+    },
+    "after_elasticity_on": {
+     "spend": 30000,
+     "cpl": 148.96,
+     "leads": 201,
+     "sentence": "At $30,000/mo and $148.96 per lead \u2192 201 leads/month.",
+     "chart_point": 201,
+     "cpl_disabled": true,
+     "spend_disabled": false,
+     "cpl_note": "effective CPL at this spend: $148.96 (your base $120.00 climbs as spend grows)",
+     "calls": "30"
+    },
+    "after_reset": {
+     "spend": 10180,
+     "cpl": 88.01,
+     "leads": 116,
+     "sentence": "At $10,180/mo and $88.01 per lead \u2192 116 leads/month.",
+     "chart_point": 116,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "17"
+    },
+    "travelling": {
+     "opened": {
+      "url": "/dashboard/scale/travelling?compare=scenario&window=mtd&s=eyJzcGVuZF9wYXRoIjp7InNoYXBlIjoiZmxhdCIsInN0YXJ0IjoxMDE4MC4wMX0sImNwbDAiOjg4LjAxLCJzZXRfcmF0ZSI6MC4xNDcsInNob3dfcmF0ZSI6MC45MDIsImNsb3NlX3JhdGUiOjAuMjgyNn0=",
+      "stages": 10,
+      "verdict": "On course to beat the client plan, 8 projected against 4 planned. Volume is above plan (95 leads ahead); show rate is 70% against 90% planned.",
+      "compare": "scenario",
+      "window": "mtd",
+      "progress": "Day 21 of 30",
+      "leads": "175",
+      "closed": "planned 28%, actual 19%",
+      "bars": 4,
+      "read": 658,
+      "gap": "Your biggest gap is close rate: 19% against 28% planned. Closing it would be worth about 2 clients and $7,566 this window."
+     },
+     "window_d21": {
+      "url": "/dashboard/scale/travelling?s=eyJzcGVuZF9wYXRoIjp7InNoYXBlIjoiZmxhdCIsInN0YXJ0IjoxMDE4MC4wMX0sImNwbDAiOjg4LjAxLCJzZXRfcmF0ZSI6MC4xNDcsInNob3dfcmF0ZSI6MC45MDIsImNsb3NlX3JhdGUiOjAuMjgyNn0%3D&window=d21&compare=scenario",
+      "stages": 10,
+      "verdict": "On course to beat the client plan, 7 projected against 3 planned. Volume is above plan (95 leads ahead); show rate is 70% against 90% planned.",
+      "compare": "scenario",
+      "window": "d21",
+      "progress": "Day 21 of 21",
+      "leads": "175",
+      "closed": "planned 28%, actual 19%",
+      "bars": 4,
+      "read": 657,
+      "gap": "Your biggest gap is close rate: 19% against 28% planned. Closing it would be worth about 2 clients and $7,566 this window."
+     },
+     "engine_match": {
+      "screen": 175,
+      "engine": 175
+     },
+     "compare_usual": {
+      "url": "/dashboard/scale/travelling?s=eyJzcGVuZF9wYXRoIjp7InNoYXBlIjoiZmxhdCIsInN0YXJ0IjoxMDE4MC4wMX0sImNwbDAiOjg4LjAxLCJzZXRfcmF0ZSI6MC4xNDcsInNob3dfcmF0ZSI6MC45MDIsImNsb3NlX3JhdGUiOjAuMjgyNn0%3D&window=d21&compare=usual",
+      "stages": 10,
+      "verdict": "On course to beat the client plan, 7 projected against 3 planned. Volume is above plan (95 leads ahead); show rate is 70% against 90% usually.",
+      "compare": "usual",
+      "window": "d21",
+      "progress": "Day 21 of 21",
+      "leads": "175",
+      "closed": "usually 28%, actual 19%",
+      "bars": 4,
+      "read": 657,
+      "gap": "Your biggest gap is close rate: 19% against 28% usually. Closing it would be worth about 2 clients and $7,566 this window."
+     },
+     "after_refresh": {
+      "url": "/dashboard/scale/travelling?s=eyJzcGVuZF9wYXRoIjp7InNoYXBlIjoiZmxhdCIsInN0YXJ0IjoxMDE4MC4wMX0sImNwbDAiOjg4LjAxLCJzZXRfcmF0ZSI6MC4xNDcsInNob3dfcmF0ZSI6MC45MDIsImNsb3NlX3JhdGUiOjAuMjgyNn0%3D&window=d21&compare=usual",
+      "stages": 10,
+      "verdict": "On course to beat the client plan, 7 projected against 3 planned. Volume is above plan (95 leads ahead); show rate is 70% against 90% usually.",
+      "compare": "usual",
+      "window": "d21",
+      "progress": "Day 21 of 21",
+      "leads": "175",
+      "closed": "usually 28%, actual 19%",
+      "bars": 4,
+      "read": 657,
+      "gap": "Your biggest gap is close rate: 19% against 28% usually. Closing it would be worth about 2 clients and $7,566 this window."
+     },
+     "roster": {
+      "open": true,
+      "rows": 175
+     },
+     "remodel": "Loaded into the compass \u2014 close rate 18.8% (rough), cost per lead $51.45, booking rate 20.6% (solid), turn-up rate 69.6% (fair). Open the compass to see where the month lands (if this window's rates hold)",
+     "save": "Saved. This check is now in the history below (refresh to see it)."
+    }
+   }
+  },
+  {
+   "name": "warm",
+   "steps": {
+    "initial": {
+     "spend": 10180,
+     "cpl": 88.01,
+     "leads": 116,
+     "sentence": "At $10,180/mo and $88.01 per lead \u2192 116 leads/month.",
+     "chart_point": 116,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "17"
+    },
+    "after_spend_15000": {
+     "spend": 15000,
+     "cpl": 88.01,
+     "leads": 170,
+     "sentence": "At $15,000/mo and $88.01 per lead \u2192 170 leads/month.",
+     "chart_point": 170,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "25"
+    },
+    "after_cpl_120": {
+     "spend": 15000,
+     "cpl": 120,
+     "leads": 125,
+     "sentence": "At $15,000/mo and $120.00 per lead \u2192 125 leads/month.",
+     "chart_point": 125,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "18"
+    },
+    "after_drag": {
+     "spend": 49963,
+     "cpl": 120,
+     "leads": 416,
+     "sentence": "At $49,963/mo and $120.00 per lead \u2192 416 leads/month.",
+     "chart_point": 416,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "61"
+    },
+    "after_target_40calls": {
+     "spend": 32653,
+     "cpl": 120,
+     "leads": 272,
+     "sentence": "To get 40 booked calls/month at $120.00/lead, a 14.7% booking rate, 90.2% turn-up and 28.3% close \u2014 you need $32,653/mo.",
+     "chart_point": 272,
+     "cpl_disabled": true,
+     "spend_disabled": true,
+     "cpl_note": "",
+     "calls": "40"
+    },
+    "after_elasticity_on": {
+     "spend": 30000,
+     "cpl": 148.96,
+     "leads": 201,
+     "sentence": "At $30,000/mo and $148.96 per lead \u2192 201 leads/month.",
+     "chart_point": 201,
+     "cpl_disabled": true,
+     "spend_disabled": false,
+     "cpl_note": "effective CPL at this spend: $148.96 (your base $120.00 climbs as spend grows)",
+     "calls": "30"
+    },
+    "after_reset": {
+     "spend": 10180,
+     "cpl": 88.01,
+     "leads": 116,
+     "sentence": "At $10,180/mo and $88.01 per lead \u2192 116 leads/month.",
+     "chart_point": 116,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "17"
+    },
+    "travelling": {
+     "opened": {
+      "url": "/dashboard/scale/travelling?compare=scenario&window=mtd&s=eyJzcGVuZF9wYXRoIjp7InNoYXBlIjoiZmxhdCIsInN0YXJ0IjoxMDE4MC4wMX0sImNwbDAiOjg4LjAxLCJzZXRfcmF0ZSI6MC4xNDcsInNob3dfcmF0ZSI6MC45MDIsImNsb3NlX3JhdGUiOjAuMjgyNn0=",
+      "stages": 10,
+      "verdict": "On course to beat the client plan, 8 projected against 4 planned. Volume is above plan (95 leads ahead); show rate is 70% against 90% planned.",
+      "compare": "scenario",
+      "window": "mtd",
+      "progress": "Day 21 of 30",
+      "leads": "175",
+      "closed": "planned 28%, actual 19%",
+      "bars": 4,
+      "read": 658,
+      "gap": "Your biggest gap is close rate: 19% against 28% planned. Closing it would be worth about 2 clients and $7,566 this window."
+     },
+     "window_d21": {
+      "url": "/dashboard/scale/travelling?s=eyJzcGVuZF9wYXRoIjp7InNoYXBlIjoiZmxhdCIsInN0YXJ0IjoxMDE4MC4wMX0sImNwbDAiOjg4LjAxLCJzZXRfcmF0ZSI6MC4xNDcsInNob3dfcmF0ZSI6MC45MDIsImNsb3NlX3JhdGUiOjAuMjgyNn0%3D&window=d21&compare=scenario",
+      "stages": 10,
+      "verdict": "On course to beat the client plan, 7 projected against 3 planned. Volume is above plan (95 leads ahead); show rate is 70% against 90% planned.",
+      "compare": "scenario",
+      "window": "d21",
+      "progress": "Day 21 of 21",
+      "leads": "175",
+      "closed": "planned 28%, actual 19%",
+      "bars": 4,
+      "read": 657,
+      "gap": "Your biggest gap is close rate: 19% against 28% planned. Closing it would be worth about 2 clients and $7,566 this window."
+     },
+     "engine_match": {
+      "screen": 175,
+      "engine": 175
+     },
+     "compare_usual": {
+      "url": "/dashboard/scale/travelling?s=eyJzcGVuZF9wYXRoIjp7InNoYXBlIjoiZmxhdCIsInN0YXJ0IjoxMDE4MC4wMX0sImNwbDAiOjg4LjAxLCJzZXRfcmF0ZSI6MC4xNDcsInNob3dfcmF0ZSI6MC45MDIsImNsb3NlX3JhdGUiOjAuMjgyNn0%3D&window=d21&compare=usual",
+      "stages": 10,
+      "verdict": "On course to beat the client plan, 7 projected against 3 planned. Volume is above plan (95 leads ahead); show rate is 70% against 90% usually.",
+      "compare": "usual",
+      "window": "d21",
+      "progress": "Day 21 of 21",
+      "leads": "175",
+      "closed": "usually 28%, actual 19%",
+      "bars": 4,
+      "read": 657,
+      "gap": "Your biggest gap is close rate: 19% against 28% usually. Closing it would be worth about 2 clients and $7,566 this window."
+     },
+     "after_refresh": {
+      "url": "/dashboard/scale/travelling?s=eyJzcGVuZF9wYXRoIjp7InNoYXBlIjoiZmxhdCIsInN0YXJ0IjoxMDE4MC4wMX0sImNwbDAiOjg4LjAxLCJzZXRfcmF0ZSI6MC4xNDcsInNob3dfcmF0ZSI6MC45MDIsImNsb3NlX3JhdGUiOjAuMjgyNn0%3D&window=d21&compare=usual",
+      "stages": 10,
+      "verdict": "On course to beat the client plan, 7 projected against 3 planned. Volume is above plan (95 leads ahead); show rate is 70% against 90% usually.",
+      "compare": "usual",
+      "window": "d21",
+      "progress": "Day 21 of 21",
+      "leads": "175",
+      "closed": "usually 28%, actual 19%",
+      "bars": 4,
+      "read": 657,
+      "gap": "Your biggest gap is close rate: 19% against 28% usually. Closing it would be worth about 2 clients and $7,566 this window."
+     },
+     "roster": {
+      "open": true,
+      "rows": 175
+     },
+     "remodel": "Loaded into the compass \u2014 close rate 18.8% (rough), cost per lead $51.45, booking rate 20.6% (solid), turn-up rate 69.6% (fair). Open the compass to see where the month lands (if this window's rates hold)",
+     "save": "Saved. This check is now in the history below (refresh to see it)."
+    }
+   }
+  },
+  {
+   "name": "third",
+   "steps": {
+    "initial": {
+     "spend": 10180,
+     "cpl": 88.01,
+     "leads": 116,
+     "sentence": "At $10,180/mo and $88.01 per lead \u2192 116 leads/month.",
+     "chart_point": 116,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "17"
+    },
+    "after_spend_15000": {
+     "spend": 15000,
+     "cpl": 88.01,
+     "leads": 170,
+     "sentence": "At $15,000/mo and $88.01 per lead \u2192 170 leads/month.",
+     "chart_point": 170,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "25"
+    },
+    "after_cpl_120": {
+     "spend": 15000,
+     "cpl": 120,
+     "leads": 125,
+     "sentence": "At $15,000/mo and $120.00 per lead \u2192 125 leads/month.",
+     "chart_point": 125,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "18"
+    },
+    "after_drag": {
+     "spend": 49963,
+     "cpl": 120,
+     "leads": 416,
+     "sentence": "At $49,963/mo and $120.00 per lead \u2192 416 leads/month.",
+     "chart_point": 416,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "61"
+    },
+    "after_target_40calls": {
+     "spend": 32653,
+     "cpl": 120,
+     "leads": 272,
+     "sentence": "To get 40 booked calls/month at $120.00/lead, a 14.7% booking rate, 90.2% turn-up and 28.3% close \u2014 you need $32,653/mo.",
+     "chart_point": 272,
+     "cpl_disabled": true,
+     "spend_disabled": true,
+     "cpl_note": "",
+     "calls": "40"
+    },
+    "after_elasticity_on": {
+     "spend": 30000,
+     "cpl": 148.96,
+     "leads": 201,
+     "sentence": "At $30,000/mo and $148.96 per lead \u2192 201 leads/month.",
+     "chart_point": 201,
+     "cpl_disabled": true,
+     "spend_disabled": false,
+     "cpl_note": "effective CPL at this spend: $148.96 (your base $120.00 climbs as spend grows)",
+     "calls": "30"
+    },
+    "after_reset": {
+     "spend": 10180,
+     "cpl": 88.01,
+     "leads": 116,
+     "sentence": "At $10,180/mo and $88.01 per lead \u2192 116 leads/month.",
+     "chart_point": 116,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "17"
+    },
+    "travelling": {
+     "opened": {
+      "url": "/dashboard/scale/travelling?compare=scenario&window=mtd&s=eyJzcGVuZF9wYXRoIjp7InNoYXBlIjoiZmxhdCIsInN0YXJ0IjoxMDE4MC4wMX0sImNwbDAiOjg4LjAxLCJzZXRfcmF0ZSI6MC4xNDcsInNob3dfcmF0ZSI6MC45MDIsImNsb3NlX3JhdGUiOjAuMjgyNn0=",
+      "stages": 10,
+      "verdict": "On course to beat the client plan, 8 projected against 4 planned. Volume is above plan (95 leads ahead); show rate is 70% against 90% planned.",
+      "compare": "scenario",
+      "window": "mtd",
+      "progress": "Day 21 of 30",
+      "leads": "175",
+      "closed": "planned 28%, actual 19%",
+      "bars": 4,
+      "read": 658,
+      "gap": "Your biggest gap is close rate: 19% against 28% planned. Closing it would be worth about 2 clients and $7,566 this window."
+     },
+     "window_d21": {
+      "url": "/dashboard/scale/travelling?s=eyJzcGVuZF9wYXRoIjp7InNoYXBlIjoiZmxhdCIsInN0YXJ0IjoxMDE4MC4wMX0sImNwbDAiOjg4LjAxLCJzZXRfcmF0ZSI6MC4xNDcsInNob3dfcmF0ZSI6MC45MDIsImNsb3NlX3JhdGUiOjAuMjgyNn0%3D&window=d21&compare=scenario",
+      "stages": 10,
+      "verdict": "On course to beat the client plan, 7 projected against 3 planned. Volume is above plan (95 leads ahead); show rate is 70% against 90% planned.",
+      "compare": "scenario",
+      "window": "d21",
+      "progress": "Day 21 of 21",
+      "leads": "175",
+      "closed": "planned 28%, actual 19%",
+      "bars": 4,
+      "read": 657,
+      "gap": "Your biggest gap is close rate: 19% against 28% planned. Closing it would be worth about 2 clients and $7,566 this window."
+     },
+     "engine_match": {
+      "screen": 175,
+      "engine": 175
+     },
+     "compare_usual": {
+      "url": "/dashboard/scale/travelling?s=eyJzcGVuZF9wYXRoIjp7InNoYXBlIjoiZmxhdCIsInN0YXJ0IjoxMDE4MC4wMX0sImNwbDAiOjg4LjAxLCJzZXRfcmF0ZSI6MC4xNDcsInNob3dfcmF0ZSI6MC45MDIsImNsb3NlX3JhdGUiOjAuMjgyNn0%3D&window=d21&compare=usual",
+      "stages": 10,
+      "verdict": "On course to beat the client plan, 7 projected against 3 planned. Volume is above plan (95 leads ahead); show rate is 70% against 90% usually.",
+      "compare": "usual",
+      "window": "d21",
+      "progress": "Day 21 of 21",
+      "leads": "175",
+      "closed": "usually 28%, actual 19%",
+      "bars": 4,
+      "read": 657,
+      "gap": "Your biggest gap is close rate: 19% against 28% usually. Closing it would be worth about 2 clients and $7,566 this window."
+     },
+     "after_refresh": {
+      "url": "/dashboard/scale/travelling?s=eyJzcGVuZF9wYXRoIjp7InNoYXBlIjoiZmxhdCIsInN0YXJ0IjoxMDE4MC4wMX0sImNwbDAiOjg4LjAxLCJzZXRfcmF0ZSI6MC4xNDcsInNob3dfcmF0ZSI6MC45MDIsImNsb3NlX3JhdGUiOjAuMjgyNn0%3D&window=d21&compare=usual",
+      "stages": 10,
+      "verdict": "On course to beat the client plan, 7 projected against 3 planned. Volume is above plan (95 leads ahead); show rate is 70% against 90% usually.",
+      "compare": "usual",
+      "window": "d21",
+      "progress": "Day 21 of 21",
+      "leads": "175",
+      "closed": "usually 28%, actual 19%",
+      "bars": 4,
+      "read": 657,
+      "gap": "Your biggest gap is close rate: 19% against 28% usually. Closing it would be worth about 2 clients and $7,566 this window."
+     },
+     "roster": {
+      "open": true,
+      "rows": 175
+     },
+     "remodel": "Loaded into the compass \u2014 close rate 18.8% (rough), cost per lead $51.45, booking rate 20.6% (solid), turn-up rate 69.6% (fair). Open the compass to see where the month lands (if this window's rates hold)",
+     "save": "Saved. This check is now in the history below (refresh to see it)."
+    }
+   }
+  }
+ ],
+ "fails": [],
+ "commit": "2bd266385255",
+ "utc": "2026-09-21T08:42:32Z",
+ "console_errors": [],
+ "ok": true
+}
