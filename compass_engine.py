@@ -1400,8 +1400,32 @@ def confidence_word(n) -> str:
 
 
 def accuracy_sentence() -> str:
-    """The backtest verdict as ONE plain sentence for the top of the
-    simulator — real numbers, no jargon."""
+    """ONE plain sentence for the top of the simulator. Prefers the SCORED
+    monthly calibration records (predictions written at month start, scored
+    at month end — trust earned in public); falls back to the period
+    backtest until enough months are scored."""
+    log = [r for r in (kv_store.get(K_CAL_LOG) or []) if r.get("scored")]
+    if log:
+        last = log[-3:]
+        def avg(stage):
+            vals = [r["scored"]["error_pct"].get(stage) for r in last
+                    if r["scored"].get("error_pct", {}).get(stage) is not None]
+            return round(sum(vals) / len(vals), 0) if vals else None
+        leads_e, clients_e = avg("leads"), avg("clients")
+        bits = []
+        if leads_e is not None:
+            bits.append(f"within about ±{leads_e:.0f}% on leads")
+        if clients_e is not None:
+            acts = [r["scored"]["actual"].get("clients") for r in last
+                    if r["scored"].get("actual", {}).get("clients")]
+            if acts:
+                off = max(round(sum(acts) / len(acts) * clients_e / 100), 1)
+                bits.append(f"about ±{off:.0f} client(s) a month on signings")
+        if bits:
+            return (f"Scored against the last {len(last)} finished "
+                    f"month(s), this model was " + " and ".join(bits) +
+                    " — predictions are written at each month's start and "
+                    "scored when it ends.")
     bt = kv_store.get(K_BACKTEST) or {}
     mape = bt.get("mape_pct") or {}
     if not any(v is not None for v in mape.values()):

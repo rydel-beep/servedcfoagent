@@ -271,9 +271,12 @@ def scale_page():
             badge = {"ok": ok, "text": txt}
     except Exception:
         badge = None
+    plan_rec = kv_store.get(compass_engine.K_PLAN) or {}
+    plan_inputs_json = _json.dumps(plan_rec.get("inputs") or None).replace("</", "<\\/")         if plan_rec else "null"
     resp = make_response(render_template(
         "scale.html", asset_v=_ASSET_VERSION, defs_json=_defs_json(),
-        badge=badge, ns=ns,
+        badge=badge, ns=ns, has_plan=bool(plan_rec),
+        plan_inputs_json=plan_inputs_json,
         sim=sim, conf=conf, acc_sentence=acc,
         sim_json=_json.dumps(sim).replace("</", "<\\/"),
         hero=hero, base_computed=base.get("computed_at"),

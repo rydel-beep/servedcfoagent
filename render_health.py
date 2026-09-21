@@ -110,6 +110,22 @@ def tick() -> dict:
         items.extend(_freshness_items())
     except Exception as e:  # noqa: BLE001
         logger.warning("render_health self_check failed: %s", e)
+    # SIMULATOR PARITY rung (#155): a page-vs-engine mismatch reported by
+    # the settle check is a sentinel finding, not just a telemetry row
+    try:
+        ring = kv_store.get("telemetry:client_errors") or []
+        cutoff = (now_sydney() - __import__("datetime").timedelta(hours=24)).isoformat()
+        recent = [e for e in ring if e.get("kind") == "sim_parity_mismatch"
+                  and str(e.get("at", "")) >= cutoff]
+        if recent:
+            items.append({"severity": "S2", "category": "render_health",
+                          "title": f"simulator parity mismatch — {len(recent)} "
+                                   "page-vs-engine differences in 24h",
+                          "action": ("the engine's value won on screen; the "
+                                     "formulas have diverged — latest: " +
+                                     str(recent[-1].get("detail"))[:120])})
+    except Exception as e:  # noqa: BLE001
+        logger.info("sim parity watch failed: %s", e)
     # EXPLAIN-EVERYTHING rung: the definitions registry must keep 100%
     # coverage of the rendered elements after every deploy
     try:

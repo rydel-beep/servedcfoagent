@@ -108,13 +108,13 @@
   </div>
   <div class="sim-triad" id="sim-triad">
     <div class="sim-field" data-def="sim_spend" id="sim-spend-wrap">
-      <label>Monthly ad spend $ <span class="sim-io" id="sim-spend-io">input</span></label>
+      <label>Monthly ad spend $ <span class="sim-io" id="sim-spend-io">input</span> <a href="#" class="scale-note sim-reset" data-sr="spend">reset</a></label>
       <input type="number" id="sim-spend" step="100" min="0" value="{{ '%.0f' % sim.spend if sim else '' }}">
       <input type="range" id="sim-spend-slider" min="1000" max="60000" step="250" value="{{ '%.0f' % sim.spend if sim else 10000 }}">
     </div>
     <div class="sim-op">÷</div>
     <div class="sim-field" data-def="sim_cpl">
-      <label>Cost per lead $ <span class="sim-io" id="sim-cpl-io">input</span></label>
+      <label>Cost per lead $ <span class="sim-io" id="sim-cpl-io">input</span> <a href="#" class="scale-note sim-reset" data-sr="cpl">reset</a></label>
       <input type="number" id="sim-cpl" step="1" min="1" value="{{ '%.2f' % sim.cpl_effective if sim else '' }}">
       <input type="range" id="sim-cpl-slider" min="10" max="300" step="1" value="{{ '%.0f' % sim.cpl_effective if sim else 90 }}">
       <div class="scale-prov" id="sim-cpl-note"></div>
@@ -183,6 +183,7 @@
     <button class="scale-btn sim-preset" data-preset="measured">Current run-rate (measured)</button>
     <button class="scale-btn sim-preset" data-preset="plus50">+50% spend</button>
     <button class="scale-btn sim-preset" data-preset="close35">Your 35% close rate</button>
+    {% if has_plan %}<button class="scale-btn sim-preset" data-preset="plan2027">Base 2027 (the committed plan)</button>{% endif %}
   </div>
 </section>
 
@@ -289,6 +290,7 @@ window.__SCALE_DEFAULTS__ = {{ defaults_json | safe }};
 window.__SCALE_BASE_RUN__ = {{ base_run_json | safe }};
 window.__SCALE_BACKTEST__ = {{ backtest_json | safe }};
 window.__SCALE_SIM__ = {{ sim_json | default('null') | safe }};
+window.__SCALE_PLAN_INPUTS__ = {{ plan_inputs_json | default('null') | safe }};
 </script>
 <script defer src="/dashboard/static/js/landing.js?v={{ asset_v }}"></script>
 <script defer src="/dashboard/static/js/sim_core.js?v={{ asset_v }}"></script>

@@ -556,3 +556,35 @@ def test_scale_page_renders_with_live_north_star_payload(stub, monkeypatch):
     assert "Are we on pace this month?" in h
     assert "LOGIC VERIFIED" in h
     assert 'id="ns-levers"' in h and "← off plan" in h or 'id="ns-levers"' in h
+
+
+# ── #155 gap-closers (re-dispatch pass) ─────────────────────────────────────
+
+def test_per_field_resets_and_plan_preset():
+    html = _read("dashboard", "templates", "scale.html")
+    assert 'data-sr="spend"' in html and 'data-sr="cpl"' in html
+    assert 'data-preset="plan2027"' in html and "has_plan" in html
+    js = _read("dashboard", "static", "js", "scale.js")
+    assert "sim-reset" in js and "__SCALE_PLAN_INPUTS__" in js
+
+
+def test_parity_mismatch_is_a_sentinel_finding():
+    src = _read("render_health.py")
+    assert "sim_parity_mismatch" in src
+    assert "simulator parity mismatch" in src
+
+
+def test_accuracy_sentence_prefers_scored_calibration(stub):
+    kv_store.put(CE.K_CAL_LOG, [
+        {"month": "2026-08", "predicted": {"leads": 100},
+         "scored": {"actual": {"leads": 95, "calls": 12, "clients": 5},
+                    "error_pct": {"leads": 9.0, "calls": 12.0, "clients": 20.0}}}])
+    s = CE.accuracy_sentence()
+    assert "Scored against the last 1 finished month" in s
+    assert "±9% on leads" in s
+    assert not D.jargon_hits(s)
+    # no scored months → falls back to the period backtest
+    kv_store.put(CE.K_CAL_LOG, [])
+    kv_store.put(CE.K_BACKTEST, {"mape_pct": {"leads": 43.6, "closes": 100.0},
+                                 "months": [{"closes": {"actual": 4}}]})
+    assert "compass, not a speedometer" in CE.accuracy_sentence()

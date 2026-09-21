@@ -375,6 +375,16 @@
   document.addEventListener('pointerup', function () { dragging = false; });
 
   document.addEventListener('click', function (e) {
+    var sr = e.target.closest && e.target.closest('.sim-reset');
+    if (sr && SIM) {
+      e.preventDefault();
+      guard('simreset', function () {
+        if (sr.dataset.sr === 'spend') simState.spend = SIM.spend;
+        if (sr.dataset.sr === 'cpl') simState.cpl = SIM.cpl_base;
+        simForward('preset');
+      });
+      return;
+    }
     var rr = e.target.closest && e.target.closest('.rate-reset');
     if (rr && SIM) {
       e.preventDefault();
@@ -396,6 +406,19 @@
         } else if (pr.dataset.preset === 'close35') {
           simState.close = 0.35;
           var el = $('rate-close'); if (el) el.value = 0.35;
+        } else if (pr.dataset.preset === 'plan2027') {
+          var pi = window.__SCALE_PLAN_INPUTS__ || null;
+          if (pi) {
+            if (pi.spend_path && pi.spend_path.start) simState.spend = pi.spend_path.start;
+            if (pi.cpl0) simState.cpl = pi.cpl0;
+            if (pi.set_rate) simState.set = pi.set_rate;
+            if (pi.show_rate) simState.show = pi.show_rate;
+            if (pi.close_rate) simState.close = pi.close_rate;
+            ['set', 'show', 'close'].forEach(function (k) {
+              var el2 = $('rate-' + k);
+              if (el2) el2.value = simState[k];
+            });
+          }
         }
         simForward('preset');
       });
