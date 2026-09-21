@@ -6,7 +6,8 @@
   "scale": "The scaling compass",
   "areas": "The detail pages",
   "projection": "Forward projection page",
-  "drawers": "The 'show your work' windows"
+  "drawers": "The 'show your work' windows",
+  "travelling": "How we're travelling"
  },
  "entries": {
   "cash_on_hand": {
@@ -1157,13 +1158,6 @@
    "meaning": "One sentence: day of the month, actual vs plan, and whether the pace covers the gap.",
    "selector": "#ns-verdict"
   },
-  "ns_levers": {
-   "name": "The levers table",
-   "kind": "metric",
-   "screen": "scale",
-   "meaning": "Each lever that drives the month — what it's actually running at, what the plan assumed, and what it must run at for the rest of the month to hit plan. The off-plan lever is highlighted.",
-   "selector": "#ns-levers"
-  },
   "ns_constraint": {
    "name": "Constraint of the month",
    "kind": "chip",
@@ -1192,6 +1186,188 @@
    "screen": "scale",
    "meaning": "The measurement window, when the rates were last refreshed, and which plan version the block compares against.",
    "selector": "[data-def='ns_pinned']"
+  },
+  "btn_travelling": {
+   "name": "Show how we're travelling",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "Opens the live month laid beside whatever you've just modelled, stage by stage.",
+   "changing": "Takes the numbers on screen as the comparison — nothing is saved.",
+   "selector": "#btn-travelling"
+  },
+  "ns_summary": {
+   "name": "Where the lever comparison lives",
+   "kind": "chip",
+   "screen": "scale",
+   "meaning": "The lever-by-lever comparison sits in one place only — the travelling view.",
+   "selector": "[data-def='ns_summary']"
+  },
+  "travelling": {
+   "name": "How we're travelling",
+   "kind": "page",
+   "screen": "travelling",
+   "meaning": "The live month beside the model: every stage of the funnel, what actually happened, what the comparison expected, where it lands by month end.",
+   "selector": "#tv-funnel"
+  },
+  "tv_window": {
+   "name": "Window",
+   "kind": "control",
+   "screen": "travelling",
+   "meaning": "How much time this view covers — this month so far, the last 21 days, or a range you pick.",
+   "changing": "Every number and the plan markers rescale to that window.",
+   "selector": "[data-def='tv_window']"
+  },
+  "tv_compare": {
+   "name": "Compared with",
+   "kind": "control",
+   "screen": "travelling",
+   "meaning": "What we're measuring against: the scenario you just modelled, the committed plan, last month, or your usual measured rates.",
+   "changing": "Only the comparison changes — the actuals never move.",
+   "selector": "[data-def='tv_compare']"
+  },
+  "tv_progress": {
+   "name": "How far through",
+   "kind": "chip",
+   "screen": "travelling",
+   "meaning": "Which day of the window we're on — what makes 'behind' or 'ahead' meaningful.",
+   "selector": "[data-def='tv_progress']"
+  },
+  "tv_verdict": {
+   "name": "The one-line verdict",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "One sentence on how the month is going: where we're ahead, where we're behind, and where it lands.",
+   "selector": ".tv-verdict"
+  },
+  "tv_gap": {
+   "name": "The biggest gap",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "The stage costing the most this month, and what closing it would be worth in clients and cash.",
+   "computed": "For each stage: the difference between the actual rate and the compared rate, carried through the stages below it.",
+   "selector": "[data-def='tv_gap']"
+  },
+  "tv_read": {
+   "name": "The read",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "Four to six sentences on the month. Every number in it is the same number rendered above.",
+   "selector": "[data-def='tv_read']"
+  },
+  "tv_setter": {
+   "name": "Setter activity",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "Effort, not a conversion rate: calls on file against this window's leads, and how many ran over a minute.",
+   "default_from": "the cached call records only — this page never calls the CRM.",
+   "selector": "[data-def='tv_setter']"
+  },
+  "tv_checks": {
+   "name": "Sources checked",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "Whether the calendar, the tracker and Stripe agree on each stage. Where they differ, both values are shown — nothing is quietly merged.",
+   "selector": "[data-def='tv_checks']"
+  },
+  "tv_remodel": {
+   "name": "Re-model from actuals",
+   "kind": "lever",
+   "screen": "travelling",
+   "meaning": "Loads this window's real rates into the compass so you can see where the month lands if they hold.",
+   "changing": "Fills the simulator's rates with the measured ones. Nothing is saved and no plan changes.",
+   "selector": "#tv-remodel"
+  },
+  "tv_save": {
+   "name": "Save this check",
+   "kind": "lever",
+   "screen": "travelling",
+   "meaning": "Files a dated copy of this comparison so you can look back at how the month read at the time.",
+   "changing": "Writes a record in the check history only — it never touches the books.",
+   "selector": "#tv-save"
+  },
+  "tv_history": {
+   "name": "Earlier checks",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "The last few saved checks, newest first. One is saved automatically each Monday.",
+   "selector": "[data-def='tv_history']"
+  },
+  "tv_stage_spend": {
+   "name": "Ad spend",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "What the ads cost in this window, and what today's daily rate means by month end.",
+   "selector": "#stage-spend"
+  },
+  "tv_stage_leads": {
+   "name": "Leads",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "New enquiries that arrived in this window, and what each cost.",
+   "selector": "#stage-leads"
+  },
+  "tv_stage_qualified": {
+   "name": "Qualified",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "The share of leads worth a consult: not disqualified, revenue at or above $20k a month, and the form answered. Leads without tracker context sit in unknown, never in unqualified.",
+   "selector": "#stage-qualified"
+  },
+  "tv_stage_booked": {
+   "name": "Consults booked",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "Consults booked in this window, counted on the day they were booked. A cancel-and-rebook counts once.",
+   "selector": "#stage-booked"
+  },
+  "tv_stage_due": {
+   "name": "Consults due",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "Booked consults whose time has passed; the upcoming ones are listed separately with their times.",
+   "selector": "#stage-due"
+  },
+  "tv_stage_showed": {
+   "name": "Showed",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "Of the consults due, the ones we can evidence happened — a call record, a recorded outcome, or a deal that followed.",
+   "selector": "#stage-showed"
+  },
+  "tv_stage_pitched": {
+   "name": "Pitched",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "Consults where the offer was presented. Counted only where a source records it; never assumed from someone turning up.",
+   "selector": "#stage-pitched"
+  },
+  "tv_stage_closed": {
+   "name": "Closed",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "New clients signed in this window.",
+   "selector": "#stage-closed"
+  },
+  "tv_stage_contract": {
+   "name": "Contract value signed",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "The total contract value recorded against this window's new clients.",
+   "selector": "#stage-contract"
+  },
+  "tv_stage_cash": {
+   "name": "Cash, new clients",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "Money actually received from clients who signed in this window — Stripe only.",
+   "selector": "#stage-cash"
+  },
+  "tv_northstar": {
+   "name": "This month's headline",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "The one number for the month — what's happened, what was planned, and where it lands at this pace.",
+   "selector": "[data-def='tv_northstar']"
   }
  }
 }

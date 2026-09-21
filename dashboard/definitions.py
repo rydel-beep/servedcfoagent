@@ -87,8 +87,17 @@ def coverage_inventory() -> dict:
                         "sim_badge", "sim_cpl_mode", "sim_sentence",
                         "sim_chart"]
     inv["north_star"] = ["north_star", "ns_actual", "ns_plan", "ns_pace",
-                         "ns_verdict", "ns_levers", "ns_constraint",
+                         "ns_verdict", "ns_constraint", "ns_summary",
                          "ns_whatifs", "ns_callog", "ns_pinned"]
+    # HOW WE'RE TRAVELLING — every element of the view
+    inv["travelling"] = ["btn_travelling", "travelling", "tv_window",
+                         "tv_compare", "tv_progress", "tv_verdict",
+                         "tv_northstar", "tv_gap", "tv_read", "tv_setter",
+                         "tv_checks", "tv_remodel", "tv_save", "tv_history"]
+    import travelling as _TV
+    inv["travelling_stages"] = ["tv_stage_" + sid for sid in
+                                ("spend", "leads", "qualified", "booked", "due",
+                                 "showed", "pitched", "closed", "contract", "cash")]
     inv["scale_chain"] = ["chain_calls", "chain_shows", "chain_clients",
                           "chain_cash", "chain_cost", "show_math", "i_want"]
     from dashboard.static_ctl_ids import SCALE_CTL_IDS  # thin list module

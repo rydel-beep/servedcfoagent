@@ -2401,3 +2401,44 @@ render gate could never have caught it. His words held exactly.
    loop scores it against actuals and the log renders on the tab. DRIFT
    alerts: a measured rate breaking ±35% of its prior-90d band → a feed
    item naming the lever and its constraint effect.
+
+## #156 — HOW WE'RE TRAVELLING: the live month beside the model (2026-09-21)
+
+The ask: a button in the simulator that lays the live month against the
+scenario, stage by stage, with where we're ahead or behind and what it's
+worth. Diagnosis first: scale/TRAVELLING_DIAGNOSIS.md.
+
+**Rulings:**
+1. **ONE plan-vs-actual surface.** The north-star levers table is REMOVED
+   from /scale; /scale keeps a three-line summary that links here, and the
+   travelling view carries the stage-by-stage comparison plus the
+   north-star headline. Never two.
+2. **Consults booked come from the calendar**, stated on the row — the
+   tracker's set-date column is empty (0 of 446 rows across 120 days). The
+   tracker's set flag is the cross-check, not the count.
+3. **PITCHED is an evidenced LOWER BOUND, scoped to this window's
+   consults** — the CRM stores only a lead's current stage (no history),
+   so anyone pitched and later moved on isn't counted. Never inferred from
+   "showed". A Piolo package line proposes the tracker column.
+4. **UNKNOWN is its own bucket**: a lead with no tracker context — AND a
+   lead whose revenue answer isn't a picklist value we can read — is
+   unknown, never "unqualified/below floor".
+5. **No linear to-date line on a lagged stage.** Flow stages (spend,
+   leads, consults booked) carry a plan-to-date marker; conversion stages
+   compare RATES and show a pipeline-aware month-end projection.
+6. **No red on a small sample**: rate stages use the sample's confidence
+   interval — inside it reads "too early to tell", never behind.
+7. **Cash is Stripe only** (R-CASH); all-client receipts appear as
+   labelled context, never in the stage figure.
+8. **Nothing here writes.** Saved checks live in their own journal; the
+   re-model action fills the simulator and saves nothing.
+9. The behaviour gate gained the travelling contract (button → view →
+   window/comparator switches matching the engine → rosters → both
+   actions → refresh-keeps-state).
+
+**Found while building (fixed at source):** the tracker's revenue picklist
+now writes "$50k - $100k" style values; revenue_bands only knew
+"$50k-100k", so every lead on the new spellings parsed as UNKNOWN and the
+qualified rule read them as *below floor*. The literal spellings are now
+in the picklist — this corrects the qualified metric everywhere it is
+used, not just this view.

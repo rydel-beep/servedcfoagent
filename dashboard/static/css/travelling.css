@@ -1,0 +1,105 @@
+/* ════════════════════════════════════════════════════════════════════════
+   HOW WE'RE TRAVELLING — the comparison is the hero.
+   No tile row on top: boldness is spent in one place, the dual-track
+   funnel. Served palette only; one semantic set for ahead / on track /
+   behind / too early. Sentence case everywhere.
+   ════════════════════════════════════════════════════════════════════════ */
+
+.tv-main { max-width: 1120px; margin: 0 auto; padding: var(--sp-5) var(--sp-4) var(--sp-8); }
+
+/* ── header ── */
+.tv-head-row { display: flex; gap: var(--sp-4); align-items: baseline; flex-wrap: wrap; justify-content: space-between; }
+.tv-title { font: 600 var(--fs-value)/1.2 var(--font-display); color: var(--text); }
+.tv-controls { display: flex; gap: var(--sp-3); align-items: center; flex-wrap: wrap; }
+.tv-ctl { display: flex; flex-direction: column; gap: 2px; }
+.tv-ctl > span { font: 500 var(--fs-micro)/1.3 var(--font-ui); color: var(--text-muted); }
+.tv-ctl select, .tv-ctl input {
+  background: var(--bg-inset-strong); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); padding: 4px 8px;
+  font: 500 var(--fs-caption)/1.3 var(--font-ui);
+}
+.tv-progress { font: 500 var(--fs-caption)/1.3 var(--font-ui); color: var(--text-muted); align-self: flex-end; padding-bottom: 5px; }
+.tv-verdict { font: 500 var(--fs-emphasis)/1.5 var(--font-ui); color: var(--text); margin-top: var(--sp-3); }
+.tv-sub { font: 400 var(--fs-caption)/1.5 var(--font-ui); color: var(--text-muted); margin-top: 2px; }
+
+/* ── the funnel (the hero) ── */
+.tv-funnel { margin-top: var(--sp-5); border-top: 1px solid var(--border); }
+.tv-stage {
+  display: grid;
+  grid-template-columns: 190px minmax(140px, 1fr) 260px 130px 150px;
+  gap: var(--sp-3); align-items: center;
+  padding: 11px 0; border-bottom: 1px solid var(--border);
+}
+.tv-stage-name { font: 600 var(--fs-body)/1.3 var(--font-ui); color: var(--text); display: flex; align-items: center; gap: 8px; }
+.tv-door {
+  background: none; border: 1px solid var(--border); border-radius: 5px;
+  color: var(--brand-muted); font: 500 var(--fs-micro)/1.5 var(--font-ui);
+  padding: 1px 7px; cursor: pointer;
+}
+.tv-door:hover:not(:disabled) { color: var(--brand-bright); border-color: var(--border-hover); }
+.tv-door:disabled { opacity: .3; cursor: default; }
+.tv-door:focus-visible, .tv-ctl select:focus-visible { outline: 2px solid var(--brand-bright); outline-offset: 2px; }
+
+.tv-bar-track { position: relative; height: 14px; background: var(--bg-inset); border-radius: 7px; overflow: hidden; }
+.tv-bar-plan { position: absolute; inset: 0 auto 0 0; height: 100%; border: 1px solid var(--border-hover); border-radius: 7px; background: transparent; }
+.tv-bar-actual { position: absolute; inset: 0 auto 0 0; height: 100%; width: var(--target); background: var(--brand-bright); border-radius: 7px; }
+.tv-bar-marker { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text-secondary); opacity: .85; }
+
+.tv-stage-figures { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.tv-actual { font: 600 var(--fs-body)/1.35 var(--font-ui); color: var(--text); font-variant-numeric: tabular-nums; }
+.tv-plan, .tv-stage-sub { font: 400 var(--fs-micro)/1.45 var(--font-ui); color: var(--text-muted); overflow-wrap: anywhere; }
+.tv-stage-proj { font: 400 var(--fs-caption)/1.4 var(--font-ui); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.tv-stage-status { display: flex; flex-direction: column; gap: 1px; }
+.tv-status-word { font: 600 var(--fs-caption)/1.3 var(--font-ui); }
+.tv-status-detail { font: 400 var(--fs-micro)/1.4 var(--font-ui); color: var(--text-muted); }
+
+.tone-ok .tv-status-word      { color: var(--green); }
+.tone-ahead .tv-status-word   { color: var(--green); }
+.tone-behind .tv-status-word  { color: var(--amber); }
+.tone-neutral .tv-status-word { color: var(--text-muted); }
+.tone-behind .tv-bar-actual   { background: var(--amber); }
+
+/* ── gap, read, panels ── */
+.tv-gap { margin-top: var(--sp-5); font: 500 var(--fs-emphasis)/1.5 var(--font-ui); color: var(--text); }
+.tv-gap-more { margin-top: 4px; padding-left: 18px; font: 400 var(--fs-caption)/1.6 var(--font-ui); color: var(--text-muted); }
+.tv-read { margin-top: var(--sp-4); background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: var(--sp-4); }
+.tv-read h3, .tv-panel h3 { font: 600 var(--fs-emphasis)/1.3 var(--font-ui); color: var(--text); margin-bottom: 6px; }
+.tv-read p { font: 400 var(--fs-body)/1.65 var(--font-ui); color: var(--text-secondary); }
+.tv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--sp-3); margin-top: var(--sp-3); }
+.tv-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: var(--sp-4); min-width: 0; }
+.tv-figures { font: 400 var(--fs-body)/1.5 var(--font-ui); color: var(--text-secondary); }
+.tv-figures b { color: var(--text); font-variant-numeric: tabular-nums; }
+.tv-note { font: 400 var(--fs-micro)/1.55 var(--font-ui); color: var(--text-muted); display: block; margin-top: 3px; }
+.tv-check { padding: 5px 0; border-bottom: 1px dashed var(--border); font: 400 var(--fs-caption)/1.5 var(--font-ui); }
+.tv-check:last-child { border-bottom: none; }
+.tv-check-stage { color: var(--text); font-weight: 600; margin-right: 6px; }
+.tv-check-ok { color: var(--green); }
+.tv-check-off { color: var(--amber); }
+.tv-actions { display: flex; gap: var(--sp-3); align-items: center; flex-wrap: wrap; margin-top: var(--sp-5); }
+.tv-history-item { font: 400 var(--fs-caption)/1.6 var(--font-ui); color: var(--text-muted); padding: 3px 0; border-bottom: 1px dashed var(--border); }
+.tv-foot { margin-top: var(--sp-6); }
+.tv-roster-table { width: 100%; border-collapse: collapse; font: 400 var(--fs-caption)/1.5 var(--font-ui); }
+.tv-roster-table td { padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.tv-roster-table td:first-child { color: var(--text); font-weight: 600; white-space: nowrap; }
+
+/* ── one motion moment: the actual bars grow on open ── */
+@keyframes tv-grow { from { width: 0; } to { width: var(--target); } }
+.tv-bar-actual { animation: tv-grow .55s cubic-bezier(.2,.7,.3,1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .tv-bar-actual { animation: none; width: var(--target); }
+}
+
+/* ── mobile: each stage becomes a compact two-line row ── */
+@media (max-width: 860px) {
+  .tv-stage { grid-template-columns: 1fr auto; gap: 6px 10px; }
+  .tv-stage-name { grid-column: 1 / -1; }
+  .tv-bar-wrap { grid-column: 1 / -1; }
+  .tv-stage-proj { text-align: right; }
+  .tv-stage-status { grid-column: 1 / -1; flex-direction: row; gap: 8px; align-items: baseline; }
+}
+
+/* north-star summary (consolidated from /scale — one plan-vs-actual surface) */
+.tv-northstar { display: flex; gap: var(--sp-5); flex-wrap: wrap; align-items: baseline;
+  margin-top: var(--sp-4); padding: 10px 14px; background: var(--bg-inset-strong);
+  border-radius: 8px; font: 400 var(--fs-caption)/1.5 var(--font-ui); color: var(--text-muted); }
+.tv-northstar b { font: 600 var(--fs-value-sm)/1.2 var(--font-display); color: var(--text); margin-right: 4px; }

@@ -188,6 +188,126 @@ def run_pass(page, name, evd, shots):
     return steps
 
 
+
+
+def run_travelling(page, evd, shots):
+    """HOW WE'RE TRAVELLING — the interaction contract: the button lands
+    here with the scenario as the comparison; switching the window changes
+    the numbers AND they equal the engine; switching the comparator changes
+    the plan side; the two actions do what they say; refresh keeps state."""
+    steps = {}
+    page.goto(BASE + "/dashboard/scale", wait_until="load")
+    time.sleep(2.5)
+    page.evaluate("document.querySelector('#defs-tour [data-t=skip]')?.click()")
+    btn = page.query_selector("#btn-travelling")
+    if not btn:
+        fail("travelling: the 'Show how we're travelling' button is missing from the compass")
+        return steps
+    btn.click()
+    page.wait_for_load_state("load")
+    time.sleep(2.5)
+
+    def tv_state():
+        return page.evaluate("""() => ({
+          url: location.pathname + location.search,
+          stages: document.querySelectorAll('.tv-stage').length,
+          verdict: (document.querySelector('.tv-verdict')?.innerText || '').trim(),
+          compare: (document.querySelector('[data-def=tv_compare] select')?.value || ''),
+          window: (document.querySelector('[data-def=tv_window] select')?.value || ''),
+          progress: (document.querySelector('[data-def=tv_progress]')?.innerText || '').trim(),
+          leads: (document.querySelector('#stage-leads .tv-actual')?.innerText || '').trim(),
+          closed: (document.querySelector('#stage-closed .tv-actual')?.innerText || '').trim(),
+          bars: document.querySelectorAll('.tv-bar-actual').length,
+          read: (document.querySelector('[data-def=tv_read] p')?.innerText || '').trim().length,
+          gap: (document.querySelector('[data-def=tv_gap]')?.innerText || '').trim(),
+        })""")
+
+    s1 = tv_state()
+    steps["opened"] = s1
+    if "/dashboard/scale/travelling" not in s1["url"]:
+        fail(f"travelling: the button did not land on the view ({s1['url']})")
+    if s1["stages"] != 10:
+        fail(f"travelling: {s1['stages']} stages rendered, expected 10")
+    if not s1["verdict"]:
+        fail("travelling: no one-line verdict")
+    if s1["compare"] != "scenario":
+        fail(f"travelling: opened with comparator '{s1['compare']}', expected the scenario")
+    if not s1["read"]:
+        fail("travelling: the read is empty")
+    if not s1["bars"]:
+        fail("travelling: the funnel drew no bars")
+    if shots:
+        page.screenshot(path=os.path.join(evd, "travelling-1-opened.png"), full_page=True)
+
+    # 2 · switch the window → numbers change AND match the engine
+    page.select_option("[data-def=tv_window] select", "d21")
+    page.wait_for_load_state("load")
+    time.sleep(2.5)
+    s2 = tv_state()
+    steps["window_d21"] = s2
+    if s2["window"] != "d21":
+        fail("travelling: the window control did not switch")
+    if "Day 21 of 21" not in s2["progress"]:
+        fail(f"travelling: the 21-day window shows progress '{s2['progress']}'")
+    engine = page.evaluate(
+        """async () => { const r = await fetch('/dashboard/api/travelling?window=d21&compare=usual');
+             return r.ok ? await r.json() : null; }""")
+    if engine:
+        eng_leads = next((x["actual"] for x in engine["stages"] if x["id"] == "leads"), None)
+        shown = int((s2["leads"] or "0").replace(",", "") or 0)
+        if eng_leads is not None and abs(eng_leads - shown) > 0:
+            fail(f"travelling: leads on screen {shown} ≠ engine {eng_leads}")
+        steps["engine_match"] = {"screen": shown, "engine": eng_leads}
+
+    # 3 · switch the comparator → the plan side changes
+    page.select_option("[data-def=tv_compare] select", "usual")
+    page.wait_for_load_state("load")
+    time.sleep(2.5)
+    s3 = tv_state()
+    steps["compare_usual"] = s3
+    if s3["compare"] != "usual":
+        fail("travelling: the comparator control did not switch")
+
+    # 4 · refresh keeps state (URL-driven)
+    page.reload(wait_until="load")
+    time.sleep(2)
+    s4 = tv_state()
+    if s4["window"] != "d21" or s4["compare"] != "usual":
+        fail("travelling: a refresh lost the window/comparator state")
+    steps["after_refresh"] = s4
+
+    # 5 · the people behind a number
+    page.click("#stage-leads .tv-door")
+    time.sleep(0.8)
+    roster = page.evaluate(
+        "() => ({open: document.getElementById('tv-roster')?.style.display !== 'none',"
+        " rows: document.querySelectorAll('#tv-roster-body tr').length})")
+    steps["roster"] = roster
+    if not roster["open"] or not roster["rows"]:
+        fail(f"travelling: the people drawer did not open with rows ({roster})")
+    page.click("#tv-roster-close")
+    time.sleep(0.3)
+
+    # 6 · the two actions
+    page.click("#tv-remodel")
+    time.sleep(2.5)
+    out = page.evaluate("() => (document.getElementById('tv-action-out')?.innerText || '').trim()")
+    steps["remodel"] = out
+    if "Loaded into the compass" not in out:
+        fail(f"travelling: re-model from actuals did not report back ({out[:80]})")
+    if "rate" not in out.lower():
+        fail("travelling: re-model did not name the rates it loaded")
+    page.click("#tv-save")
+    time.sleep(2.5)
+    out2 = page.evaluate("() => (document.getElementById('tv-action-out')?.innerText || '').trim()")
+    steps["save"] = out2
+    if "Saved" not in out2:
+        fail(f"travelling: save this check did not confirm ({out2[:80]})")
+    if shots:
+        page.screenshot(path=os.path.join(evd, "travelling-2-actions.png"), full_page=True)
+    return steps
+
+
 def main():
     if not PW and not LEGACY_TOKEN:
         print("GATE_OWNER_PASSWORD not in env", file=sys.stderr)
@@ -209,6 +329,7 @@ def main():
         names = ["cold", "warm", "third"][:PASSES]
         for i, name in enumerate(names):
             steps = run_pass(page, name, evd, shots=(i == 0))
+            steps["travelling"] = run_travelling(page, evd, shots=(i == 0))
             REPORT["passes"].append({"name": name, "steps": steps})
         REPORT["console_errors"] = console_errors
         for e in console_errors:

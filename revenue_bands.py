@@ -24,6 +24,15 @@ BANDS: dict[str, tuple[int, int | None]] = {
     "$100k-$200k": (100_000, 200_000),
     "$200k +": (200_000, None),
     "$200k+": (200_000, None),
+    # 2026-09-21: the live picklist writes the second dollar sign and spaces
+    # around the dash ("$50k - $100k"). Found by the travelling view — every
+    # lead on these values was parsing as UNKNOWN, which the qualified rule
+    # then read as "below floor". Literal spellings, per this module's rule.
+    "$20k - $50k": (20_000, 50_000),
+    "$50k - $100k": (50_000, 100_000),
+    "$100k - $200k": (100_000, 200_000),
+    "$200k +": (200_000, None),
+    "under $20k ": (0, 20_000),
 }
 
 

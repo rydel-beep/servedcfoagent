@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How we're travelling — Served CFO</title>
+{% include "partials/telemetry.html" %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/dashboard/static/css/dashboard.css?v={{ asset_v }}">
+<link rel="stylesheet" href="/dashboard/static/css/landing.css?v={{ asset_v }}">
+<link rel="stylesheet" href="/dashboard/static/css/travelling.css?v={{ asset_v }}">
+</head>
+<body data-page="travelling">
+
+<header class="header">
+  <div class="header-left">
+    <div class="reactor"></div>
+    <h1 class="wordmark">EDITH</h1>
+    <span class="wordmark-sub">How we're travelling</span>
+  </div>
+  <div class="header-right">
+    <a class="panelpage-back" href="/dashboard/scale">← Back to the compass</a>
+  </div>
+</header>
+
+<main class="tv-main" id="main">
+
+  <!-- header: window · comparator · progress (server-rendered from the URL) -->
+  <section class="tv-head" id="tv-head">
+    <div class="tv-head-row">
+      <h2 class="tv-title">How we're travelling</h2>
+      <form class="tv-controls" method="get" action="/dashboard/scale/travelling" id="tv-controls">
+        <input type="hidden" name="s" value="{{ scenario_param or '' }}">
+        <label class="tv-ctl" data-def="tv_window">
+          <span>Window</span>
+          <select name="window" onchange="this.form.submit()">
+            <option value="mtd" {{ 'selected' if data.window.key == 'mtd' }}>Month to date</option>
+            <option value="d21" {{ 'selected' if data.window.key == 'd21' }}>Last 21 days</option>
+            <option value="custom" {{ 'selected' if data.window.key == 'custom' }}>Custom range</option>
+          </select>
+        </label>
+        <label class="tv-ctl" data-def="tv_compare">
+          <span>Compared with</span>
+          <select name="compare" onchange="this.form.submit()">
+            <option value="scenario" {{ 'selected' if data.compare.key == 'scenario' }}>The scenario on screen</option>
+            <option value="plan" {{ 'selected' if data.compare.key == 'plan' }}>The committed plan</option>
+            <option value="last_month" {{ 'selected' if data.compare.key == 'last_month' }}>Last month</option>
+            <option value="usual" {{ 'selected' if data.compare.key == 'usual' }}>Your usual rates</option>
+          </select>
+        </label>
+        {% if data.window.key == 'custom' %}
+        <label class="tv-ctl"><span>From</span><input type="date" name="start" value="{{ data.window.start }}" onchange="this.form.submit()"></label>
+        <label class="tv-ctl"><span>To</span><input type="date" name="end" value="{{ data.window.end }}" onchange="this.form.submit()"></label>
+        {% endif %}
+        <span class="tv-progress" data-def="tv_progress">{{ data.window.progress }}</span>
+      </form>
+    </div>
+    <p class="tv-verdict" data-def="tv_verdict">{{ data.verdict }}</p>
+    <p class="tv-sub">Comparing against {{ data.compare.label }}.{% if data.compare.from_usual %}
+      Stages it doesn't model use your usual measured rates, marked as such.{% endif %}</p>
+  </section>
+
+  {% if ns %}
+  <section class="tv-northstar" data-def="tv_northstar">
+    <span><b>{{ ns.actual_text }}</b> {{ ns.metric_label }} so far</span>
+    <span><b>{{ ns.plan_text }}</b> planned</span>
+    <span><b>{{ ns.pace_text }}</b> at this pace</span>
+    {% if ns.constraint %}<span class="tv-note">the model's constraint this month: {{ ns.constraint.name }}</span>{% endif %}
+  </section>
+  {% endif %}
+
+  <!-- THE HERO: the dual-track funnel, one row per stage -->
+  <section class="tv-funnel" id="tv-funnel" aria-label="Funnel, plan against actual">
+    {% for s in data.stages %}
+    <div class="tv-stage tone-{{ s.status.tone }}" id="stage-{{ s.id }}" data-def="tv_stage_{{ s.id }}">
+      <div class="tv-stage-name">
+        {{ s.name }}
+        <button class="tv-door" data-roster="{{ s.id }}" {% if not s.roster %}disabled{% endif %}>people</button>
+      </div>
+      <div class="tv-bar-wrap">
+        {% if s.bar %}
+        <div class="tv-bar-track">
+          <div class="tv-bar-plan" style="width: {{ s.bar.plan_pct }}%"></div>
+          <div class="tv-bar-actual" style="--target: {{ s.bar.actual_pct }}%"></div>
+          {% if s.bar.marker_pct is not none %}
+          <div class="tv-bar-marker" style="left: {{ s.bar.marker_pct }}%" title="where the plan should be today"></div>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+      <div class="tv-stage-figures">
+        <span class="tv-actual">{{ s.actual_text }}</span>
+        {% if s.plan_text %}<span class="tv-plan">{{ s.plan_text }}</span>{% endif %}
+        {% if s.sub %}<span class="tv-stage-sub">{{ s.sub }}</span>{% endif %}
+      </div>
+      <div class="tv-stage-proj">{% if s.projection_text %}month end {{ s.projection_text }}{% endif %}</div>
+      <div class="tv-stage-status">
+        <span class="tv-status-word">{{ s.status.word }}</span>
+        {% if s.status.detail %}<span class="tv-status-detail">{{ s.status.detail }}</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+
+  <!-- the biggest gap, then the read -->
+  {% if data.gaps %}
+  <p class="tv-gap" data-def="tv_gap">{{ data.gaps[0].sentence }}</p>
+  {% if data.gaps|length > 1 %}
+  <ul class="tv-gap-more">
+    {% for g in data.gaps[1:3] %}<li>{{ g.sentence }}{% if g.rough %} This one is rough — the sample is still small.{% endif %}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% endif %}
+
+  <section class="tv-read" data-def="tv_read">
+    <h3>The read</h3>
+    <p>{% for line in data.read.sentences %}{{ line }} {% endfor %}</p>
+  </section>
+
+  <div class="tv-grid">
+    <section class="tv-panel" data-def="tv_setter">
+      <h3>Setter activity</h3>
+      <p class="tv-figures"><b>{{ data.setter.call_records }}</b> calls on file ·
+        <b>{{ data.setter.conversations }}</b> ran over a minute</p>
+      <p class="tv-note">{{ data.setter.note }}</p>
+    </section>
+
+    <section class="tv-panel" data-def="tv_checks">
+      <h3>Sources checked</h3>
+      {% for c in data.checks %}
+      <div class="tv-check">
+        <span class="tv-check-stage">{{ c.stage }}</span>
+        {% if c.agree %}<span class="tv-check-ok">the sources agree</span>
+        {% else %}<span class="tv-check-off">they differ —
+          {% for k, v in c.sources.items() %}{{ k }} {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+        {% endif %}
+        {% if c.note %}<span class="tv-note">{{ c.note }}</span>{% endif %}
+      </div>
+      {% endfor %}
+    </section>
+  </div>
+
+  <section class="tv-actions">
+    <button class="scale-btn" id="tv-remodel" data-def="tv_remodel">Re-model from actuals</button>
+    <button class="scale-btn" id="tv-save" data-def="tv_save">Save this check</button>
+    <a class="scale-btn" href="/dashboard/scale" style="text-decoration:none">Back to the compass</a>
+    <span class="tv-note" id="tv-action-out"></span>
+  </section>
+
+  {% if history and history.checks %}
+  <section class="tv-panel" data-def="tv_history">
+    <h3>Earlier checks</h3>
+    <div class="tv-history">
+      {% for h in history.checks %}
+      <div class="tv-history-item">
+        <b>{{ h.at[:10] }}</b> {{ h.window }} — {{ h.verdict[:90] }}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <p class="tv-note tv-foot">{{ data.label }}. Read from the tracker, the
+    calendar and Stripe — nothing on this page writes to any of them.
+    Worked out {{ data.computed_at[:16] }}.</p>
+
+</main>
+
+<!-- roster drawer -->
+<div class="fin-drawer-overlay" id="tv-roster-overlay" style="display:none"></div>
+<div class="fin-drawer" id="tv-roster" style="display:none">
+  <div class="fin-drawer-head"><span id="tv-roster-title">The people</span>
+    <button id="tv-roster-close">&times;</button></div>
+  <div class="fin-drawer-body" id="tv-roster-body"></div>
+</div>
+
+<script>window.__TRAVELLING__ = {{ rosters_json | safe }};</script>
+<script defer src="/dashboard/static/js/travelling.js?v={{ asset_v }}"></script>
+{% include "partials/defs.html" %}
+</body>
+</html>

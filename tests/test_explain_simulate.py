@@ -521,12 +521,20 @@ def test_whatif_and_calibration_never_touch_actuals(stub, monkeypatch):
 
 
 def test_north_star_registry_and_template():
+    """#156 CONSOLIDATION: one plan-vs-actual surface. The north-star block
+    keeps its headline, verdict, constraint and what-ifs on /scale, but the
+    lever-by-lever table now lives ONLY in the travelling view."""
     html = _read("dashboard", "templates", "scale.html")
     assert 'id="north-star"' in html and "Are we on pace this month?" in html
-    assert "ns-levers" in html and "ns-whatif" in html
+    assert "ns-whatif" in html
     assert "{{ ns.verdict }}" in html            # server-rendered
-    for eid in ("north_star", "ns_verdict", "ns_levers", "ns_constraint",
-                "ns_whatifs", "ns_callog", "ns_pinned", "sim_mode", "sim_badge"):
+    assert 'id="ns-levers"' not in html          # moved — never two surfaces
+    assert "/dashboard/scale/travelling" in html  # and it links there
+    tv = _read("dashboard", "templates", "travelling.html")
+    assert 'class="tv-stage ' in tv              # the comparison lives here
+    for eid in ("north_star", "ns_verdict", "ns_summary", "ns_constraint",
+                "ns_whatifs", "ns_callog", "ns_pinned", "sim_mode", "sim_badge",
+                "btn_travelling", "travelling"):
         assert D.entry(eid), eid
 
 
@@ -555,7 +563,7 @@ def test_scale_page_renders_with_live_north_star_payload(stub, monkeypatch):
     h = r.data.decode()
     assert "Are we on pace this month?" in h
     assert "LOGIC VERIFIED" in h
-    assert 'id="ns-levers"' in h and "← off plan" in h or 'id="ns-levers"' in h
+    assert 'data-def="ns_summary"' in h          # the levers moved to travelling
 
 
 # ── #155 gap-closers (re-dispatch pass) ─────────────────────────────────────

@@ -60,21 +60,10 @@
     <div class="h" data-def="ns_pace"><b>{{ '${:,.0f}'.format(ns.pace) if ns.pace is not none else '—' }}</b><span>where this month lands at the current pace</span></div>
   </div>
   <div class="exec-verdict" id="ns-verdict" data-def="ns_verdict" style="margin-top:8px"><span class="verdict-mark">▸</span> {{ ns.verdict }}</div>
-  <div class="scale-table-wrap" style="margin-top:8px">
-    <table class="scale-table" id="ns-levers" data-def="ns_levers">
-      <thead><tr><th>lever</th><th>actual (this month)</th><th>plan</th><th>required to hit plan</th></tr></thead>
-      <tbody>
-      {% for lv in ns.levers %}
-      <tr{% if lv.off_plan %} style="color:var(--amber);font-weight:600"{% endif %}>
-        <td>{{ lv.name }}{% if lv.off_plan %} ← off plan{% endif %}</td>
-        <td>{% if lv.actual is none %}—{% elif lv.pct %}{{ '%.1f' % (lv.actual*100) }}%{% elif lv.money %}${{ '{:,.0f}'.format(lv.actual) }}{% else %}{{ '{:,.0f}'.format(lv.actual) }}{% endif %}</td>
-        <td>{% if lv.plan is none %}—{% elif lv.pct %}{{ '%.1f' % (lv.plan*100) }}%{% elif lv.money %}${{ '{:,.0f}'.format(lv.plan) }}{% else %}{{ '{:,.0f}'.format(lv.plan) }}{% endif %}</td>
-        <td>{% if lv.required is none %}—{% elif lv.pct %}{{ '%.1f' % (lv.required*100) }}%{% elif lv.money %}${{ '{:,.0f}'.format(lv.required) }}{% else %}{{ '{:,.0f}'.format(lv.required) }}{% endif %}{% if lv.note %} <span class="scale-note">{{ lv.note }}</span>{% endif %}</td>
-      </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  <p class="scale-note" style="margin-top:6px" data-def="ns_summary">
+    The lever-by-lever comparison lives in one place —
+    <a href="/dashboard/scale/travelling?compare=plan">How we're travelling</a>.
+  </p>
   {% if ns.constraint %}
   <div class="scale-note" style="margin-top:6px" data-def="ns_constraint"><b>Constraint of the month:</b>
     <span class="bind-{{ (ns.constraint.name or '').split(' ')[0] }}">{{ ns.constraint.name }}</span> — {{ ns.constraint.why }}</div>
@@ -102,6 +91,9 @@
   <h3 style="margin-top:10px">How many leads does my ad spend buy?
     <span id="sim-verified-badge" class="sim-badge {{ 'badge-ok' if badge and badge.ok else 'badge-amber' }}" data-def="sim_badge">{{ badge.text if badge else 'LOGIC NOT YET VERIFIED on this build' }}</span>
   </h3>
+  <p style="margin:6px 0"><a class="scale-btn" id="btn-travelling" data-def="btn_travelling"
+     href="/dashboard/scale/travelling?compare=scenario" style="text-decoration:none">Show how we're travelling</a>
+     <span class="scale-note">the live month beside whatever you've modelled here</span></p>
   <div class="sim-mode-row" data-def="sim_mode">
     <label class="sim-mode {{ 'active' }}" id="mode-forward-lbl"><input type="radio" name="sim-mode" id="mode-forward" checked> <b>Forward</b> — I set spend &amp; cost per lead; leads are the answer</label>
     <label class="sim-mode" id="mode-target-lbl"><input type="radio" name="sim-mode" id="mode-target"> <b>Target</b> — I set the goal; spend is the answer</label>

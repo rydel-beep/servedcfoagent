@@ -365,6 +365,105 @@ def api_scale_behaviour_verified():
     return jsonify({"ok": True, "stored": rec})
 
 
+@bp.route("/scale/travelling")
+@require_owner
+def travelling_page():
+    """HOW WE'RE TRAVELLING — the live month beside the model. Server-rendered
+    from the URL inputs (refresh-safe); the only client work is opening the
+    rosters and the two actions."""
+    import json as _json
+    import travelling as TV
+    scenario_param = request.args.get("s") or ""
+    scenario = None
+    if scenario_param:
+        try:
+            import base64
+            scenario = _json.loads(base64.urlsafe_b64decode(
+                scenario_param.encode()).decode())
+        except Exception:
+            scenario = None
+    compare = request.args.get("compare") or ("scenario" if scenario else "usual")
+    try:
+        data = TV.build(window=request.args.get("window") or "mtd",
+                        compare=compare, scenario=scenario,
+                        start=request.args.get("start"),
+                        end=request.args.get("end"))
+    except Exception as e:  # noqa: BLE001 — the page never 500s into a blank
+        logger.exception("travelling build failed")
+        return render_template("travelling.html", asset_v=_ASSET_VERSION,
+                               defs_json=_defs_json(), rosters_json="{}",
+                               history=None, scenario_param=scenario_param,
+                               data={"window": {"key": "mtd", "label": "Month to date",
+                                                "progress": "", "start": "", "end": ""},
+                                     "compare": {"key": compare, "label": "—",
+                                                 "from_usual": []},
+                                     "stages": [], "gaps": [], "checks": [],
+                                     "verdict": f"This view could not be built just now: {str(e)[:120]}",
+                                     "read": {"sentences": []},
+                                     "setter": {"call_records": 0, "conversations": 0, "note": ""},
+                                     "computed_at": "", "label": ""}), 200
+    ns = None
+    try:
+        import kv_store as _kv
+        raw = (_kv.get("compass:north_star") or {}).get("data") or {}
+        if raw.get("verdict"):
+            fmt = lambda v: (f"${v:,.0f}" if v is not None else "—")
+            ns = {"metric_label": raw.get("metric_label") or "",
+                  "actual_text": fmt(raw.get("actual")),
+                  "plan_text": fmt(raw.get("plan")),
+                  "pace_text": fmt(raw.get("pace")),
+                  "constraint": raw.get("constraint")}
+    except Exception:
+        ns = None
+    rosters = {s["id"]: {"name": s["name"], "roster": s.get("roster") or [],
+                         "extra": s.get("extra_rosters") or {},
+                         "note": s.get("math")}
+               for s in data["stages"]}
+    resp = make_response(render_template(
+        "travelling.html", asset_v=_ASSET_VERSION, defs_json=_defs_json(),
+        data=data, history=TV.history(6), scenario_param=scenario_param, ns=ns,
+        rosters_json=_json.dumps(rosters).replace("</", "<\\/")))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@bp.route("/api/travelling", methods=["GET"])
+@require_owner
+def api_travelling():
+    import travelling as TV
+    return jsonify(TV.build(window=request.args.get("window") or "mtd",
+                            compare=request.args.get("compare") or "usual",
+                            start=request.args.get("start"),
+                            end=request.args.get("end")))
+
+
+@bp.route("/api/travelling/remodel", methods=["GET"])
+@require_owner
+def api_travelling_remodel():
+    import travelling as TV
+    return jsonify(TV.remodel_inputs(window=request.args.get("window") or "mtd",
+                                     start=request.args.get("start"),
+                                     end=request.args.get("end")))
+
+
+@bp.route("/api/travelling/save", methods=["POST"])
+@require_owner
+def api_travelling_save():
+    import travelling as TV
+    from dashboard.auth import current_actor
+    body = request.get_json(silent=True) or {}
+    actor = (current_actor() or {}).get("user", "owner")
+    return jsonify(TV.save_check(actor, window=body.get("window") or "mtd",
+                                 compare=body.get("compare") or "usual"))
+
+
+@bp.route("/api/travelling/history", methods=["GET"])
+@require_owner
+def api_travelling_history():
+    import travelling as TV
+    return jsonify(TV.history(int(request.args.get("n", 8))))
+
+
 @bp.route("/api/scale/simulate", methods=["POST"])
 @require_owner
 def api_scale_simulate():
@@ -1310,6 +1409,7 @@ def api_chat():
             (__import__('timeline_adapter').handle_timeline_events, False),   # upcoming client events + countdowns
             (__import__('automations').handle_automation_health, False),      # P3: automation-health registry truth
             (__import__('dashboard.definitions', fromlist=['x']).handle_explain_command, False),  # 'what is/explain X' → the ONE definitions registry
+            (__import__('travelling').handle_travelling_command, False),  # 'how are we travelling this month' → the live month beside the model
             (__import__('notion_content').handle_content_list, False),        # P4: what emails/lead magnets went out this week
             (__import__('email_pipeline').handle_pipeline_query, False),     # Email engine: what's pending my review / pipeline state
             (capacity_engine.handle_capacity_command, False),  # hiring/capacity/raise/afford questions
@@ -1582,6 +1682,7 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             (__import__('timeline_adapter').handle_timeline_events, False),   # upcoming client events + countdowns
             (__import__('automations').handle_automation_health, False),      # P3: automation-health registry truth
             (__import__('dashboard.definitions', fromlist=['x']).handle_explain_command, False),  # 'what is/explain X' → the ONE definitions registry
+            (__import__('travelling').handle_travelling_command, False),  # 'how are we travelling this month' → the live month beside the model
             (__import__('notion_content').handle_content_list, False),        # P4: what emails/lead magnets went out this week
             (__import__('email_pipeline').handle_pipeline_query, False),     # Email engine: what's pending my review / pipeline state
             (capacity_engine.handle_capacity_command, False),

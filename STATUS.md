@@ -342,3 +342,29 @@ dashboard/evidence/phase0/.
   + levers + constraint + what-ifs + pinned inputs), calibration log
   (monthly predictions scored in public), drift alerts. Registry 153
   entries, coverage 100%. Suite: [at deploy]. DECISIONS #155.
+
+---
+
+## 2026-09-21 (3) — HOW WE'RE TRAVELLING (#156)
+
+- scale/TRAVELLING_DIAGNOSIS.md first: what each stage can be evidenced to.
+  Key verdicts — consults booked come from the calendar (the tracker's
+  set-date column is 0 of 446 rows); PITCHED is an evidenced lower bound
+  from the CRM's current stage (no history exists), scoped to this
+  window's consults, plus a Piolo package line proposing the column;
+  setter activity is cache-only call records (no direction recorded).
+- travelling.py: 10 stages with rosters (I17), three-way lead split with
+  UNKNOWN as its own bucket, plan-to-date markers on flow stages only,
+  pipeline-aware month-end projections, status words with bands and
+  confidence intervals (small samples read "too early to tell"), the gap
+  finder in clients and cash, cross-checks across calendar/tracker/Stripe,
+  EDITH's read with template-filled numbers, saved checks + Monday auto-save.
+- /dashboard/scale/travelling — server-rendered from URL state, the
+  dual-track funnel as the hero, rosters on demand, "Re-model from
+  actuals" and "Save this check". CONSOLIDATION: the north-star levers
+  table left /scale; one plan-vs-actual surface.
+- FOUND AND FIXED AT SOURCE: revenue_bands didn't know the tracker's
+  current picklist spellings ("$50k - $100k"), so those leads parsed as
+  UNKNOWN and the qualified rule read them as below-floor — the qualified
+  metric was wrong everywhere it is used. Literal spellings added.
+- Behaviour gate extended with the travelling contract. DECISIONS #156.
