@@ -45,8 +45,12 @@
   max-width:560px;padding:1rem 1.2rem;font-size:.85rem;line-height:1.5}
 svg text{font-family:inherit}
 </style>
+<link rel="stylesheet" href="/dashboard/static/css/served.css?v={{ asset_v }}">
 </head>
 <body>
+
+{% include "partials/shell_nav.html" %}
+
 <header class="header">
   <div class="header-left">
     <a href="/dashboard/" class="ops-back" title="Back to dashboard">← Dashboard</a>
@@ -483,5 +487,7 @@ svg text{font-family:inherit}
   show(tab);
 })();
 </script>
+{% include "partials/shell_palette.html" %}
+<script src="/dashboard/static/js/shell.js?v={{ asset_v }}"></script>
 </body>
 </html>

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Today — Served CFO</title>
+{% include "partials/telemetry.html" %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/dashboard/static/css/served.css?v={{ asset_v }}">
+</head>
+{# SERVER-RENDERED. Every number below is in the HTML before any script runs;
+   shell.js only draws the sparklines, opens the palette and wires shortcuts.
+   With JS disabled this page still answers "are we winning?". #}
+<body class="s-page" data-page="today">
+
+{% include "partials/shell_nav.html" %}
+
+<main class="s-main" id="main">
+
+  <h1 class="s-sr-only">Today — are we winning?</h1>
+
+  <section class="s-cards" aria-label="The eight numbers">
+    {% for t in today.tiles %}
+    <div class="s-card{% if t.state == 'amber' %} is-amber{% elif t.state == 'degraded' %} is-degraded{% endif %}"
+         id="tile-{{ t.id }}"
+         data-metric="{{ t.id }}"
+         data-window="{{ t.window | default('current') }}"
+         data-clock="{{ t.clock | default('as rendered') }}"
+         data-basis="engine"
+         data-value="{{ t.raw if t.raw is not none else '' }}">
+      <span class="s-card-label">{{ t.label }}
+        {% if t.state == 'degraded' %}<span class="s-chip s-chip-degraded">degraded</span>
+        {% elif t.state == 'amber' %}<span class="s-chip s-chip-stale">stale</span>{% endif %}
+      </span>
+      <span class="s-card-value">{{ t.value }}</span>
+      {% if t.sub %}<span class="s-card-sub">{{ t.sub }}</span>{% endif %}
+      {% if t.sr_note %}<span class="s-card-sub">{{ t.sr_note }}</span>{% endif %}
+
+      <div class="s-card-foot">
+        {% if t.delta and t.delta.word %}
+        <span class="s-delta{% if t.delta.state == 'good' %} is-good{% elif t.delta.state == 'bad' %} is-bad{% else %} is-flat{% endif %}">{{ t.delta.word }}</span>
+        {% endif %}
+
+        {% if t.trend and t.trend.points %}
+        <svg class="s-trend" data-series="{{ t.trend.points | tojson }}"
+             role="img"
+             aria-label="{{ t.trend.days }} days of history, {{ t.trend.span }}"></svg>
+        {% elif t.trend and t.trend.note %}
+        <span class="s-trend-none">{{ t.trend.note }}</span>
+        {% endif %}
+
+        {% if t.stamp %}<span class="s-stamp">{{ t.stamp }}</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+
+  {# THE VERDICT LINE — a door to travelling, never a dead end. #}
+  <a class="s-verdict{% if today.verdict.state == 'degraded' %} is-degraded{% endif %}"
+     href="{{ today.verdict.href }}"
+     data-metric="travelling_verdict" data-window="mtd" data-clock="month to date"
+     data-basis="engine" data-value="">
+    {{ today.verdict.line }}
+    {% if today.verdict.gap %}<br><span class="s-card-sub">{{ today.verdict.gap }}</span>{% endif %}
+    <br><span class="s-card-sub">Open how we're travelling → · computed {{ today.verdict.age }}</span>
+  </a>
+
+  {% if not today.rulings.hidden %}
+  <section class="s-panel" aria-labelledby="rulings-title">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="rulings-title">Needs your ruling{% if today.rulings.count is not none %}
+        ({{ today.rulings.count }}){% endif %}</h2>
+      <span class="s-panel-sub"><a href="/dashboard/view/decisions">see all →</a></span>
+    </div>
+    {% if today.rulings.error %}
+      <div class="s-boundary-fail"><b>This panel failed honestly.</b> {{ today.rulings.error }}</div>
+    {% elif today.rulings.cards %}
+      <ul class="s-list">
+        {% for r in today.rulings.cards %}
+        <li><a href="/dashboard/view/decisions">{{ r.title }}</a>
+          {% if r.why %}<div class="s-card-sub">{{ r.why }}</div>{% endif %}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="s-empty">Nothing is waiting on you.</div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if today.since.show %}
+  <section class="s-panel" aria-labelledby="since-title">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="since-title">Since you last looked</h2>
+      <span class="s-panel-sub">{{ today.since.note }}</span>
+    </div>
+    {% if today.since.lines %}
+    <ul class="s-list">{% for i in today.since.lines %}<li>{{ i }}</li>{% endfor %}</ul>
+    {% else %}
+    <div class="s-empty">Nothing was raised while you were away.</div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <section class="s-panel" aria-labelledby="pulse-title">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="pulse-title">Sales pulse</h2>
+      <span class="s-panel-sub">trailing 30 days · the confirmed basis</span>
+    </div>
+    <div class="s-cards">
+      {% for p in today.pulse %}
+      <div class="s-card{% if p.state == 'amber' %} is-amber{% elif p.state == 'degraded' %} is-degraded{% endif %}"
+           id="tile-{{ p.id }}"
+           data-metric="{{ p.id }}" data-window="t30" data-clock="trailing 30 days"
+           data-basis="confirmed" data-value="{{ p.raw if p.raw is not none else '' }}">
+        <span class="s-card-label">{{ p.label }}</span>
+        <span class="s-card-value">{{ p.value }}</span>
+        <span class="s-card-sub">{{ p.sub }}</span>
+        {% if p.stamp %}<span class="s-stamp">{{ p.stamp }}</span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <p class="s-card-sub" style="margin-top:var(--sp-6)">
+    Snapshot {{ today.snapshot_age }} · {{ today.today }}.
+    Everything here is read from caches the scheduled loop writes — opening
+    this page never calls Stripe, Xero, Meta, the CRM or a sheet.
+  </p>
+</main>
+
+{% include "partials/shell_palette.html" %}
+<script src="/dashboard/static/js/shell.js?v={{ asset_v }}"></script>
+</body>
+</html>

@@ -207,8 +207,12 @@
 .scale-hero .h span { font: 400 var(--fs-micro)/1.4 var(--font-ui); color: var(--text-muted); }
 
 /* ── EXPLAIN EVERYTHING: tooltips · tap sheet · "?" mode · tour ── */
+/* Phase 0 (the real-seat audit) caught this button sitting ON TOP of the
+   header's "Chat with EDITH" button — the chat button could not be clicked
+   from any page carrying both. It moves to the bottom-LEFT: the header owns
+   the top-right, the EDITH orb owns the bottom-right. */
 #defs-help-btn {
-  position: fixed; top: 14px; right: 14px; z-index: 400;
+  position: fixed; bottom: 14px; left: 14px; z-index: var(--z-modal);
   width: 30px; height: 30px; border-radius: 50%;
   background: var(--accent-dim); color: var(--brand-bright);
   border: 1px solid var(--border-hover); cursor: pointer;

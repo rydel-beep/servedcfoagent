@@ -5,8 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SERVED AD TRACKING</title>
 <link rel="stylesheet" href="/dashboard/static/css/adsapp.css?v={{ asset_v }}">
+<link rel="stylesheet" href="/dashboard/static/css/served.css?v={{ asset_v }}">
 </head>
 <body>
+
+{% include "partials/shell_nav.html" %}
+
 <header class="adx-top">
   <div class="adx-brand">
     <span class="adx-logo">SERVED</span> <span class="adx-name">AD TRACKING</span>
@@ -185,5 +189,7 @@
 </div>
 
 <script src="/dashboard/static/js/adsapp.js?v={{ asset_v }}"></script>
+{% include "partials/shell_palette.html" %}
+<script src="/dashboard/static/js/shell.js?v={{ asset_v }}"></script>
 </body>
 </html>

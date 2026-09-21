@@ -69,7 +69,20 @@ def _edith_cfg_json() -> str:
 @bp.route("/")
 @require_auth
 def index():
-    """The LANDING page — SERVER-RENDERED TRUTH (dashboard hardening).
+    """RETIRED as the landing — TODAY is the landing now (the finish line).
+
+    The old landing's job was to be an index of surfaces; the persistent nav
+    does that on every page, and TODAY answers the question the index never
+    could. The route stays as a REDIRECT so no link anywhere breaks, and the
+    page itself remains reachable at /dashboard/landing while the new one
+    beds in."""
+    return redirect(url_for("dashboard.today_page"))
+
+
+@bp.route("/landing")
+@require_auth
+def landing_page():
+    """The previous landing — SERVER-RENDERED TRUTH (dashboard hardening).
 
     The executive top (≤ 8 tiles + one verdict line) and the summary cards
     are computed server-side from the one engine's kv-cached blocks and
@@ -105,6 +118,133 @@ def index():
         status_text=status_text, edith_cfg=_edith_cfg_json(),
         defs_json=_defs_json(), asset_v=_ASSET_VERSION))
     # the HTML carries live values — it must never be served from cache
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+# ── THE SHELL: nav + breadcrumbs + ⌘K, on every page ────────────────────────
+
+@bp.app_context_processor
+def _inject_shell():
+    """Make the shell available to EVERY template, so the nav is on every
+    page without each route having to remember it. Memoized per request and
+    skipped for API endpoints, so it costs one cheap kv read per page."""
+    from flask import g as _g
+    path = request.path or ""
+    if "/api/" in path:
+        return {}
+    cached = getattr(_g, "_shell_ctx", None)
+    if cached is not None:
+        return cached
+    active = ""
+    if path.startswith("/ads"):
+        active = "ads"
+    elif "/scale" in path:
+        active = "plan"
+    elif path.rstrip("/").endswith("/sales"):
+        active = "sales"
+    elif path.rstrip("/").endswith("/today"):
+        active = "today"
+    elif path.rstrip("/").endswith("/csm"):
+        active = "csm"
+    elif "/view/" in path:
+        from dashboard.shell import AREA_PARENT
+        active = AREA_PARENT.get(path.rsplit("/", 1)[-1], "")
+    ctx = _shell(active)
+    _g._shell_ctx = ctx
+    return ctx
+
+
+def _shell(active: str = "", crumbs=None) -> dict:
+    """Template context for the persistent shell. Cheap (kv reads only) and
+    guarded — a page must never fail to render because its nav could not
+    count something."""
+    from dashboard import shell as _shell_mod
+    import json as _json
+    try:
+        nav = _shell_mod.nav_context(active, crumbs)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("nav context failed: %s", e)
+        nav = {"links": [], "crumbs": [], "health_dot": "amber",
+               "health_why": f"nav degraded: {str(e)[:70]}", "actor": "",
+               "owner": False, "ad_only": False, "active": active}
+    try:
+        targets = _shell_mod.palette_targets(nav.get("owner", False),
+                                             nav.get("ad_only", False))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("palette targets failed: %s", e)
+        targets = []
+    return {"nav": nav,
+            "palette_json": _json.dumps(targets).replace("</", "<\\/")}
+
+
+# ── TODAY — the landing: "are we winning?" in ten seconds ───────────────────
+
+@bp.route("/today")
+@require_auth
+def today_page():
+    """TODAY. Eight server-rendered tiles, one verdict line, three short
+    lists — and nothing else, by rule.
+
+    Every tile is MOVED from the engines that already own it (six straight
+    out of exec_top), never recomputed. The request path reads kv caches
+    only; no external call happens on page load."""
+    from snapshot import load_persisted
+    from dashboard import today as today_mod
+    from dashboard.auth import is_owner
+    try:
+        owner = is_owner()
+    except Exception:
+        owner = False
+    snap = load_persisted()
+    try:
+        data = today_mod.build(snap, owner)
+    except Exception as e:  # noqa: BLE001 — TODAY never 500s into a blank
+        logger.exception("today build failed")
+        data = {"tiles": [], "pulse": [], "rulings": {"hidden": True, "items": []},
+                "since": {"show": False},
+                "verdict": {"line": f"today failed honestly: {str(e)[:120]}",
+                            "state": "degraded", "href": "/dashboard/scale/travelling",
+                            "gap": "", "age": "unknown"},
+                "today": "", "snapshot_age": "unknown"}
+    resp = make_response(render_template(
+        "today.html", today=data, asset_v=_ASSET_VERSION,
+        **_shell("today")))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+# ── SALES — the team's scoreboard (owner/finance only) ──────────────────────
+
+@bp.route("/sales")
+@require_owner
+def sales_board_page():
+    """The scoreboard: per setter and per closer, the pipeline, the next
+    seven days, and the consults nobody marked.
+
+    OWNER-ONLY by decorator — commissions are finance, so an ad_domain
+    session is refused here structurally, not by hiding a link."""
+    from dashboard import shell as _shell_mod  # noqa: F401 (shell context below)
+    import sales_scoreboard
+    window = request.args.get("window") or "mtd"
+    try:
+        board = sales_scoreboard.build(
+            window, request.args.get("start"), request.args.get("end"))
+    except Exception as e:  # noqa: BLE001 — the page degrades, never blanks
+        logger.exception("sales scoreboard failed")
+        board = {"window": {"label": "unavailable", "key": window, "start": "",
+                            "end": "", "progress": ""},
+                 "degraded": [{"block": "everything", "why": str(e)[:160]}],
+                 "setters": [], "closers": [], "totals": {},
+                 "pipeline": {"stages": [], "note": ""},
+                 "upcoming": {"rows": [], "count": 0, "note": ""},
+                 "unmarked": {"rows": [], "count": 0, "note": "", "by_closer": []},
+                 "speed_to_lead": {"available": False, "note": "unavailable"},
+                 "targets": {"available": False, "note": "unavailable", "found": []},
+                 "cash": {"total": 0, "source": "—"}, "notes": []}
+    resp = make_response(render_template(
+        "sales_board.html", board=board, asset_v=_ASSET_VERSION,
+        **_shell("sales")))
     resp.headers["Cache-Control"] = "no-store"
     return resp
 

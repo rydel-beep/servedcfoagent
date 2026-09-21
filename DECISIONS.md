@@ -2496,3 +2496,109 @@ existing poll — no new token, no new cadence, no CRM write. From its start
 date pitched is MEASURED for watched deals and stays a labelled lower
 bound for older ones; a change seen only as a jump is recorded as a jump,
 never filled in with stages that were never observed.
+
+---
+
+## #158 — THE FINISH LINE: the shell, TODAY, SALES, and the last partials
+**2026-09-21 · audit first, then build**
+
+**PHASE 0 CAME FIRST AND WAS THE BUILD LIST** (`USABILITY_AUDIT.md`,
+`scripts/usability_audit.py`). A real Chromium sat in Rydel's seat on
+production — owner session, desktop and mobile — loaded all 25 pages and
+**activated every visible control**, each on a freshly reloaded page so one
+control opening a panel could never make the controls beneath it read
+broken. Controls whose label marks them write-capable were inventoried and
+never clicked.
+
+**The auditor's own first runs were wrong, three times, and each was fixed
+before the register was trusted** — a scan with false positives is worse
+than no scan: a chat panel left open made every later control read
+unreachable (fixed: a fresh page per control) · a stamped `data-audit-ref`
+died whenever a panel re-rendered, so the CSM tabs read unreachable when
+they work perfectly (fixed: structural CSS paths) · closed drawers parked
+off-canvas were counted as dead controls (fixed: a canvas-bounds test).
+**And one fault was worse than a false positive**: the label allowlist did
+not contain "Deactivate", so the auditor CLICKED two of those buttons on the
+memory page and flipped two of EDITH's own facts inactive (ids 1 and 6).
+Both were identified from the page's own ordering — they were the only facts
+at weight 3.0 and 2.0, so they were the first two cards — and **restored the
+same hour** (inactive count 139 → 137). The guard is now structural, not a
+word list: nothing inside a form and nothing that can issue a non-GET is
+ever activated.
+
+**TWO SEV1s the register found that every previous gate had passed:**
+
+· **The landing said the show rate was 100%; travelling said 70%.** The A1
+fix (#157) landed in `travelling.py` and never reached the compass pulse,
+which was still dividing the attribution engine's STATUS-ONLY show count by
+sets and labelling the result "verified". Same window, same question, two
+answers. **There is one show-basis rule now** — `travelling.show_basis()` —
+and the pulse, TODAY and SALES all ask it. Exactly as #157 collapsed the two
+qualification paths.
+
+· **"Cash net MTD (bank basis)" was not month-to-date.** Its month-opening
+anchor came from `history_store.series(field, 40)` — the last 40 ENTRIES,
+and the snapshot loop appends every two hours, so 40 entries reach back
+about three days. On the day the anchor was first cached the earliest
+September reading it could see was the 15th, and that became "the month's
+opening balance". The tile read **$2,869.53** against a true **$1,118.84** —
+a six-day window clocked as the month. The anchor now comes from day-level
+history and re-anchors when older history arrives.
+
+**TODAY IS THE LANDING** (`/dashboard/today`). Eight server-rendered tiles,
+one verdict line that is a door to travelling, the top three rulings, the
+digest when you have been away a day, and the pulse — and nothing else, by
+test. **Six of the eight tiles are MOVED, not recomputed**: they are the
+same objects `exec_top.build_tiles()` returns. A second engine computing
+cash a second way is precisely how the estate came to hold two show rates.
+The two TODAY adds ride the refresh loop; the request path reads kv only.
+`/dashboard/` now redirects here; the previous landing stands at
+`/dashboard/landing`.
+
+**Every tile carries a 30-day trend and a vs-plan delta, both honest**
+(`trend.py`). The trend is DAY-level and draws only where history supports
+it — fewer than five days, or a value that never moves, prints a sentence
+instead of a flat line dressed as a trend. No plan is committed yet, so the
+delta names the prior period it is actually comparing against, and polarity
+holds: a cost metric never reads "ahead".
+
+**SALES** (`/dashboard/sales`, `sales_scoreboard.py`) — owner-only by
+decorator, because commissions are finance; ad_domain is refused
+structurally, not by hiding a link. Per setter and per closer, with small-n
+confidence words on every rate, shows on the confirmed basis with the range
+beside them, and the **attendance surface**: every consult whose time has
+passed that nobody marked, per closer, with age in days. Ownership now comes
+out of `attribution_engine.parse_tracker` — the one parser — so the
+scoreboard is not a second reader of the tracker. Outcome words typed into
+the ownership column ("Showed", "Cancelled", "0") are never rendered as
+people.
+
+**NO RULING WAS ENCODED.** Who marks attendance, and whether the tracker
+gains a Pitched column, remain Rydel's. The unmarked list shows each
+consult's assigned closer so either ruling works, and a test forbids the
+module from deciding.
+
+**THE PARTIALS.** *Brief 36* — the required-rate solve shipped: typing a
+count into a stage solves the rate that stage needs with everything upstream
+HELD, reads "required 91%, measured 70%, 21 points above", flags above-100%
+as not achievable and beyond-the-measured-band as a stretch, and clearing
+the count returns the stage to derived. Rates are entered as percentages.
+*Brief 4* — the Xero rung is **registered, not built**: the probe shows the
+token holds only `accounting.reports.profitandloss.read`,
+`...banksummary.read` and `...balancesheet.read`; Invoices and
+BankTransactions both return 401. The exact re-consent step is adding
+`accounting.transactions.read` to `XERO_SCOPES` in `app.py` and Rydel
+re-approving at `/xero/connect`. No blind build. *Brief 23* — the
+ship-notes skill does not exist on this machine, so brief 17's document
+could not be regenerated; said plainly rather than claimed.
+
+**THE SHELL** — a persistent, server-rendered nav on every page, breadcrumbs,
+a ⌘K palette whose targets are embedded in the page, and single-key
+shortcuts. The nav is role-aware and fail-closed: an ad_domain session sees
+Ads and nothing else, because a link that 403s is a lie about what you can
+do.
+
+**A JINJA COLLISION THAT HAS NOW BITTEN THREE TIMES IS A TEST.** `nav.items`,
+`today.rulings.items` and `c.values` (#156) all resolve to the dict's own
+method and 500 the page at render time. A test now forbids the paren-less
+form across every template.

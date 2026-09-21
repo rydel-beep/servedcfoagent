@@ -1,0 +1,29 @@
+{# THE PERSISTENT NAV — server-rendered on every page. With JS off it is
+   still a working set of links; the palette and shortcuts are the layer on
+   top, never the thing that makes it work. #}
+<nav class="s-nav" aria-label="Main">
+  <a class="s-nav-brand" href="/dashboard/today">EDITH</a>
+  {% for item in nav.links %}
+  <a class="s-nav-link" href="{{ item.href }}"
+     {% if item.active %}aria-current="page"{% endif %}
+     data-nav="{{ item.key }}">{{ item.label }}{% if item.count is not none %}
+    <span class="s-nav-count" title="{{ item.count }} need your ruling">{{ item.count }}</span>{% endif %}
+    {%- if item.key == 'system' %}
+    <span class="s-nav-dot{% if nav.health_dot == 'amber' %} is-amber{% elif nav.health_dot == 'red' %} is-red{% endif %}"
+          title="{{ nav.health_why }}"></span>
+    <span class="s-sr-only">{{ nav.health_why }}</span>{% endif %}
+  </a>
+  {% endfor %}
+  <span class="s-nav-spacer"></span>
+  <button class="s-nav-link" id="s-palette-open" type="button"
+          aria-label="Open the command palette">Jump to <span class="s-kbd">⌘K</span></button>
+</nav>
+{% if nav.crumbs %}
+<div class="s-crumbs" aria-label="Breadcrumb">
+  <a href="/dashboard/today">Today</a>
+  {% for label, href in nav.crumbs %}
+    <span aria-hidden="true">›</span>
+    {% if href %}<a href="{{ href }}">{{ label }}</a>{% else %}<span>{{ label }}</span>{% endif %}
+  {% endfor %}
+</div>
+{% endif %}

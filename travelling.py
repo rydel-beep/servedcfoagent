@@ -1187,3 +1187,54 @@ def handle_travelling_command(text: str):
     lines.append("Open the compass and press Show how we're travelling for the "
                  "stage-by-stage view.")
     return " ".join(lines), True
+
+
+# ── THE ONE SHOW-BASIS RULE ─────────────────────────────────────────────────
+# Phase 0 of the finish line caught the landing's pulse tile reading
+# "Show rate (verified) · 100%" while this view read 70% for the same window.
+# The A1 fix (#157) landed here and never reached the compass pulse, which
+# was still dividing status-only shows by sets and calling it verified.
+#
+# So the rule lives in ONE place now, exactly as the qualification rule did
+# after #157, and every surface asks this function. Two answers to one
+# question is a defect, not a difference of opinion.
+
+def show_basis(w0: dt.date, w1: dt.date) -> dict:
+    """Shows for a window, on the CONFIRMED basis, with the honest range.
+
+    confirmed  — a call record of real length, a recorded outcome, or a close
+    unconfirmed— the consult happened and nobody marked it either way
+    noshow     — marked a no-show
+
+    rate       = confirmed ÷ due          (what projections must use)
+    rate_upper = (confirmed + unconfirmed) ÷ due   (if every unmarked consult
+                 turned up — an upper bound, never the headline)
+    """
+    _inw, leads_all = _lead_rows(w0, w1)
+    ap = _appointments(w0, w1)
+    sh = _shows(leads_all, ap["due"], w0, w1)
+    confirmed = len(sh["verified"]) + len(sh["by_close"])
+    unconfirmed = len(sh["unverified"])
+    noshow = len(sh["noshow"])
+    due = confirmed + unconfirmed + noshow
+    rate = round(confirmed / due, 4) if due else None
+    upper = round((confirmed + unconfirmed) / due, 4) if due else None
+    return {
+        "confirmed": confirmed, "unconfirmed": unconfirmed,
+        "noshow": noshow, "due": due,
+        "rate": rate, "rate_upper": upper,
+        "basis": "confirmed — a call record, a recorded outcome, or a close",
+        "range_note": (
+            f"{confirmed} confirmed of {due}"
+            + (f", {unconfirmed} nobody marked either way" if unconfirmed else "")
+            + (f" — {rate * 100:.0f}%" if rate is not None else "")
+            + (f"–{upper * 100:.0f}% if they all turned up"
+               if upper is not None and upper != rate else "")),
+        "window": {"start": str(w0), "end": str(w1)},
+    }
+
+
+def show_basis_trailing(days: int = 30) -> dict:
+    """The trailing-window form the pulse strip and TODAY use."""
+    t = today_sydney()
+    return show_basis(t - dt.timedelta(days=days - 1), t)

@@ -425,8 +425,15 @@ def build_pulse() -> list[dict]:
         v, n = block.get("value"), block.get("n")
         if v is not None:
             val = f"{v * 100:.0f}%"
-            sub = f"n={n} {denom_word} · trailing 30d" + \
-                  (" · SMALL n — read with care" if (n or 0) < 15 else "")
+            # THE CONFIRMED BASIS, WITH ITS RANGE. A status-only show rate may
+            # never be the headline, and the unmarked consults behind it are
+            # said out loud rather than rounded away (Phase 0, SEV1).
+            if block.get("range_note"):
+                sub = block["range_note"] + " · trailing 30d"
+            else:
+                sub = f"n={n} {denom_word} · trailing 30d"
+            if (n or 0) < 15:
+                sub += " · SMALL n — read with care"
             state = _state_for(age, None)
         else:
             val, sub, state = "—", (p.get("error") or
@@ -435,10 +442,10 @@ def build_pulse() -> list[dict]:
                     "stamp": f"one attribution engine · computed {_fmt_age(age)}",
                     "state": state, "drawer": None})
 
-    rate_tile("pulse_show_rate", "Show rate (verified)",
-              p.get("show_rate"), "sets")
-    rate_tile("pulse_close_rate", "Close rate (÷ shows)",
-              p.get("close_rate"), "verified shows")
+    rate_tile("pulse_show_rate", "Show rate (confirmed)",
+              p.get("show_rate"), "consults due")
+    rate_tile("pulse_close_rate", "Close rate (÷ confirmed shows)",
+              p.get("close_rate"), "confirmed shows")
     bc = p.get("booked_calls_7d") or {}
     n = bc.get("count")
     out.append({"id": "pulse_booked_calls",

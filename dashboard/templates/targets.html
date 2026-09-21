@@ -48,8 +48,12 @@
     .toast.show{opacity:1}
     .note{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
   </style>
+<link rel="stylesheet" href="/dashboard/static/css/served.css?v={{ asset_v }}">
 </head>
 <body>
+
+{% include "partials/shell_nav.html" %}
+
   <h1>EDITH · Targets &amp; Benchmarks</h1>
   <div class="sub">Your manual goalposts — the targets/benchmarks the dashboard compares against.
     These have <b>no live source</b>; you set them. (You can also say "set the LTGP:CAC target to 3.5"
@@ -164,5 +168,7 @@
     load();
   })();
   </script>
+{% include "partials/shell_palette.html" %}
+<script src="/dashboard/static/js/shell.js?v={{ asset_v }}"></script>
 </body>
 </html>

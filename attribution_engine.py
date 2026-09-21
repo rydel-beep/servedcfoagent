@@ -107,6 +107,15 @@ def tracker_cols(header: list[str]) -> dict:
             idx["set_date"] = k
         elif "setter notes" in cl and "setter_notes" not in idx:
             idx["setter_notes"] = k
+        # OWNERSHIP (the finish line, Part 3 — the SALES scoreboard).
+        # The tracker's two section headers arrive joined to the name cell
+        # ("2 · SETTER FUNNEL Setter", "3 · CLOSER FUNNEL Closer"), so match
+        # on the ending rather than equality. Added here, in the one parser,
+        # so the scoreboard never becomes a second reader of the tracker.
+        elif cl.endswith("setter") and "setter" not in idx:
+            idx["setter"] = k
+        elif cl.endswith("closer") and "closer" not in idx:
+            idx["closer"] = k
         elif "show status" in cl and "show" not in idx:
             idx["show"] = k
         elif "close date" in cl and "close_date" not in idx:
@@ -117,6 +126,12 @@ def tracker_cols(header: list[str]) -> dict:
             idx["cash"] = k
         elif "offer sold" in cl and "offer" not in idx:
             idx["offer"] = k
+        elif "within 5" in cl and "within_5" not in idx:
+            idx["within_5"] = k
+        elif cl.endswith("commission setter") and "setter_commission" not in idx:
+            idx["setter_commission"] = k
+        elif "commission closer" in cl and "closer_commission" not in idx:
+            idx["closer_commission"] = k
     if outcome_cols:
         idx["setter_outcome"] = min(outcome_cols)      # SETTER funnel column (earlier)
         if len(outcome_cols) > 1:
@@ -213,6 +228,10 @@ def parse_tracker(rows: list[list[str]]) -> tuple[list[dict], dict]:
             "set": setter_out == "set",
             "set_date": _date(g("set_date")),
             "setter_notes": g("setter_notes"),
+            "setter": g("setter"), "closer": g("closer"),
+            "setter_commission": _money(g("setter_commission")),
+            "closer_commission": _money(g("closer_commission")),
+            "called_within_5": g("within_5").lower().startswith("y"),
             "show": g("show").lower() == "showed",
             "closer_outcome": closer_out,
             "won": closer_out == "won",

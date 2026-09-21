@@ -185,10 +185,83 @@
     } catch (e) { /* the plain link still works */ }
   }
 
+  /* ── REQUIRED-RATE SOLVE (5.1) ──────────────────────────────────────
+     Typing a count into a stage asks: what rate would that stage need,
+     from the traffic already above it? Upstream is held; only this stage's
+     rate moves, and the flag says whether the answer is achievable. */
+  var SOLVED = {};        // stage → the solved rate, while it is in force
+
+  /* The band a rate has actually been measured within — the 95% interval
+     around the measured rate given its own sample size (the same interval
+     the travelling status bands use). NOT the Monte-Carlo path bands, which
+     describe MRR and cash, not rates. */
+  function rateBands() {
+    var d = (window.__SCALE_DEFAULTS__ || {}).items || {};
+    var out = {};
+    [['set', 'set_rate'], ['show', 'show_rate'], ['close', 'close_rate']]
+      .forEach(function (pair) {
+        var it = d[pair[1]] || {};
+        var p = it.value, n = it.n;
+        if (typeof p !== 'number' || !n || n < 2) return;
+        var half = 1.96 * Math.sqrt(Math.max(p * (1 - p), 0) / n);
+        out[pair[0]] = [Math.max(p - half, 0), Math.min(p + half, 1)];
+      });
+    return out;
+  }
+
+  function clearSolved(stage) {
+    if (stage) delete SOLVED[stage]; else SOLVED = {};
+    ['calls', 'shows', 'clients'].forEach(function (st) {
+      if (stage && st !== stage) return;
+      var box = $('req-' + st);
+      if (box) { box.hidden = true; box.textContent = ''; box.className = 'req-rate'; }
+      var rst = document.querySelector('.count-reset[data-stage="' + st + '"]');
+      if (rst) rst.hidden = true;
+    });
+  }
+
+  function solveStage(stage, raw) {
+    var wanted = parseFloat(raw);
+    if (raw === '' || isNaN(wanted)) {           // cleared → back to derived
+      clearSolved(stage);
+      simForward('rates');
+      return;
+    }
+    var sol = SimCore.requiredRate(
+      stage, wanted, simState.spend, simState.cpl,
+      { set: simState.set, show: simState.show, close: simState.close },
+      agg(), simState.curve, rateBands());
+    if (!sol) return;
+    var box = $('req-' + stage);
+    var rst = document.querySelector('.count-reset[data-stage="' + stage + '"]');
+    if (rst) rst.hidden = false;
+    if (box) {
+      box.hidden = false;
+      box.className = 'req-rate is-' + sol.flag;
+      if (sol.required === null) {
+        box.textContent = sol.note;
+      } else {
+        var pts = Math.abs(sol.points).toFixed(0);
+        box.textContent =
+          'required ' + (sol.required * 100).toFixed(0) + '%, measured ' +
+          (sol.measured * 100).toFixed(0) + '%, ' + pts + ' point' +
+          (pts === '1' ? '' : 's') + ' ' +
+          (sol.points >= 0 ? 'above' : 'below') + ' — ' + sol.note;
+      }
+    }
+    if (sol.required !== null && sol.flag !== 'impossible') {
+      SOLVED[stage] = sol;
+      var rateEl = $('rate-' + sol.rate_key);
+      if (rateEl) rateEl.value = (sol.required * 100).toFixed(0);
+      simState[sol.rate_key] = sol.required;
+      simForward('solve');
+    }
+  }
+
   function renderChain(c) {
-    set$('chain-calls-v', Math.round(c.calls));
-    set$('chain-shows-v', Math.round(c.shows));
-    set$('chain-clients-v', c.clients.toFixed(1));
+    setCount('chain-calls-v', Math.round(c.calls));
+    setCount('chain-shows-v', Math.round(c.shows));
+    setCount('chain-clients-v', c.clients.toFixed(1));
     set$('chain-cash-v', fmt$(c.cash_this_month));
     set$('chain-cashterm-v', fmt$(c.cash_over_term));
     set$('chain-mrr-v', fmt$(c.mrr_added));
@@ -202,6 +275,14 @@
       CURRENT.close_rate = simState.close;
     }
     renderShowMath(c);
+  }
+
+  function setCount(id, v) {
+    var el = $(id);
+    if (!el) return;
+    // never overwrite the field the user is typing into
+    if (document.activeElement === el) return;
+    if ('value' in el) el.value = v; else el.textContent = v;
   }
 
   function renderShowMath(c) {
@@ -275,9 +356,15 @@
     else if (id === 'sim-spend-slider') { simState.spend = +e.target.value; simForward('spend-slider'); }
     else if (id === 'sim-cpl' && !simState.curve) { simState.cpl = Math.max(0.01, +e.target.value || simState.cpl); simForward('cpl-num'); }
     else if (id === 'sim-cpl-slider' && !simState.curve) { simState.cpl = +e.target.value; simForward('cpl-slider'); }
-    else if (id === 'rate-set') { simState.set = +e.target.value || 0; simForward('rates'); }
-    else if (id === 'rate-show') { simState.show = +e.target.value || 0; simForward('rates'); }
-    else if (id === 'rate-close') { simState.close = +e.target.value || 0; simForward('rates'); }
+    // rates are typed as PERCENTAGES (5.1) — "25", not "0.25"
+    else if (id === 'rate-set') { simState.set = (+e.target.value || 0) / 100; clearSolved(); simForward('rates'); }
+    else if (id === 'rate-show') { simState.show = (+e.target.value || 0) / 100; clearSolved(); simForward('rates'); }
+    else if (id === 'rate-close') { simState.close = (+e.target.value || 0) / 100; clearSolved(); simForward('rates'); }
+    // A STAGE COUNT was typed → solve the rate that stage needs, holding
+    // everything upstream exactly where it is (brief 36's missing half).
+    else if (id === 'chain-calls-v') { solveStage('calls', e.target.value); }
+    else if (id === 'chain-shows-v') { solveStage('shows', e.target.value); }
+    else if (id === 'chain-clients-v') { solveStage('clients', e.target.value); }
     else if (id === 'iwant-value' && simState.mode === 'target') { runTarget(); }
   });
 
@@ -401,6 +488,13 @@
         if (sr.dataset.sr === 'cpl') simState.cpl = SIM.cpl_base;
         simForward('preset');
       });
+      return;
+    }
+    var cr = e.target.closest && e.target.closest('.count-reset');
+    if (cr) {
+      e.preventDefault();
+      clearSolved(cr.getAttribute('data-stage'));
+      simForward('rates');
       return;
     }
     var rr = e.target.closest && e.target.closest('.rate-reset');

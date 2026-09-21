@@ -57,8 +57,12 @@
   .muted { color:var(--muted); }
   .empty { color:var(--muted); padding:24px; text-align:center; }
 </style>
+<link rel="stylesheet" href="/dashboard/static/css/served.css?v={{ asset_v }}">
 </head>
 <body>
+
+{% include "partials/shell_nav.html" %}
+
 <div class="wrap">
   <header>
     <div class="logo">Served <span>Reactivation</span></div>
@@ -218,5 +222,7 @@ document.addEventListener('click', e=>{
 
 loadWho(); load();
 </script>
+{% include "partials/shell_palette.html" %}
+<script src="/dashboard/static/js/shell.js?v={{ asset_v }}"></script>
 </body>
 </html>

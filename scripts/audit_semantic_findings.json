@@ -1,0 +1,42 @@
+[
+ {
+  "sev": "SEV1",
+  "class": "MISLEADING",
+  "page": "landing / today",
+  "title": "“Cash net MTD (bank basis)” is not month-to-date",
+  "detail": "The tile reads $2,869.53 and its own drawer admits the basis: CommBank 2026-09-15 $185,603.85 → today $188,473.38. The true month-opening balance (1 Sep, from day-level history) is $187,354.54, so the real MTD bank movement is $1,118.84. A six-day window is being labelled, and clocked, as the month.",
+  "fix": "anchor the month from last_n_days(), not series(); re-anchor when the cached anchor is not the month's earliest available day; regression test"
+ },
+ {
+  "sev": "SEV2",
+  "class": "MISLEADING",
+  "page": "engine (history_store)",
+  "title": "series(field, N) counts ENTRIES, not days",
+  "detail": "Snapshots append roughly every 2 hours, so series(f, 30) spans about 2.5 days while reading like 30. tile_drawers._bank_anchor() is the caller this broke; 31 days of real day-level history exist and were never reached.",
+  "fix": "callers that mean days use last_n_days(); document the unit on series()"
+ },
+ {
+  "sev": "SEV1",
+  "class": "DISAGREES-WITH-ITSELF",
+  "page": "landing (pulse) vs travelling",
+  "title": "the landing says show rate 100%, travelling says 70%",
+  "detail": "compass:pulse on production holds show_rate {value: 1.0, n: 29, window: 't30 · verified basis'} and the landing tile is labelled 'Show rate (verified)'. Travelling, fixed in #157, reads 70% confirmed — 16 of 23, range 70–100%. The A1 status-only defect was fixed in travelling.py and never in the pulse, so the landing still claims the verified basis while showing the status-only number.",
+  "fix": "the pulse takes the confirmed basis and its range from the one engine; a scan-2 key ties the two surfaces together so they can never diverge again"
+ },
+ {
+  "sev": "SEV2",
+  "class": "DATA-GAP",
+  "page": "sales (targets)",
+  "title": "the Closer Payout & KPI target block has no machine-readable labels",
+  "detail": "The tab reads fine by name (1319 rows; the gid in sales_analytics_pull is stale and 400s). Its KPI block exposes Value/Target pairs — 7 vs ≥5, $35,770 vs ≥$18,000, 88% vs ≥25%, 0 vs ≤1, 4 vs ≥1 — but the row labels are not present in the CSV export, so no target can be attached to a metric without guessing.",
+  "fix": "show the targets only once Rydel labels the rows; decision card, never a guess"
+ },
+ {
+  "sev": "SEV3",
+  "class": "DATA-QUALITY",
+  "page": "sales",
+  "title": "the tracker's Closer column carries non-people values",
+  "detail": "Column 21 holds Kalin (121) and Coby (25), but also 'Showed' (3), 'Cancelled' (2), 'No show' (1) and '0' (1) — outcome words written into an ownership column.",
+  "fix": "attribute only roster names; surface the rest as a labelled data-quality row"
+ }
+]

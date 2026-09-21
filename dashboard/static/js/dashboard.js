@@ -63,6 +63,18 @@
     Chart.defaults.plugins.legend.labels.usePointStyle = true;
   }
 
+
+  /* SCAN-2 IDENTITY (the finish line, 5.2). A metric that appears on more
+   * than one surface must publish the same identity on each, so the
+   * consistency scan compares numbers rather than parsing sentences. This
+   * helper emits the contract; it never changes a value. */
+  function mattr(key, value, win, clock, basis) {
+    if (value === null || value === undefined || isNaN(Number(value))) return '';
+    return ' data-metric="' + key + '" data-window="' + (win || 'current') +
+      '" data-clock="' + (clock || 'as rendered') + '" data-basis="' +
+      (basis || 'engine') + '" data-value="' + Number(value) + '"';
+  }
+
   function statusClass(status) {
     if (status === 'healthy') return 'healthy';
     if (status === 'watch') return 'watch';
@@ -356,7 +368,7 @@
     var runwayColor = runway == null ? 'var(--text-muted)' : runway < 3 ? 'var(--red)' : runway < 6 ? 'var(--amber)' : 'var(--green)';
     html += '<div>';
     html += '<div class="brief-stat-label">Cash on hand <span class="info-icon" data-metric="cash_in_bank">&#9432;</span></div>';
-    html += '<div class="brief-cash-value">' + fmt$(cp.cash_in_bank) + '</div>';
+    html += '<div class="brief-cash-value"' + mattr('cash_on_hand', cp.cash_in_bank) + '>' + fmt$(cp.cash_in_bank) + '</div>';
     html += '<div class="brief-stat-sub" style="color:' + runwayColor + ';">' +
       (runway != null ? runway + ' months runway' : 'runway unknown') +
       ' at ' + fmt$(cp.total_monthly_burn) + '/mo burn' +
@@ -370,7 +382,7 @@
       : '<span class="brief-arrow" style="color:var(--text-muted);">&#8594;</span>';
     html += '<div>';
     html += '<div class="brief-stat-label">MRR <span class="info-icon" data-metric="current_mrr">&#9432;</span></div>';
-    html += '<div class="brief-stat-value">' + fmt$(ch.current_mrr) + arrow + '</div>';
+    html += '<div class="brief-stat-value"' + mattr('committed_mrr', ch.current_mrr) + '>' + fmt$(ch.current_mrr) + arrow + '</div>';
     html += '<div class="brief-stat-sub">next month ' + fmt$(ch.next_mrr) +
       (delta != null ? ' (' + fmtDelta(delta) + ')' : '') + '</div>';
     html += '</div>';
@@ -904,8 +916,11 @@
     const delta = ch.mrr_delta;
     if (estMRR > 0 && projMRR) {
       setKPI('val-sheet-mrr', fmt$(projMRR));
-      $('#sub-sheet-mrr').innerHTML = fmt$(confirmedMRR) + ' confirmed + ~' + fmt$(estMRR) + ' est. (' + signingCount + ' new)';
-      $('#sub-sheet-mrr').style.color = 'var(--purple)';
+      const subMrr = $('#sub-sheet-mrr');
+      if (subMrr) {
+        subMrr.innerHTML = fmt$(confirmedMRR) + ' confirmed + ~' + fmt$(estMRR) + ' est. (' + signingCount + ' new)';
+        subMrr.style.color = 'var(--purple)';
+      }
     } else {
       setKPI('val-sheet-mrr', fmt$(confirmedMRR));
       if (delta != null && delta !== 0) {
@@ -1095,7 +1110,7 @@
       const sub = live ? asOf : '\u26a0 Xero unavailable \u2014 last-known';
       html += `<div class="cash-card">
         <div class="cash-card-label">Cash on hand <span class="info-icon" data-metric="cash_in_bank">&#9432;</span></div>
-        <div class="cash-card-value" style="color:var(--green)">${fmt$(cashPos.cash_in_bank)}</div>
+        <div class="cash-card-value" style="color:var(--green)"${mattr('cash_on_hand', cashPos.cash_in_bank)}>${fmt$(cashPos.cash_in_bank)}</div>
         <div class="cash-card-sub" ${live ? '' : 'style="color:var(--amber)"'}>${sub}</div>
         <div class="cash-card-sub bas-split" id="cash-setaside-split"></div>
       </div>`;
@@ -1610,10 +1625,13 @@
       if (status !== 'unknown') totalWithStatus++;
       if (status === 'healthy') healthyCount++;
 
+      // scan-2 identity: LTV:CAC and LTGP:CAC also live on TODAY and the
+      // landing, so they must publish the same key here.
+      const mkey = {ltv_to_cac: 'ltv_cac', ltgp_cac: 'ltgp_cac'}[m.key] || ('ue_' + m.key);
       gridHtml += `
         <div class="mp-card ${status}">
           <div class="mp-label">${m.label}</div>
-          <div class="mp-value ${status}">${m.fmt(value)}</div>
+          <div class="mp-value ${status}"${mattr(mkey, value, 'cohort_month', 'cohort clock')}>${m.fmt(value)}</div>
           <div class="mp-benchmark">${[benchmarkStr, confidenceStr].filter(Boolean).join(' \u00b7 ')}</div>
         </div>
       `;
@@ -3250,7 +3268,7 @@
     // Cash on hand
     var cashPos = snap.cash_position || {};
     if (cashPos.cash_in_bank != null) {
-      html += '<div class="kpi"><div class="kpi-label">Cash on Hand</div><div class="kpi-value">' + fmt$(cashPos.cash_in_bank) + '</div><div class="kpi-sub">' + (cashPos.source === 'xero_live' ? 'Xero live' : '⚠ last-known') + '</div></div>';
+      html += '<div class="kpi"><div class="kpi-label">Cash on Hand</div><div class="kpi-value"' + mattr('cash_on_hand', cashPos.cash_in_bank) + '>' + fmt$(cashPos.cash_in_bank) + '</div><div class="kpi-sub">' + (cashPos.source === 'xero_live' ? 'Xero live' : '⚠ last-known') + '</div></div>';
     }
 
     // Team cost ratio
@@ -4109,7 +4127,8 @@
         list.appendChild(div);
       });
     }
-    $('#quality-meta').innerHTML = `
+    const qmeta = $('#quality-meta');
+    if (qmeta) qmeta.innerHTML = `
       <div class="quality-meta">
         Data as of: ${fmtSydney(snap.generated_at)}<br>
         Status: ${snap.ok ? 'All sources OK' : degraded.length + ' degraded source(s)'}

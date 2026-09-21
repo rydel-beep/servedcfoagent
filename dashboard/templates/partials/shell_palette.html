@@ -1,0 +1,11 @@
+{# ⌘K — jump to a page, a client, a creative, or ask EDITH. The targets are
+   embedded server-side so the palette opens with no round trip. #}
+<div class="s-palette-scrim" id="s-palette-scrim" hidden></div>
+<div class="s-palette" id="s-palette" role="dialog" aria-modal="true"
+     aria-label="Jump to" hidden>
+  <input class="s-palette-input" id="s-palette-input" type="text"
+         placeholder="Jump to a page, a client, a creative — or ask EDITH…"
+         autocomplete="off" spellcheck="false">
+  <ul class="s-palette-list" id="s-palette-list" role="listbox"></ul>
+</div>
+<script id="s-palette-data" type="application/json">{{ palette_json | safe }}</script>

@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sales — Served CFO</title>
+{% include "partials/telemetry.html" %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/dashboard/static/css/served.css?v={{ asset_v }}">
+</head>
+<body class="s-page" data-page="sales">
+
+{% include "partials/shell_nav.html" %}
+
+<main class="s-main" id="main">
+
+  <div class="s-panel-head" style="margin-top:var(--sp-4)">
+    <h1 class="s-panel-title">Sales — {{ board.window.label }}</h1>
+    <span class="s-panel-sub">
+      {{ board.window.start }} → {{ board.window.end }} · {{ board.window.progress }}
+      &nbsp;·&nbsp;
+      <a href="?window=mtd">month to date</a> ·
+      <a href="?window=d21">last 21 days</a>
+    </span>
+  </div>
+
+  {% if board.degraded %}
+  <div class="s-boundary-fail" style="margin-top:var(--sp-3)">
+    <b>Some of this page degraded honestly.</b>
+    {% for d in board.degraded %}<div>{{ d.block }}: {{ d.why }}</div>{% endfor %}
+  </div>
+  {% endif %}
+
+  {# ── the window's totals ── #}
+  <section class="s-cards" style="margin-top:var(--sp-4)" aria-label="This window">
+    <div class="s-card" data-metric="sales_leads" data-window="{{ board.window.key }}"
+         data-clock="{{ board.window.label }}" data-basis="tracker"
+         data-value="{{ board.totals.leads }}">
+      <span class="s-card-label">Leads in</span>
+      <span class="s-card-value">{{ board.totals.leads }}</span>
+      <span class="s-card-sub">tracker rows whose lead date falls in this window</span>
+    </div>
+    <div class="s-card" data-metric="sales_shows_confirmed" data-window="{{ board.window.key }}"
+         data-clock="{{ board.window.label }}" data-basis="confirmed"
+         data-value="{{ board.totals.shows_confirmed }}">
+      <span class="s-card-label">Shows (confirmed)</span>
+      <span class="s-card-value">{{ board.totals.shows_confirmed }}</span>
+      <span class="s-card-sub">{{ board.totals.show_range_note }}</span>
+    </div>
+    <div class="s-card" data-metric="sales_closes" data-window="{{ board.window.key }}"
+         data-clock="{{ board.window.label }}" data-basis="tracker"
+         data-value="{{ board.totals.closes }}">
+      <span class="s-card-label">Closes</span>
+      <span class="s-card-value">{{ board.totals.closes }}</span>
+      <span class="s-card-sub">won rows with a close date in this window</span>
+    </div>
+    <div class="s-card" data-metric="sales_cash" data-window="{{ board.window.key }}"
+         data-clock="{{ board.window.label }}" data-basis="stripe"
+         data-value="{{ board.cash.total }}">
+      <span class="s-card-label">Cash from these closes</span>
+      <span class="s-card-value">${{ '{:,.0f}'.format(board.cash.total or 0) }}</span>
+      <span class="s-card-sub">{{ board.cash.source }}</span>
+    </div>
+  </section>
+
+  {# ── ATTENDANCE — the accountability surface, first because it is the one
+       that changes the month's numbers ── #}
+  <section class="s-panel" aria-labelledby="unmarked-title">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="unmarked-title">Consults nobody marked
+        ({{ board.unmarked.count }})</h2>
+      <span class="s-panel-sub">{{ board.unmarked.note }}</span>
+    </div>
+    {% if board.unmarked.rows %}
+      <div class="s-cards" style="margin-bottom:var(--sp-3)">
+        {% for c in board.unmarked.by_closer %}
+        <div class="s-card is-amber" data-metric="sales_unmarked_{{ loop.index }}"
+             data-window="{{ board.window.key }}" data-clock="{{ board.window.label }}"
+             data-basis="confirmed" data-value="{{ c.count }}">
+          <span class="s-card-label">{{ c.closer }}</span>
+          <span class="s-card-value">{{ c.count }}</span>
+          <span class="s-card-sub">oldest is {{ c.oldest_days }} days old</span>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="s-table-wrap">
+        <table class="s-table">
+          <thead><tr>
+            <th>Who</th><th>Closer</th><th>When it was</th><th class="num">Days ago</th>
+          </tr></thead>
+          <tbody>
+            {% for r in board.unmarked.rows %}
+            <tr><td>{{ r.person }}</td><td>{{ r.closer }}</td>
+                <td>{{ r.when_text }}</td>
+                <td class="num" data-value="{{ r.age_days }}">{{ r.age_days }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="s-empty">Every consult in this window has been marked one way
+        or the other.</div>
+    {% endif %}
+  </section>
+
+  {# ── CLOSERS ── #}
+  <section class="s-panel" aria-labelledby="closers-title">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="closers-title">Closers</h2>
+      <input class="s-find" type="search" placeholder="Find a closer…" aria-label="Find a closer">
+    </div>
+    {% if board.closers %}
+    <div class="s-table-wrap">
+      <table class="s-table">
+        <thead><tr>
+          <th>Closer</th><th class="num">Consults</th><th class="num">Confirmed</th>
+          <th>Show range</th><th class="num">Closes</th><th class="num">Close rate</th>
+          <th class="num">Cash (tracker)</th><th class="num">Commission</th>
+          <th>Pitched</th><th>How much to read into it</th>
+        </tr></thead>
+        <tbody>
+          {% for r in board.closers %}
+          <tr data-metric="closer_{{ r.name | lower }}" data-window="{{ board.window.key }}"
+              data-clock="{{ board.window.label }}" data-basis="confirmed"
+              data-value="{{ r.closes }}">
+            <td><a href="/dashboard/view/sales">{{ r.name }}</a></td>
+            <td class="num" data-value="{{ r.consults }}">{{ r.consults }}</td>
+            <td class="num" data-value="{{ r.confirmed }}">{{ r.confirmed }}</td>
+            <td class="s-muted">{{ r.show_range }}</td>
+            <td class="num" data-value="{{ r.closes }}">{{ r.closes }}</td>
+            <td class="num" data-value="{{ r.close_rate.value }}">{{ r.close_rate.text }}
+              <span class="s-muted">n={{ r.close_rate.n }}</span></td>
+            <td class="num" data-value="{{ r.tracker_cash }}">${{ '{:,.0f}'.format(r.tracker_cash) }}</td>
+            <td class="num" data-value="{{ r.commission }}">${{ '{:,.0f}'.format(r.commission) }}</td>
+            <td class="s-muted">{{ r.pitched_note }}</td>
+            <td class="s-muted">{{ r.close_rate.confidence }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="s-empty">No consults are assigned to a closer in this window.</div>
+    {% endif %}
+  </section>
+
+  {# ── SETTERS ── #}
+  <section class="s-panel" aria-labelledby="setters-title">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="setters-title">Setters</h2>
+      <span class="s-panel-sub">leads worked in this window, and what came of them</span>
+    </div>
+    {% if board.setters %}
+    <div class="s-table-wrap">
+      <table class="s-table">
+        <thead><tr>
+          <th>Setter</th><th class="num">Leads worked</th><th class="num">Sets</th>
+          <th class="num">Set rate</th><th class="num">Qualified</th>
+          <th class="num">Closes from them</th><th class="num">Commission</th>
+          <th>How much to read into it</th>
+        </tr></thead>
+        <tbody>
+          {% for r in board.setters %}
+          <tr data-metric="setter_{{ r.name | lower }}" data-window="{{ board.window.key }}"
+              data-clock="{{ board.window.label }}" data-basis="tracker"
+              data-value="{{ r.sets }}">
+            <td><a href="/dashboard/view/sales">{{ r.name }}</a></td>
+            <td class="num" data-value="{{ r.leads }}">{{ r.leads }}</td>
+            <td class="num" data-value="{{ r.sets }}">{{ r.sets }}</td>
+            <td class="num" data-value="{{ r.set_rate.value }}">{{ r.set_rate.text }}
+              <span class="s-muted">n={{ r.set_rate.n }}</span></td>
+            <td class="num" data-value="{{ r.qualified }}">{{ r.qualified }}</td>
+            <td class="num" data-value="{{ r.closes }}">{{ r.closes }}</td>
+            <td class="num" data-value="{{ r.commission }}">${{ '{:,.0f}'.format(r.commission) }}</td>
+            <td class="s-muted">{{ r.set_rate.confidence }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="s-empty">No leads are assigned to a setter in this window.</div>
+    {% endif %}
+  </section>
+
+  {# ── NEXT SEVEN DAYS ── #}
+  <section class="s-panel" aria-labelledby="upcoming-title">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="upcoming-title">Consults in the next 7 days
+        ({{ board.upcoming.count }})</h2>
+      <span class="s-panel-sub">{{ board.upcoming.note }}</span>
+    </div>
+    {% if board.upcoming.rows %}
+    <div class="s-table-wrap">
+      <table class="s-table">
+        <thead><tr><th>Who</th><th>Business</th><th>When</th><th>Closer</th></tr></thead>
+        <tbody>
+          {% for r in board.upcoming.rows %}
+          <tr><td>{{ r.person }}</td><td>{{ r.business }}</td>
+              <td data-value="{{ r.when }}">{{ r.when_text }}</td>
+              <td>{{ r.closer }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="s-empty">Nothing is booked in the next seven days.</div>
+    {% endif %}
+  </section>
+
+  {# ── PIPELINE ── #}
+  <section class="s-panel" aria-labelledby="pipeline-title">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="pipeline-title">Pipeline by current stage</h2>
+      <span class="s-panel-sub">{{ board.pipeline.note }}</span>
+    </div>
+    {% if board.pipeline.stages %}
+    <div class="s-table-wrap">
+      <table class="s-table">
+        <thead><tr><th>Stage</th><th class="num">Deals</th><th class="num">Value</th></tr></thead>
+        <tbody>
+          {% for s in board.pipeline.stages %}
+          <tr data-metric="pipeline_{{ loop.index }}" data-window="current"
+              data-clock="now" data-basis="crm" data-value="{{ s.count }}">
+            <td>{{ s.stage }}</td>
+            <td class="num" data-value="{{ s.count }}">{{ s.count }}</td>
+            <td class="num" data-value="{{ s.value }}">${{ '{:,.0f}'.format(s.value) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="s-empty">The CRM mirror did not return any opportunities.</div>
+    {% endif %}
+  </section>
+
+  {# ── speed to lead + targets, both only as honest as the source ── #}
+  <section class="s-panel">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title">Speed to lead</h2>
+    </div>
+    {% if board.speed_to_lead.available %}
+      <p><b>{{ board.speed_to_lead.within_5 }}</b> of
+        {{ board.speed_to_lead.of }} leads were called within five minutes
+        ({{ '{:.0%}'.format(board.speed_to_lead.rate) }}).</p>
+      <p class="s-card-sub">{{ board.speed_to_lead.coverage }} · {{ board.speed_to_lead.note }}</p>
+    {% else %}
+      <div class="s-empty">{{ board.speed_to_lead.note }}</div>
+    {% endif %}
+  </section>
+
+  <section class="s-panel">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title">Targets</h2>
+      <span class="s-panel-sub">Closer Payout &amp; KPI tab</span>
+    </div>
+    <div class="s-empty">
+      {{ board.targets.note }}
+      {% if board.targets.found %}
+      <div style="margin-top:var(--sp-3)">Found, unlabelled:
+        {% for p in board.targets.found %}<span class="s-chip s-chip-placeholder">{{ p.value }} vs {{ p.target }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <ul class="s-list" style="margin-top:var(--sp-6)">
+    {% for n in board.notes %}<li class="s-card-sub">{{ n }}</li>{% endfor %}
+  </ul>
+</main>
+
+{% include "partials/shell_palette.html" %}
+<script src="/dashboard/static/js/shell.js?v={{ asset_v }}"></script>
+</body>
+</html>

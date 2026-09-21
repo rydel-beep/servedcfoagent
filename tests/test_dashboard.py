@@ -70,10 +70,10 @@ def test_cookie_grants_access():
     # Login first
     client.post("/dashboard/login", data={"token": "test-dash-token"})
     # Now access dashboard
-    resp = client.get("/dashboard/")
-    assert resp.status_code == 200
+    resp = client.get("/dashboard/", follow_redirects=True)
+    assert resp.status_code == 200      # /dashboard/ → TODAY
     assert b"JARVIS" in resp.data or b"Served" in resp.data
-    print("  Cookie grants access (200)")
+    print("  Cookie grants access (200 after the TODAY redirect)")
 
 
 def test_api_snapshot_returns_json():

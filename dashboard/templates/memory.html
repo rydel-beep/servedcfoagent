@@ -40,8 +40,12 @@
     .toolbar label{font-size:12px;color:var(--muted)}
     .clearall{margin-top:30px;border-top:1px solid var(--line);padding-top:16px}
   </style>
+<link rel="stylesheet" href="/dashboard/static/css/served.css?v={{ asset_v }}">
 </head>
 <body>
+
+{% include "partials/shell_nav.html" %}
+
   <h1>EDITH · Memory</h1>
   <div class="sub">What EDITH remembers across sessions. Conversational context — <b>not</b> financial truth (figures always come from the live engines). <a href="/dashboard/">← back to dashboard</a></div>
 
@@ -66,5 +70,7 @@
   </div>
 
   <script src="/dashboard/static/js/memory.js"></script>
+{% include "partials/shell_palette.html" %}
+<script src="/dashboard/static/js/shell.js?v={{ asset_v }}"></script>
 </body>
 </html>

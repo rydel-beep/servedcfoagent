@@ -11,8 +11,12 @@
 <link rel="stylesheet" href="/dashboard/static/css/dashboard.css?v={{ asset_v }}">
 <link rel="stylesheet" href="/dashboard/static/css/landing.css?v={{ asset_v }}">
 <link rel="stylesheet" href="/dashboard/static/css/travelling.css?v={{ asset_v }}">
+<link rel="stylesheet" href="/dashboard/static/css/served.css?v={{ asset_v }}">
 </head>
 <body data-page="travelling">
+
+{% include "partials/shell_nav.html" %}
+
 
 <header class="header">
   <div class="header-left">
@@ -185,5 +189,7 @@
 <script>window.__TRAVELLING__ = {{ rosters_json | safe }};</script>
 <script defer src="/dashboard/static/js/travelling.js?v={{ asset_v }}"></script>
 {% include "partials/defs.html" %}
+{% include "partials/shell_palette.html" %}
+<script src="/dashboard/static/js/shell.js?v={{ asset_v }}"></script>
 </body>
 </html>

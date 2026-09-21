@@ -6,8 +6,12 @@
 <title>Bookkeeping Queue — Served CFO</title>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/dashboard/static/css/dashboard.css">
+<link rel="stylesheet" href="/dashboard/static/css/served.css?v={{ asset_v }}">
 </head>
 <body>
+
+{% include "partials/shell_nav.html" %}
+
 <header class="header">
   <div class="header-left">
     <a href="/dashboard/" class="ops-back" title="Back to dashboard">← Dashboard</a>
@@ -109,5 +113,7 @@
   load();
 })();
 </script>
+{% include "partials/shell_palette.html" %}
+<script src="/dashboard/static/js/shell.js?v={{ asset_v }}"></script>
 </body>
 </html>

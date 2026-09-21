@@ -1257,16 +1257,25 @@ def sales_pulse(fresh: bool = False) -> dict:
     w0 = t - dt.timedelta(days=29)
     out = {"computed_at": now_sydney().isoformat()}
     try:
-        import attribution_engine as AE
         import finance_analysis as FA
-        res = AE.compute(start=str(w0), end=str(t), basis="activity")
-        sets_n = sum(c.get("sets") or 0 for c in res.get("creatives", []))
-        shows_n = sum(c.get("shows") or 0 for c in res.get("creatives", []))
+        import travelling
+        # THE ONE SHOW-BASIS RULE (travelling.show_basis). This used to divide
+        # the attribution engine's STATUS-ONLY show count by sets and label the
+        # result "verified" — which is how the landing came to read 100% while
+        # travelling read 70% for the same window. One rule, one answer.
+        sb = travelling.show_basis(w0, t)
         closes_n = len(FA._closes_union(str(w0), str(t), "activity"))
-        out["show_rate"] = {"value": round(shows_n / sets_n, 3) if sets_n else None,
-                            "n": sets_n, "window": "t30 · verified basis"}
-        out["close_rate"] = {"value": round(closes_n / shows_n, 3) if shows_n else None,
-                             "n": shows_n, "window": "t30 · closes ÷ verified shows"}
+        out["show_rate"] = {
+            "value": sb["rate"], "n": sb["due"],
+            "upper": sb["rate_upper"], "confirmed": sb["confirmed"],
+            "unconfirmed": sb["unconfirmed"],
+            "range_note": sb["range_note"],
+            "window": "t30 · confirmed basis"}
+        out["close_rate"] = {
+            "value": (round(closes_n / sb["confirmed"], 3)
+                      if sb["confirmed"] else None),
+            "n": sb["confirmed"],
+            "window": "t30 · closes ÷ confirmed shows"}
     except Exception as e:  # noqa: BLE001
         out["error"] = str(e)[:120]
     try:

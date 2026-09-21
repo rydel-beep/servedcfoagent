@@ -10,8 +10,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/dashboard/static/css/dashboard.css?v={{ asset_v }}">
 <link rel="stylesheet" href="/dashboard/static/css/landing.css?v={{ asset_v }}">
+<link rel="stylesheet" href="/dashboard/static/css/served.css?v={{ asset_v }}">
 </head>
 <body data-page="definitions">
+
+{% include "partials/shell_nav.html" %}
+
 <header class="header">
   <div class="header-left"><div class="reactor"></div><h1 class="wordmark">EDITH</h1>
     <span class="wordmark-sub">Definitions</span></div>
@@ -37,5 +41,7 @@
   </section>
   {% endfor %}
 </main>
+{% include "partials/shell_palette.html" %}
+<script src="/dashboard/static/js/shell.js?v={{ asset_v }}"></script>
 </body>
 </html>

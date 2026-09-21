@@ -43,7 +43,11 @@ def test_landing_route_serves_values_without_js():
     from dashboard.auth import COOKIE_NAME
     c = appmod.app.test_client()
     c.set_cookie(COOKIE_NAME, os.environ["DASHBOARD_TOKEN"])
-    r = c.get("/dashboard/")
+    # /dashboard/ now REDIRECTS to TODAY (the finish line — TODAY is the
+    # landing). The previous landing still stands at /dashboard/landing and
+    # its server-rendered property is what this test pins.
+    assert c.get("/dashboard/").status_code == 302
+    r = c.get("/dashboard/landing")
     assert r.status_code == 200
     html = r.data.decode()
     assert len(re.findall(r'class="exec-tile state-', html)) == 8

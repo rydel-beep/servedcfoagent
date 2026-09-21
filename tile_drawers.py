@@ -47,18 +47,33 @@ def _bank_anchor() -> dict:
     t = today_sydney()
     key = f"fin:bank_anchor:{str(t)[:7]}"
     anchor = kv_store.get(key)
+    # DAY-LEVEL history, earliest day of THIS month.
+    #
+    # This used to read history_store.series(field, 40) — the last 40
+    # ENTRIES. Snapshots append about every two hours, so 40 entries reach
+    # back roughly three days: on the day the anchor was first computed, the
+    # earliest September reading it could see was the 15th, and that got
+    # cached as "the month's opening balance". "Cash net MTD (bank basis)"
+    # then measured six days while clocked as the month ($2,869.53 against a
+    # true $1,118.84). Found by the Phase 0 real-seat audit.
+    #
+    # A cached anchor is KEPT only while it is still the earliest day we hold
+    # for the month; when older history arrives, it is re-anchored.
+    try:
+        import trend
+        pts = trend.daily_series("cash_position.cash_in_bank", 62)
+        month_pts = [p for p in pts if str(p["date"])[:7] == str(t)[:7]]
+        if month_pts:
+            earliest = month_pts[0]
+            if not anchor or str(anchor.get("date") or "9999") > earliest["date"]:
+                anchor = {"date": earliest["date"], "balance": earliest["value"],
+                          "basis": "snapshot history (earliest day this month)"}
+                kv_store.put(key, anchor)
+            return anchor
+    except Exception as e:  # noqa: BLE001
+        logger.info("bank anchor: day-level history unavailable: %s", e)
     if anchor:
         return anchor
-    # try snapshot history (survives only where the volume does — honest)
-    try:
-        import history_store
-        for e in history_store.series("cash_position.cash_in_bank", 40):
-            if str(e.get("date") or "")[:7] == str(t)[:7] and e.get("value") is not None:
-                anchor = {"date": e["date"], "balance": e["value"],
-                          "basis": "snapshot history"}
-                break
-    except Exception:
-        pass
     if not anchor:
         try:
             from snapshot import load_persisted

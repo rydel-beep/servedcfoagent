@@ -78,5 +78,77 @@
     return { spend: spend, leads: leads };
   }
 
-  return { effectiveCpl: effectiveCpl, chain: chain, requiredSpend: requiredSpend };
+  /* REQUIRED-RATE MODE (brief 36's missing half).
+     Counts already go both ways: requiredSpend() turns a wanted count into
+     the spend it takes. What you could not ask was the other question —
+     "what close rate do I need to get 8 clients out of the consults I have
+     already booked?"
+
+     Editing a stage COUNT solves the rate of THAT stage, holding everything
+     upstream where it is:  required = wanted ÷ the stage above.
+
+     stage: calls|shows|clients   (the three stages that have a rate)
+     Returns the required rate, the measured one, the gap in POINTS, and a
+     plausibility flag:
+       impossible — above 100%: you cannot close more deals than consults
+       stretch    — outside the measured band: possible, never yet done
+       ok         — inside the band we have actually achieved                */
+  var RATE_OF = { calls: 'set', shows: 'show', clients: 'close' };
+
+  function upstreamCount(stage, chained) {
+    if (stage === 'calls') return chained.leads;
+    if (stage === 'shows') return chained.calls;
+    if (stage === 'clients') return chained.shows;
+    return null;
+  }
+
+  function requiredRate(stage, wantedCount, spend, cpl, rates, agg, curve, band) {
+    var key = RATE_OF[stage];
+    if (!key) return null;
+    var base = chain(spend, cpl, rates, agg, curve);
+    var above = upstreamCount(stage, base);
+    if (!above || above <= 0) {
+      return { stage: stage, rate_key: key, required: null, measured: rates[key],
+               above: above || 0, flag: 'impossible',
+               note: 'there is nothing upstream to convert' };
+    }
+    var required = wantedCount / above;
+    var measured = rates[key];
+    var lo = band && band[key] ? band[key][0] : null;
+    var hi = band && band[key] ? band[key][1] : null;
+    var flag = 'ok';
+    if (required > 1) flag = 'impossible';
+    else if (hi !== null && required > hi) flag = 'stretch';
+    else if (lo !== null && required < lo) flag = 'stretch';
+    return {
+      stage: stage, rate_key: key,
+      required: required, measured: measured,
+      above: above, wanted: wantedCount,
+      points: (required - measured) * 100,
+      flag: flag,
+      note: (flag === 'impossible' && required > 1)
+        ? ('not achievable from ' + Math.round(above) + ' ' +
+           (stage === 'clients' ? 'booked consults' : 'upstream') +
+           ' — that would need ' + Math.round(required * 100) + '%')
+        : (flag === 'stretch'
+           ? 'beyond the band we have measured — possible, never yet done'
+           : 'inside the band we have actually achieved')
+    };
+  }
+
+  /* Applying a solved rate returns a FULL chain with that one rate replaced
+     and everything upstream untouched — so the page can show the knock-on
+     downstream without a second formula. */
+  function chainWithRate(stage, wantedCount, spend, cpl, rates, agg, curve) {
+    var sol = requiredRate(stage, wantedCount, spend, cpl, rates, agg, curve, null);
+    if (!sol || sol.required === null) return null;
+    var next = {set: rates.set, show: rates.show, close: rates.close};
+    next[sol.rate_key] = sol.required;
+    return { solution: sol, chained: chain(spend, cpl, next, agg, curve),
+             rates: next };
+  }
+
+  return { effectiveCpl: effectiveCpl, chain: chain, requiredSpend: requiredSpend,
+           requiredRate: requiredRate, chainWithRate: chainWithRate,
+           RATE_OF: RATE_OF };
 }));

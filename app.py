@@ -197,6 +197,14 @@ def _scheduled_refresh_loop() -> None:
             render_health.tick()
         except Exception as e:  # noqa: BLE001
             logger.warning("render_health tick failed: %s", e)
+        # TODAY: the two tiles it adds (this week's flow, ad spend vs plan)
+        # and the travelling verdict line. Same cadence, same rule — the
+        # request path only ever READS these.
+        try:
+            from dashboard import today as _today
+            _today.refresh_cache()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("today cache refresh failed: %s", e)
         # THE SCALING COMPASS: measured defaults + pulse + the Base first-
         # paint run (monthly backtest kv-stamped inside).
         try:
