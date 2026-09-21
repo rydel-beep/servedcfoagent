@@ -83,8 +83,12 @@ def coverage_inventory() -> dict:
                        "exp_chip_slider", "exp_window", "exp_effective"]
 
     # /scale — the simulator + chain + controls + views
-    inv["scale_sim"] = ["sim_spend", "sim_cpl", "sim_leads", "sim_lock",
-                        "sim_cpl_mode", "sim_sentence", "sim_chart"]
+    inv["scale_sim"] = ["sim_spend", "sim_cpl", "sim_leads", "sim_mode",
+                        "sim_badge", "sim_cpl_mode", "sim_sentence",
+                        "sim_chart"]
+    inv["north_star"] = ["north_star", "ns_actual", "ns_plan", "ns_pace",
+                         "ns_verdict", "ns_levers", "ns_constraint",
+                         "ns_whatifs", "ns_callog", "ns_pinned"]
     inv["scale_chain"] = ["chain_calls", "chain_shows", "chain_clients",
                           "chain_cash", "chain_cost", "show_math", "i_want"]
     from dashboard.static_ctl_ids import SCALE_CTL_IDS  # thin list module

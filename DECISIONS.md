@@ -2357,3 +2357,47 @@ Rydel's three complaints, fixed structurally:
    PLAN (collapsed: scenarios, roadmap, Plan-2027 pacing). Section
    headings are questions. The backtest verdict renders as ONE plain
    sentence at the top with per-rate confidence words.
+
+## #155 — THE SIMULATOR, FIXED FOR GOOD: behaviour gate · parity · north-star pacing (2026-09-21)
+
+**The failure (scale/SIMULATOR_DIAGNOSIS.md, reproduced from Rydel's seat):**
+failure (b) — LOCK SEMANTICS. CPL shipped locked by default; his typed CPL
+was silently ignored (leads didn't move, the sentence kept the old value)
+and then silently REVERTED on the next edit. Zero console errors — the
+render gate could never have caught it. His words held exactly.
+
+**Rulings:**
+1. **Locks are RETIRED.** Two inputs, one output: SPEND and CPL are always
+   editable (number + slider each); LEADS is always the worked-out answer
+   (a display, not a field). Elasticity mode makes CPL explicitly
+   read-only-derived (visibly disabled, "effective CPL at this spend"
+   note) — never an editable-looking field that drops input. TARGET is a
+   separate labelled mode where SPEND becomes the answer; switching modes
+   never silently changes values.
+2. **ONE formula core:** sim_core.js runs in the browser AND in node —
+   the parity test pushes 200 random input sets through the exact browser
+   file and compass_engine.simulate_month → zero mismatches. On settle the
+   page posts its inputs; the ENGINE'S value wins any real difference and
+   the mismatch goes to telemetry.
+3. **THE BEHAVIOUR GATE** (scripts/behaviour_gate.py — render gate ≠
+   behaviour gate): on production, owner session, it TYPES into the
+   fields — spend→leads must equal spend÷CPL; CPL→leads must move (the
+   exact complaint); chart drag→spend+leads follow; target "40 calls"→
+   spend solves and the sentence inverts; elasticity on/off; reset to
+   measured; zero console errors. FAIL = NO DEPLOY. On PASS it posts to
+   /api/scale/behaviour-verified; the "LOGIC VERIFIED {time}" badge on
+   the simulator reads it (amber when stale >48h or failed). Artefacts →
+   dashboard/evidence/behaviour-<commit>/.
+4. **THE NORTH-STAR BLOCK** (server-rendered): one metric (owner-pickable;
+   default net new MRR) as ACTUAL · PLAN (committed plan else prior
+   period) · PACE, with the pacing sentence; the LEVERS table (spend, CPL,
+   leads, booking/turn-up/close rates, cash per client) as actual · plan ·
+   required-to-hit-plan with the off-plan lever highlighted; the
+   CONSTRAINT of the month named with its number; quick what-ifs (labelled,
+   write nothing); PINNED inputs (measured window, refresh time, plan
+   version; rate moves >2% journaled).
+5. **CALIBRATION IN PUBLIC:** at each month's start the compass journals
+   its prediction (leads/calls/clients/cash/MRR); when the month ends the
+   loop scores it against actuals and the log renders on the tab. DRIFT
+   alerts: a measured rate breaking ±35% of its prior-90d band → a feed
+   item naming the lever and its constraint effect.

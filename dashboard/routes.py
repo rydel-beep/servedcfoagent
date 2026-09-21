@@ -236,8 +236,31 @@ def scale_page():
         acc = compass_engine.accuracy_sentence()
     except Exception as e:  # noqa: BLE001
         logger.warning("scale simple first-paint failed: %s", e)
+    # NORTH STAR — server-rendered from the kv cache (the loop computes it)
+    ns = None
+    try:
+        ns = (kv_store.get("compass:north_star") or {}).get("data")
+    except Exception:
+        ns = None
+    # LOGIC VERIFIED badge — reads the last behaviour-gate pass (kv)
+    badge = None
+    try:
+        bv = kv_store.get("behaviour:last_pass") or {}
+        if bv.get("at"):
+            from dashboard.exec_top import _age_h
+            age = _age_h(bv["at"])
+            ok = bool(bv.get("ok")) and (age is not None and age < 48)
+            txt = ("LOGIC VERIFIED " + str(bv["at"])[:16].replace("T", " ")
+                   if bv.get("ok") else
+                   "LOGIC CHECK FAILED — " + str(bv.get("reason") or "")[:60])
+            if bv.get("ok") and not ok:
+                txt += " (stale — over 48h old)"
+            badge = {"ok": ok, "text": txt}
+    except Exception:
+        badge = None
     resp = make_response(render_template(
         "scale.html", asset_v=_ASSET_VERSION, defs_json=_defs_json(),
+        badge=badge, ns=ns,
         sim=sim, conf=conf, acc_sentence=acc,
         sim_json=_json.dumps(sim).replace("</", "<\\/"),
         hero=hero, base_computed=base.get("computed_at"),
@@ -280,6 +303,50 @@ def definitions_page():
 def api_definitions():
     from dashboard import definitions
     return jsonify(definitions.load())
+
+
+@bp.route("/api/scale/calibration-log", methods=["GET"])
+@require_owner
+def api_scale_calibration_log():
+    import kv_store
+    import compass_engine
+    return jsonify({"log": kv_store.get(compass_engine.K_CAL_LOG) or [],
+                    "defaults_journal": kv_store.get(compass_engine.K_DEFAULTS_JOURNAL) or []})
+
+
+@bp.route("/api/scale/north-star", methods=["GET", "POST"])
+@require_owner
+def api_scale_north_star():
+    import kv_store
+    import compass_engine
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        metric = body.get("metric")
+        if metric not in ("net_new_mrr", "cash_collected"):
+            return jsonify({"error": "metric must be net_new_mrr or cash_collected"}), 400
+        kv_store.put(compass_engine.K_NORTH_METRIC, metric)
+    fresh = compass_engine.north_star()
+    kv_store.put("compass:north_star",
+                 {"computed_at": __import__('helpers').now_sydney().isoformat(),
+                  "data": fresh})
+    return jsonify(fresh)
+
+
+@bp.route("/api/scale/behaviour-verified", methods=["POST"])
+@require_owner
+def api_scale_behaviour_verified():
+    """The behaviour gate posts its result here (owner session) — the
+    'LOGIC VERIFIED' badge and the sentinel read it. Evidence stays in the
+    repo's owner-only evidence folder."""
+    import kv_store
+    from helpers import now_sydney
+    body = request.get_json(silent=True) or {}
+    rec = {"at": now_sydney().isoformat(), "ok": bool(body.get("ok")),
+           "commit": str(body.get("commit") or "")[:16],
+           "passes": int(body.get("passes") or 0),
+           "reason": str(body.get("reason") or "")[:200]}
+    kv_store.put("behaviour:last_pass", rec)
+    return jsonify({"ok": True, "stored": rec})
 
 
 @bp.route("/api/scale/simulate", methods=["POST"])

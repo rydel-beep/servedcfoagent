@@ -285,3 +285,20 @@ body.defs-mode [data-def] { outline: 1px dashed var(--brand-bright); outline-off
 .chain-rate input { width: 58px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 5px; color: var(--text); padding: 1px 5px; font-size: var(--fs-caption); }
 .conf-word { border-radius: 4px; padding: 0 5px; background: var(--bg-card); font-size: var(--fs-micro); }
 .rate-reset { color: var(--brand-muted); font-size: var(--fs-micro); }
+
+/* ── lock-free simulator (the fix for Rydel's complaint) ── */
+.sim-mode-row { display: flex; gap: 14px; flex-wrap: wrap; margin: 6px 0; }
+.sim-mode { font: 400 var(--fs-caption)/1.4 var(--font-ui); color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+.sim-mode.active { border-color: var(--brand-bright); color: var(--text); background: var(--accent-dim); }
+.sim-io { font: 600 9px/1 var(--font-ui); color: var(--brand-muted); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 5px; text-transform: uppercase; letter-spacing: .04em; }
+.sim-io.out { color: var(--amber); border-color: rgba(232,180,69,0.45); }
+.sim-field input[type=range] { width: 100%; margin-top: 6px; accent-color: var(--brand-bright); }
+.sim-output .sim-out-value { background: var(--amber-dim); border: 1px solid rgba(232,180,69,0.45);
+  border-radius: 8px; padding: 8px 10px; font: 600 var(--fs-value-sm)/1.2 var(--font-display);
+  color: var(--text); font-variant-numeric: tabular-nums; }
+.sim-field input:disabled { opacity: .55; background: var(--bg-inset); cursor: not-allowed; }
+.sim-badge { font: 600 var(--fs-micro)/1 var(--font-ui); border-radius: 5px; padding: 2px 7px; margin-left: 8px; vertical-align: middle; }
+.badge-ok { color: var(--green); background: var(--green-dim); border: 1px solid rgba(52,201,142,0.4); }
+.badge-amber { color: var(--amber); background: var(--amber-dim); border: 1px solid rgba(232,180,69,0.45); }

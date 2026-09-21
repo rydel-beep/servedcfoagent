@@ -1425,6 +1425,327 @@ def accuracy_sentence() -> str:
             "patchy tracker).")
 
 
+# ── THE NORTH-STAR BLOCK (the compass as an instrument) ─────────────────────
+
+K_NORTH_METRIC = "compass:north_star_metric"     # "net_new_mrr" | "cash_collected"
+K_CAL_LOG = "compass:calibration_log"
+K_DEFAULTS_JOURNAL = "compass:defaults_journal"
+
+
+def _month_window():
+    t = today_sydney()
+    m0 = t.replace(day=1)
+    import calendar
+    days_in = calendar.monthrange(t.year, t.month)[1]
+    return m0, t, days_in
+
+
+def _mtd_funnel() -> dict:
+    """This month's actuals from the ONE engines (leads/sets/shows/closes/
+    spend/cash), read-only."""
+    m0, t, days_in = _month_window()
+    out = {"day": t.day, "days_in_month": days_in}
+    try:
+        import attribution_engine as AE
+        res = AE.compute(start=str(m0), end=str(t), basis="activity")
+        for k in ("leads", "sets", "shows"):
+            out[k] = sum(c.get(k) or 0 for c in res.get("creatives", []))
+    except Exception as e:  # noqa: BLE001
+        out["funnel_error"] = str(e)[:100]
+    try:
+        import finance_analysis as FA
+        closes = FA._closes_union(str(m0), str(t), "activity")
+        out["clients"] = len(closes)
+        out["cash_from_closes"] = round(sum(float(c.get("cash") or 0)
+                                            for c in closes), 2)
+    except Exception as e:  # noqa: BLE001
+        out["closes_error"] = str(e)[:100]
+    try:
+        import meta_spend
+        out["spend"] = (meta_spend.spend_in_range(str(m0), str(t)) or {}).get("spend")
+    except Exception as e:  # noqa: BLE001
+        out["spend_error"] = str(e)[:100]
+    try:
+        import finance_analysis as FA
+        rec = FA._receipts_in_window(m0, t)
+        out["cash_collected"] = rec.get("total") if rec.get("available") else None
+    except Exception as e:  # noqa: BLE001
+        out["receipts_error"] = str(e)[:100]
+    try:
+        import mrr_snapshot
+        from snapshot import load_persisted
+        snap0 = mrr_snapshot.snapshot_on_date(m0)
+        now_mrr = ((load_persisted() or {}).get("client_health") or {}).get("current_mrr")
+        start_mrr = (snap0 or {}).get("total_mrr") or (snap0 or {}).get("mrr")
+        out["net_new_mrr"] = (round(now_mrr - start_mrr, 2)
+                              if now_mrr is not None and start_mrr is not None
+                              else None)
+        out["mrr_start_note"] = (None if start_mrr is not None else
+                                 "no month-start reading stored yet — the "
+                                 "daily record fills this in")
+    except Exception as e:  # noqa: BLE001
+        out["mrr_error"] = str(e)[:100]
+    return out
+
+
+def north_star() -> dict:
+    """ONE metric: ACTUAL (this month so far) · PLAN · REQUIRED-at-pace, a
+    pacing sentence, the levers table with the off-plan lever named, and
+    the constraint of the month. Server-rendered; every value with where
+    it came from."""
+    metric = kv_store.get(K_NORTH_METRIC) or "net_new_mrr"
+    a = _mtd_funnel()
+    d = measured_defaults()["items"]
+    day, days_in = a["day"], a["days_in_month"]
+    frac = max(day / days_in, 1e-6)
+
+    actual = a.get("net_new_mrr") if metric == "net_new_mrr" else a.get("cash_collected")
+    # PLAN: the committed plan's row for this month, else the prior period
+    plan_val, plan_src, plan_version = None, "no plan committed — prior month used", None
+    plan = kv_store.get(K_PLAN)
+    ym = str(today_sydney())[:7]
+    if plan:
+        plan_version = plan.get("version")
+        row = next((r for r in plan.get("roadmap") or [] if r["month"] == ym), None)
+        prior = None
+        idx = next((i for i, r in enumerate(plan.get("roadmap") or [])
+                    if r["month"] == ym), None)
+        if idx is not None and idx > 0:
+            prior = plan["roadmap"][idx - 1]
+        if row:
+            if metric == "net_new_mrr":
+                plan_val = round(row["net_mrr"] - (prior["net_mrr"] if prior
+                                                   else row["net_mrr"]), 2) \
+                    if prior else None
+                if plan_val is None:
+                    plan_val = round(row.get("net_mrr", 0) * 0.05, 2)
+            else:
+                plan_val = row.get("cash_in")
+            plan_src = f"Plan 2027 v{plan_version} ({plan.get('name')})"
+    if plan_val is None:
+        # prior period actual as the bar
+        m0, t, _ = _month_window()
+        prev0 = _month_add(str(m0)[:7], -1)
+        try:
+            if metric == "cash_collected":
+                import finance_analysis as FA
+                d0 = dt.date.fromisoformat(prev0 + "-01")
+                d1 = m0 - dt.timedelta(days=1)
+                rec = FA._receipts_in_window(d0, d1)
+                plan_val = rec.get("total") if rec.get("available") else None
+            else:
+                import mrr_snapshot
+                d0 = dt.date.fromisoformat(prev0 + "-01")
+                s0 = mrr_snapshot.snapshot_on_date(d0)
+                s1 = mrr_snapshot.snapshot_on_date(m0)
+                if s0 and s1:
+                    k = "total_mrr" if "total_mrr" in s0 else "mrr"
+                    plan_val = round((s1.get(k) or 0) - (s0.get(k) or 0), 2)
+        except Exception:
+            pass
+
+    pace = round(actual / frac, 2) if actual is not None else None
+    short = (round(plan_val - pace, 2)
+             if plan_val is not None and pace is not None else None)
+    label = ("new monthly revenue added" if metric == "net_new_mrr"
+             else "cash collected")
+    if actual is None:
+        verdict = (f"Day {day}: this month's {label} can't be measured yet "
+                   f"({a.get('mrr_start_note') or 'a source is down'}).")
+    elif plan_val is None:
+        verdict = (f"Day {day}: ${actual:,.0f} {label} so far — pacing to "
+                   f"${pace:,.0f} by month end (no plan to compare against yet).")
+    else:
+        gap = ("on track" if short is not None and short <= 0 else
+               f"short ${abs(short):,.0f} at this pace")
+        verdict = (f"Day {day}: ${actual:,.0f} {label} vs ${plan_val:,.0f} "
+                   f"planned — pacing ${pace:,.0f}, {gap}.")
+
+    # LEVERS: actual (MTD) · plan (plan inputs else measured) · required
+    v = lambda k, fb=None: (d.get(k) or {}).get("value", fb)
+    plan_inputs = (plan or {}).get("inputs") or {}
+    leads = a.get("leads")
+    spend = a.get("spend")
+    cpl_a = round(spend / leads, 2) if spend and leads else None
+    set_a = round((a.get("sets") or 0) / leads, 4) if leads else None
+    show_a = round((a.get("shows") or 0) / (a.get("sets") or 1), 4) if a.get("sets") else None
+    close_a = round((a.get("clients") or 0) / (a.get("shows") or 1), 4) if a.get("shows") else None
+    cashpc_a = round((a.get("cash_from_closes") or 0) / a["clients"], 2) if a.get("clients") else None
+
+    # how many clients the month needs (for required-lever math)
+    sim = simulate_month()
+    per_client = (sim["m0_share"] * sim["contract_avg"]
+                  if metric == "cash_collected" else sim["mrr_avg"]) or 1.0
+    need_total = (plan_val / per_client) if plan_val else None
+    clients_pace = (a.get("clients") or 0) / frac
+
+    def required_close():
+        shows_pace = (a.get("shows") or 0) / frac
+        return round(need_total / shows_pace, 4) if need_total and shows_pace else None
+
+    def required_leads():
+        conv = (set_a or v("set_rate") or 0) * (show_a or v("show_rate") or 0) \
+               * (close_a or v("close_rate") or 0)
+        return round(need_total / conv, 1) if need_total and conv else None
+
+    def required_spend():
+        rl = required_leads()
+        return round(rl * (cpl_a or v("cpl") or 0), 2) if rl else None
+
+    levers = [
+        {"id": "lever_spend", "name": "ad spend", "actual": spend,
+         "plan": plan_inputs.get("spend_path", {}).get("start") or v("monthly_spend_baseline"),
+         "required": required_spend(), "money": True},
+        {"id": "lever_cpl", "name": "cost per lead", "actual": cpl_a,
+         "plan": plan_inputs.get("cpl0") or v("cpl"),
+         "required": None, "money": True,
+         "note": "lower is better — required spend assumes this month's CPL"},
+        {"id": "lever_leads", "name": "leads", "actual": leads,
+         "plan": None, "required": required_leads()},
+        {"id": "lever_set", "name": "booking rate", "actual": set_a,
+         "plan": plan_inputs.get("set_rate") or v("set_rate"), "pct": True},
+        {"id": "lever_show", "name": "turn-up rate", "actual": show_a,
+         "plan": plan_inputs.get("show_rate") or v("show_rate"), "pct": True},
+        {"id": "lever_close", "name": "close rate", "actual": close_a,
+         "plan": plan_inputs.get("close_rate") or v("close_rate"),
+         "required": required_close(), "pct": True},
+        {"id": "lever_cashpc", "name": "avg cash per new client",
+         "actual": cashpc_a, "plan": round(per_client, 2)
+         if metric == "cash_collected" else None, "money": True},
+    ]
+    # off-plan: actual pacing >10% adverse vs plan
+    for lv in levers:
+        act, pl = lv.get("actual"), lv.get("plan")
+        lv["off_plan"] = False
+        if act is None or pl in (None, 0):
+            continue
+        adverse = (act > pl * 1.1) if lv["id"] == "lever_cpl" else (act < pl * 0.9)
+        lv["off_plan"] = bool(adverse)
+
+    # constraint of the month (the compass base run's current month)
+    constraint = None
+    try:
+        run = (kv_store.get("compass:base_run") or {}).get("run") or {}
+        row = next((m for m in run.get("months") or [] if m["month"] == ym),
+                   (run.get("months") or [None])[0])
+        if row:
+            constraint = row.get("binding_constraint")
+    except Exception:
+        pass
+
+    return {"metric": metric, "metric_label": label,
+            "actual": actual, "plan": plan_val, "pace": pace,
+            "required_pace_note": ("to hit the plan the rest of the month "
+                                   "must run at the 'required' figures below"),
+            "short": short, "verdict": verdict,
+            "levers": levers, "constraint": constraint,
+            "plan_src": plan_src,
+            "pinned": {"measured_window": (d.get("cpl") or {}).get("window"),
+                       "defaults_computed": measured_defaults().get("computed_at"),
+                       "plan_version": plan_version},
+            "mtd": a}
+
+
+def calibration_tick() -> dict:
+    """4.5: at month start write THIS month's prediction (journaled); when a
+    prior month's prediction is unscored and the month has ended, score it
+    from actuals. Trust is earned in public. Never touches actuals."""
+    log = kv_store.get(K_CAL_LOG) or []
+    ym = str(today_sydney())[:7]
+    out = {"wrote": None, "scored": None}
+    if not any(r.get("month") == ym for r in log):
+        sim = simulate_month()   # measured defaults at the month's start
+        log.append({"month": ym, "written_at": now_sydney().isoformat(),
+                    "predicted": {"leads": sim["leads"], "calls": sim["calls"],
+                                  "clients": sim["clients"],
+                                  "cash": sim["cash_this_month"],
+                                  "mrr_added": sim["mrr_added"]},
+                    "assumptions": {"spend": sim["spend"],
+                                    "cpl": sim["cpl_base"],
+                                    "rates": sim["rates"]},
+                    "scored": None})
+        out["wrote"] = ym
+    for r in log:
+        if r.get("scored") is None and r["month"] < ym:
+            try:
+                m0 = dt.date.fromisoformat(r["month"] + "-01")
+                m1 = (m0 + dt.timedelta(days=32)).replace(day=1) - dt.timedelta(days=1)
+                import attribution_engine as AE
+                import finance_analysis as FA
+                res = AE.compute(start=str(m0), end=str(m1), basis="activity")
+                act = {"leads": sum(c.get("leads") or 0 for c in res.get("creatives", [])),
+                       "calls": sum(c.get("sets") or 0 for c in res.get("creatives", [])),
+                       "clients": len(FA._closes_union(str(m0), str(m1), "activity"))}
+                err = {}
+                for k in ("leads", "calls", "clients"):
+                    p = r["predicted"].get(k)
+                    if p and act[k]:
+                        err[k] = round(abs(p - act[k]) / act[k] * 100, 1)
+                r["scored"] = {"at": now_sydney().isoformat(), "actual": act,
+                               "error_pct": err}
+                out["scored"] = r["month"]
+            except Exception as e:  # noqa: BLE001
+                logger.info("calibration scoring failed for %s: %s", r["month"], e)
+    kv_store.put(K_CAL_LOG, log[-24:])
+    return out
+
+
+def _defaults_drift_journal(new_items: dict) -> None:
+    """4.7: journal meaningful moves in the measured rates."""
+    prev = kv_store.get("compass:defaults_prev") or {}
+    journal = kv_store.get(K_DEFAULTS_JOURNAL) or []
+    for k in ("cpl", "set_rate", "show_rate", "close_rate",
+              "commission_pct_of_cash", "opex_monthly_ex_tax"):
+        old = prev.get(k)
+        new = (new_items.get(k) or {}).get("value")
+        if old is not None and new is not None and old and \
+                abs(new - old) / abs(old) > 0.02:
+            journal.append({"at": now_sydney().isoformat(), "rate": k,
+                            "old": old, "new": new})
+    kv_store.put(K_DEFAULTS_JOURNAL, journal[-100:])
+    kv_store.put("compass:defaults_prev",
+                 {k: (new_items.get(k) or {}).get("value")
+                  for k in ("cpl", "set_rate", "show_rate", "close_rate",
+                            "commission_pct_of_cash", "opex_monthly_ex_tax")})
+
+
+def rate_drift_alerts() -> list[dict]:
+    """4.6: a measured rate outside its recent band → a feed item naming the
+    lever and the likely constraint effect."""
+    items = []
+    t = today_sydney()
+    try:
+        import attribution_engine as AE
+        res30 = AE.compute(start=str(t - dt.timedelta(days=29)), end=str(t),
+                           basis="activity")
+        res90 = AE.compute(start=str(t - dt.timedelta(days=119)),
+                           end=str(t - dt.timedelta(days=30)), basis="activity")
+
+        def rates_of(res):
+            L = sum(c.get("leads") or 0 for c in res.get("creatives", []))
+            S = sum(c.get("sets") or 0 for c in res.get("creatives", []))
+            Sh = sum(c.get("shows") or 0 for c in res.get("creatives", []))
+            return {"booking rate": (S / L) if L else None,
+                    "turn-up rate": (Sh / S) if S else None}
+        now, band = rates_of(res30), rates_of(res90)
+        effects = {"booking rate": "fewer calls per lead — the same spend "
+                                   "buys fewer clients",
+                   "turn-up rate": "more no-shows — closer time burns with "
+                                   "no chance to close"}
+        for name, val in now.items():
+            base = band.get(name)
+            if val is not None and base and abs(val - base) / base > 0.35:
+                direction = "dropped" if val < base else "jumped"
+                items.append({"severity": "S2", "category": "compass",
+                              "title": f"{name} {direction} — "
+                                       f"{val*100:.0f}% now vs {base*100:.0f}% "
+                                       f"in the prior 90 days",
+                              "action": effects.get(name, "check the lever")})
+    except Exception as e:  # noqa: BLE001
+        logger.info("rate drift check failed: %s", e)
+    return items
+
+
 def sentinel_watch() -> list[dict]:
     """The compass's sentinel rung → feed:extra:compass: backtest drift ·
     plan-vs-actual variance · capacity threshold inside the hire lead time."""
@@ -1474,17 +1795,26 @@ def sentinel_watch() -> list[dict]:
             break
     except Exception as e:  # noqa: BLE001
         logger.info("compass capacity watch failed: %s", e)
+    try:
+        items.extend(rate_drift_alerts())
+    except Exception as e:  # noqa: BLE001
+        logger.info("drift alerts failed: %s", e)
     kv_store.put("feed:extra:compass", items[:10])
     return items
 
 
 def refresh_cache() -> None:
     """Rides the scheduled loop: defaults + pulse + the Base first-paint run
-    always; backtest monthly (kv-stamped)."""
+    always; backtest + calibration monthly (kv-stamped)."""
     try:
-        measured_defaults(force=True)
+        d = measured_defaults(force=True)
+        _defaults_drift_journal(d.get("items") or {})
     except Exception as e:  # noqa: BLE001
         logger.warning("compass defaults refresh failed: %s", e)
+    try:
+        calibration_tick()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("compass calibration tick failed: %s", e)
     try:
         sales_pulse(fresh=True)
     except Exception as e:  # noqa: BLE001
@@ -1493,6 +1823,12 @@ def refresh_cache() -> None:
         run = forward(default_inputs())
         kv_store.put("compass:base_run", {"computed_at": now_sydney().isoformat(),
                                           "run": run})
+    except Exception as e:  # noqa: BLE001
+        logger.warning("compass base-run refresh failed: %s", e)
+    try:
+        kv_store.put("compass:north_star",
+                     {"computed_at": now_sydney().isoformat(),
+                      "data": north_star()})
     except Exception as e:  # noqa: BLE001
         logger.warning("compass base-run refresh failed: %s", e)
     try:

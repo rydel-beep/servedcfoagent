@@ -48,34 +48,88 @@
 </section>
 
 
+
+<!-- ═══ NORTH STAR (Part 4) — the compass as an instrument. Server-rendered
+     from the scheduled loop; what-ifs are labelled and write nothing. ═══ -->
+{% if ns %}
+<section class="scale-section" id="north-star" data-def="north_star">
+  <h3>Are we on pace this month? <span class="scale-note">({{ ns.metric_label }} · switchable)</span></h3>
+  <div class="scale-hero">
+    <div class="h" data-def="ns_actual"><b>{{ '${:,.0f}'.format(ns.actual) if ns.actual is not none else '—' }}</b><span>actual so far this month</span></div>
+    <div class="h" data-def="ns_plan"><b>{{ '${:,.0f}'.format(ns.plan) if ns.plan is not none else '—' }}</b><span>the plan for this month ({{ ns.plan_src }})</span></div>
+    <div class="h" data-def="ns_pace"><b>{{ '${:,.0f}'.format(ns.pace) if ns.pace is not none else '—' }}</b><span>where this month lands at the current pace</span></div>
+  </div>
+  <div class="exec-verdict" id="ns-verdict" data-def="ns_verdict" style="margin-top:8px"><span class="verdict-mark">▸</span> {{ ns.verdict }}</div>
+  <div class="scale-table-wrap" style="margin-top:8px">
+    <table class="scale-table" id="ns-levers" data-def="ns_levers">
+      <thead><tr><th>lever</th><th>actual (this month)</th><th>plan</th><th>required to hit plan</th></tr></thead>
+      <tbody>
+      {% for lv in ns.levers %}
+      <tr{% if lv.off_plan %} style="color:var(--amber);font-weight:600"{% endif %}>
+        <td>{{ lv.name }}{% if lv.off_plan %} ← off plan{% endif %}</td>
+        <td>{% if lv.actual is none %}—{% elif lv.pct %}{{ '%.1f' % (lv.actual*100) }}%{% elif lv.money %}${{ '{:,.0f}'.format(lv.actual) }}{% else %}{{ '{:,.0f}'.format(lv.actual) }}{% endif %}</td>
+        <td>{% if lv.plan is none %}—{% elif lv.pct %}{{ '%.1f' % (lv.plan*100) }}%{% elif lv.money %}${{ '{:,.0f}'.format(lv.plan) }}{% else %}{{ '{:,.0f}'.format(lv.plan) }}{% endif %}</td>
+        <td>{% if lv.required is none %}—{% elif lv.pct %}{{ '%.1f' % (lv.required*100) }}%{% elif lv.money %}${{ '{:,.0f}'.format(lv.required) }}{% else %}{{ '{:,.0f}'.format(lv.required) }}{% endif %}{% if lv.note %} <span class="scale-note">{{ lv.note }}</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if ns.constraint %}
+  <div class="scale-note" style="margin-top:6px" data-def="ns_constraint"><b>Constraint of the month:</b>
+    <span class="bind-{{ (ns.constraint.name or '').split(' ')[0] }}">{{ ns.constraint.name }}</span> — {{ ns.constraint.why }}</div>
+  {% endif %}
+  <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap" data-def="ns_whatifs">
+    <button class="scale-btn ns-whatif" data-w="spend20">What if: +20% spend at current CPL</button>
+    <button class="scale-btn ns-whatif" data-w="close35">What if: close rate to 35%</button>
+    <button class="scale-btn ns-whatif" data-w="cpl10">What if: CPL −$10</button>
+  </div>
+  <div id="ns-whatif-out" class="scale-note" style="margin-top:6px"></div>
+  <div class="scale-note" style="margin-top:8px;opacity:.75" data-def="ns_pinned">
+    running on: rates measured {{ ns.pinned.measured_window }} (refreshed {{ (ns.pinned.defaults_computed or '')[:16] }})
+    {% if ns.pinned.plan_version %} · Plan v{{ ns.pinned.plan_version }}{% else %} · no plan committed{% endif %}
+    · every change to the measured rates and the plan is journaled
+  </div>
+</section>
+{% endif %}
+
 <!-- ═══ SIMPLE VIEW (the default): three questions, nothing else.
      SERVER-RENDERED first paint from the measured defaults; scale.js
      recomputes instantly on any edit (a labelled what-if). ═══ -->
 <section class="scale-section" id="level-simple">
   <div class="scale-note" id="accuracy-sentence" data-def="accuracy_sentence">{{ acc_sentence or 'Accuracy score pending — the monthly check writes it.' }}</div>
 
-  <h3 style="margin-top:10px">How many leads does my ad spend buy?</h3>
+  <h3 style="margin-top:10px">How many leads does my ad spend buy?
+    <span id="sim-verified-badge" class="sim-badge {{ 'badge-ok' if badge and badge.ok else 'badge-amber' }}" data-def="sim_badge">{{ badge.text if badge else 'LOGIC NOT YET VERIFIED on this build' }}</span>
+  </h3>
+  <div class="sim-mode-row" data-def="sim_mode">
+    <label class="sim-mode {{ 'active' }}" id="mode-forward-lbl"><input type="radio" name="sim-mode" id="mode-forward" checked> <b>Forward</b> — I set spend &amp; cost per lead; leads are the answer</label>
+    <label class="sim-mode" id="mode-target-lbl"><input type="radio" name="sim-mode" id="mode-target"> <b>Target</b> — I set the goal; spend is the answer</label>
+  </div>
   <div class="sim-triad" id="sim-triad">
-    <div class="sim-field" data-def="sim_spend">
-      <label>Monthly ad spend $ <button class="sim-lock" data-lock="spend" title="lock this number">🔓</button></label>
-      <input type="number" id="sim-spend" step="100" value="{{ '%.0f' % sim.spend if sim else '' }}">
+    <div class="sim-field" data-def="sim_spend" id="sim-spend-wrap">
+      <label>Monthly ad spend $ <span class="sim-io" id="sim-spend-io">input</span></label>
+      <input type="number" id="sim-spend" step="100" min="0" value="{{ '%.0f' % sim.spend if sim else '' }}">
+      <input type="range" id="sim-spend-slider" min="1000" max="60000" step="250" value="{{ '%.0f' % sim.spend if sim else 10000 }}">
     </div>
     <div class="sim-op">÷</div>
     <div class="sim-field" data-def="sim_cpl">
-      <label>Cost per lead $ <button class="sim-lock locked" data-lock="cpl" title="locked — edits move the other two">🔒</button></label>
-      <input type="number" id="sim-cpl" step="1" value="{{ '%.2f' % sim.cpl_effective if sim else '' }}">
+      <label>Cost per lead $ <span class="sim-io" id="sim-cpl-io">input</span></label>
+      <input type="number" id="sim-cpl" step="1" min="1" value="{{ '%.2f' % sim.cpl_effective if sim else '' }}">
+      <input type="range" id="sim-cpl-slider" min="10" max="300" step="1" value="{{ '%.0f' % sim.cpl_effective if sim else 90 }}">
+      <div class="scale-prov" id="sim-cpl-note"></div>
     </div>
     <div class="sim-op">=</div>
-    <div class="sim-field" data-def="sim_leads">
-      <label>Leads per month <button class="sim-lock" data-lock="leads" title="lock this number">🔓</button></label>
-      <input type="number" id="sim-leads" step="1" value="{{ '%.0f' % sim.leads if sim else '' }}">
+    <div class="sim-field sim-output" data-def="sim_leads">
+      <label>Leads per month <span class="sim-io out">always worked out</span></label>
+      <div class="sim-out-value" id="sim-leads">{{ '%.0f' % sim.leads if sim else '—' }}</div>
     </div>
   </div>
   <div class="scale-note" id="sim-sentence" data-def="sim_sentence">{% if sim %}At ${{ '{:,.0f}'.format(sim.spend) }}/mo and ${{ '%.2f' % sim.cpl_effective }} per lead → {{ '%.0f' % sim.leads }} leads/month.{% endif %}</div>
   <label class="scale-note" style="display:inline-flex;gap:5px;align-items:center;margin-top:4px" data-def="sim_cpl_mode">
     <input type="checkbox" id="sim-cpl-mode"> CPL rises as spend grows (how ad platforms really behave — off shows the straight relationship)
   </label>
-  <canvas id="sim-chart" width="640" height="150" data-def="sim_chart" style="max-width:100%;margin-top:8px;cursor:crosshair"></canvas>
+  <canvas id="sim-chart" width="640" height="150" data-def="sim_chart" style="max-width:100%;margin-top:8px;cursor:ew-resize"></canvas>
 
   <div class="sim-chain" id="sim-chain">
     <div class="chain-card" id="chain-calls" data-def="chain_calls">
@@ -110,7 +164,7 @@
   </label>
   <pre id="show-math-out" style="display:none;background:var(--bg-inset);border-radius:8px;padding:10px;font-size:12px;line-height:1.7;overflow-x:auto"></pre>
 
-  <h3 style="margin-top:14px">What do you want to happen?</h3>
+  <h3 style="margin-top:14px" id="iwant-heading">What do you want to happen? <span class="scale-note">(this is Target mode — picking a goal switches to it)</span></h3>
   <div id="iwant-row" data-def="i_want" style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">
     <div class="scale-ctl"><label>I want…</label>
       <select id="iwant-kind">
@@ -186,6 +240,7 @@
       <h3 data-def="calibration">How honest is this model? (checked against the last 3 months)</h3>
       <div class="scale-note">{{ backtest_verdict }}</div>
       <div class="scale-table-wrap" id="backtest-wrap"></div>
+      <div id="callog-wrap" class="scale-table-wrap" data-def="ns_callog" style="margin-top:8px"></div>
     </section>
   </div>
 </div>
@@ -236,6 +291,7 @@ window.__SCALE_BACKTEST__ = {{ backtest_json | safe }};
 window.__SCALE_SIM__ = {{ sim_json | default('null') | safe }};
 </script>
 <script defer src="/dashboard/static/js/landing.js?v={{ asset_v }}"></script>
+<script defer src="/dashboard/static/js/sim_core.js?v={{ asset_v }}"></script>
 <script defer src="/dashboard/static/js/scale.js?v={{ asset_v }}"></script>
 {% include "partials/defs.html" %}
 </body>

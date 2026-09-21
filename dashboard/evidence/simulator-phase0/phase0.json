@@ -1,0 +1,102 @@
+{
+ "commit_note": "prod at gate-a42c58a build",
+ "steps": [
+  {
+   "spend": "10150",
+   "cpl": "88.26",
+   "leads": "115",
+   "sentence": "At $10,150/mo and $88.26 per lead \u2192 115 leads/month.",
+   "calls": "17",
+   "clients": "4.3",
+   "locks": [
+    [
+     "spend",
+     false
+    ],
+    [
+     "cpl",
+     true
+    ],
+    [
+     "leads",
+     false
+    ]
+   ],
+   "step": "0 \u00b7 initial"
+  },
+  {
+   "spend": "15000",
+   "cpl": "88.26",
+   "leads": "170",
+   "sentence": "At $15,000/mo and $88.26 per lead \u2192 170 leads/month.",
+   "calls": "25",
+   "clients": "6.4",
+   "locks": [
+    [
+     "spend",
+     false
+    ],
+    [
+     "cpl",
+     true
+    ],
+    [
+     "leads",
+     false
+    ]
+   ],
+   "step": "1 \u00b7 typed spend 15000"
+  },
+  {
+   "spend": "15000",
+   "cpl": "120",
+   "leads": "170",
+   "sentence": "At $15,000/mo and $88.26 per lead \u2192 170 leads/month.",
+   "calls": "25",
+   "clients": "6.4",
+   "locks": [
+    [
+     "spend",
+     false
+    ],
+    [
+     "cpl",
+     true
+    ],
+    [
+     "leads",
+     false
+    ]
+   ],
+   "step": "2 \u00b7 typed CPL 120  \u2190 THE COMPLAINT"
+  },
+  {
+   "spend": "20000",
+   "cpl": "88.26",
+   "leads": "227",
+   "sentence": "At $20,000/mo and $88.26 per lead \u2192 227 leads/month.",
+   "calls": "33",
+   "clients": "8.5",
+   "locks": [
+    [
+     "spend",
+     false
+    ],
+    [
+     "cpl",
+     true
+    ],
+    [
+     "leads",
+     false
+    ]
+   ],
+   "step": "3 \u00b7 typed spend 20000"
+  },
+  {
+   "step": "4 \u00b7 I want 40 calls",
+   "iwant_out": "$23,886/mo of ad spend at $88.26 per lead. That books 40 calls and 10.2 signings at today\u2019s rates. what-if \u2014 nothing recorded"
+  }
+ ],
+ "errors": []
+}

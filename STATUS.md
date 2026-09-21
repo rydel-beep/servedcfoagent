@@ -325,3 +325,20 @@ dashboard/evidence/phase0/.
   (collapsed). Gate now asserts math parity (page == server), tooltip
   render (5/5 landing sample + scale), collapsed defaults, accuracy line.
 - Suite: [at deploy]. DECISIONS #154.
+
+---
+
+## 2026-09-21 (2) — SIMULATOR FIXED FOR GOOD (#155)
+
+- Phase-0 reproduced Rydel's failure exactly: failure (b) lock semantics
+  (CPL locked by default; typed CPL ignored + silently reverted; zero
+  console errors). scale/SIMULATOR_DIAGNOSIS.md + step artefacts.
+- Locks retired: spend+CPL always inputs (number+slider), leads always the
+  output; Target mode = spend is the answer; elasticity = CPL visibly
+  read-only-derived. sim_core.js = ONE formula file (browser + node);
+  200-set parity vs engine = zero mismatches; engine wins on settle.
+- scripts/behaviour_gate.py (interaction deploy gate, 3 passes, artefacts,
+  posts the LOGIC VERIFIED badge). North-star block (actual·plan·required
+  + levers + constraint + what-ifs + pinned inputs), calibration log
+  (monthly predictions scored in public), drift alerts. Registry 153
+  entries, coverage 100%. Suite: [at deploy]. DECISIONS #155.

@@ -663,14 +663,6 @@
    "default_from": "measured from your last 90 days of ads and the lead tracker.",
    "selector": "#sim-leads"
   },
-  "sim_lock": {
-   "name": "Lock",
-   "kind": "lever",
-   "screen": "scale",
-   "meaning": "Pins one of the three numbers so edits move the other two around it.",
-   "changing": "The locked field never changes; the other two answer your edits.",
-   "selector": ".sim-lock"
-  },
   "sim_cpl_mode": {
    "name": "'CPL rises as spend grows' switch",
    "kind": "lever",
@@ -1111,6 +1103,95 @@
    "screen": "drawers",
    "meaning": "Same as the value ratio but after delivery costs; the margin source is stated.",
    "selector": "[data-findrawer='ltgp_cac']"
+  },
+  "sim_mode": {
+   "name": "Forward / Target switch",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "Forward: you set spend and cost per lead, leads are the answer. Target: you set the goal, the spend needed is the answer.",
+   "changing": "Switching modes never changes your numbers by itself — it only changes which field is worked out for you.",
+   "selector": ".sim-mode-row"
+  },
+  "sim_badge": {
+   "name": "'Logic verified' tag",
+   "kind": "chip",
+   "screen": "scale",
+   "meaning": "When this page's buttons and fields were last tested end-to-end on the live site by an automated check — green means recently and everything moved as it should.",
+   "computed": "An automated browser types into the fields on the live page and checks every number moves correctly; the tag shows the last passing run.",
+   "selector": "#sim-verified-badge"
+  },
+  "north_star": {
+   "name": "Are we on pace this month?",
+   "kind": "panel",
+   "screen": "scale",
+   "meaning": "The one number that matters this month — what's actually happened, what the plan says, and where the month lands at the current pace.",
+   "selector": "#north-star"
+  },
+  "ns_actual": {
+   "name": "Actual so far",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "What this month has really delivered so far.",
+   "computed": "Measured from the live books and tracker, month to date.",
+   "selector": "[data-def='ns_actual']"
+  },
+  "ns_plan": {
+   "name": "The plan",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "What the committed plan says this month should deliver — or last month's result if no plan is committed.",
+   "selector": "[data-def='ns_plan']"
+  },
+  "ns_pace": {
+   "name": "Pacing",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "Where the month lands if the current daily pace continues.",
+   "computed": "Actual so far, divided by the share of the month that has passed.",
+   "selector": "[data-def='ns_pace']"
+  },
+  "ns_verdict": {
+   "name": "The pacing sentence",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "One sentence: day of the month, actual vs plan, and whether the pace covers the gap.",
+   "selector": "#ns-verdict"
+  },
+  "ns_levers": {
+   "name": "The levers table",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "Each lever that drives the month — what it's actually running at, what the plan assumed, and what it must run at for the rest of the month to hit plan. The off-plan lever is highlighted.",
+   "selector": "#ns-levers"
+  },
+  "ns_constraint": {
+   "name": "Constraint of the month",
+   "kind": "chip",
+   "screen": "scale",
+   "meaning": "The one thing most holding this month back, named with the number that makes it so.",
+   "selector": "[data-def='ns_constraint']"
+  },
+  "ns_whatifs": {
+   "name": "Quick what-ifs",
+   "kind": "lever",
+   "screen": "scale",
+   "meaning": "One-click experiments — more spend, a better close rate, cheaper leads — each answered in one line.",
+   "changing": "Shows the difference in leads, clients, cash and cost per client. Nothing is recorded.",
+   "selector": "[data-def='ns_whatifs']"
+  },
+  "ns_callog": {
+   "name": "Monthly predictions log",
+   "kind": "metric",
+   "screen": "scale",
+   "meaning": "At the start of each month the model writes down its prediction; when the month ends it's scored against what really happened. Trust is earned in public.",
+   "selector": "#callog-wrap"
+  },
+  "ns_pinned": {
+   "name": "What this is running on",
+   "kind": "chip",
+   "screen": "scale",
+   "meaning": "The measurement window, when the rates were last refreshed, and which plan version the block compares against.",
+   "selector": "[data-def='ns_pinned']"
   }
  }
 }

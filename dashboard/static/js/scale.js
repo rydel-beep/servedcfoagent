@@ -109,109 +109,213 @@
   });
 
 
-  // ── THE SIMULATOR (Spend ↔ CPL ↔ Leads → the chain) ──────────────────────
-  // Pure arithmetic mirroring /api/scale/simulate exactly (the gate compares
-  // the rendered numbers against the server for the same inputs). A labelled
-  // what-if — nothing here can write anything.
-  var SIM = null;   // aggregates from the server first paint / defaults
-  var simState = { spend: 0, cpl: 0, leads: 0, lock: 'cpl', curve: false,
+  // ── THE SIMULATOR, LOCK-FREE (two inputs, one output) ────────────────────
+  // Rydel's failure was lock semantics silently dropping his CPL edits.
+  // NOW: SPEND and CPL are ALWAYS inputs; LEADS is ALWAYS the worked-out
+  // answer. Elasticity mode makes CPL explicitly read-only-derived (visibly
+  // disabled — never an editable-looking field that ignores typing).
+  // Target mode is a separate labelled toggle where SPEND becomes the
+  // answer. All arithmetic = SimCore (the SAME file the parity test runs
+  // against the engine); on settle the server re-checks and WINS on any
+  // real mismatch (logged to telemetry).
+  var SIM = null;           // engine aggregates (from the server first paint)
+  var simState = { spend: 0, cpl: 0, curve: false, mode: 'forward',
                    set: 0, show: 0, close: 0 };
+  function agg() { return SIM; }
+  function rates() { return { set: simState.set, show: simState.show, close: simState.close }; }
+
   function simInit() {
     var payload = window.__SCALE_SIM__ || null;
-    if (!payload) return;
+    if (!payload || !window.SimCore) return;
     SIM = payload;
-    simState.spend = payload.spend; simState.cpl = payload.cpl_base;
-    simState.leads = payload.leads;
+    simState.spend = payload.spend;
+    simState.cpl = payload.cpl_base;
     simState.set = payload.rates.set; simState.show = payload.rates.show;
     simState.close = payload.rates.close;
-    simRecompute('spend');
-    drawSimChart();
+    simForward('init');
   }
-  function cplEff(spend, cplBase) {
-    if (!simState.curve || !SIM) return cplBase;
-    var S0 = SIM.spend_baseline || 1;
-    return cplBase * Math.pow(Math.max(spend, 1) / S0, SIM.epsilon || 0);
+
+  function currentChain() {
+    return window.SimCore.chain(simState.spend, simState.cpl, rates(), agg(), simState.curve);
   }
-  function simRecompute(edited) {
-    if (!SIM) return;
-    var st = simState;
-    // the locked field never moves; the edited field drives; the third answers
-    if (edited === 'spend') {
-      if (st.lock === 'cpl') st.leads = st.spend / cplEff(st.spend, st.cpl);
-      else if (st.lock === 'leads') st.cpl = st.leads ? st.spend / st.leads : st.cpl;
-      else st.leads = st.spend / cplEff(st.spend, st.cpl);
-    } else if (edited === 'leads') {
-      if (st.lock === 'cpl') st.spend = st.leads * cplEff(st.spend, st.cpl);
-      else if (st.lock === 'spend') st.cpl = st.leads ? st.spend / st.leads : st.cpl;
-      else st.spend = st.leads * cplEff(st.spend, st.cpl);
-    } else if (edited === 'cpl') {
-      if (st.lock === 'spend') st.leads = st.spend / cplEff(st.spend, st.cpl);
-      else if (st.lock === 'leads') st.spend = st.leads * cplEff(st.spend, st.cpl);
-      else st.leads = st.spend / cplEff(st.spend, st.cpl);
-    }
-    renderSim(edited);
-  }
-  function chainNumbers() {
-    var st = simState;
-    var eff = cplEff(st.spend, st.cpl);
-    var leads = st.spend / (eff || 1);
-    var calls = leads * st.set, shows = calls * st.show, clients = shows * st.close;
-    var cashNow = clients * SIM.m0_share * SIM.contract_avg;
-    var cashTerm = clients * SIM.contract_avg;
-    var mrr = clients * SIM.mrr_avg;
-    var comm = SIM.comm_rate * cashTerm;
-    var cac = clients >= 0.01 ? (st.spend + comm + SIM.tooling) / clients : null;
-    var cacSO = clients >= 0.01 ? st.spend / clients : null;
-    var ltgp = SIM.contract_avg * SIM.margin_avg;
-    return { eff: eff, leads: leads, calls: calls, shows: shows, clients: clients,
-             cashNow: cashNow, cashTerm: cashTerm, mrr: mrr, comm: comm,
-             cac: cac, cacSO: cacSO, ltgp: ltgp,
-             ltgpCac: cac ? ltgp / cac : null };
-  }
+
   function set$(id, v) { var el = $(id); if (el) el.textContent = v; }
-  function renderSim(edited) {
-    var st = simState, c = chainNumbers();
-    if (edited !== 'spend' && $('sim-spend')) $('sim-spend').value = Math.round(st.spend);
-    if (edited !== 'leads' && $('sim-leads')) $('sim-leads').value = Math.round(c.leads);
-    if ($('sim-cpl') && document.activeElement !== $('sim-cpl')) $('sim-cpl').value = c.eff.toFixed(2);
-    set$('sim-sentence', 'At $' + Math.round(st.spend).toLocaleString() + '/mo and $' +
-      c.eff.toFixed(2) + ' per lead → ' + Math.round(c.leads) + ' leads/month.' +
-      (simState.curve ? ' (CPL climbing with spend is ON)' : ''));
+
+  function simForward(source) {
+    if (!SIM) return;
+    var c = currentChain();
+    var leadsEl = $('sim-leads');
+    if (leadsEl) leadsEl.textContent = Math.round(c.leads).toLocaleString();
+    // keep number + slider views of each INPUT in sync (never fighting the
+    // field being typed in)
+    if (source !== 'spend-num' && $('sim-spend')) $('sim-spend').value = Math.round(simState.spend);
+    if (source !== 'spend-slider' && $('sim-spend-slider')) $('sim-spend-slider').value = Math.round(simState.spend);
+    if (simState.curve) {
+      if ($('sim-cpl')) $('sim-cpl').value = c.cpl_effective.toFixed(2);
+      var n = $('sim-cpl-note');
+      if (n) n.textContent = 'effective CPL at this spend: $' + c.cpl_effective.toFixed(2) +
+        ' (your base $' + simState.cpl.toFixed(2) + ' climbs as spend grows)';
+    } else {
+      if (source !== 'cpl-num' && $('sim-cpl')) $('sim-cpl').value = simState.cpl.toFixed(2);
+      if (source !== 'cpl-slider' && $('sim-cpl-slider')) $('sim-cpl-slider').value = Math.round(simState.cpl);
+      var n2 = $('sim-cpl-note'); if (n2) n2.textContent = '';
+    }
+    set$('sim-sentence', 'At $' + Math.round(simState.spend).toLocaleString() + '/mo and $' +
+      c.cpl_effective.toFixed(2) + ' per lead → ' + Math.round(c.leads) + ' leads/month.');
+    renderChain(c);
+    drawSimChart();
+    settleCheck();
+  }
+
+  function renderChain(c) {
     set$('chain-calls-v', Math.round(c.calls));
     set$('chain-shows-v', Math.round(c.shows));
     set$('chain-clients-v', c.clients.toFixed(1));
-    set$('chain-cash-v', fmt$(c.cashNow));
-    set$('chain-cashterm-v', fmt$(c.cashTerm));
-    set$('chain-mrr-v', fmt$(c.mrr));
+    set$('chain-cash-v', fmt$(c.cash_this_month));
+    set$('chain-cashterm-v', fmt$(c.cash_over_term));
+    set$('chain-mrr-v', fmt$(c.mrr_added));
     set$('chain-cac-v', c.cac ? fmt$(c.cac) : '—');
-    set$('chain-cacso-v', c.cacSO ? fmt$(c.cacSO) : '—');
-    set$('chain-ltgp-v', c.ltgpCac ? c.ltgpCac.toFixed(2) : '—');
-    // keep the deep-plan inputs in sync so Run/Solve use the same what-if
+    set$('chain-cacso-v', c.cac_spend_only ? fmt$(c.cac_spend_only) : '—');
+    set$('chain-ltgp-v', c.ltgp_cac ? c.ltgp_cac.toFixed(2) : '—');
     if (CURRENT) {
-      CURRENT.spend_path.start = st.spend;
-      CURRENT.cpl0 = st.cpl;
-      CURRENT.set_rate = st.set; CURRENT.show_rate = st.show;
-      CURRENT.close_rate = st.close;
+      CURRENT.spend_path.start = simState.spend;
+      CURRENT.cpl0 = simState.cpl;
+      CURRENT.set_rate = simState.set; CURRENT.show_rate = simState.show;
+      CURRENT.close_rate = simState.close;
     }
     renderShowMath(c);
-    drawSimChart();
   }
+
   function renderShowMath(c) {
     var out = $('show-math-out');
     if (!out) return;
     var on = $('chk-show-math') && $('chk-show-math').checked;
     out.style.display = on ? '' : 'none';
     if (!on) return;
-    var st = simState;
     out.textContent =
-      '$' + Math.round(st.spend).toLocaleString() + ' ÷ $' + c.eff.toFixed(2) + ' per lead = ' + Math.round(c.leads) + ' leads\n' +
-      Math.round(c.leads) + ' leads × ' + Math.round(st.set * 100) + '% booking rate = ' + Math.round(c.calls) + ' calls\n' +
-      Math.round(c.calls) + ' calls × ' + Math.round(st.show * 100) + '% turn-up rate = ' + Math.round(c.shows) + ' shows\n' +
-      Math.round(c.shows) + ' shows × ' + Math.round(st.close * 100) + '% close rate = ' + c.clients.toFixed(1) + ' new clients\n' +
-      c.clients.toFixed(1) + ' clients × ' + Math.round(SIM.m0_share * 100) + '% first-month share × $' + Math.round(SIM.contract_avg).toLocaleString() + ' avg contract = ' + fmt$(c.cashNow) + ' cash this month\n' +
-      c.clients.toFixed(1) + ' clients × $' + Math.round(SIM.contract_avg).toLocaleString() + ' = ' + fmt$(c.cashTerm) + ' over the term · × $' + Math.round(SIM.mrr_avg).toLocaleString() + '/mo = ' + fmt$(c.mrr) + '/mo revenue added\n' +
-      '($' + Math.round(st.spend).toLocaleString() + ' ads + ' + fmt$(c.comm) + ' commissions + $' + Math.round(SIM.tooling).toLocaleString() + ' sales tools) ÷ ' + c.clients.toFixed(1) + ' clients = ' + (c.cac ? fmt$(c.cac) : '—') + ' per client';
+      '$' + Math.round(simState.spend).toLocaleString() + ' ÷ $' + c.cpl_effective.toFixed(2) + ' per lead = ' + Math.round(c.leads) + ' leads\n' +
+      Math.round(c.leads) + ' leads × ' + (simState.set * 100).toFixed(1) + '% booking rate = ' + Math.round(c.calls) + ' calls\n' +
+      Math.round(c.calls) + ' calls × ' + (simState.show * 100).toFixed(1) + '% turn-up rate = ' + Math.round(c.shows) + ' shows\n' +
+      Math.round(c.shows) + ' shows × ' + (simState.close * 100).toFixed(1) + '% close rate = ' + c.clients.toFixed(1) + ' new clients\n' +
+      c.clients.toFixed(1) + ' clients × ' + Math.round(SIM.m0_share * 100) + '% first-month share × $' + Math.round(SIM.contract_avg).toLocaleString() + ' avg contract = ' + fmt$(c.cash_this_month) + ' cash this month\n' +
+      c.clients.toFixed(1) + ' clients × $' + Math.round(SIM.contract_avg).toLocaleString() + ' = ' + fmt$(c.cash_over_term) + ' over the term · × $' + Math.round(SIM.mrr_avg).toLocaleString() + '/mo = ' + fmt$(c.mrr_added) + '/mo revenue added\n' +
+      '($' + Math.round(simState.spend).toLocaleString() + ' ads + ' + fmt$(c.commissions_over_term) + ' commissions + $' + Math.round(SIM.tooling).toLocaleString() + ' sales tools) ÷ ' + c.clients.toFixed(1) + ' clients = ' + (c.cac ? fmt$(c.cac) : '—') + ' per client';
   }
+
+  // ── PARITY ON SETTLE: the engine re-checks; on real mismatch it WINS ────
+  var settleTimer = null;
+  function settleCheck() {
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(async function () {
+      try {
+        var r = await fetch('/dashboard/api/scale/simulate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ spend: simState.spend, cpl: simState.cpl,
+            cpl_curve: simState.curve,
+            inputs: { set_rate: simState.set, show_rate: simState.show,
+                      close_rate: simState.close } }) });
+        if (!r.ok) return;
+        var server = await r.json();
+        var c = currentChain();
+        var off = Math.abs(server.leads - c.leads) > 1.5 ||
+                  Math.abs(server.clients - c.clients) > 0.15;
+        if (off) {
+          try { window.__reportClientError && window.__reportClientError({
+            kind: 'sim_parity_mismatch',
+            detail: 'client leads=' + c.leads.toFixed(1) + ' clients=' + c.clients.toFixed(2) +
+                    ' vs engine leads=' + server.leads + ' clients=' + server.clients }); } catch (e) {}
+          // the ENGINE'S value wins on screen
+          var leadsEl = $('sim-leads');
+          if (leadsEl) leadsEl.textContent = Math.round(server.leads).toLocaleString();
+          renderChain(window.SimCore.chain(server.spend, simState.cpl, rates(), agg(), simState.curve));
+        }
+      } catch (e) { /* offline — the client math stands until the next settle */ }
+    }, 700);
+  }
+
+  // ── inputs: number fields + sliders, both directions, no locks ──────────
+  document.addEventListener('input', function (e) {
+    if (!SIM) return;
+    var id = e.target.id;
+    if (simState.mode !== 'forward' && ['sim-spend', 'sim-spend-slider', 'sim-cpl', 'sim-cpl-slider'].indexOf(id) >= 0) return;
+    if (id === 'sim-spend') { simState.spend = Math.max(0, +e.target.value || 0); simForward('spend-num'); }
+    else if (id === 'sim-spend-slider') { simState.spend = +e.target.value; simForward('spend-slider'); }
+    else if (id === 'sim-cpl' && !simState.curve) { simState.cpl = Math.max(0.01, +e.target.value || simState.cpl); simForward('cpl-num'); }
+    else if (id === 'sim-cpl-slider' && !simState.curve) { simState.cpl = +e.target.value; simForward('cpl-slider'); }
+    else if (id === 'rate-set') { simState.set = +e.target.value || 0; simForward('rates'); }
+    else if (id === 'rate-show') { simState.show = +e.target.value || 0; simForward('rates'); }
+    else if (id === 'rate-close') { simState.close = +e.target.value || 0; simForward('rates'); }
+    else if (id === 'iwant-value' && simState.mode === 'target') { runTarget(); }
+  });
+
+  function setCplEditable(on) {
+    ['sim-cpl', 'sim-cpl-slider'].forEach(function (i) { var el = $(i); if (el) el.disabled = !on; });
+    var io = $('sim-cpl-io');
+    if (io) { io.textContent = on ? 'input' : 'worked out at this spend'; io.classList.toggle('out', !on); }
+  }
+  function setSpendEditable(on) {
+    ['sim-spend', 'sim-spend-slider'].forEach(function (i) { var el = $(i); if (el) el.disabled = !on; });
+    var io = $('sim-spend-io');
+    if (io) { io.textContent = on ? 'input' : 'worked out from your goal'; io.classList.toggle('out', !on); }
+  }
+
+  document.addEventListener('change', function (e) {
+    if (e.target.id === 'sim-cpl-mode') {
+      simState.curve = e.target.checked;
+      setCplEditable(!simState.curve && simState.mode === 'forward');
+      simForward('curve');
+    }
+    if (e.target.id === 'chk-show-math' && SIM) renderChain(currentChain());
+    if (e.target.id === 'mode-forward' || e.target.id === 'mode-target') {
+      var target = e.target.id === 'mode-target';
+      simState.mode = target ? 'target' : 'forward';
+      var fl = $('mode-forward-lbl'), tl = $('mode-target-lbl');
+      if (fl) fl.classList.toggle('active', !target);
+      if (tl) tl.classList.toggle('active', target);
+      setSpendEditable(!target);
+      setCplEditable(!target && !simState.curve);
+      // switching modes never silently changes values
+      if (!target) simForward('mode');
+    }
+  });
+
+  // ── TARGET MODE: spend is the answer ────────────────────────────────────
+  function runTarget() {
+    if (!SIM) return;
+    var kind = $('iwant-kind').value, val = +$('iwant-value').value || 0;
+    var req = window.SimCore.requiredSpend(kind, val, simState.cpl, rates(), agg(), simState.curve);
+    simState.spend = req.spend;
+    var c = currentChain();
+    if ($('sim-spend')) $('sim-spend').value = Math.round(req.spend);
+    if ($('sim-spend-slider')) $('sim-spend-slider').value = Math.round(req.spend);
+    var leadsEl = $('sim-leads');
+    if (leadsEl) leadsEl.textContent = Math.round(c.leads).toLocaleString();
+    set$('sim-sentence', 'To get ' + val.toLocaleString() + ' ' + kindWord(kind) +
+      ' at $' + c.cpl_effective.toFixed(2) + '/lead, a ' + (simState.set * 100).toFixed(1) +
+      '% booking rate, ' + (simState.show * 100).toFixed(1) + '% turn-up and ' +
+      (simState.close * 100).toFixed(1) + '% close — you need $' +
+      Math.round(req.spend).toLocaleString() + '/mo.');
+    renderChain(c);
+    drawSimChart();
+    settleCheck();
+    // the fuller answer with the 35% delta
+    var req35 = window.SimCore.requiredSpend(kind, val, simState.cpl,
+      { set: simState.set, show: simState.show, close: 0.35 }, agg(), simState.curve);
+    var delta = (kind !== 'leads' && kind !== 'calls' && Math.abs(simState.close - 0.35) > 0.001)
+      ? ' If the close rate were 35% instead of ' + (simState.close * 100).toFixed(1) + '%, you would need ' + fmt$(req35.spend) + '/mo.'
+      : '';
+    var out = $('iwant-out');
+    if (out) out.innerHTML = '<b>' + fmt$(req.spend) + '/mo of ad spend.</b> What has to be true: ' +
+      Math.round(c.leads) + ' leads → ' + Math.round(c.calls) + ' calls → ' + Math.round(c.shows) +
+      ' turn up → ' + c.clients.toFixed(1) + ' sign.' + delta +
+      ' <span style="opacity:.7">what-if — nothing recorded</span>';
+  }
+  function kindWord(k) {
+    return { leads: 'leads/month', calls: 'booked calls/month', clients: 'new clients/month',
+             cash: 'dollars of cash this month', mrr: 'dollars of monthly revenue added' }[k] || k;
+  }
+
+  // ── the chart: a VIEW of the same numbers (never a second calculation) ──
   function drawSimChart() {
     var cv = $('sim-chart');
     if (!cv || !SIM || !cv.getContext) return;
@@ -219,74 +323,50 @@
     var W = cv.width, H = cv.height;
     ctx.clearRect(0, 0, W, H);
     var maxS = Math.max(simState.spend * 2.2, 20000);
+    var top = window.SimCore.chain(maxS, simState.cpl, rates(), agg(), simState.curve);
+    var maxLeads = Math.max(top.leads, 1);
     ctx.strokeStyle = 'rgba(91,155,208,0.9)'; ctx.lineWidth = 2; ctx.beginPath();
-    var maxLeads = maxS / cplEff(maxS, simState.cpl);
-    if (!simState.curve) maxLeads = maxS / simState.cpl;
     for (var x = 0; x <= 60; x++) {
       var sp = maxS * x / 60;
-      var ld = sp / (cplEff(sp, simState.cpl) || 1);
+      var pt = window.SimCore.chain(sp, simState.cpl, rates(), agg(), simState.curve);
       var px = 30 + (W - 40) * sp / maxS;
-      var py = H - 18 - (H - 30) * (ld / (maxLeads * 1.05 || 1));
+      var py = H - 18 - (H - 30) * (pt.leads / (maxLeads * 1.05));
       x === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
     }
     ctx.stroke();
-    // current point
-    var cp = chainNumbers();
+    var cur = currentChain();
     var px0 = 30 + (W - 40) * simState.spend / maxS;
-    var py0 = H - 18 - (H - 30) * (cp.leads / (maxLeads * 1.05 || 1));
+    var py0 = H - 18 - (H - 30) * (cur.leads / (maxLeads * 1.05));
     ctx.fillStyle = '#E8B445'; ctx.beginPath(); ctx.arc(px0, py0, 5, 0, 7); ctx.fill();
     ctx.fillStyle = 'rgba(167,188,210,0.8)'; ctx.font = '10px Archivo';
-    ctx.fillText('$' + Math.round(simState.spend).toLocaleString() + ' → ' + Math.round(cp.leads) + ' leads', Math.min(px0 + 8, W - 130), Math.max(py0 - 8, 12));
+    ctx.fillText('$' + Math.round(simState.spend).toLocaleString() + ' → ' + Math.round(cur.leads) + ' leads', Math.min(px0 + 8, W - 130), Math.max(py0 - 8, 12));
     ctx.fillText('spend →', W - 55, H - 4);
     ctx.save(); ctx.translate(10, H / 2); ctx.rotate(-Math.PI / 2); ctx.fillText('leads →', 0, 0); ctx.restore();
+    cv.dataset.point = Math.round(cur.leads);   // behaviour gate: chart == fields
   }
   function chartDrag(ev) {
+    if (simState.mode !== 'forward') return;
     var cv = $('sim-chart');
     if (!cv) return;
     var r = cv.getBoundingClientRect();
     var frac = (ev.clientX - r.left - 30 * r.width / cv.width) / (r.width * (cv.width - 40) / cv.width);
     var maxS = Math.max(simState.spend * 2.2, 20000);
-    var sp = Math.max(500, Math.min(maxS, frac * maxS));
-    if (simState.lock !== 'spend') { simState.spend = sp; simRecompute('spend'); }
+    simState.spend = Math.max(500, Math.min(maxS, frac * maxS));
+    simForward('chart');
   }
   var dragging = false;
   document.addEventListener('pointerdown', function (e) { if (e.target.id === 'sim-chart') { dragging = true; chartDrag(e); } });
   document.addEventListener('pointermove', function (e) { if (dragging) chartDrag(e); });
   document.addEventListener('pointerup', function () { dragging = false; });
 
-  document.addEventListener('input', function (e) {
-    if (!SIM) return;
-    var id = e.target.id;
-    if (id === 'sim-spend' && simState.lock !== 'spend') { simState.spend = +e.target.value || 0; simRecompute('spend'); }
-    if (id === 'sim-leads' && simState.lock !== 'leads') { simState.leads = +e.target.value || 0; simRecompute('leads'); }
-    if (id === 'sim-cpl' && simState.lock !== 'cpl') { simState.cpl = +e.target.value || simState.cpl; simRecompute('cpl'); }
-    if (id === 'rate-set') { simState.set = +e.target.value || 0; simRecompute('rates'); }
-    if (id === 'rate-show') { simState.show = +e.target.value || 0; simRecompute('rates'); }
-    if (id === 'rate-close') { simState.close = +e.target.value || 0; simRecompute('rates'); }
-  });
-  document.addEventListener('change', function (e) {
-    if (e.target.id === 'sim-cpl-mode') { simState.curve = e.target.checked; simRecompute('spend'); }
-    if (e.target.id === 'chk-show-math') renderSim('none');
-  });
   document.addEventListener('click', function (e) {
-    var lk = e.target.closest && e.target.closest('.sim-lock');
-    if (lk) {
-      e.preventDefault();
-      simState.lock = lk.dataset.lock;
-      document.querySelectorAll('.sim-lock').forEach(function (b) {
-        var on = b.dataset.lock === simState.lock;
-        b.classList.toggle('locked', on);
-        b.textContent = on ? '🔒' : '🔓';
-      });
-      return;
-    }
     var rr = e.target.closest && e.target.closest('.rate-reset');
     if (rr && SIM) {
       e.preventDefault();
       var k = rr.dataset.r;
       simState[k] = SIM.rates[k];
       var el = $('rate-' + k); if (el) el.value = SIM.rates[k];
-      simRecompute('rates');
+      simForward('rates');
       return;
     }
     var pr = e.target.closest && e.target.closest('.sim-preset');
@@ -295,53 +375,80 @@
         if (pr.dataset.preset === 'measured') {
           simState.spend = SIM.spend; simState.cpl = SIM.cpl_base;
           simState.set = SIM.rates.set; simState.show = SIM.rates.show; simState.close = SIM.rates.close;
-          ['set','show','close'].forEach(function (k) { var el = $('rate-' + k); if (el) el.value = SIM.rates[k]; });
+          ['set', 'show', 'close'].forEach(function (k) { var el = $('rate-' + k); if (el) el.value = SIM.rates[k]; });
         } else if (pr.dataset.preset === 'plus50') {
           simState.spend = SIM.spend * 1.5;
         } else if (pr.dataset.preset === 'close35') {
           simState.close = 0.35;
           var el = $('rate-close'); if (el) el.value = 0.35;
         }
-        simRecompute('spend');
+        simForward('preset');
       });
       return;
     }
-    if (e.target.id === 'btn-iwant') { guard('iwant', iWant); }
-  });
-  function iWant() {
-    if (!SIM) return;
-    var kind = $('iwant-kind').value, val = +$('iwant-value').value || 0;
-    var st = simState;
-    // work backwards to the clients / leads needed, then the spend
-    var perClientCash = SIM.m0_share * SIM.contract_avg;
-    var clients = null;
-    if (kind === 'clients') clients = val;
-    if (kind === 'cash') clients = val / (perClientCash || 1);
-    if (kind === 'mrr') clients = val / (SIM.mrr_avg || 1);
-    var leads;
-    if (kind === 'leads') leads = val;
-    else if (kind === 'calls') leads = val / (st.set || 1);
-    else leads = clients / ((st.set * st.show * st.close) || 1);
-    // spend at the current CPL (solve the curve by iteration when it's on)
-    var spend = leads * st.cpl;
-    if (simState.curve) {
-      for (var i = 0; i < 30; i++) spend = leads * cplEff(spend, st.cpl);
+    if (e.target.id === 'btn-iwant') {
+      guard('iwant', function () {
+        var mt = $('mode-target');
+        if (mt && !mt.checked) { mt.checked = true; mt.dispatchEvent(new Event('change', { bubbles: true })); }
+        runTarget();
+      });
     }
-    var calls = leads * st.set, shows = calls * st.show;
-    var signs = shows * st.close;
-    // what changes if close = 35%
-    var leads35 = (clients != null ? clients : signs) / ((st.set * st.show * 0.35) || 1);
-    var spend35 = leads35 * st.cpl;
-    if (simState.curve) { for (var j = 0; j < 30; j++) spend35 = leads35 * cplEff(spend35, st.cpl); }
-    var showsClause = (kind === 'clients' || kind === 'cash' || kind === 'mrr')
-      ? ' What has to be true: ' + Math.round(leads) + ' leads → ' + Math.round(calls) + ' calls → ' + Math.round(shows) + ' turn up → ' + signs.toFixed(1) + ' sign.'
-      : ' That books ' + Math.round(calls) + ' calls and ' + signs.toFixed(1) + ' signings at today\u2019s rates.';
-    var deltaClause = (kind !== 'leads' && kind !== 'calls')
-      ? ' If the close rate were 35% instead of ' + Math.round(st.close * 100) + '%, the spend needed drops to ' + fmt$(spend35) + '/mo.'
-      : '';
-    $('iwant-out').innerHTML = '<b>' + fmt$(spend) + '/mo of ad spend</b> at $' + st.cpl.toFixed(2) +
-      ' per lead' + (simState.curve ? ' (with CPL climbing as spend grows)' : '') + '.' +
-      showsClause + deltaClause + ' <span style="opacity:.7">what-if — nothing recorded</span>';
+  });
+
+
+  // ── NORTH STAR what-ifs (labelled; write nothing) + calibration browse ──
+  document.addEventListener('click', function (e) {
+    var w = e.target.closest && e.target.closest('.ns-whatif');
+    if (!w || !SIM || !window.SimCore) return;
+    guard('ns-whatif', function () {
+      var base = window.SimCore.chain(SIM.spend, SIM.cpl_base, SIM.rates, SIM, false);
+      var alt;
+      var label;
+      if (w.dataset.w === 'spend20') {
+        alt = window.SimCore.chain(SIM.spend * 1.2, SIM.cpl_base, SIM.rates, SIM, false);
+        label = '+20% spend at the current cost per lead';
+      } else if (w.dataset.w === 'close35') {
+        alt = window.SimCore.chain(SIM.spend, SIM.cpl_base,
+          { set: SIM.rates.set, show: SIM.rates.show, close: 0.35 }, SIM, false);
+        label = 'close rate at 35%';
+      } else {
+        alt = window.SimCore.chain(SIM.spend, Math.max(SIM.cpl_base - 10, 1), SIM.rates, SIM, false);
+        label = 'cost per lead $10 lower';
+      }
+      function d(k, money) {
+        var v = alt[k] - base[k];
+        var s = (v >= 0 ? '+' : '−') + (money ? '$' + Math.round(Math.abs(v)).toLocaleString() : Math.abs(v).toFixed(1));
+        return s;
+      }
+      var cacD = (alt.cac && base.cac) ? ((alt.cac - base.cac >= 0 ? '+' : '−') + '$' + Math.round(Math.abs(alt.cac - base.cac)).toLocaleString()) : '—';
+      $('ns-whatif-out').innerHTML = '<b>' + label + ':</b> ' +
+        d('leads') + ' leads · ' + d('clients') + ' clients · ' + d('cash_this_month', true) +
+        ' cash this month · cost per client ' + cacD +
+        ' <span style="opacity:.7">what-if — nothing recorded</span>';
+    });
+  });
+  async function loadCalLog() {
+    var wrap = $('callog-wrap');
+    if (!wrap) return;
+    try {
+      var r = await fetch('/dashboard/api/scale/calibration-log');
+      if (!r.ok) return;
+      var d = await r.json();
+      var rows = d.log || [];
+      if (!rows.length) { wrap.innerHTML = '<div class="scale-note">the first monthly prediction is written at the next refresh — scores appear when the month ends</div>'; return; }
+      var html = '<b class="scale-note">MONTHLY PREDICTIONS — written at each month start, scored when the month ends</b>' +
+        '<table class="scale-table"><thead><tr><th>month</th><th>predicted leads/calls/clients</th><th>actual</th><th>error</th></tr></thead><tbody>';
+      rows.slice().reverse().forEach(function (rr) {
+        var p2 = rr.predicted || {};
+        var sc = rr.scored || {};
+        var a = sc.actual || {};
+        var e2 = sc.error_pct || {};
+        html += '<tr><td>' + rr.month + '</td><td>' + Math.round(p2.leads || 0) + ' / ' + Math.round(p2.calls || 0) + ' / ' + (p2.clients || 0).toFixed(1) + '</td>' +
+          '<td>' + (sc.actual ? (a.leads + ' / ' + a.calls + ' / ' + a.clients) : 'month still running') + '</td>' +
+          '<td>' + (sc.actual ? ('±' + (e2.leads != null ? e2.leads : '—') + '% / ±' + (e2.calls != null ? e2.calls : '—') + '% / ±' + (e2.clients != null ? e2.clients : '—') + '%') : '—') + '</td></tr>';
+      });
+      wrap.innerHTML = html + '</tbody></table>';
+    } catch (e) { /* quiet */ }
   }
 
   // ── run + views ──────────────────────────────────────────────────────────
@@ -574,5 +681,6 @@
       guard('resetAll', function () { CURRENT = JSON.parse(JSON.stringify(MEASURED)); renderInputs(); });
     });
     guard('pacing', loadPacing);
+    guard('callog', loadCalLog);
   })();
 })();

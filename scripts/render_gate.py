@@ -241,7 +241,7 @@ def main():
                  boundaries: Array.from(document.querySelectorAll('.panel-boundary-fail')).map(e => e.innerText.slice(0, 100)),
                  sim_triad: !!document.getElementById('sim-triad'),
                  sim_spend: +(document.getElementById('sim-spend')?.value || 0),
-                 sim_leads: +(document.getElementById('sim-leads')?.value || 0),
+                 sim_leads: +((document.getElementById('sim-leads')?.innerText || document.getElementById('sim-leads')?.value || '0').replace(/,/g, '')),
                  chain_clients: (document.getElementById('chain-clients-v')?.innerText || '').trim(),
                  accuracy: (document.getElementById('accuracy-sentence')?.innerText || '').trim().slice(0, 120),
                  advanced_closed: !document.getElementById('level-advanced')?.open,
