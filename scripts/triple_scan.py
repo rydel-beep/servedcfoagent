@@ -114,8 +114,8 @@ def scan_works(page, log, evd, shots=False):
             continue
         probe = page.evaluate("""() => ({
           title: document.title,
-          boundaries: Array.from(document.querySelectorAll('.panel-boundary-fail')).map(e => e.innerText.slice(0,90)),
-          tiles: Array.from(document.querySelectorAll('[data-metric]')).map(el => ({
+          boundaries: Array.from(document.querySelectorAll('.panel-boundary-fail:not(.empty-state)')).map(e => e.innerText.slice(0,90)),
+          tiles: Array.from(document.querySelectorAll('[data-metric][data-value]')).map(el => ({
             metric: el.dataset.metric,
             value: (el.querySelector('.exec-tile-value,.pulse-value,.tv-actual')?.innerText || '').trim(),
             sub: (el.querySelector('.exec-tile-sub,.pulse-sub,.tv-stage-sub')?.innerText || '').trim(),
@@ -165,7 +165,7 @@ def scan_agrees_with_itself(page, evd):
         try:
             page.goto(BASE + path, wait_until="load", timeout=45000)
             time.sleep(1.5)
-            rows = page.evaluate("""() => Array.from(document.querySelectorAll('[data-metric]')).map(el => ({
+            rows = page.evaluate("""() => Array.from(document.querySelectorAll('[data-metric][data-value]')).map(el => ({
               metric: el.dataset.metric, window: el.dataset.window || '',
               clock: el.dataset.clock || '', basis: el.dataset.basis || '',
               value: el.dataset.value || '',
@@ -228,9 +228,11 @@ def scan_agrees_with_itself(page, evd):
             ans = page.evaluate(
                 """async (q) => { const r = await fetch('/dashboard/api/chat', {
                      method: 'POST', headers: {'Content-Type': 'application/json'},
-                     body: JSON.stringify({message: q})});
-                   return r.ok ? await r.json() : null; }""", question)
-            text = (ans or {}).get("reply") or (ans or {}).get("message") or ""
+                     body: JSON.stringify({history: [{role: 'user', content: q}]})});
+                   return r.ok ? await r.json() : {error: 'status ' + r.status}; }""",
+                question)
+            text = ((ans or {}).get("reply") or (ans or {}).get("message")
+                    or (ans or {}).get("response") or "")
             nums = re.findall(r"[\d,]+\.?\d*", text)
             drill_results.append({"q": question, "numbers": nums[:8],
                                   "len": len(text)})

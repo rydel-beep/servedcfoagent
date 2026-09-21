@@ -1,0 +1,349 @@
+{
+ "commit": "d4d5898c0ea1",
+ "base": "https://web-production-16b16.up.railway.app",
+ "utc": "2026-09-21T08:25:15Z",
+ "scans": {
+  "works": {
+   "pages": {
+    "landing": {
+     "status": 200,
+     "tiles": 11,
+     "panels": 2,
+     "ok": true
+    },
+    "brief": {
+     "status": 200,
+     "tiles": 2,
+     "panels": 5,
+     "ok": false
+    },
+    "cash": {
+     "status": 200,
+     "tiles": 1,
+     "panels": 4,
+     "ok": false
+    },
+    "sales": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 10,
+     "ok": true
+    },
+    "unit-econ": {
+     "status": 200,
+     "tiles": 4,
+     "panels": 6,
+     "ok": false
+    },
+    "projection": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 6,
+     "ok": true
+    },
+    "renewals": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 4,
+     "ok": true
+    },
+    "outflows": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 3,
+     "ok": true
+    },
+    "receivables": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 1,
+     "ok": true
+    },
+    "team": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 2,
+     "ok": true
+    },
+    "decisions": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 1,
+     "ok": true
+    },
+    "system": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 3,
+     "ok": false
+    },
+    "scale": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 9,
+     "ok": true
+    },
+    "travelling": {
+     "status": 200,
+     "tiles": 10,
+     "panels": 8,
+     "ok": true
+    },
+    "definitions": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 7,
+     "ok": true
+    },
+    "worklog": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 2,
+     "ok": true
+    },
+    "bookkeeping": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 1,
+     "ok": true
+    },
+    "csm": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 2,
+     "ok": true
+    },
+    "ads": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 5,
+     "ok": true
+    }
+   },
+   "ok": false
+  },
+  "agrees_with_itself": {
+   "keys": 13,
+   "divergences": 0,
+   "engine_checks": 2,
+   "drills": [
+    {
+     "q": "how are we travelling this month",
+     "numbers": [],
+     "len": 0
+    },
+    {
+     "q": "what's my LTV to CAC",
+     "numbers": [],
+     "len": 0
+    },
+    {
+     "q": "what's committed",
+     "numbers": [],
+     "len": 0
+    }
+   ],
+   "ok": true
+  },
+  "agrees_with_reality": {
+   "at": "2026-09-21T18:27:25.716432+10:00",
+   "checks": [
+    {
+     "detail": "no live re-read path on this client \u2014 the archive is the only copy (stated, not silently passed)",
+     "name": "Meta spend 2026-09-19",
+     "ok": null,
+     "sev": "SEV3",
+     "source": "meta",
+     "stored": 363.02
+    },
+    {
+     "detail": "no live re-read path on this client \u2014 the archive is the only copy (stated, not silently passed)",
+     "name": "Meta spend 2026-09-18",
+     "ok": null,
+     "sev": "SEV3",
+     "source": "meta",
+     "stored": 455.02
+    },
+    {
+     "detail": "no live re-read path on this client \u2014 the archive is the only copy (stated, not silently passed)",
+     "name": "Meta spend 2026-09-17",
+     "ok": null,
+     "sev": "SEV3",
+     "source": "meta",
+     "stored": 483.03
+    },
+    {
+     "detail": "stored $27,887.50 vs fresh $27,887.50",
+     "fresh": 27887.5,
+     "name": "Stripe receipts this month",
+     "ok": true,
+     "sev": "SEV1",
+     "source": "stripe",
+     "stored": 27887.5
+    },
+    {
+     "detail": "tile $188,473.38 vs the accounts adding to $188,473.38",
+     "fresh": 188473.38,
+     "name": "Cash on hand vs the bank lines",
+     "ok": true,
+     "sev": "SEV1",
+     "source": "xero",
+     "stored": 188473.38
+    },
+    {
+     "detail": "schedule $70,249 vs the Xero line \u2014 difference $50,427, explained by invoice timing and GST",
+     "name": "Receivables vs the Xero balance sheet",
+     "ok": true,
+     "sev": "SEV3",
+     "source": "xero",
+     "stored": 50426.83
+    },
+    {
+     "detail": "258 appointments across 168 contacts in the local copy",
+     "name": "Consults on file",
+     "ok": true,
+     "sev": "SEV2",
+     "source": "ghl",
+     "stored": 258
+    },
+    {
+     "detail": "1508 opportunities mirrored",
+     "name": "Deals on file",
+     "ok": true,
+     "sev": "SEV2",
+     "source": "ghl",
+     "stored": 1508
+    },
+    {
+     "detail": "1531 rows read",
+     "name": "Tracker rows",
+     "ok": true,
+     "sev": "SEV1",
+     "source": "workbook",
+     "stored": 1531
+    }
+   ],
+   "failed": 0,
+   "full": false,
+   "not_comparable": 3,
+   "note": "a check with no cheap fresh read says so \u2014 it never passes by omission",
+   "ok": true
+  }
+ },
+ "findings": [
+  {
+   "scan": "scan1",
+   "sev": "SEV2",
+   "class": "BROKEN",
+   "title": "brief: cash_in_bank rendered empty",
+   "detail": "a tile must carry a value or a labelled state",
+   "surfaces": [
+    "/dashboard/view/brief"
+   ]
+  },
+  {
+   "scan": "scan1",
+   "sev": "SEV2",
+   "class": "BROKEN",
+   "title": "brief: current_mrr rendered empty",
+   "detail": "a tile must carry a value or a labelled state",
+   "surfaces": [
+    "/dashboard/view/brief"
+   ]
+  },
+  {
+   "scan": "scan1",
+   "sev": "SEV2",
+   "class": "BROKEN",
+   "title": "cash: cash_in_bank rendered empty",
+   "detail": "a tile must carry a value or a labelled state",
+   "surfaces": [
+    "/dashboard/view/cash"
+   ]
+  },
+  {
+   "scan": "scan1",
+   "sev": "SEV2",
+   "class": "BROKEN",
+   "title": "unit-econ: current_mrr rendered empty",
+   "detail": "a tile must carry a value or a labelled state",
+   "surfaces": [
+    "/dashboard/view/unit-econ"
+   ]
+  },
+  {
+   "scan": "scan1",
+   "sev": "SEV2",
+   "class": "BROKEN",
+   "title": "unit-econ: stripe_cash_collected_30d rendered empty",
+   "detail": "a tile must carry a value or a labelled state",
+   "surfaces": [
+    "/dashboard/view/unit-econ"
+   ]
+  },
+  {
+   "scan": "scan1",
+   "sev": "SEV2",
+   "class": "BROKEN",
+   "title": "unit-econ: gross_margin_pct rendered empty",
+   "detail": "a tile must carry a value or a labelled state",
+   "surfaces": [
+    "/dashboard/view/unit-econ"
+   ]
+  },
+  {
+   "scan": "scan1",
+   "sev": "SEV2",
+   "class": "BROKEN",
+   "title": "unit-econ: active_client_count rendered empty",
+   "detail": "a tile must carry a value or a labelled state",
+   "surfaces": [
+    "/dashboard/view/unit-econ"
+   ]
+  },
+  {
+   "scan": "scan1",
+   "sev": "SEV2",
+   "class": "BROKEN",
+   "title": "system: a panel failed",
+   "detail": "no scan has ever recorded a result here",
+   "surfaces": [
+    "/dashboard/view/system"
+   ]
+  },
+  {
+   "scan": "scan2",
+   "sev": "SEV3",
+   "class": "BROKEN",
+   "title": "EDITH gave no answer to 'how are we travelling this month'",
+   "detail": "the drill returned nothing",
+   "surfaces": []
+  },
+  {
+   "scan": "scan2",
+   "sev": "SEV3",
+   "class": "BROKEN",
+   "title": "EDITH gave no answer to 'what's my LTV to CAC'",
+   "detail": "the drill returned nothing",
+   "surfaces": []
+  },
+  {
+   "scan": "scan2",
+   "sev": "SEV3",
+   "class": "BROKEN",
+   "title": "EDITH gave no answer to 'what's committed'",
+   "detail": "the drill returned nothing",
+   "surfaces": []
+  }
+ ],
+ "health_row": {
+  "commit": "d4d5898c0ea1",
+  "runtime_s": 132.0,
+  "scan1_ok": false,
+  "scan2_ok": true,
+  "scan3_ok": true,
+  "findings": 11,
+  "top": "brief: cash_in_bank rendered empty",
+  "pages": 19
+ }
+}

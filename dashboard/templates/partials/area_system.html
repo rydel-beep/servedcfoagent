@@ -69,7 +69,7 @@
       if (!el) return;
       if (!d) { el.innerHTML = '<div class="panel-boundary-fail">the health record could not be read</div>'; return; }
       var html = '';
-      if (d.stale_warning) html += '<div class="panel-boundary-fail">' + esc(d.stale_warning) + '</div>';
+      if (d.stale_warning) html += '<div class="panel-boundary-fail empty-state">' + esc(d.stale_warning) + '</div>';
       var rows = d.rows || [];
       if (!rows.length) html += '<div style="font-size:12px;opacity:.75">No scan has recorded a result yet.</div>';
       else {
