@@ -284,8 +284,10 @@ def test_no_lock_semantics_remain():
     assert "sim-lock" not in js and "sim-lock" not in html
     assert "simState.lock" not in js
     assert "sim_core.js" in html               # the ONE formula core loads
-    # leads is an OUTPUT (a div, not an input)
-    assert '<div class="sim-out-value" id="sim-leads">' in html
+    # leads is an OUTPUT (a div, not an input). It carries a scenario-basis
+    # identity now, so match the shape rather than the exact old string.
+    assert re.search(r'<div class="sim-out-value" id="sim-leads"[^>]*>', html)
+    assert not re.search(r'<input[^>]*id="sim-leads"', html)
     # every spend/cpl edit path recomputes (no mode/lock guard except
     # target-mode disabling, which visibly disables the fields)
     assert "simForward('spend-num')" in js and "simForward('cpl-num')" in js

@@ -515,3 +515,25 @@ def test_the_simulator_is_published_as_a_model_not_as_actuals():
     # land in the same bucket as an engine row
     scan = _read("scripts", "triple_scan.py")
     assert 'key = (r["metric"], r["window"], r["basis"])' in scan
+
+
+def test_shared_renderers_never_write_into_a_missing_node():
+    """The IA split gave each area its own page, so a shared renderer WILL
+    meet a node it does not own. Writing into it threw and killed the rest
+    of the render — which is what the 7d/14d/30d/60d/90d buttons did on
+    brief, ads & sales and unit economics. Guarded now, and pinned."""
+    import re as _re
+    js = _read("dashboard", "static", "js", "dashboard.js")
+    assert "function setText" in js and "function setHTML" in js
+    bad = _re.findall(
+        r"\$\('#[A-Za-z0-9_-]+'\)\.(?:innerHTML|textContent|innerText)\s*=", js)
+    assert not bad, f"{len(bad)} unguarded DOM writes remain"
+    bad_style = _re.findall(r"(?<!\{ const e = )\$\('#[A-Za-z0-9_-]+'\)\.style\.", js)
+    assert not bad_style, f"unguarded style writes: {bad_style[:3]}"
+
+
+def test_the_ads_board_is_read_defensively_before_it_loads():
+    """A control used before the first board fetch resolved read .scoreboard
+    off a null state.board."""
+    js = _read("dashboard", "static", "js", "adsapp.js")
+    assert "state.board.scoreboard." not in js

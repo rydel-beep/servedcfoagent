@@ -3,6 +3,15 @@
   'use strict';
 
   const $ = (s) => document.querySelector(s);
+
+  /* NULL-SAFE WRITES. Renderers are shared across area pages, so a node one
+   * page owns simply does not exist on another. Writing into it threw
+   * "Cannot set properties of null" and killed the rest of the render —
+   * which is what the window buttons (7d/14d/30d/60d/90d) did on brief,
+   * ads & sales, and unit economics. Found by the real-seat audit. */
+  function setText(sel, v) { const e = $(sel); if (e) e.textContent = v; return e; }
+  function setHTML(sel, v) { const e = $(sel); if (e) e.innerHTML = v; return e; }
+
   let currentSnap = null;
   let historyData = null;
   let refreshCooldown = false;
@@ -642,7 +651,7 @@
 
     boundary(null, 'chrome', function () {
       if (snap.generated_at && $('#chat-context')) {
-        $('#chat-context').textContent = timeAgo(snap.generated_at);
+        setText('#chat-context', timeAgo(snap.generated_at));
       }
       renderKpiTrends();
       renderChatChips(snap);
@@ -925,10 +934,10 @@
       setKPI('val-sheet-mrr', fmt$(confirmedMRR));
       if (delta != null && delta !== 0) {
         const dir = delta > 0 ? '+' : '';
-        $('#sub-sheet-mrr').textContent = dir + fmt$(delta) + ' next month';
-        $('#sub-sheet-mrr').style.color = delta >= 0 ? 'var(--green)' : 'var(--red)';
+        setText('#sub-sheet-mrr', dir + fmt$(delta) + ' next month');
+        { const e = $('#sub-sheet-mrr'); if (e) e.style.color = delta >= 0 ? 'var(--green)' : 'var(--red)'; }
       } else {
-        $('#sub-sheet-mrr').textContent = ch.current_month || '';
+        setText('#sub-sheet-mrr', ch.current_month || '');
       }
     }
 
@@ -945,10 +954,10 @@
         subEl.textContent = (mrrGap > 0 ? 'Sheet +' : 'Sheet ') + fmt$(mrrGap) + ' gap';
         subEl.title = 'Sheet includes manually-tracked clients not yet on Stripe billing';
       } else {
-        $('#sub-stripe-mrr').textContent = 'reconciled';
+        setText('#sub-stripe-mrr', 'reconciled');
       }
     } else {
-      $('#sub-stripe-mrr').textContent = 'recurring';
+      setText('#sub-stripe-mrr', 'recurring');
     }
 
     // Cash
@@ -963,7 +972,7 @@
       marginEl.innerHTML = fmtPct(margin) + kpiArrow(margin, prevMargin);
       marginEl.className = 'kpi-value ' + statusClass(get(h, 'gross_margin.status'));
     }
-    $('#sub-margin').textContent = margin != null ? benchLabel(snap, 'gross_margin_floor', 'benchmark: ') : '';
+    setText('#sub-margin', margin != null ? benchLabel(snap, 'gross_margin_floor', 'benchmark: ') : '');
 
     // LTV:CAC / LTGP:CAC KPI cells REMOVED (hardening 2.3) — the standing
     // engine's nulls rendered "—" here; the ONE rendering path is the honest
@@ -978,7 +987,7 @@
       const parts = [];
       if (ch.active_count) parts.push(ch.active_count + ' active');
       if (ch.web_sub_count) parts.push(ch.web_sub_count + ' web');
-      $('#sub-clients').textContent = parts.join(', ');
+      setText('#sub-clients', parts.join(', '));
     }
   }
 
@@ -2484,7 +2493,7 @@
   // ── Verdicts ─────────────────────────────────────────────
   function renderVerdicts(snap) {
     const v = snap.verdicts || {};
-    $('#verdict-headline').textContent = v.headline || 'No verdict data';
+    setText('#verdict-headline', v.headline || 'No verdict data');
 
     const leaksList = $('#leaks-list');
     leaksList.innerHTML = '';
@@ -5276,7 +5285,7 @@
     boundary('section-expiring',      'expiring',     renderExpiring);
     if (hadSnap) _setUpdating(false);
     if (historyData && historyData.length > 1 && $('#reps-sparkline-status')) {
-      $('#reps-sparkline-status').textContent = historyData.length + ' days of history';
+      setText('#reps-sparkline-status', historyData.length + ' days of history');
     }
   }
 
@@ -5487,19 +5496,19 @@
   async function runRenewalScan(btn) {
     const buttons = document.querySelectorAll('.renewal-scan-trigger');
     buttons.forEach(b => { b.disabled = true; b.textContent = 'Scanning…'; });
-    $('#renewal-result').style.display = '';
-    $('#renewal-result').innerHTML = '<div class="rw-note">Pulling the MRR contract sheet fresh…</div>';
+    { const e = $('#renewal-result'); if (e) e.style.display = ''; }
+    setHTML('#renewal-result', '<div class="rw-note">Pulling the MRR contract sheet fresh…</div>');
     try {
       const resp = await fetch('/dashboard/api/renewal/scan', { method: 'POST' });
       if (resp.status === 403) {
-        $('#renewal-result').innerHTML = '<div class="rw-degraded">Scan is owner-only.</div>';
+        setHTML('#renewal-result', '<div class="rw-degraded">Scan is owner-only.</div>');
         return;
       }
       renderScanResult(await resp.json());
       const snap = await fetchSnapshot();      // declarations/chips may have converged
       if (snap) render(snap);
     } catch (e) {
-      $('#renewal-result').innerHTML = '<div class="rw-degraded">⚠ scan failed: ' + esc(String(e)) + '</div>';
+      setHTML('#renewal-result', '<div class="rw-degraded">⚠ scan failed: ' + esc(String(e)) + '</div>');
     } finally {
       buttons.forEach(b => { b.disabled = false; b.textContent = 'Scan sheet'; });
     }
@@ -5695,9 +5704,8 @@
       const inline = e.target.closest('.rw-inline[data-rw-client]');
       if (inline) {
         if (!_rwOwner) {
-          $('#renewal-result').style.display = '';
-          $('#renewal-result').innerHTML =
-            '<div class="rw-degraded">Declarations are owner-only (money events).</div>';
+          { const e = $('#renewal-result'); if (e) e.style.display = ''; }
+          setHTML('#renewal-result', '<div class="rw-degraded">Declarations are owner-only (money events).</div>');
           return;
         }
         _rwDeclare.client = inline.dataset.rwClient;
@@ -5750,9 +5758,8 @@
     const dbtn = $('#renewal-declare-btn');
     if (dbtn) dbtn.addEventListener('click', () => {
       if (!_rwOwner) {
-        $('#renewal-result').style.display = '';
-        $('#renewal-result').innerHTML =
-          '<div class="rw-degraded">Declarations are owner-only (money events).</div>';
+        { const e = $('#renewal-result'); if (e) e.style.display = ''; }
+        setHTML('#renewal-result', '<div class="rw-degraded">Declarations are owner-only (money events).</div>');
         return;
       }
       renderDeclarePanel();

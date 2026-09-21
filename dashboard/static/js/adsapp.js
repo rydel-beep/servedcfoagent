@@ -471,7 +471,7 @@
   }
 
   function renderHeadline() {
-    var h = (state.board.scoreboard || {}).headline;
+    var h = ((state.board || {}).scoreboard || {}).headline;
     var el = $('#adx-headline');
     if (!h) { el.innerHTML = ''; return; }
     function tiers(t) {
@@ -539,7 +539,7 @@
   }
 
   function renderBanner() {
-    var b = state.board.scoreboard.banner || {};
+    var b = ((state.board || {}).scoreboard || {}).banner || {};
     var fr = b.freshness || {};
     var qr = state.board.qualified_rule || {};
     $('#adx-banner').innerHTML = degradedStrip(state.board.degraded) +
@@ -878,7 +878,7 @@
       lanesEl.innerHTML = '<div class="adx-degraded-strip">⚠ ' + esc(lb.degraded) + '</div>';
       return;
     }
-    var rows = (state.board.scoreboard.rows || []).filter(function (r) {
+    var rows = (((state.board || {}).scoreboard || {}).rows || []).filter(function (r) {
       return r.tier === 'ad' && statusMatches(r.creative_key) && setMatches(r.creative_key);
     });
     var byLane = {};
@@ -1110,7 +1110,7 @@
 
   function levelRows() {
     var b = state.board;
-    if (state.level === 'creative') return b.scoreboard.rows;
+    if (state.level === 'creative') return (b.scoreboard || {}).rows || [];
     var lad = b.ladder || {};
     if (state.level === 'account') {
       var a = lad.account;
@@ -1580,7 +1580,7 @@
   function anomalyPanel(creativeKey, kind) {
     // THE ROSTER ENGINE serves anomaly classes too (?metric=earlier_sets etc.) —
     // the old client-side filter over board.rows was a parallel person list; deleted.
-    var row = (state.board.scoreboard.rows || []).filter(function (r) {
+    var row = (((state.board || {}).scoreboard || {}).rows || []).filter(function (r) {
       return r.creative_key === creativeKey; })[0] || {};
     openDrill(esc(String(row.creative || creativeKey).slice(0, 50)) + ' · anomaly · ' + windowStamp() +
               ' · ' + state.basis + ' clock',
