@@ -164,7 +164,25 @@
       c.cpl_effective.toFixed(2) + ' per lead → ' + Math.round(c.leads) + ' leads/month.');
     renderChain(c);
     drawSimChart();
+    updateTravellingLink();
     settleCheck();
+  }
+
+  // the "Show how we're travelling" button carries WHAT'S ON SCREEN — the
+  // live month is then laid against exactly what you just modelled
+  function updateTravellingLink() {
+    var a = $('btn-travelling');
+    if (!a) return;
+    try {
+      var payload = {
+        spend_path: { shape: 'flat', start: simState.spend },
+        cpl0: simState.cpl, set_rate: simState.set,
+        show_rate: simState.show, close_rate: simState.close
+      };
+      var b64 = btoa(JSON.stringify(payload))
+        .replace(/\+/g, '-').replace(/\//g, '_');
+      a.href = '/dashboard/scale/travelling?compare=scenario&window=mtd&s=' + b64;
+    } catch (e) { /* the plain link still works */ }
   }
 
   function renderChain(c) {

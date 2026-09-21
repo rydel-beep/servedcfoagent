@@ -354,3 +354,25 @@ def test_registry_covers_every_new_element():
             for f in ("meaning", "computed", "changing")
             if D.jargon_hits(e.get(f) or "")]
     assert not hits, hits[:5]
+
+
+def test_button_carries_the_modelled_scenario():
+    """The button must lay the month against WHAT'S ON SCREEN — the gate
+    caught it opening on 'your usual' because nothing was encoded."""
+    js = _read("dashboard", "static", "js", "scale.js")
+    assert "updateTravellingLink" in js
+    assert "compare=scenario" in js and "&s=" in js
+    # the route decodes base64url with or without padding
+    import base64, json as _json
+    payload = {"spend_path": {"shape": "flat", "start": 12345.0}, "cpl0": 77.0,
+               "set_rate": 0.2, "show_rate": 0.8, "close_rate": 0.3}
+    raw = base64.urlsafe_b64encode(_json.dumps(payload).encode()).decode().rstrip("=")
+    os.environ.setdefault("DASHBOARD_TOKEN", "testtok-tv")
+    import app as appmod
+    from dashboard.auth import COOKIE_NAME
+    c = appmod.app.test_client()
+    c.set_cookie(COOKIE_NAME, os.environ["DASHBOARD_TOKEN"])
+    r = c.get("/dashboard/scale/travelling?compare=scenario&window=mtd&s=" + raw)
+    assert r.status_code == 200
+    h = r.data.decode()
+    assert "the scenario on screen" in h

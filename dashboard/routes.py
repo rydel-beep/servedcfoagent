@@ -378,8 +378,9 @@ def travelling_page():
     if scenario_param:
         try:
             import base64
+            pad = scenario_param + "=" * (-len(scenario_param) % 4)
             scenario = _json.loads(base64.urlsafe_b64decode(
-                scenario_param.encode()).decode())
+                pad.encode()).decode())
         except Exception:
             scenario = None
     compare = request.args.get("compare") or ("scenario" if scenario else "usual")
