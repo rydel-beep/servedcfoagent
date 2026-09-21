@@ -195,6 +195,16 @@
      around the measured rate given its own sample size (the same interval
      the travelling status bands use). NOT the Monte-Carlo path bands, which
      describe MRR and cash, not rates. */
+  /* The rate as MEASURED — never the one a solve has since applied. */
+  function measuredRate(key) {
+    var d = (window.__SCALE_DEFAULTS__ || {}).items || {};
+    var it = d[{set: 'set_rate', show: 'show_rate', close: 'close_rate'}[key]] || {};
+    if (typeof it.value === 'number') return it.value;
+    if (MEASURED && typeof MEASURED[key + '_rate'] === 'number')
+      return MEASURED[key + '_rate'];
+    return null;
+  }
+
   function rateBands() {
     var d = (window.__SCALE_DEFAULTS__ || {}).items || {};
     var out = {};
@@ -227,10 +237,22 @@
       simForward('rates');
       return;
     }
+    // Compare against the MEASURED rate, not the one a previous solve just
+    // wrote into the field — otherwise a second keystroke reads "0 points
+    // above" and the comparison that is the whole point disappears. The
+    // behaviour gate caught exactly this.
+    var live = { set: simState.set, show: simState.show, close: simState.close };
     var sol = SimCore.requiredRate(
-      stage, wanted, simState.spend, simState.cpl,
-      { set: simState.set, show: simState.show, close: simState.close },
+      stage, wanted, simState.spend, simState.cpl, live,
       agg(), simState.curve, rateBands());
+    if (sol && sol.required !== null) {
+      var key = SimCore.RATE_OF[stage];
+      var m = measuredRate(key);
+      if (m !== null) {
+        sol.measured = m;
+        sol.points = (sol.required - m) * 100;
+      }
+    }
     if (!sol) return;
     var box = $('req-' + stage);
     var rst = document.querySelector('.count-reset[data-stage="' + stage + '"]');

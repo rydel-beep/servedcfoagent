@@ -440,3 +440,46 @@ def test_the_xero_rung_is_registered_not_built():
 def test_scan2_coverage_is_reported_not_implied():
     reg = _read("USABILITY_AUDIT.md")
     assert "metric keys" in reg
+
+
+# ── what the gates caught after the first deploy ────────────────────────────
+
+def test_closers_come_from_the_consult_not_the_set_date():
+    """The tracker's Set Date column has been empty since April, so keying a
+    closer's workload on it returned an empty table on live data. Consults
+    come from the CRM appointments — travelling's source and clock."""
+    src = _read("sales_scoreboard.py")
+    fn = src[src.index("def _closers("):src.index("def _ownership_health")]
+    assert "travelling._appointments" in fn
+    assert 'l.get("set_date")' not in fn
+    # a consult whose row names nobody is COUNTED, not dropped
+    assert '"unassigned"' in fn
+
+
+def test_ownership_health_is_reported_not_papered_over():
+    """If the Closer column has stopped being filled, that is a finding
+    about the source — the scoreboard says so rather than showing an empty
+    table."""
+    src = _read("sales_scoreboard.py")
+    assert "def _ownership_health" in src
+    fn = src[src.index("def _ownership_health"):src.index("def named_all_time_txt")]
+    assert "named_in_window" in fn and "named_all_time" in fn
+    assert "outcome_words_in_column" in fn
+
+
+def test_a_raw_contact_id_is_never_shown_as_a_name():
+    src = _read("sales_scoreboard.py")
+    assert "def _crm_names" in src
+    assert '"name not on file"' in src
+    assert '"person": l.get("name") or l.get("business") or cid' not in src
+
+
+def test_the_required_rate_readout_always_compares_to_the_measured_rate():
+    """After a solve applies, the rate field holds the SOLVED value. If the
+    readout then re-read it as "measured", a second keystroke would say
+    "0 points above" and the comparison would vanish. The behaviour gate
+    caught this on the live page."""
+    js = _read("dashboard", "static", "js", "scale.js")
+    assert "function measuredRate" in js
+    assert "sol.measured = m;" in js
+    assert "sol.points = (sol.required - m) * 100;" in js

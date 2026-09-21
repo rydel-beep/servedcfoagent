@@ -1,0 +1,282 @@
+{
+ "commit": "af9209b90048",
+ "base": "https://web-production-16b16.up.railway.app",
+ "utc": "2026-09-21T12:28:38Z",
+ "scans": {
+  "works": {
+   "pages": {
+    "today": {
+     "status": 200,
+     "tiles": 12,
+     "panels": 3,
+     "ok": true
+    },
+    "sales-board": {
+     "status": 200,
+     "tiles": 23,
+     "panels": 8,
+     "ok": true
+    },
+    "landing": {
+     "status": 200,
+     "tiles": 11,
+     "panels": 2,
+     "ok": true
+    },
+    "brief": {
+     "status": 200,
+     "tiles": 2,
+     "panels": 5,
+     "ok": true
+    },
+    "cash": {
+     "status": 200,
+     "tiles": 1,
+     "panels": 4,
+     "ok": true
+    },
+    "sales": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 10,
+     "ok": true
+    },
+    "unit-econ": {
+     "status": 200,
+     "tiles": 1,
+     "panels": 6,
+     "ok": true
+    },
+    "projection": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 6,
+     "ok": true
+    },
+    "renewals": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 4,
+     "ok": true
+    },
+    "outflows": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 3,
+     "ok": true
+    },
+    "receivables": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 1,
+     "ok": true
+    },
+    "team": {
+     "status": 200,
+     "tiles": 1,
+     "panels": 2,
+     "ok": true
+    },
+    "decisions": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 1,
+     "ok": true
+    },
+    "system": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 3,
+     "ok": true
+    },
+    "scale": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 9,
+     "ok": true
+    },
+    "travelling": {
+     "status": 200,
+     "tiles": 10,
+     "panels": 8,
+     "ok": true
+    },
+    "definitions": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 7,
+     "ok": true
+    },
+    "worklog": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 2,
+     "ok": true
+    },
+    "bookkeeping": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 1,
+     "ok": true
+    },
+    "csm": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 2,
+     "ok": true
+    },
+    "ads": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 5,
+     "ok": true
+    }
+   },
+   "ok": true
+  },
+  "agrees_with_itself": {
+   "keys": 39,
+   "divergences": 0,
+   "engine_checks": 2,
+   "drills": [
+    {
+     "q": "how are we travelling this month",
+     "numbers": [
+      ",",
+      "8",
+      "4",
+      "95",
+      "70",
+      "90",
+      "19",
+      "28"
+     ],
+     "len": 347
+    },
+    {
+     "q": "what's my LTV to CAC",
+     "numbers": [
+      ",",
+      "9.57",
+      "4.11",
+      "3",
+      "3,518,",
+      "3,027",
+      "90",
+      "5.1"
+     ],
+     "len": 497
+    },
+    {
+     "q": "what's committed",
+     "numbers": [
+      ",",
+      "72,887.52",
+      "38",
+      "9"
+     ],
+     "len": 311
+    }
+   ],
+   "ok": true
+  },
+  "agrees_with_reality": {
+   "at": "2026-09-21T22:31:19.269430+10:00",
+   "checks": [
+    {
+     "detail": "cent-exact at $363.02",
+     "fresh": 363.02,
+     "name": "Meta spend 2026-09-19",
+     "ok": true,
+     "sev": "SEV1",
+     "source": "meta",
+     "stored": 363.02
+    },
+    {
+     "detail": "cent-exact at $455.02",
+     "fresh": 455.02,
+     "name": "Meta spend 2026-09-18",
+     "ok": true,
+     "sev": "SEV1",
+     "source": "meta",
+     "stored": 455.02
+    },
+    {
+     "detail": "cent-exact at $483.03",
+     "fresh": 483.03,
+     "name": "Meta spend 2026-09-17",
+     "ok": true,
+     "sev": "SEV1",
+     "source": "meta",
+     "stored": 483.03
+    },
+    {
+     "detail": "stored $27,887.50 vs fresh $27,887.50",
+     "fresh": 27887.5,
+     "name": "Stripe receipts this month",
+     "ok": true,
+     "sev": "SEV1",
+     "source": "stripe",
+     "stored": 27887.5
+    },
+    {
+     "detail": "tile $188,473.38 vs the accounts adding to $188,473.38",
+     "fresh": 188473.38,
+     "name": "Cash on hand vs the bank lines",
+     "ok": true,
+     "sev": "SEV1",
+     "source": "xero",
+     "stored": 188473.38
+    },
+    {
+     "detail": "schedule $70,249 vs the Xero line \u2014 difference $50,427, explained by invoice timing and GST",
+     "name": "Receivables vs the Xero balance sheet",
+     "ok": true,
+     "sev": "SEV3",
+     "source": "xero",
+     "stored": 50426.83
+    },
+    {
+     "detail": "258 appointments across 168 contacts in the local copy",
+     "name": "Consults on file",
+     "ok": true,
+     "sev": "SEV2",
+     "source": "ghl",
+     "stored": 258
+    },
+    {
+     "detail": "1508 opportunities mirrored",
+     "name": "Deals on file",
+     "ok": true,
+     "sev": "SEV2",
+     "source": "ghl",
+     "stored": 1508
+    },
+    {
+     "detail": "1531 rows read",
+     "name": "Tracker rows",
+     "ok": true,
+     "sev": "SEV1",
+     "source": "workbook",
+     "stored": 1531
+    }
+   ],
+   "failed": 0,
+   "full": false,
+   "not_comparable": 0,
+   "note": "a check with no cheap fresh read says so \u2014 it never passes by omission",
+   "ok": true
+  }
+ },
+ "findings": [],
+ "health_row": {
+  "commit": "af9209b90048",
+  "runtime_s": 163.7,
+  "scan1_ok": true,
+  "scan2_ok": true,
+  "scan3_ok": true,
+  "findings": 0,
+  "top": null,
+  "pages": 21
+ }
+}

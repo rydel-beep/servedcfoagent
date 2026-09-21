@@ -137,6 +137,8 @@ def build(window: str = "mtd", start: str | None = None,
         "contract": round(sum(float(l.get("contract") or 0) for l in closes_in), 2),
     }
     out["cash"] = _guard("cash", lambda: _cash(closes_in, w0, w1), {})
+    out["ownership"] = _guard(
+        "ownership", lambda: _ownership_health(leads_all, in_window), {})
     out["notes"] = [
         "Shows are on the CONFIRMED basis — a call record of real length, a "
         "recorded outcome, or a close. The range beside each one is what it "
@@ -196,12 +198,21 @@ def _closers(leads_all: list[dict], closes_in: list[dict],
     """A closer's window: the consults that were theirs, how many are
     confirmed attended, how many closed, and what that earned.
 
-    The consults counted here are the ones whose SET DATE falls in the
-    window — the closer's own workload — not every lead that ever existed.
+    THE CONSULT, NOT THE SET DATE. The tracker's Set Date column has been
+    empty since April (the same diagnosis travelling carries), so keying a
+    closer's workload on it returns nothing at all. The consults counted
+    here are the GHL appointments DUE in this window — the same source and
+    the same clock travelling uses — joined to their tracker row for the
+    ownership.
+
+    A consult whose tracker row names no closer is counted under
+    "unassigned" rather than dropped: the work happened, and a scoreboard
+    that hides it would flatter the column that has stopped being filled.
     """
     import travelling
     calls = travelling._call_cache()
     by: dict = {}
+    by_contact = {l["contact_id"]: l for l in leads_all if l.get("contact_id")}
 
     def row(name):
         return by.setdefault(name, {
@@ -209,28 +220,27 @@ def _closers(leads_all: list[dict], closes_in: list[dict],
             "noshow": 0, "closes": 0, "commission": 0.0, "tracker_cash": 0.0,
             "contract": 0.0, "pitched_lower_bound": 0})
 
-    for l in leads_all:
-        name = (l.get("closer") or "").strip()
-        sd = l.get("set_date")
-        if not _is_person(name) or not sd or not (w0 <= sd <= w1):
-            continue
+    ap = travelling._appointments(w0, w1)
+    for appt in ap["due"]:
+        l = by_contact.get(appt.get("contact_id")) or {}
+        raw = (l.get("closer") or "").strip()
+        name = raw if _is_person(raw) else "unassigned"
         r = row(name)
         r["consults"] += 1
         outcome = (l.get("closer_outcome") or "").lower()
-        if outcome in ("no show", "noshow"):
+        if appt.get("status") == "noshow" or outcome in ("no show", "noshow"):
             r["noshow"] += 1
         elif l.get("won") or l.get("show") or outcome:
             r["confirmed"] += 1
         elif any((c.get("duration") or 0) >= travelling.REACHED_SECONDS
-                 for c in ((calls.get(l.get("contact_id")) or {}).get("calls") or [])):
+                 for c in ((calls.get(appt.get("contact_id")) or {}).get("calls") or [])):
             r["confirmed"] += 1
         else:
             r["unconfirmed"] += 1
 
     for l in closes_in:
-        name = (l.get("closer") or "").strip()
-        if not _is_person(name):
-            continue
+        raw = (l.get("closer") or "").strip()
+        name = raw if _is_person(raw) else "unassigned"
         r = row(name)
         r["closes"] += 1
         r["commission"] += float(l.get("closer_commission") or 0)
@@ -271,6 +281,43 @@ def _closers(leads_all: list[dict], closes_in: list[dict],
     return rows
 
 
+def _ownership_health(leads_all: list[dict], in_window: list[dict]) -> dict:
+    """Is the tracker's Closer column still being filled?
+
+    All-time it names Kalin and Coby on 145 rows, so it WAS filled. If this
+    window is mostly blank, the scoreboard cannot attribute consults to
+    anyone — and that is a finding about the source, not a gap to paper
+    over with a guess.
+    """
+    named_all = sum(1 for l in leads_all if _is_person((l.get("closer") or "").strip()))
+    named_win = sum(1 for l in in_window if _is_person((l.get("closer") or "").strip()))
+    n = len(in_window)
+    bad = [((l.get("closer") or "").strip()) for l in leads_all
+           if (l.get("closer") or "").strip()
+           and not _is_person((l.get("closer") or "").strip())]
+    pct = round(named_win / n * 100, 1) if n else None
+    return {
+        "named_in_window": named_win, "of": n, "pct": pct,
+        "named_all_time": named_all,
+        "outcome_words_in_column": sorted(set(bad)),
+        "healthy": bool(pct is not None and pct >= 50),
+        "note": (
+            f"the tracker's Closer column names someone on {named_win} of "
+            f"{n} leads in this window ({pct}%), against {named_all_time_txt(named_all)} "
+            f"all time. Consults whose row names nobody are counted under "
+            f"'unassigned' — they happened, so hiding them would flatter the "
+            f"column rather than the team."),
+        "setter_note": (
+            "the tracker's Set Date column has been empty since April, so a "
+            "closer's consults are counted from the CRM appointments instead "
+            "— the same source and clock travelling uses."),
+    }
+
+
+def named_all_time_txt(n: int) -> str:
+    return f"{n} rows"
+
+
 def _pipeline() -> dict:
     """What is open right now, by current CRM stage, with values. A snapshot
     of the present — never a window."""
@@ -293,6 +340,23 @@ def _pipeline() -> dict:
                      "stage — a snapshot of now, not of this window")}
 
 
+def _crm_names() -> dict:
+    """contact_id → the person's name, from the CRM mirror. A raw id is not
+    a name, and showing one on a scoreboard helps nobody."""
+    try:
+        import ghl_mirror
+        out = {}
+        for cid, c in (ghl_mirror.read_all_contacts() or {}).items():
+            nm = " ".join(str(x) for x in (c.get("first_name"), c.get("last_name"))
+                          if x).strip() or c.get("name") or c.get("email")
+            if nm:
+                out[cid] = nm
+        return out
+    except Exception as e:  # noqa: BLE001
+        logger.info("sales: CRM names unavailable: %s", e)
+        return {}
+
+
 def _upcoming(leads_all: list[dict]) -> dict:
     """Consults in the next seven days, with datetime and the closer they
     belong to."""
@@ -301,6 +365,7 @@ def _upcoming(leads_all: list[dict]) -> dict:
     now = now_sydney()
     horizon = now + dt.timedelta(days=7)
     by_contact = {l["contact_id"]: l for l in leads_all if l.get("contact_id")}
+    crm = _crm_names()
     rows = []
     for cid, hit in cache.items():
         for a in ((hit or {}).get("appts") or []):
@@ -314,7 +379,8 @@ def _upcoming(leads_all: list[dict]) -> dict:
             rows.append({
                 "when": start.isoformat(),
                 "when_text": CS.format_consult(start),
-                "person": l.get("name") or l.get("business") or cid,
+                "person": (l.get("name") or l.get("business")
+                           or crm.get(cid) or "name not on file"),
                 "business": l.get("business") or "",
                 "closer": (l.get("closer") or "").strip() or "unassigned",
                 "contact_id": cid,
@@ -341,6 +407,7 @@ def _unmarked(leads_all: list[dict], w0: dt.date, w1: dt.date) -> dict:
     now = now_sydney()
     today = today_sydney()
     by_contact = {l["contact_id"]: l for l in leads_all if l.get("contact_id")}
+    crm = _crm_names()
     rows = []
     for cid, hit in cache.items():
         for a in ((hit or {}).get("appts") or []):
@@ -360,7 +427,8 @@ def _unmarked(leads_all: list[dict], w0: dt.date, w1: dt.date) -> dict:
                 continue                      # a call record confirms it
             rows.append({
                 "when": start.isoformat(), "when_text": CS.format_consult(start),
-                "person": l.get("name") or l.get("business") or cid,
+                "person": (l.get("name") or l.get("business")
+                           or crm.get(cid) or "name not on file"),
                 "closer": (l.get("closer") or "").strip() or "unassigned",
                 "contact_id": cid,
                 "age_days": (today - start.date()).days})
