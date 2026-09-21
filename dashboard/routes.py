@@ -436,6 +436,34 @@ def travelling_page():
     return resp
 
 
+@bp.route("/api/ground-truth", methods=["GET"])
+@require_owner
+def api_ground_truth():
+    """SCAN 3 — the engine against the outside world (read-only)."""
+    import ground_truth
+    return jsonify(ground_truth.run(full=request.args.get("full") == "1"))
+
+
+@bp.route("/api/health-row", methods=["POST"])
+@require_owner
+def api_health_row():
+    """The triple scan posts its HEALTH row here."""
+    import ground_truth
+    body = request.get_json(silent=True) or {}
+    return jsonify({"ok": True,
+                    "row": ground_truth.record_health_row({
+                        k: body.get(k) for k in
+                        ("commit", "runtime_s", "scan1_ok", "scan2_ok",
+                         "scan3_ok", "findings", "top", "pages")})})
+
+
+@bp.route("/api/health", methods=["GET"])
+@require_auth
+def api_health_rows():
+    import ground_truth
+    return jsonify(ground_truth.health())
+
+
 @bp.route("/api/travelling", methods=["GET"])
 @require_owner
 def api_travelling():

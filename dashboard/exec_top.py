@@ -154,9 +154,13 @@ def _fmt_age(h: float | None) -> str:
     return f"{h / 24:.1f}d ago"
 
 
-def _tile(tid, label, value, sub="", stamp="", state="ok", drawer=None, sr_note=""):
+def _tile(tid, label, value, sub="", stamp="", state="ok", drawer=None,
+          sr_note="", raw=None):
+    """raw = the unformatted number, published as data-value so the
+    consistency scan compares numbers rather than parsing prose."""
     return {"id": tid, "label": label, "value": value, "sub": sub,
-            "stamp": stamp, "state": state, "drawer": drawer, "sr_note": sr_note}
+            "stamp": stamp, "state": state, "drawer": drawer,
+            "sr_note": sr_note, "raw": raw}
 
 
 def _cache(key) -> tuple[dict | None, float | None, str | None]:
@@ -198,7 +202,7 @@ def build_tiles(snap: dict | None) -> list[dict]:
             (f"{n_acct} accounts · " if n_acct else "") +
             "Xero bank feeds can lag the bank by up to a day",
             f"Xero closing balances · as of {as_of or 'unknown'} · pulled {_fmt_age(snap_age)}",
-            state, drawer="cash_on_hand",
+            state, drawer="cash_on_hand", raw=bal,
             sr_note="LAST-KNOWN fallback — live Xero read failed" if degraded else ""))
     except Exception as e:  # noqa: BLE001
         tiles.append(_tile("cash_on_hand", "Cash on hand (Xero bank balances)",
@@ -217,7 +221,7 @@ def build_tiles(snap: dict | None) -> list[dict]:
             f"Finance-sheet Health tab + declarations + renewal ledger · pulled {_fmt_age(snap_age)}",
             "degraded" if mrr is None else
             ("amber" if (snap_age if snap_age is not None else 99) > SNAP_AMBER_HOURS else "ok"),
-            drawer="committed_mrr"))
+            drawer="committed_mrr", raw=mrr))
     except Exception as e:  # noqa: BLE001
         tiles.append(_tile("committed_mrr", "Committed MRR (revenue)", "—",
                            str(e)[:80], "", "degraded"))
@@ -237,7 +241,7 @@ def build_tiles(snap: dict | None) -> list[dict]:
             "pending is never cash · internal visibility only",
             f"expected (RECOGNIZED grid + renewal ledger) − received (Stripe) · built {_fmt_age(ar_age)}",
             "degraded" if tot is None else _state_for(ar_age, None),
-            drawer="ar_outstanding"))
+            drawer="ar_outstanding", raw=tot))
     except Exception as e:  # noqa: BLE001
         tiles.append(_tile("ar_outstanding", "AR outstanding (internal)", "—",
                            str(e)[:80], "", "degraded"))

@@ -77,7 +77,10 @@
   <!-- THE HERO: the dual-track funnel, one row per stage -->
   <section class="tv-funnel" id="tv-funnel" aria-label="Funnel, plan against actual">
     {% for s in data.stages %}
-    <div class="tv-stage tone-{{ s.status.tone }}" id="stage-{{ s.id }}" data-def="tv_stage_{{ s.id }}">
+    <div class="tv-stage tone-{{ s.status.tone }}" id="stage-{{ s.id }}" data-def="tv_stage_{{ s.id }}"
+         data-metric="tv_{{ s.id }}" data-window="{{ data.window.key }}"
+         data-clock="window" data-basis="{{ s.basis or 'actual' }}"
+         data-value="{{ s.actual if s.actual is not none else '' }}">
       <div class="tv-stage-name">
         {{ s.name }}
         <button class="tv-door" data-roster="{{ s.id }}" {% if not s.roster %}disabled{% endif %}>people</button>

@@ -150,6 +150,7 @@ def fixture_build(monkeypatch):
                         lambda a, b: {"spend": 5000.0} if a != b else {"spend": 500.0})
     monkeypatch.setattr(TV, "_comparator", lambda c, s, w: {
         "key": "usual", "label": "your usual rates", "from_usual": [],
+        "plan_word": "usually",
         "usual": {}, "cpl": 50.0, "set_rate": 0.10, "show_rate": 0.90,
         "close_rate": 0.30, "spend_month": 15000.0, "leads_month": 300.0,
         "cash_per_client": 6000.0, "mrr_per_client": 3050.0})
@@ -247,7 +248,8 @@ def test_read_only_no_writes_anywhere():
                          r"values:append|values:update", src)
     # the only kv key it writes is its own journal
     writes = re.findall(r"kv_store\.put\(([^,)]+)", src)
-    assert all("K_SAVED" in w or "travelling:" in w for w in writes), writes
+    allowed = ("K_SAVED", "travelling:", "feed:extra:picklist_drift")
+    assert all(any(a in w for a in allowed) for w in writes), writes
 
 
 def test_narrative_numbers_match_the_rendered_values():
@@ -256,12 +258,17 @@ def test_narrative_numbers_match_the_rendered_values():
     text = " ".join(d["read"]["sentences"])
     rendered = set()
     for s in d["stages"]:
-        for key in ("actual_text", "projection_text", "sub", "plan_text"):
+        for key in ("actual_text", "projection_text", "sub", "plan_text",
+                    "range_text", "rate_note"):
             for n in re.findall(r"[\d,]+(?:\.\d+)?", str(s.get(key) or "")):
                 rendered.add(n.replace(",", ""))
         if s.get("actual") is not None:
             rendered.add(f"{s['actual']:.0f}")
             rendered.add(f"{round(s['actual'])}")
+        for stat in (s.get("status") or {}, s.get("outcome_status") or {}):
+            for key in ("word", "detail"):
+                for n in re.findall(r"[\d,]+(?:\.\d+)?", str(stat.get(key) or "")):
+                    rendered.add(n.replace(",", ""))
     for g in d["gaps"]:
         rendered.add(f"{abs(g['clients']):.0f}")
         rendered.add(f"{abs(g['cash']):,.0f}".replace(",", ""))
@@ -376,3 +383,176 @@ def test_button_carries_the_modelled_scenario():
     assert r.status_code == 200
     h = r.data.decode()
     assert "the scenario on screen" in h
+
+
+# ══ PART A — the six defects, each pinned ═══════════════════════════════════
+
+def test_a1_show_rate_primary_is_confirmed_not_status_only(fixture_build, monkeypatch):
+    """A1: 'nobody marked a no-show' is not attendance. The headline rate is
+    the confirmed one; the status-only consults set the upper end."""
+    d = fixture_build
+    sb = d["show_bases"]
+    assert sb["confirmed"] <= sb["upper"]
+    showed = next(s for s in d["stages"] if s["id"] == "showed")
+    assert showed["rate"] == sb["rate_confirmed"]
+    assert showed["rate_upper"] == sb["rate_upper"]
+    assert "NOT counted as attendance" in showed["math"]
+
+
+def test_a1_status_only_shows_can_never_read_ahead():
+    """A run where every consult is status-only must not produce 'ahead' —
+    the confirmed rate is 0."""
+    s = TV._rate_status(0, 10, 0.9, "gain", "planned")
+    assert s["tone"] in ("behind", "neutral") and s["tone"] != "ahead"
+
+
+def test_a1_gap_finder_runs_both_bases_and_says_when_it_flips():
+    cmp_ = {"set_rate": 0.15, "show_rate": 0.90, "close_rate": 0.28,
+            "plan_word": "planned"}
+    counts = {"leads": 174, "due": 22, "showed": 14, "showed_status": 22}
+    verified = {"book": 0.20, "show": 14 / 22, "close": 3 / 14}
+    status = {"book": 0.20, "show": 22 / 22, "close": 3 / 22}
+    out = TV._gap_finder({}, cmp_, counts, verified, status, 5500.0, 8)
+    assert out["top_verified"] and out["top_status"]
+    assert out["basis"] == "confirmed attendance"
+    # on these numbers the conclusion flips — and it must say so
+    if out["top_verified"] != out["top_status"]:
+        assert "8 consults nobody marked either way" in out["flip"]
+        assert out["top_status"] in out["flip"] and out["top_verified"] in out["flip"]
+    else:
+        assert "holds either way" in out["flip"]
+
+
+def test_a2_outcome_and_rate_are_separate_and_never_contradict(fixture_build):
+    """A2: a stage may be on course to beat the client plan while its rate is
+    under plan. Both render — in different fields — and no single sentence
+    carries contradictory status words."""
+    d = fixture_build
+    closed = next(s for s in d["stages"] if s["id"] == "closed")
+    assert "outcome_status" in closed and "status" in closed
+    contradictory = [("ahead", "behind"), ("on course to beat plan", "short of plan")]
+    for sentence in d["read"]["sentences"] + [d["verdict"]]:
+        low = sentence.lower()
+        for a, b in contradictory:
+            assert not (a in low and b in low), sentence
+
+
+def test_a3_cost_metrics_never_read_ahead(fixture_build):
+    """A3: spending more than planned is 'over plan', never 'ahead'."""
+    over = TV._flow_status(7000, 5000, "$", "cost")
+    assert over["word"] == "$2,000 over plan" and over["tone"] == "over"
+    under = TV._flow_status(4000, 5000, "$", "cost")
+    assert under["word"] == "$1,000 under plan"
+    assert TV._flow_status(5100, 5000, "$", "cost")["word"] == "on budget"
+    # and no cost stage on a real build is ever labelled ahead
+    d = fixture_build
+    for s in d["stages"]:
+        if s.get("polarity") == "cost":
+            assert "ahead" not in s["status"]["word"], s["id"]
+
+
+def test_a4_three_way_status_band():
+    """A4: outside the interval → ahead/behind; inside and tight → on track;
+    inside and wide → too early to tell."""
+    assert TV._rate_status(60, 100, 0.90)["word"] == "behind"      # outside
+    big = TV._rate_status(88, 173, 0.49)                            # inside, tight
+    assert big["word"] == "on track"
+    small = TV._rate_status(3, 5, 0.49)                             # inside, wide
+    assert small["word"] == "too early to tell"
+
+
+def test_a5_unmodelled_stages_say_usually_not_planned(fixture_build):
+    d = fixture_build
+    q = next(s for s in d["stages"] if s["id"] == "qualified")
+    assert q["plan_word"] == "usually"
+    assert "planned" not in q["actual_text"]
+    assert "usually" in q["actual_text"] or q["rate"] is None
+
+
+def test_a5_comparator_names_itself_honestly():
+    """A modelled comparison says 'planned'; a measured one says 'usually'."""
+    for key, word in (("scenario", "planned"), ("usual", "usually"),
+                      ("last_month", "last month")):
+        c = TV._comparator(key, {"cpl0": 90.0}, TV.resolve_window("mtd"))
+        assert c["plan_word"] == word, key
+
+
+def test_a6_identities_hold_and_denominators_are_named(fixture_build):
+    d = fixture_build
+    assert d["identities"] and all(i["holds"] for i in d["identities"]), d["identities"]
+    names = [i["name"] for i in d["identities"]]
+    assert any("booked = due + upcoming" in n for n in names)
+    assert any("qualified + unqualified + unknown" in n for n in names)
+    showed = next(s for s in d["stages"] if s["id"] == "showed")
+    assert "of" in showed["sub"] and "consults" in showed["sub"]
+
+
+def test_a6_every_coverage_figure_names_its_denominator():
+    """~86% of WHAT? Every coverage number says what it is a share of."""
+    out = TV._setter_activity([{"contact_id": "x"}, {"contact_id": "y"}])
+    assert f"of {out['of']} leads" in out["note"]
+    assert out["coverage_pct"] is not None and out["of"] == 2
+
+
+# ══ PART B — one qualification rule + the drift guard ══════════════════════
+
+def test_b1_exactly_one_qualification_call_site():
+    """#157: the rule lives in attribution_engine.qualify_lead and NOWHERE
+    else. Two rules meant two 'qualified' numbers from the same rows."""
+    import glob
+    offenders = []
+    for path in glob.glob(os.path.join(ROOT, "*.py")) + \
+            glob.glob(os.path.join(ROOT, "dashboard", "*.py")):
+        name = os.path.basename(path)
+        if name in ("attribution_engine.py", "revenue_bands.py"):
+            continue
+        src = open(path, encoding="utf-8").read()
+        if "meets_floor(" in src:
+            offenders.append(name)
+    assert not offenders, f"a second qualification path exists in {offenders}"
+    ae = _read("attribution_engine.py")
+    assert ae.count("def qualify_lead(") == 1
+    assert "lead[\"qualified\"] = _q[\"qualified\"]" in ae
+
+
+def test_b1_one_rule_gives_one_answer():
+    """The same row must qualify identically through either caller."""
+    import attribution_engine as AE
+    lead = {"revenue_raw": "$50k - $100k", "finalised": True,
+            "setter_outcome": "set"}
+    direct = AE.qualify_lead(lead)
+    via_view = TV._qualify([lead])
+    assert direct["state"] == "qualified"
+    assert len(via_view["qualified"]) == 1
+
+
+def test_b1_unrecognised_value_is_unknown_not_below_floor():
+    """THE BUG: an unreadable picklist value used to read as 'below floor'."""
+    import attribution_engine as AE
+    res = AE.qualify_lead({"revenue_raw": "$500k-$1m squillion",
+                           "finalised": True, "setter_outcome": "set"})
+    assert res["state"] == "unknown"
+    assert res["reason"] == "revenue value not recognised"
+    out = TV._qualify([{"revenue_raw": "$500k-$1m squillion", "finalised": True,
+                        "setter_outcome": "set"}])
+    assert len(out["unknown"]) == 1 and not out["unqualified"]
+
+
+def test_b3_picklist_drift_fires_loudly():
+    """A new spelling is a schema change, named — never a silent unknown."""
+    kv_store.put("feed:extra:picklist_drift", [])
+    TV._qualify([{"revenue_raw": "$77k to $99k", "finalised": True,
+                  "setter_outcome": "set"}] * 3)
+    items = kv_store.get("feed:extra:picklist_drift") or []
+    assert items, "no drift finding was raised"
+    assert "picklist changed" in items[0]["title"]
+    assert "$77k to $99k" in items[0]["action"]
+    assert "feed:extra:picklist_drift" in _read("action_feed.py")
+
+
+def test_b_current_picklist_spellings_all_parse():
+    """Every spelling seen in the live tracker must parse."""
+    import revenue_bands as RB
+    for v in ("$50k - $100k", "$20k - $50k", "Under $20k", "$100k - $200k",
+              "$200k +", "$50k-100k", "$20k-50k"):
+        assert RB.parse_band(v)["state"] == "parsed", v

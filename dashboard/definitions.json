@@ -7,7 +7,8 @@
   "areas": "The detail pages",
   "projection": "Forward projection page",
   "drawers": "The 'show your work' windows",
-  "travelling": "How we're travelling"
+  "travelling": "How we're travelling",
+  "health": "System health"
  },
  "entries": {
   "cash_on_hand": {
@@ -1368,6 +1369,63 @@
    "screen": "travelling",
    "meaning": "The one number for the month — what's happened, what was planned, and where it lands at this pace.",
    "selector": "[data-def='tv_northstar']"
+  },
+  "tv_show_range": {
+   "name": "Confirmed and best case",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "Two numbers for attendance: the consults we can confirm someone attended, and the best case if everyone nobody marked also turned up.",
+   "computed": "Confirmed = a call record over a minute, a recorded outcome, or a deal that followed. The upper figure adds the consults nobody marked either way.",
+   "selector": "[data-def='tv_show_range']",
+   "polarity": "gain"
+  },
+  "tv_outcome_status": {
+   "name": "On course / short of plan",
+   "kind": "chip",
+   "screen": "travelling",
+   "meaning": "Whether the month is heading for the number of clients the comparison expects — separate from whether the rates are hitting.",
+   "computed": "The month-end projection against the comparison's own count for the window.",
+   "selector": ".tv-outcome-status",
+   "polarity": "gain"
+  },
+  "tv_rate_status": {
+   "name": "Ahead / behind / on track / too early",
+   "kind": "chip",
+   "screen": "travelling",
+   "meaning": "How a conversion rate compares. 'Too early to tell' means the sample is still too small to call — it is never a bad sign by itself.",
+   "computed": "The gap between the actual rate and the compared rate, against the margin that sample size allows.",
+   "selector": ".tv-status-word",
+   "polarity": "gain"
+  },
+  "tv_gap_flip": {
+   "name": "Does the conclusion hold?",
+   "kind": "metric",
+   "screen": "travelling",
+   "meaning": "Whether the biggest gap changes depending on the consults nobody marked. If it does, that is said plainly.",
+   "selector": "[data-def='tv_gap_flip']"
+  },
+  "tv_identities": {
+   "name": "The sums that must add up",
+   "kind": "chip",
+   "screen": "travelling",
+   "meaning": "Checks that the stages add up — booked equals due plus upcoming, leads equal qualified plus unqualified plus unknown.",
+   "selector": "[data-def='tv_identities']"
+  },
+  "section-estate-health": {
+   "name": "Estate scan",
+   "kind": "panel",
+   "screen": "health",
+   "meaning": "Three scans: does every page work, do the pages agree with each other, and do the numbers agree with the outside world.",
+   "computed": "Run on every deploy and nightly. A scan that stops running is itself reported as a failure.",
+   "selector": "#section-estate-health"
+  },
+  "pitched_measured": {
+   "name": "Measured since",
+   "kind": "chip",
+   "screen": "travelling",
+   "meaning": "Pitched is a lower bound for older deals, but measured for every deal since the stage recorder started watching.",
+   "computed": "The recorder writes down each stage change it observes, so entering the pitched stage becomes a real event rather than a snapshot.",
+   "selector": "[data-def='pitched_measured']"
   }
  }
 }

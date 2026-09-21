@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 K_SAVED = "travelling:checks"          # the journaled history strip
 BAND_PCT = 0.10                        # flow-stage "on track" band (config)
+RATE_TIGHT = 0.08                      # a rate CI at or under this is decisive (A4)
 REACHED_SECONDS = 60                   # call ≥ this = a real conversation
 QUALIFIED_FLOOR = 20_000.0             # revenue floor for "qualified"
 
@@ -105,44 +106,53 @@ def _lead_rows(w0: dt.date, w1: dt.date) -> tuple[list[dict], list[dict]]:
 
 
 def _qualify(leads: list[dict]) -> dict:
-    """The ruled split: qualified · unqualified (with the failing condition)
-    · UNKNOWN (tracker context missing — never counted as unqualified).
-    Evidence is the tracker row itself: the setter outcome, the revenue band
-    the lead answered, and the disqualification reason."""
-    import revenue_bands
+    """The three-way split, computed by THE ONE RULE
+    (attribution_engine.qualify_lead) — this view no longer carries its own
+    copy (#157). UNKNOWN stays its own bucket. A revenue value the picklist
+    doesn't recognise raises a LOUD drift finding rather than quietly
+    becoming 'below floor'."""
+    import attribution_engine as AE
     q, unq, unknown = [], [], []
     reasons = {"disqualified": 0, "revenue below floor": 0,
-               "revenue question unanswered": 0}
+               "revenue question unanswered": 0, "revenue value not recognised": 0}
+    drift = {}
     for l in leads:
-        has_context = bool(l.get("setter_outcome") or l.get("revenue_raw")
-                           or l.get("dq_reason"))
-        if not has_context:
-            unknown.append(l)
-            continue
-        rv = revenue_bands.parse_band(l.get("revenue_raw"))
-        meets = revenue_bands.meets_floor(rv, QUALIFIED_FLOOR)
-        form_complete = bool(l.get("revenue_raw"))
-        finalised = l.get("finalised", True)
-        if finalised and meets is True and form_complete:
+        res = AE.qualify_lead(l, None, QUALIFIED_FLOOR)
+        if res.get("flag"):
+            drift[res["flag"]] = drift.get(res["flag"], 0) + 1
+        if res["state"] == "qualified":
             q.append(l)
-            continue
-        if not finalised:
-            reasons["disqualified"] += 1
-            unq.append(l)
-            continue
-        if not form_complete:
-            reasons["revenue question unanswered"] += 1
-            unq.append(l)
-            continue
-        if meets is None:
-            # the revenue answer is there but this picklist value isn't one we
-            # can read — that is UNKNOWN, never "below floor"
+        elif res["state"] == "unknown":
             unknown.append(l)
-            continue
-        reasons["revenue below floor"] += 1
-        unq.append(l)
+            if res.get("reason") in reasons:
+                reasons[res["reason"]] += 1
+        else:
+            unq.append(l)
+            if res.get("reason") in reasons:
+                reasons[res["reason"]] += 1
+    if drift:
+        _publish_picklist_drift(drift)
     return {"qualified": q, "unqualified": unq, "unknown": unknown,
-            "reasons": reasons}
+            "reasons": {k: v for k, v in reasons.items() if v},
+            "picklist_drift": drift}
+
+
+def _publish_picklist_drift(drift: dict) -> None:
+    """B3 — a picklist value the parser doesn't recognise is a SCHEMA CHANGE,
+    named loudly (the same class as a new workbook tab), never a silent
+    'unknown'."""
+    try:
+        items = [{"severity": "S2", "category": "data_quality",
+                  "title": f"revenue picklist changed — {n} lead"
+                           f"{'s' if n != 1 else ''} on a value the parser "
+                           f"doesn't recognise",
+                  "action": (flag[:200] + " · add the spelling to "
+                             "revenue_bands so these leads stop counting as "
+                             "unknown")}
+                 for flag, n in list(drift.items())[:5]]
+        kv_store.put("feed:extra:picklist_drift", items)
+    except Exception as e:  # noqa: BLE001
+        logger.info("picklist drift publish failed: %s", e)
 
 
 def _appointments(w0: dt.date, w1: dt.date) -> dict:
@@ -234,12 +244,30 @@ def _pitched(shown_contact_ids: set, w0: dt.date, w1: dt.date) -> dict:
                              "person": o.get("name"),
                              "stage": o.get("stage_name"),
                              "moved_at": str(o.get("last_stage_change_at") or "")[:16]})
+        # F — anything the recorder has watched is MEASURED; the rest keeps
+        # the honest lower-bound label
+        measured, since = 0, None
+        try:
+            import stage_history
+            since = stage_history.started_at()
+            watched = stage_history.watched_contacts()
+            ev = stage_history.pitched_events(since)
+            measured = len({e.get("contact_id") for e in ev["events"]
+                            if e.get("contact_id") in ids})
+        except Exception as e:  # noqa: BLE001
+            logger.info("stage history unavailable: %s", e)
         note = ("a lower bound, counted only among this window's consults — "
                 "the CRM records just a lead's current stage, so anyone "
                 "pitched and later moved on isn't counted here")
+        if since:
+            note += (f". {measured} of them are measured, not inferred: the "
+                     f"stage recorder has been watching every change since "
+                     f"{since}")
     except Exception as e:  # noqa: BLE001
         note = f"GHL stages unavailable ({str(e)[:60]}) — not recorded"
     return {"rows": rows, "count": len(rows), "lower_bound": True,
+            "measured_since": locals().get("since"),
+            "measured_count": locals().get("measured", 0),
             "note": note,
             "package_line": ("Propose a 'Pitched' outcome column on the "
                              "Lead-to-Cash tracker so this stage is recorded "
@@ -319,7 +347,12 @@ def _comparator(compare: str, scenario: dict | None, win: dict) -> dict:
     usual = {"cpl": v("cpl"), "set_rate": v("set_rate"), "show_rate": v("show_rate"),
              "close_rate": v("close_rate"), "spend_month": v("monthly_spend_baseline"),
              "qualified_rate": None}
-    out = {"key": compare, "usual": usual, "from_usual": [], "label": ""}
+    out = {"key": compare, "usual": usual, "from_usual": [], "label": "",
+           # A5 — a modelled comparison says "planned"; a measured one says
+           # "usually". A stage the comparison doesn't model NEVER reads
+           # "planned".
+           "plan_word": ("planned" if compare in ("scenario", "plan")
+                         else "usually")}
     share = win["days_total"] / 30.44      # scale monthly figures to the window
 
     if compare == "scenario" and scenario:
@@ -349,6 +382,7 @@ def _comparator(compare: str, scenario: dict | None, win: dict) -> dict:
         else:
             out["label"] = "your usual rates (no plan covers this window)"
             out["key"] = "usual"
+            out["plan_word"] = "usually"
     elif compare == "last_month":
         t = win["end"]
         pm_end = t.replace(day=1) - dt.timedelta(days=1)
@@ -366,7 +400,7 @@ def _comparator(compare: str, scenario: dict | None, win: dict) -> dict:
             "close_rate": (prev["closed"] / prev["showed"]) if prev["showed"] else usual["close_rate"]})
     if not out.get("label"):
         out.update({"label": "your usual rates (measured over 90 days)",
-                    "key": "usual",
+                    "key": "usual", "plan_word": "usually",
                     "spend_month": (usual["spend_month"] or 0) * share,
                     "cpl": usual["cpl"], "set_rate": usual["set_rate"],
                     "show_rate": usual["show_rate"], "close_rate": usual["close_rate"]})
@@ -379,6 +413,8 @@ def _comparator(compare: str, scenario: dict | None, win: dict) -> dict:
         if not out.get(k):
             out[k] = usual.get(k)
             out["from_usual"].append(k)
+    if compare == "last_month":
+        out["plan_word"] = "last month"
     return out
 
 
@@ -399,43 +435,78 @@ def snapshot_counts(w0: dt.date, w1: dt.date) -> dict:
 
 # ── status words ────────────────────────────────────────────────────────────
 
-def _flow_status(actual, plan_to_date, unit: str) -> dict:
-    """Flow stages: a band around plan-to-date. Never red on noise."""
+def _flow_status(actual, plan_to_date, unit: str, polarity: str = "gain") -> dict:
+    """Flow stages: a band around plan-to-date.
+
+    POLARITY (A3): a GAIN metric over plan is 'ahead'; a COST metric over
+    plan is 'over plan' — spending more than planned is never 'ahead'."""
     if plan_to_date is None or actual is None:
         return {"word": "no comparison", "tone": "neutral",
-                "detail": "the comparator doesn't model this stage"}
+                "detail": "the comparison doesn't cover this stage"}
     if plan_to_date <= 0:
         return {"word": "on track", "tone": "ok", "detail": ""}
     diff = actual - plan_to_date
     if abs(diff) <= plan_to_date * BAND_PCT:
-        return {"word": "on track", "tone": "ok", "detail": ""}
+        return {"word": ("on budget" if polarity == "cost" else "on track"),
+                "tone": "ok", "detail": ""}
     n = abs(diff)
     txt = (f"${n:,.0f}" if unit == "$" else f"{n:,.0f} {unit}")
+    if polarity == "cost":
+        return ({"word": f"{txt} over plan", "tone": "over", "detail": ""}
+                if diff > 0 else
+                {"word": f"{txt} under plan", "tone": "under", "detail": ""})
     return ({"word": f"{txt} ahead", "tone": "ahead", "detail": ""} if diff > 0
             else {"word": f"{txt} behind", "tone": "behind", "detail": ""})
 
 
-def _rate_status(hits, n, plan_rate) -> dict:
-    """Conversion stages: compare RATES with the sample's confidence
-    interval. A small sample reads 'too early to tell' — never red."""
+def _rate_status(hits, n, plan_rate, polarity: str = "gain",
+                 plan_word: str = "planned") -> dict:
+    """Conversion stages, THREE-WAY (A4):
+      · plan OUTSIDE the sample's confidence interval → ahead / behind
+      · plan INSIDE it and the interval is tight (≤ threshold) → on track
+      · interval wider than the threshold (small sample) → too early to tell
+    A big sample sitting on its plan reads 'on track', not 'too early'."""
     if not n:
         return {"word": "too early to tell", "tone": "neutral",
                 "detail": "nothing has reached this stage yet"}
     if plan_rate is None:
         return {"word": "no comparison", "tone": "neutral",
-                "detail": "the comparator doesn't model this rate"}
+                "detail": "the comparison doesn't cover this rate"}
     p = hits / n
     half = 1.96 * math.sqrt(max(p * (1 - p), 0.01) / n)
     diff = p - plan_rate
-    if abs(diff) <= half:
-        return {"word": "too early to tell", "tone": "neutral",
-                "detail": f"only {n} so far — the difference is inside the "
-                          f"margin for that sample"}
-    return ({"word": "ahead", "tone": "ahead",
-             "detail": f"{p*100:.0f}% against {plan_rate*100:.0f}% planned"}
-            if diff > 0 else
-            {"word": "behind", "tone": "behind",
-             "detail": f"{p*100:.0f}% against {plan_rate*100:.0f}% planned"})
+    detail = f"{p*100:.0f}% against {plan_rate*100:.0f}% {plan_word}"
+    if abs(diff) > half:
+        if diff > 0:
+            return ({"word": "over plan", "tone": "over", "detail": detail}
+                    if polarity == "cost" else
+                    {"word": "ahead", "tone": "ahead", "detail": detail})
+        return ({"word": "under plan", "tone": "under", "detail": detail}
+                if polarity == "cost" else
+                {"word": "behind", "tone": "behind", "detail": detail})
+    if half <= RATE_TIGHT:
+        return {"word": "on track", "tone": "ok",
+                "detail": detail + f" — {n} so far, close enough to call it level"}
+    return {"word": "too early to tell", "tone": "neutral",
+            "detail": f"only {n} so far — the difference is inside the "
+                      f"margin for that sample"}
+
+
+def _outcome_status(projected, plan_count, unit: str = "clients") -> dict:
+    """A2: the OUTCOME status — projected count against the plan count. A
+    stage can be on course for more clients than planned while its rate is
+    well under plan; both are true and both are rendered, separately."""
+    if projected is None or not plan_count:
+        return {"word": "", "tone": "neutral", "detail": ""}
+    diff = projected - plan_count
+    if abs(diff) <= max(plan_count * BAND_PCT, 0.5):
+        return {"word": "on course", "tone": "ok",
+                "detail": f"{projected:.0f} projected against {plan_count:.0f} planned"}
+    if diff > 0:
+        return {"word": "on course to beat plan", "tone": "ahead",
+                "detail": f"{projected:.0f} projected against {plan_count:.0f} planned"}
+    return {"word": "short of plan", "tone": "behind",
+            "detail": f"{projected:.0f} projected against {plan_count:.0f} planned"}
 
 
 # ── the build ───────────────────────────────────────────────────────────────
@@ -486,13 +557,22 @@ def build(window: str = "mtd", compare: str = "scenario",
     n_leads = len(leads)
     n_booked = len(ap["booked"])
     n_due = len(ap["due"])
-    n_showed = len(sh["all"])
     n_closed = cl["count"]
+    # A1 — TWO SHOW BASES. "Nobody marked a no-show" is not attendance, so
+    # the PRIMARY count is the confirmed one (a call record, a recorded
+    # outcome, or a deal that followed). The status-only consults form the
+    # upper bound and are named everywhere they matter.
+    n_showed = len(sh["verified"]) + len(sh["by_close"])      # confirmed
+    n_unconfirmed = len(sh["unverified"])
+    n_showed_status = n_showed + n_unconfirmed                # upper bound
+    n_closed_of_confirmed = n_closed
 
     # ── rates ──
     r_book = (n_booked / n_leads) if n_leads else None
-    r_show = (n_showed / n_due) if n_due else None
+    r_show = (n_showed / n_due) if n_due else None            # PRIMARY
+    r_show_upper = (n_showed_status / n_due) if n_due else None
     r_close = (n_closed / n_showed) if n_showed else None
+    r_close_status = (n_closed / n_showed_status) if n_showed_status else None
     r_qual = (len(qual["qualified"]) /
               (n_leads - len(qual["unknown"]))) if (n_leads - len(qual["unknown"])) else None
 
@@ -502,8 +582,12 @@ def build(window: str = "mtd", compare: str = "scenario",
     proj_leads = n_leads + exp_new_leads
     bk = r_book if r_book is not None else (cmp_.get("set_rate") or 0)
     proj_booked = n_booked + exp_new_leads * bk
+    # projections ride the CONFIRMED rate; the upper bound lives in the row's
+    # own working, never in the headline figure
     swr = r_show if r_show is not None else (cmp_.get("show_rate") or 0)
     proj_showed = n_showed + len(ap["upcoming"]) * swr
+    proj_showed_upper = (n_showed_status + len(ap["upcoming"]) *
+                         (r_show_upper if r_show_upper is not None else swr))
     cr = r_close if r_close is not None else (cmp_.get("close_rate") or 0)
     awaiting = max(n_showed - n_closed, 0)
     lag_in_month = 0.7                      # the measured share closing in-month
@@ -529,6 +613,17 @@ def build(window: str = "mtd", compare: str = "scenario",
     plan_spend_td = (cmp_.get("spend_month") or 0) * share or None
     plan_leads_td = (cmp_.get("leads_month") or 0) * share or None
     plan_booked_td = (plan_leads_td * (cmp_.get("set_rate") or 0)) if plan_leads_td else None
+
+    # A2 — the plan's COUNT for each conversion stage (what the comparison
+    # expects by month end), so outcome and rate are judged separately
+    plan_leads_full = cmp_.get("leads_month")
+    plan_booked_full = (plan_leads_full * (cmp_.get("set_rate") or 0)
+                        if plan_leads_full else None)
+    plan_showed_full = (plan_booked_full * (cmp_.get("show_rate") or 0)
+                        if plan_booked_full else None)
+    plan_closed_full = (plan_showed_full * (cmp_.get("close_rate") or 0)
+                        if plan_showed_full else None)
+    plan_word = cmp_.get("plan_word", "planned")
 
     def roster_of(rows, kind):
         out = []
@@ -560,7 +655,8 @@ def build(window: str = "mtd", compare: str = "scenario",
          "actual": spend, "actual_text": (f"${spend:,.0f}" if spend is not None else "—"),
          "plan_to_date": plan_spend_td, "projection": proj_spend,
          "projection_text": f"${proj_spend:,.0f}",
-         "status": _flow_status(spend, plan_spend_td, "$"),
+         "polarity": "cost",
+         "status": _flow_status(spend, plan_spend_td, "$", "cost"),
          "sub": (f"running at ${daily_run:,.0f}/day" if daily_run else
                  "today's spend is still provisional"),
          "roster": [], "roster_kind": "none",
@@ -571,7 +667,8 @@ def build(window: str = "mtd", compare: str = "scenario",
          "actual": n_leads, "actual_text": f"{n_leads}",
          "plan_to_date": plan_leads_td, "projection": proj_leads,
          "projection_text": f"{proj_leads:,.0f}",
-         "status": _flow_status(n_leads, plan_leads_td, "leads"),
+         "polarity": "gain",
+         "status": _flow_status(n_leads, plan_leads_td, "leads", "gain"),
          "sub": (f"${spend / n_leads:,.0f} per lead" if spend and n_leads else ""),
          "roster": roster_of(leads, "lead"), "roster_kind": "lead",
          "math": "Tracker rows whose lead date falls in the window. Cost per "
@@ -581,9 +678,10 @@ def build(window: str = "mtd", compare: str = "scenario",
          "actual_text": (f"{r_qual*100:.0f}% qualified" if r_qual is not None else "—"),
          "rate": r_qual, "rate_base": n_leads - len(qual["unknown"]),
          "plan_rate": usual_qual, "projection": None, "projection_text": "",
-         "plan_rate_from_usual": True,
+         "plan_rate_from_usual": True, "plan_word": "usually", "polarity": "gain",
          "status": _rate_status(len(qual["qualified"]),
-                                n_leads - len(qual["unknown"]), usual_qual),
+                                n_leads - len(qual["unknown"]), usual_qual,
+                                "gain", "usually"),
          "sub": ((f"usual {usual_qual*100:.0f}% · " if usual_qual else "")
                  + f"{len(qual['unqualified'])} unqualified, "
                  f"{len(qual['unknown'])} unknown"),
@@ -598,7 +696,9 @@ def build(window: str = "mtd", compare: str = "scenario",
          "actual": n_booked, "actual_text": f"{n_booked}",
          "plan_to_date": plan_booked_td, "projection": proj_booked,
          "projection_text": f"{proj_booked:,.0f}",
-         "status": _flow_status(n_booked, plan_booked_td, "consults"),
+         "polarity": "gain",
+         "outcome_status": _outcome_status(proj_booked, plan_booked_full, "consults"),
+         "status": _flow_status(n_booked, plan_booked_td, "consults", "gain"),
          "sub": (f"{len(ap['cancelled'])} cancelled" if ap["cancelled"] else ""),
          "roster": roster_of(ap["booked"], "appt"), "roster_kind": "appt",
          "math": ("Appointments booked in the window, counted on the day they "
@@ -617,18 +717,34 @@ def build(window: str = "mtd", compare: str = "scenario",
         {"id": "showed", "name": "Showed", "kind": "rate",
          "actual": n_showed, "actual_text": f"{n_showed}",
          "rate": r_show, "rate_base": n_due,
-         "plan_rate": cmp_.get("show_rate"),
+         "rate_upper": r_show_upper, "unconfirmed": n_unconfirmed,
+         "range_text": ((f"{r_show*100:.0f}% confirmed, up to "
+                         f"{r_show_upper*100:.0f}% if the {n_unconfirmed} "
+                         f"unconfirmed consult{'s' if n_unconfirmed != 1 else ''} "
+                         f"turned up")
+                        if (r_show is not None and n_unconfirmed) else None),
+         "plan_rate": cmp_.get("show_rate"), "plan_word": plan_word,
+         "polarity": "gain",
          "projection": proj_showed, "projection_text": f"{proj_showed:,.0f}",
-         "status": _rate_status(n_showed, n_due, cmp_.get("show_rate")),
-         "sub": (f"{len(sh['verified'])} confirmed by a call record or outcome, "
-                 f"{len(sh['unverified'])} by status only, "
-                 f"{len(sh['noshow'])} no-shows"),
-         "roster": roster_of(sh["all"], "appt"), "roster_kind": "appt",
-         "extra_rosters": {"no-shows": roster_of(sh["noshow"], "appt")},
-         "math": ("Of the consults due, the ones we can evidence: a call "
-                  "record over a minute, a recorded outcome, or a deal that "
-                  "followed. Month end adds upcoming consults at this "
-                  "window's show rate.")},
+         "projection_upper": proj_showed_upper,
+         "outcome_status": _outcome_status(proj_showed, plan_showed_full, "consults"),
+         "status": _rate_status(n_showed, n_due, cmp_.get("show_rate"),
+                                "gain", plan_word),
+         "sub": (f"{n_showed} of {n_due} consults confirmed — "
+                 f"{len(sh['verified'])} by a call record or a recorded outcome, "
+                 f"{len(sh['by_close'])} by the deal that followed; "
+                 f"{n_unconfirmed} nobody marked either way, "
+                 f"{len(sh['noshow'])} marked no-show"),
+         "confirm_door": (n_unconfirmed > 0),
+         "roster": roster_of(sh["verified"] + sh["by_close"], "appt"),
+         "roster_kind": "appt",
+         "extra_rosters": {"nobody marked these": roster_of(sh["unverified"], "appt"),
+                           "no-shows": roster_of(sh["noshow"], "appt")},
+         "math": ("Counted only where attendance is confirmed: a call record "
+                  "over a minute, a recorded outcome, or a deal that followed. "
+                  "Consults nobody marked either way are NOT counted as "
+                  "attendance — they set the upper end of the range. Month end "
+                  "adds upcoming consults at the confirmed rate.")},
         {"id": "pitched", "name": "Pitched", "kind": "evidence",
          "actual": pit["count"],
          "actual_text": (f"at least {pit['count']}" if pit["count"]
@@ -644,9 +760,14 @@ def build(window: str = "mtd", compare: str = "scenario",
         {"id": "closed", "name": "Closed", "kind": "rate",
          "actual": n_closed, "actual_text": f"{n_closed}",
          "rate": r_close, "rate_base": n_showed,
-         "plan_rate": cmp_.get("close_rate"),
+         "plan_rate": cmp_.get("close_rate"), "plan_word": plan_word,
+         "polarity": "gain",
          "projection": proj_closed, "projection_text": f"{proj_closed:,.0f}",
-         "status": _rate_status(n_closed, n_showed, cmp_.get("close_rate")),
+         "outcome_status": _outcome_status(proj_closed, plan_closed_full, "clients"),
+         "status": _rate_status(n_closed, n_showed, cmp_.get("close_rate"),
+                                "gain", plan_word),
+         "rate_note": ("measured against confirmed attendance — "
+                       f"{n_closed} of {n_showed}"),
          "sub": ("counted inside the open gap window — labelled"
                  if cl["gap_open"] else ""),
          "roster": roster_of(cl["rows"], "close"), "roster_kind": "close",
@@ -670,7 +791,8 @@ def build(window: str = "mtd", compare: str = "scenario",
                                 ((cmp_.get("leads_month") or 0) * share *
                                  (cmp_.get("set_rate") or 0) *
                                  (cmp_.get("show_rate") or 0) *
-                                 (cmp_.get("close_rate") or 0)) or None, "$"),
+                                 (cmp_.get("close_rate") or 0)) or None, "$", "gain"),
+         "polarity": "gain",
          "sub": (f"${cash['all_receipts']:,.0f} came in from every client — "
                  f"not from this window's ads"
                  if cash.get("all_receipts") else ""),
@@ -682,20 +804,47 @@ def build(window: str = "mtd", compare: str = "scenario",
     ]
 
     _decorate(stages, cmp_, win)
-    gaps = _gap_finder(win, cmp_, {"leads": n_leads, "booked": n_booked,
-                                   "due": n_due, "showed": n_showed,
-                                   "closed": n_closed},
-                       {"book": r_book, "show": r_show, "close": r_close},
-                       cash_per_client, exp_new_leads)
+    gaps_both = _gap_finder(
+        win, cmp_,
+        {"leads": n_leads, "booked": n_booked, "due": n_due,
+         "showed": n_showed, "showed_status": n_showed_status,
+         "closed": n_closed},
+        {"book": r_book, "show": r_show, "close": r_close},
+        {"book": r_book, "show": r_show_upper, "close": r_close_status},
+        cash_per_client, n_unconfirmed)
+    gaps = gaps_both["ranked"]
     checks = _cross_checks(leads, ap, sh, cl, cash)
+    # A6 — the identities this view must satisfy, stated and tested
+    identities = [
+        {"name": "consults booked = due + upcoming",
+         "left": n_booked, "right": len(ap["due"]) + len(ap["upcoming"]),
+         "note": "cancelled consults are counted beside, never inside booked"},
+        {"name": "leads = qualified + unqualified + unknown",
+         "left": n_leads,
+         "right": (len(qual["qualified"]) + len(qual["unqualified"])
+                   + len(qual["unknown"])), "note": ""},
+        {"name": "consults due = confirmed + unconfirmed + no-shows",
+         "left": n_due,
+         "right": n_showed + n_unconfirmed + len(sh["noshow"]), "note": ""},
+    ]
+    for i in identities:
+        i["holds"] = abs(i["left"] - i["right"]) < 0.001
     verdict = _verdict(stages, gaps, proj_closed, cmp_, win)
-    read = _read(stages, gaps, proj_closed, cmp_, win, qual, n_leads)
+    read = _read(stages, gaps, proj_closed, cmp_, win, qual, n_leads,
+                 gaps_both=gaps_both,
+                 show_bases={"confirmed": n_showed, "unconfirmed": n_unconfirmed,
+                             "upper": n_showed_status, "due": n_due,
+                             "rate_confirmed": r_show, "rate_upper": r_show_upper})
 
     return {
         "window": {**win, "start": str(w0), "end": str(w1)},
         "compare": {"key": cmp_["key"], "label": cmp_["label"],
                     "from_usual": cmp_["from_usual"]},
-        "stages": stages, "gaps": gaps, "checks": checks,
+        "stages": stages, "gaps": gaps, "gaps_both": gaps_both,
+        "identities": identities, "checks": checks,
+        "show_bases": {"confirmed": n_showed, "unconfirmed": n_unconfirmed,
+                       "upper": n_showed_status, "due": n_due,
+                       "rate_confirmed": r_show, "rate_upper": r_show_upper},
         "verdict": verdict, "read": read,
         "setter": setter,
         "actual_rates": {"cpl": (spend / n_leads) if (spend and n_leads) else None,
@@ -734,31 +883,34 @@ def _decorate(stages: list[dict], cmp_: dict, win: dict) -> None:
                 s["plan_text"] = (f"plan ${v:,.0f} to date" if s["unit"] == "$"
                                   else f"plan {v:,.0f} to date")
         elif s["kind"] == "rate" and s.get("rate") is not None:
-            # the wireframe's form: "planned 90%, actual 72%"
+            word = s.get("plan_word") or cmp_.get("plan_word", "planned")
             if s.get("plan_rate"):
-                s["actual_text"] = (f"planned {s['plan_rate']*100:.0f}%, "
+                s["actual_text"] = (f"{word} {s['plan_rate']*100:.0f}%, "
                                     f"actual {s['rate']*100:.0f}%")
                 if s.get("plan_rate_from_usual"):
-                    s["plan_text"] = "that plan figure is your usual rate"
+                    s["plan_text"] = ("that figure is your measured rate over "
+                                      "90 days, not something anyone planned")
             else:
                 s["actual_text"] = f"{s['rate']*100:.0f}%"
+            # A1 — the confirmed/upper range rides directly under the rate
+            if s.get("range_text"):
+                s["plan_text"] = s["range_text"]
             base = s.get("rate_base") or 0
             got = s.get("actual") or 0
             s["sub"] = (f"{got:.0f} of {base:.0f}"
                         + (f" · {s['sub']}" if s.get("sub") else ""))
 
 
-def _gap_finder(win, cmp_, counts, rates, cash_per_client, exp_new_leads) -> list[dict]:
-    """(actual rate − plan rate) × the downstream chain = clients and cash
-    this window. Ranked. Small samples marked rough."""
-    import compass_engine as CE
+def _gap_chain(cmp_, counts, rates, cash_per_client) -> list[dict]:
+    """(actual rate − compared rate) × the stages below it = clients and
+    cash in this window. Ranked, most costly first."""
     out = []
     chain = [
-        ("booking rate", rates["book"], cmp_.get("set_rate"), counts["leads"],
+        ("booking rate", rates.get("book"), cmp_.get("set_rate"), counts["leads"],
          (cmp_.get("show_rate") or 0) * (cmp_.get("close_rate") or 0)),
-        ("show rate", rates["show"], cmp_.get("show_rate"), counts["due"],
+        ("show rate", rates.get("show"), cmp_.get("show_rate"), counts["due"],
          (cmp_.get("close_rate") or 0)),
-        ("close rate", rates["close"], cmp_.get("close_rate"), counts["showed"], 1.0),
+        ("close rate", rates.get("close"), cmp_.get("close_rate"), counts["showed"], 1.0),
     ]
     for name, actual, plan, base, downstream in chain:
         if actual is None or plan is None or not base:
@@ -766,6 +918,7 @@ def _gap_finder(win, cmp_, counts, rates, cash_per_client, exp_new_leads) -> lis
         clients = (actual - plan) * base * downstream
         if abs(clients) < 0.05:
             continue
+        word = cmp_.get("plan_word", "planned")
         out.append({
             "stage": name, "actual_rate": round(actual, 4),
             "plan_rate": round(plan, 4), "base": base,
@@ -775,16 +928,43 @@ def _gap_finder(win, cmp_, counts, rates, cash_per_client, exp_new_leads) -> lis
             "direction": "ahead" if clients > 0 else "behind",
             "sentence": (
                 f"Your biggest gap is {name}: {actual*100:.0f}% against "
-                f"{plan*100:.0f}% planned. Closing it would be worth about "
-                f"{abs(clients):.0f} client{'s' if abs(clients) >= 2 else ''} "
+                f"{plan*100:.0f}% {word}. Closing it would be worth about "
+                f"{abs(clients):.0f} client{'s' if round(abs(clients)) != 1 else ''} "
                 f"and ${abs(clients) * (cash_per_client or 0):,.0f} this window."
                 if clients < 0 else
                 f"{name.capitalize()} is running ahead: {actual*100:.0f}% "
-                f"against {plan*100:.0f}% planned — worth about "
+                f"against {plan*100:.0f}% {word} — worth about "
                 f"{abs(clients):.0f} extra client"
-                f"{'s' if abs(clients) >= 2 else ''}.")})
-    out.sort(key=lambda g: g["clients"])      # most negative first
+                f"{'s' if round(abs(clients)) != 1 else ''}.")})
+    out.sort(key=lambda g: g["clients"])
     return out
+
+
+def _gap_finder(win, cmp_, counts, rates_verified, rates_status,
+                cash_per_client, unconfirmed: int) -> dict:
+    """A1: the gap ranking depends on which shows you believe. It is run on
+    BOTH bases — confirmed attendance, and attendance including the consults
+    nobody marked either way. When the top gap differs between them, that is
+    said in one sentence: the month's conclusion hangs on those consults."""
+    verified = _gap_chain(cmp_, counts, rates_verified, cash_per_client)
+    status = _gap_chain(cmp_, {**counts, "showed": counts.get("showed_status",
+                                                              counts["showed"])},
+                        rates_status, cash_per_client)
+    top_v = verified[0]["stage"] if verified else None
+    top_s = status[0]["stage"] if status else None
+    flip = None
+    if unconfirmed and top_v and top_s and top_v != top_s:
+        flip = (f"This depends on {unconfirmed} consult"
+                f"{'s' if unconfirmed != 1 else ''} nobody marked either way. "
+                f"If they turned up, your biggest gap is {top_s}; if they "
+                f"didn't, it's {top_v}.")
+    elif unconfirmed and top_v:
+        flip = (f"{unconfirmed} consult{'s' if unconfirmed != 1 else ''} "
+                f"nobody marked either way sit behind this — the ranking "
+                f"holds either way.")
+    return {"ranked": verified, "on_status_basis": status,
+            "top_verified": top_v, "top_status": top_s, "flip": flip,
+            "basis": "confirmed attendance"}
 
 
 def _cross_checks(leads, ap, sh, cl, cash) -> list[dict]:
@@ -830,46 +1010,64 @@ def _cross_checks(leads, ap, sh, cl, cash) -> list[dict]:
 
 
 def _verdict(stages, gaps, proj_closed, cmp_, win) -> str:
-    behind = [s["name"].lower() for s in stages if s["status"]["tone"] == "behind"]
-    ahead = [s["name"].lower() for s in stages if s["status"]["tone"] == "ahead"]
-    closed_stage = next((s for s in stages if s["id"] == "closed"), {})
-    plan_clients = None
-    if cmp_.get("leads_month") and cmp_.get("set_rate"):
-        plan_clients = (cmp_["leads_month"] * cmp_["set_rate"]
-                        * (cmp_.get("show_rate") or 0) * (cmp_.get("close_rate") or 0))
+    """A2: lead with the outcome that matters — clients — then diagnose the
+    rate. A stage can be on course for more clients than planned while its
+    rate is half of plan; the sentence says both without contradicting
+    itself."""
+    by = {s["id"]: s for s in stages}
+    closed = by.get("closed") or {}
+    outcome = closed.get("outcome_status") or {}
     bits = []
-    if behind:
-        bits.append("we're behind on " + behind[0])
-    if ahead:
-        bits.append(("and " if bits else "we're ") + "ahead on " + ahead[0])
-    head = (" ".join(bits).capitalize() if bits else
-            "We're tracking close to the comparison")
-    tail = (f" — projected {proj_closed:.0f} client"
-            f"{'s' if proj_closed >= 2 else ''} against "
-            f"{plan_clients:.0f} planned." if plan_clients else
-            f" — projected {proj_closed:.0f} client"
-            f"{'s' if proj_closed >= 2 else ''} by {win['label'].lower()} end.")
-    return head + tail
+    if outcome.get("detail"):
+        lead_in = {"on course to beat plan": "On course to beat the client plan",
+                   "short of plan": "Short of the client plan",
+                   "on course": "On course for the client plan"}.get(
+                       outcome.get("word"), "On the client plan")
+        bits.append(f"{lead_in}, {outcome['detail']}")
+    else:
+        bits.append(f"Projected {proj_closed:.0f} client"
+                    f"{'s' if proj_closed >= 2 else ''} by the end of the window")
+    # why: the rate diagnosis, named as a rate
+    rate_bits = []
+    for sid in ("close", "showed", "booked"):
+        st = by.get(sid if sid != "close" else "closed") or {}
+        rs = st.get("status") or {}
+        if rs.get("tone") in ("behind", "under") and rs.get("detail"):
+            friendly = {"Showed": "show", "Closed": "close",
+                        "Consults booked": "booking"}.get(st["name"],
+                                                          st["name"].lower())
+            rate_bits.append(f"{friendly} rate is {rs['detail']}")
+            break
+    volume = by.get("leads", {}).get("status") or {}
+    if volume.get("tone") == "ahead":
+        bits.append(f"volume is above plan ({volume['word']})")
+    if rate_bits:
+        bits.append(rate_bits[0])
+    tail = "; ".join(bits[1:])
+    return bits[0] + "." + (" " + tail[0].upper() + tail[1:] + "." if tail else "")
 
 
-def _read(stages, gaps, proj_closed, cmp_, win, qual, n_leads) -> dict:
+def _read(stages, gaps, proj_closed, cmp_, win, qual, n_leads,
+          gaps_both=None, show_bases=None) -> dict:
     """EDITH's 4–6 sentences. Every NUMBER is template-filled from the engine
-    (a test matches each one back to the rendered values); she composes
-    around them and never invents a cause."""
+    (a test matches each one back to the rendered values). She leads with the
+    outcome, diagnoses the rate separately (A2), and — where the month's
+    conclusion hangs on unconfirmed consults — says so (A1)."""
     by_id = {s["id"]: s for s in stages}
     numbers = {}
-    sents = []
-    sents.append(_verdict(stages, gaps, proj_closed, cmp_, win))
+    sents = [_verdict(stages, gaps, proj_closed, cmp_, win)]
     numbers["projected_closed"] = round(proj_closed, 0)
 
-    ahead = [s for s in stages if s["status"]["tone"] == "ahead"]
-    if ahead:
-        s = ahead[0]
-        sents.append(f"{s['name']} is ahead: {s['actual_text']} so far.")
-    behind = [s for s in stages if s["status"]["tone"] == "behind"]
-    if behind:
-        s = behind[0]
-        sents.append(f"{s['name']} is the soft spot at {s['actual_text']}.")
+    # A1 — the honesty sentence about attendance, before any gap claim
+    sb = show_bases or {}
+    if sb.get("unconfirmed"):
+        sents.append(f"{sb['confirmed']} of {sb['due']} consults are confirmed "
+                     f"attended; {sb['unconfirmed']} nobody marked either way, "
+                     f"so the show rate reads "
+                     f"{(sb['rate_confirmed'] or 0)*100:.0f}% confirmed and up "
+                     f"to {(sb['rate_upper'] or 0)*100:.0f}% at best.")
+        numbers["confirmed_shows"] = sb["confirmed"]
+        numbers["unconfirmed_shows"] = sb["unconfirmed"]
 
     if gaps and gaps[0]["clients"] < 0:
         g = gaps[0]
@@ -877,6 +1075,8 @@ def _read(stages, gaps, proj_closed, cmp_, win, qual, n_leads) -> dict:
                                       "still small." if g["rough"] else ""))
         numbers["gap_clients"] = abs(round(g["clients"]))
         numbers["gap_cash"] = abs(round(g["cash"]))
+    if gaps_both and gaps_both.get("flip"):
+        sents.append(gaps_both["flip"])
 
     spend = by_id.get("spend", {})
     if spend.get("projection"):
@@ -891,7 +1091,6 @@ def _read(stages, gaps, proj_closed, cmp_, win, qual, n_leads) -> dict:
                      f"qualified.")
         numbers["unknown"] = unk
 
-    # the one lever, from the constraint engine
     lever = None
     try:
         run = (kv_store.get("compass:base_run") or {}).get("run") or {}

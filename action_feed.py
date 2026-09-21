@@ -150,7 +150,8 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
                        "feed:extra:ads_decisions",   # Board v2: pending moves
                        "feed:extra:stripe",          # Stripe canary failures
                        "feed:extra:render_health",   # browser/render watches
-                       "feed:extra:compass")         # compass drift/variance/capacity
+                       "feed:extra:compass",        # compass drift/variance/capacity
+                       "feed:extra:picklist_drift")  # a dropdown changed at source
                                                      # (self-retiring on OK)
     try:
         import kv_store

@@ -48,7 +48,9 @@
   <section class="exec-top" id="exec-top">
     <div class="exec-tiles" id="exec-tiles">
       {% for t in exec.tiles %}
-      <div class="exec-tile state-{{ t.state }}" id="tile-{{ t.id }}" data-state="{{ t.state }}">
+      <div class="exec-tile state-{{ t.state }}" id="tile-{{ t.id }}" data-state="{{ t.state }}"
+           data-metric="{{ t.id }}" data-window="current" data-clock="point-in-time"
+           data-basis="engine" data-value="{{ t.raw if t.raw is not none else '' }}">
         <div class="exec-tile-label">{{ t.label }}
           {% if t.drawer %}<button class="fin-door" data-findrawer="{{ t.drawer }}" title="show your work">ⓘ</button>{% endif %}
         </div>
@@ -67,7 +69,9 @@
     {% if exec.pulse %}
     <div class="pulse-strip" id="pulse-strip">
       {% for t in exec.pulse %}
-      <div class="pulse-tile state-{{ t.state }}" id="tile-{{ t.id }}" data-state="{{ t.state }}">
+      <div class="pulse-tile state-{{ t.state }}" id="tile-{{ t.id }}" data-state="{{ t.state }}"
+           data-metric="{{ t.id }}" data-window="t30" data-clock="trailing"
+           data-basis="engine" data-value="{{ t.raw if t.raw is not none else '' }}">
         <span class="pulse-label">{{ t.label }}</span>
         <span class="pulse-value">{{ t.value }}</span>
         <span class="pulse-sub">{{ t.sub }}</span>

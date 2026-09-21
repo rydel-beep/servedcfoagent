@@ -2442,3 +2442,57 @@ now writes "$50k - $100k" style values; revenue_bands only knew
 qualified rule read them as *below floor*. The literal spellings are now
 in the picklist — this corrects the qualified metric everywhere it is
 used, not just this view.
+
+## #157 — ESTATE TRIPLE SCAN · TRAVELLING DEFECTS · ONE QUALIFICATION RULE (2026-09-21)
+
+**A — the six travelling defects, each ruled:**
+1. **A show is CONFIRMED attendance.** "Nobody marked a no-show" is not
+   attendance. The primary show rate is the confirmed basis (call record,
+   recorded outcome, or a deal that followed); the status-only consults
+   set the upper end of a stated RANGE and can never produce an "ahead".
+   Projections use the confirmed rate. The gap finder runs on BOTH bases
+   and, when the top gap differs, says so in one sentence.
+2. **Outcome and rate are two statuses, never one.** A stage may be on
+   course to beat the client plan while its rate is half of plan. Both
+   render, separately; a test forbids contradictory status words in one
+   rendered sentence.
+3. **Polarity.** Cost metrics (spend, CPL, CAC, commissions) read "over
+   plan / under plan / on budget"; gain metrics read "ahead / behind".
+   A test fails any cost metric labelled "ahead".
+4. **Three-way status bands.** Plan outside the sample's interval →
+   ahead/behind; inside and the interval tight → on track; interval wide →
+   too early to tell. A large sample sitting on its plan now reads "on
+   track", not "too early".
+5. **A comparison names itself.** A stage the comparison doesn't model
+   reads "usually X%" (measured), never "planned X%".
+6. **Identities are stated and tested** (booked = due + upcoming; leads =
+   qualified + unqualified + unknown; due = confirmed + unconfirmed +
+   no-shows), and every coverage figure names its denominator.
+
+**B — ONE qualification rule.** There were two: this engine's inline block
+(which required the CRM form's three fields) and the travelling view's own
+copy (which used the tracker's revenue answer). Two rules meant two
+"qualified" numbers from the same rows. The rule now lives ONLY in
+`attribution_engine.qualify_lead`, reports which form basis it used, and
+treats an unreadable picklist value as UNKNOWN — never "below floor".
+A test pins the single call site. **B3:** an unrecognised picklist value
+raises a loud drift finding naming the new spelling (`feed:extra:picklist_drift`).
+
+**C — THE TRIPLE SCAN** (`scripts/triple_scan.py`), because a page fails
+three different ways: **it works** (every page in the nav, zero console
+errors, every tile a value or a labelled state) · **it agrees with
+itself** (every rendered metric carries `data-metric/window/clock/basis`;
+the same key must show the same value on every surface and equal the
+engine's API; EDITH's numbers too) · **it agrees with reality**
+(`ground_truth.py`: Meta on three CLOSED days, Stripe, the Xero bank and
+AR lines, CRM counts, tracker rows — and a check with no cheap fresh read
+says "not comparable" rather than passing by omission). Each run writes a
+HEALTH row; **a scan that stops running is itself a failure** (watchdog).
+
+**F — THE STAGE RECORDER** (`stage_history.py`). The CRM keeps only a
+deal's current stage, so "pitched" could only ever be a lower bound. The
+recorder writes every observed change into THIS REPO'S store on the
+existing poll — no new token, no new cadence, no CRM write. From its start
+date pitched is MEASURED for watched deals and stays a labelled lower
+bound for older ones; a change seen only as a jump is recorded as a jump,
+never filled in with stages that were never observed.

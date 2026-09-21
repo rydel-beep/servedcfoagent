@@ -95,6 +95,10 @@ def coverage_inventory() -> dict:
                          "tv_northstar", "tv_gap", "tv_read", "tv_setter",
                          "tv_checks", "tv_remodel", "tv_save", "tv_history"]
     import travelling as _TV
+    inv["travelling_new"] = ["tv_show_range", "tv_outcome_status",
+                             "tv_rate_status", "tv_gap_flip", "tv_identities",
+                             "pitched_measured"]
+    inv["health"] = ["section-estate-health"]
     inv["travelling_stages"] = ["tv_stage_" + sid for sid in
                                 ("spend", "leads", "qualified", "booked", "due",
                                  "showed", "pitched", "closed", "contract", "cash")]

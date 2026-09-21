@@ -226,6 +226,69 @@ def parse_tracker(rows: list[list[str]]) -> tuple[list[dict], dict]:
 
 # ── Dedupe rule for duplicate WON rows (DECISIONS #111) ──────────────────────
 
+
+# ── THE SINGLE QUALIFICATION RULE (#157) ────────────────────────────────────
+# There were two: this engine's inline block (which required the GHL form's
+# three fields) and the travelling view's own copy (which used the tracker's
+# revenue answer). Two rules meant two different "qualified" numbers from the
+# same rows. This is now the ONLY place the rule lives — every caller goes
+# through it, and a test pins the single call site.
+
+QUALIFIED_FLOOR_DEFAULT = 20_000.0
+
+
+def qualify_lead(lead: dict, contact: dict | None = None,
+                 floor: float = QUALIFIED_FLOOR_DEFAULT) -> dict:
+    """→ {state: 'qualified'|'unqualified'|'unknown', qualified: bool,
+         reason, revenue, form_complete, form_basis, flag}
+
+    The rule (Rydel v2): not disqualified · revenue band at or above the
+    floor · the revenue question answered. UNKNOWN is a first-class state —
+    a lead with no context, or a revenue value the picklist doesn't
+    recognise, is UNKNOWN and never counted as 'below floor'."""
+    import revenue_bands
+    c = contact or {}
+    rv = revenue_bands.parse_band(lead.get("revenue_raw"), c.get("form_revenue"))
+    meets = revenue_bands.meets_floor(rv, floor)
+    # form completeness: the CRM form's three fields when we have the contact,
+    # otherwise the tracker's own revenue answer — the basis is reported so
+    # the difference is visible instead of hidden in a second code path
+    if c:
+        form_complete = bool(c.get("form_revenue") and c.get("form_ready")
+                             and c.get("form_timeline"))
+        basis = "crm form"
+    else:
+        form_complete = bool(lead.get("revenue_raw"))
+        basis = "tracker revenue answer"
+    has_context = bool(lead.get("setter_outcome") or lead.get("revenue_raw")
+                       or lead.get("dq_reason") or c)
+    out = {"revenue": rv, "form_complete": form_complete, "form_basis": basis,
+           "flag": rv.get("flag")}
+    if not has_context:
+        out.update({"state": "unknown", "qualified": False,
+                    "reason": "no tracker context yet"})
+        return out
+    finalised = lead.get("finalised", True)
+    if finalised and meets is True and form_complete:
+        out.update({"state": "qualified", "qualified": True, "reason": None})
+        return out
+    if not finalised:
+        out.update({"state": "unqualified", "qualified": False,
+                    "reason": "disqualified"})
+    elif not form_complete:
+        out.update({"state": "unqualified", "qualified": False,
+                    "reason": "revenue question unanswered"})
+    elif meets is None:
+        # the answer is there but the picklist value isn't one we can read —
+        # UNKNOWN, never "below floor" (this was the 16%-vs-50% bug)
+        out.update({"state": "unknown", "qualified": False,
+                    "reason": "revenue value not recognised"})
+    else:
+        out.update({"state": "unqualified", "qualified": False,
+                    "reason": "revenue below floor"})
+    return out
+
+
 def dedupe_won(leads: list[dict]) -> tuple[list[dict], list[dict]]:
     """Same identity (email, else name) + same close date OR same contract value →
     ONE deal. Keeps the most money-complete row (cash populated wins, then first).
@@ -478,15 +541,16 @@ def compute_from_inputs(
         # QUALIFIED v2 (Rydel): finalised (≠DQ) AND revenue band ≥ floor (tracker cell
         # wins, GHL form fills) AND form-complete. Unknown revenue excluded, never 0.
         c = contact or {}
-        rv = revenue_bands.parse_band(lead.get("revenue_raw"), c.get("form_revenue"))
+        _q = qualify_lead(lead, c, qualified_floor)
+        rv = _q["revenue"]
         if rv.get("flag") and rv["flag"] not in novel_flagged:
             novel_flagged.add(rv["flag"])
             flags.append({"kind": "novel_revenue_value", "name": lead["name"],
                           "detail": rv["flag"]})
-        form_complete = bool(c.get("form_revenue") and c.get("form_ready")
-                             and c.get("form_timeline"))
+        form_complete = _q["form_complete"]
         meets = revenue_bands.meets_floor(rv, qualified_floor)
-        lead["qualified"] = bool(lead["finalised"] and meets is True and form_complete)
+        lead["qualified"] = _q["qualified"]
+        lead["_qual_state"] = _q["state"]
         lead["_revenue"] = rv
         lead["_form_complete"] = form_complete
         if lead["finalised"]:

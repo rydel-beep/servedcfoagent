@@ -204,6 +204,20 @@ def _scheduled_refresh_loop() -> None:
             compass_engine.refresh_cache()
         except Exception as e:  # noqa: BLE001
             logger.warning("compass refresh failed: %s", e)
+        # STAGE HISTORY: remember what the CRM forgets — every observed stage
+        # change, in this repo's own store. Reads the mirror another job
+        # already refreshed; never calls or writes to the CRM.
+        try:
+            import stage_history
+            stage_history.tick()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("stage recorder failed: %s", e)
+        # the watchdog: a scan that stops running is a failure in itself
+        try:
+            import ground_truth
+            ground_truth.watchdog()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("health watchdog failed: %s", e)
 
 
 def _email_cadence_loop() -> None:
