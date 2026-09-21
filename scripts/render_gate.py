@@ -162,7 +162,7 @@ def main():
         log.clear()
 
         # PASS 1 — cold
-        page.goto(BASE + "/dashboard/", wait_until="load")
+        page.goto(BASE + "/dashboard/landing", wait_until="load")
         time.sleep(3)
         probe = page.evaluate(PROBE_JS)
         page.screenshot(path=os.path.join(evd, "landing-cold.png"), full_page=True)
@@ -197,7 +197,7 @@ def main():
         log.clear()
 
         # TOOLTIP sample on the LANDING (registry-driven, keyboard-accessible)
-        page.goto(BASE + "/dashboard/", wait_until="load")
+        page.goto(BASE + "/dashboard/landing", wait_until="load")
         time.sleep(2)
         tip_hits = page.evaluate(
             """async () => {
@@ -242,7 +242,11 @@ def main():
                  sim_triad: !!document.getElementById('sim-triad'),
                  sim_spend: +(document.getElementById('sim-spend')?.value || 0),
                  sim_leads: +((document.getElementById('sim-leads')?.innerText || document.getElementById('sim-leads')?.value || '0').replace(/,/g, '')),
-                 chain_clients: (document.getElementById('chain-clients-v')?.innerText || '').trim(),
+                 chain_clients: (() => {   // an input since the required-rate solve
+                   const el = document.getElementById('chain-clients-v');
+                   if (!el) return '';
+                   return String(('value' in el ? el.value : el.innerText) || '').trim();
+                 })(),
                  accuracy: (document.getElementById('accuracy-sentence')?.innerText || '').trim().slice(0, 120),
                  advanced_closed: !document.getElementById('level-advanced')?.open,
                  plan_closed: !document.getElementById('level-plan')?.open,
@@ -340,7 +344,7 @@ def main():
         wire_console(mpage, mlog)
         login(mpage)
         mlog.clear()
-        mpage.goto(BASE + "/dashboard/", wait_until="load")
+        mpage.goto(BASE + "/dashboard/landing", wait_until="load")
         time.sleep(3)
         mprobe = mpage.evaluate(PROBE_JS)
         mpage.screenshot(path=os.path.join(evd, "landing-mobile.png"), full_page=True)
@@ -363,7 +367,7 @@ def main():
         cookies = tctx.cookies()
         tctx.close()
         nctx.add_cookies(cookies)
-        npage.goto(BASE + "/dashboard/", wait_until="domcontentloaded")
+        npage.goto(BASE + "/dashboard/landing", wait_until="domcontentloaded")
         html = npage.content()
         tile_count = len(re.findall(r'class="exec-tile state-', html))
         REPORT["passes"]["nojs"] = {"tile_count": tile_count,

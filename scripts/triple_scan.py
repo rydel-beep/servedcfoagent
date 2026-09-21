@@ -41,7 +41,9 @@ LEGACY_TOKEN = os.environ.get("GATE_LEGACY_TOKEN")
 
 # every page in the nav — scan 1 covers all of them
 PAGES = [
-    ("landing", "/dashboard/"),
+    ("today", "/dashboard/today"),
+    ("sales-board", "/dashboard/sales"),
+    ("landing", "/dashboard/landing"),
     ("brief", "/dashboard/view/brief"),
     ("cash", "/dashboard/view/cash"),
     ("sales", "/dashboard/view/sales"),
@@ -117,7 +119,12 @@ def scan_works(page, log, evd, shots=False):
           boundaries: Array.from(document.querySelectorAll('.panel-boundary-fail:not(.empty-state)')).map(e => e.innerText.slice(0,90)),
           tiles: Array.from(document.querySelectorAll('[data-metric][data-value]')).map(el => ({
             metric: el.dataset.metric,
-            value: (el.querySelector('.exec-tile-value,.pulse-value,.tv-actual')?.innerText || '').trim(),
+            value: (() => {
+              const inner = el.querySelector('.exec-tile-value,.pulse-value,.tv-actual,.s-card-value');
+              if (inner) return (inner.innerText || '').trim();
+              // a metric stamped directly ON the element that shows it
+              return String(('value' in el ? el.value : el.innerText) || '').trim().slice(0, 40);
+            })(),
             sub: (el.querySelector('.exec-tile-sub,.pulse-sub,.tv-stage-sub')?.innerText || '').trim(),
           })),
           panels: document.querySelectorAll('section').length,
@@ -169,7 +176,12 @@ def scan_agrees_with_itself(page, evd):
               metric: el.dataset.metric, window: el.dataset.window || '',
               clock: el.dataset.clock || '', basis: el.dataset.basis || '',
               value: el.dataset.value || '',
-              text: (el.querySelector('.exec-tile-value,.pulse-value,.tv-actual')?.innerText || '').trim(),
+              text: (() => {
+              const inner = el.querySelector('.exec-tile-value,.pulse-value,.tv-actual,.s-card-value');
+              if (inner) return (inner.innerText || '').trim();
+              // a metric stamped directly ON the element that shows it
+              return String(('value' in el ? el.value : el.innerText) || '').trim().slice(0, 40);
+            })(),
             }))""")
         except Exception as e:  # noqa: BLE001
             finding("scan2", "SEV2", "BROKEN", f"{name}: could not be read",

@@ -46,7 +46,7 @@ AD_PW = os.environ.get("GATE_AD_PASSWORD")
 # Every HTML surface the app serves. `expect` is the status we believe is
 # correct; a mismatch is itself a finding.
 PAGES = [
-    ("landing",      "/dashboard/",                    200, "daily"),
+    ("landing",      "/dashboard/landing",             200, "daily"),
     ("brief",        "/dashboard/view/brief",          200, "daily"),
     ("cash",         "/dashboard/view/cash",           200, "weekly"),
     ("sales-area",   "/dashboard/view/sales",          200, "daily"),

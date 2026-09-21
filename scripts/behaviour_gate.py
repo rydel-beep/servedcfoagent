@@ -64,8 +64,25 @@ def state(page):
       cpl_disabled: !!document.getElementById('sim-cpl')?.disabled,
       spend_disabled: !!document.getElementById('sim-spend')?.disabled,
       cpl_note: (document.getElementById('sim-cpl-note')?.innerText || ''),
-      calls: (document.getElementById('chain-calls-v')?.innerText || ''),
-    })""")
+      calls: chainCount('chain-calls-v'),
+      shows: chainCount('chain-shows-v'),
+      clients: chainCount('chain-clients-v'),
+      rate_close: +(document.getElementById('rate-close')?.value || 0),
+      req_clients: (document.getElementById('req-clients')?.innerText || ''),
+      req_clients_cls: (document.getElementById('req-clients')?.className || ''),
+    })""".replace('chainCount(', 'window.__cc('))
+
+
+def _install_reader(page):
+    """The stage counts became editable inputs when the required-rate solve
+    shipped, so the gate reads .value rather than text."""
+    page.evaluate("""() => {
+      window.__cc = function (id) {
+        var el = document.getElementById(id);
+        if (!el) return '';
+        return ('value' in el ? el.value : el.innerText) || '';
+      };
+    }""")
 
 
 def type_into(page, sel, value):
@@ -78,6 +95,7 @@ def run_pass(page, name, evd, shots):
     steps = {}
     page.goto(BASE + "/dashboard/scale", wait_until="load")
     time.sleep(3)
+    _install_reader(page)
     page.evaluate("document.querySelector('#defs-tour [data-t=skip]')?.click()")
     time.sleep(0.3)
     s0 = state(page)
@@ -308,6 +326,74 @@ def run_travelling(page, evd, shots):
     return steps
 
 
+def run_required_rate(page, name, evd, shots):
+    """5.1 — TYPE A COUNT, GET THE RATE IT WOULD TAKE.
+
+    The three things that must be true, checked by typing into the live
+    page rather than by reading the code:
+      · upstream does not move (the consults you already have stay put)
+      · downstream becomes exactly what was asked for
+      · an impossible ask is flagged as impossible, not quietly accepted
+    """
+    out = {}
+    page.goto(BASE + "/dashboard/scale", wait_until="load")
+    time.sleep(2.5)
+    _install_reader(page)
+    page.evaluate("document.querySelector('#defs-tour [data-t=skip]')?.click()")
+    time.sleep(0.3)
+    s0 = state(page)
+    out["before"] = s0
+    if not s0.get("shows"):
+        fail(f"{name}: required-rate — no shows count to solve against")
+        return out
+
+    # ── a REACHABLE ask: one more client than the model gives ──
+    want = max(round(float(s0["clients"] or 0)) + 1, 1)
+    type_into(page, "#chain-clients-v", want)
+    s1 = state(page)
+    out["after_reachable"] = {"wanted": want, **s1}
+    if abs(float(s1["shows"] or 0) - float(s0["shows"] or 0)) > 0.51:
+        fail(f"{name}: required-rate — UPSTREAM MOVED: shows "
+             f"{s0['shows']} → {s1['shows']} (it must be held)")
+    if abs(float(s1["clients"] or 0) - want) > 0.05:
+        fail(f"{name}: required-rate — downstream did not become the ask: "
+             f"{s1['clients']} vs {want}")
+    if "required" not in (s1["req_clients"] or "").lower():
+        fail(f"{name}: required-rate — no readout: {s1['req_clients']!r}")
+    if "measured" not in (s1["req_clients"] or "").lower():
+        fail(f"{name}: required-rate — the readout never names the measured rate")
+    if abs(s1["rate_close"] - s0["rate_close"]) < 0.5:
+        fail(f"{name}: required-rate — the close rate field did not take the "
+             f"solved value ({s0['rate_close']} → {s1['rate_close']})")
+    if shots:
+        page.screenshot(path=os.path.join(evd, f"{name}-req-reachable.png"))
+
+    # ── an IMPOSSIBLE ask: more clients than there are consults ──
+    absurd = round(float(s0["shows"] or 0)) + 50
+    type_into(page, "#chain-clients-v", absurd)
+    s2 = state(page)
+    out["after_impossible"] = {"wanted": absurd, **s2}
+    if "is-impossible" not in (s2["req_clients_cls"] or ""):
+        fail(f"{name}: required-rate — {absurd} clients from "
+             f"{s0['shows']} consults was not flagged impossible "
+             f"(class {s2['req_clients_cls']!r})")
+    if "not achievable" not in (s2["req_clients"] or "").lower():
+        fail(f"{name}: required-rate — the impossible note is missing: "
+             f"{s2['req_clients']!r}")
+    if shots:
+        page.screenshot(path=os.path.join(evd, f"{name}-req-impossible.png"))
+
+    # ── CLEARING returns the stage to derived ──
+    type_into(page, "#chain-clients-v", "")
+    time.sleep(0.4)
+    s3 = state(page)
+    out["after_clear"] = s3
+    if s3["req_clients"].strip():
+        fail(f"{name}: required-rate — clearing the count left the readout up: "
+             f"{s3['req_clients']!r}")
+    return out
+
+
 def main():
     if not PW and not LEGACY_TOKEN:
         print("GATE_OWNER_PASSWORD not in env", file=sys.stderr)
@@ -330,6 +416,8 @@ def main():
         for i, name in enumerate(names):
             steps = run_pass(page, name, evd, shots=(i == 0))
             steps["travelling"] = run_travelling(page, evd, shots=(i == 0))
+            steps["required_rate"] = run_required_rate(page, name, evd,
+                                                       shots=(i == 0))
             REPORT["passes"].append({"name": name, "steps": steps})
         REPORT["console_errors"] = console_errors
         for e in console_errors:
