@@ -218,6 +218,33 @@ def backfill_history(since: str | None = None) -> dict:
             "degraded_chunks": res["degraded"]}
 
 
+
+def fetch_day_live(day: str) -> dict:
+    """ONE day, read live from the ad platform, WITHOUT touching the archive.
+
+    This exists for the ground-truth scan: the archive is the number every
+    surface reports, and the only way to know it still matches the platform
+    is to ask the platform again. Read-only by construction — it never
+    writes to the store. Sampled on closed days only (an intraday figure is
+    expected to move, so comparing it would prove nothing)."""
+    import meta_range
+    if not META_ACCESS_TOKEN or not META_AD_ACCOUNT_ID:
+        return {"error": "Meta not configured"}
+    res = meta_range.insights(
+        f"{_account_id()}/insights",
+        {"fields": "spend", "level": "account", "time_increment": 1,
+         "limit": 50, "access_token": META_ACCESS_TOKEN},
+        day, day, _graph_get_all, source="ground_truth_recheck")
+    if res.get("empty"):
+        return {"spend": 0.0, "day": day, "note": "the platform reports no "
+                                                  "delivery that day"}
+    if res.get("degraded"):
+        return {"error": f"live read degraded: {res['degraded'][:1]}"}
+    total = sum(_f(r.get("spend")) for r in res.get("rows") or [])
+    return {"spend": round(total, 2), "day": day,
+            "rows": len(res.get("rows") or [])}
+
+
 def _f(v) -> float:
     try:
         return float(v)

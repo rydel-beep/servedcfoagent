@@ -368,3 +368,25 @@ dashboard/evidence/phase0/.
   UNKNOWN and the qualified rule read them as below-floor — the qualified
   metric was wrong everywhere it is used. Literal spellings added.
 - Behaviour gate extended with the travelling contract. DECISIONS #156.
+
+---
+
+## 2026-09-21 (4) — ESTATE TRIPLE SCAN + TRAVELLING DEFECTS + LEDGER (#157)
+
+- A: six travelling defects fixed — confirmed-basis show rate with its
+  range and a two-basis gap finder (says when the conclusion flips);
+  outcome vs rate as separate statuses; cost/gain polarity; three-way
+  status bands; "usually" vs "planned"; identities + named denominators.
+- B: ONE qualification rule (attribution_engine.qualify_lead) — there were
+  two. Picklist changed at source 2026-08-26; 75 leads had been parsing
+  UNKNOWN and reading as below-floor. September qualified restated
+  24% → 51%; journalled at restatements:qualified_picklist_2026_09.
+  A new spelling now raises a loud drift finding.
+- C/D: scripts/triple_scan.py (works / agrees with itself / agrees with
+  reality) + ground_truth.py + HEALTH rows + watchdog. First run: 11
+  findings, all scan defects, fixed. Second run: 0 findings across 19
+  pages, 13 metric keys, 6 real external checks. ESTATE_SCAN_2026-09-21.md.
+- E: PROMPT_LEDGER.md — 37 briefs by verified presence. 30 shipped,
+  3 partial, 1 not run (DASHBOARD-UX-OVERHAUL), 1 superseded, 1 stale doc.
+- F: stage_history.py — the recorder remembers what the CRM forgets, in
+  this repo's store, on the existing poll. Pitched is measured from today.

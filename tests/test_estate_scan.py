@@ -204,3 +204,17 @@ def test_recorder_rides_the_existing_loop_no_new_cadence():
     app_src = _read("app.py")
     assert "stage_history" in app_src and "stage_history.tick()" in app_src
     assert "never calls or writes to the CRM" in app_src
+
+
+def test_scan3_meta_live_reread_is_read_only():
+    """The cent-exact check needs a live re-read that never touches the
+    archive — otherwise the comparison compares the archive with itself."""
+    src = _read("meta_spend.py")
+    i = src.index("def fetch_day_live")
+    block = src[i:i + 1400]
+    assert "_save_store" not in block, "the live re-read must not write the archive"
+    assert "Read-only by construction" in block
+    import meta_spend
+    assert hasattr(meta_spend, "fetch_day_live")
+    gt = _read("ground_truth.py")
+    assert "fetch_day_live" in gt
