@@ -105,6 +105,33 @@
     {% endif %}
   </section>
 
+  {# ── IS OWNERSHIP EVEN BEING RECORDED? Said before the table, because a
+       table of "unassigned" is meaningless without it. ── #}
+  {% if board.ownership and board.ownership.of %}
+  <section class="s-panel{% if not board.ownership.healthy %} {% endif %}"
+           aria-labelledby="own-title">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="own-title">Who owns these consults</h2>
+      {% if not board.ownership.healthy %}<span class="s-chip s-chip-conflict">not being recorded</span>{% endif %}
+    </div>
+    <p data-metric="sales_ownership_fill" data-window="{{ board.window.key }}"
+       data-clock="{{ board.window.label }}" data-basis="tracker"
+       data-value="{{ board.ownership.pct }}">
+      The tracker's Closer column names someone on
+      <b>{{ board.ownership.named_in_window }} of {{ board.ownership.of }}</b>
+      leads in this window (<b>{{ board.ownership.pct }}%</b>) — against
+      {{ board.ownership.named_all_time }} rows all time.
+    </p>
+    <p class="s-card-sub">{{ board.ownership.setter_note }}</p>
+    {% if board.ownership.outcome_words_in_column %}
+    <p class="s-card-sub">Outcome words have been typed into that column and are
+      never counted as people:
+      {% for w in board.ownership.outcome_words_in_column %}<span class="s-chip s-chip-placeholder">{{ w }}</span> {% endfor %}
+    </p>
+    {% endif %}
+  </section>
+  {% endif %}
+
   {# ── CLOSERS ── #}
   <section class="s-panel" aria-labelledby="closers-title">
     <div class="s-panel-head">
