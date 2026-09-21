@@ -528,3 +528,31 @@ def test_north_star_registry_and_template():
     for eid in ("north_star", "ns_verdict", "ns_levers", "ns_constraint",
                 "ns_whatifs", "ns_callog", "ns_pinned", "sim_mode", "sim_badge"):
         assert D.entry(eid), eid
+
+
+def test_scale_page_renders_with_live_north_star_payload(stub, monkeypatch):
+    """THE CLASS THAT ESCAPED: an engine payload with a missing lever key
+    crashed the jinja render in prod (UndefinedError 500) while every unit
+    test passed. Now: the page must render 200 with a REAL north_star()
+    payload in the cache."""
+    monkeypatch.setattr(CE, "_mtd_funnel", lambda: {
+        "day": 12, "days_in_month": 30, "leads": 80, "sets": 12, "shows": 10,
+        "clients": 3, "cash_from_closes": 15000.0, "spend": 6000.0,
+        "cash_collected": 30000.0, "net_new_mrr": 8000.0})
+    kv_store.put("compass:north_star",
+                 {"computed_at": "2026-09-21T12:00:00+10:00",
+                  "data": CE.north_star()})
+    kv_store.put("behaviour:last_pass",
+                 {"at": "2026-09-21T12:00:00+10:00", "ok": True,
+                  "commit": "test", "passes": 3, "reason": ""})
+    os.environ.setdefault("DASHBOARD_TOKEN", "testtok-sim155")
+    import app as appmod
+    from dashboard.auth import COOKIE_NAME
+    c = appmod.app.test_client()
+    c.set_cookie(COOKIE_NAME, os.environ["DASHBOARD_TOKEN"])
+    r = c.get("/dashboard/scale")
+    assert r.status_code == 200, r.data[:200]
+    h = r.data.decode()
+    assert "Are we on pace this month?" in h
+    assert "LOGIC VERIFIED" in h
+    assert 'id="ns-levers"' in h and "← off plan" in h or 'id="ns-levers"' in h

@@ -1603,16 +1603,25 @@ def north_star() -> dict:
         {"id": "lever_leads", "name": "leads", "actual": leads,
          "plan": None, "required": required_leads()},
         {"id": "lever_set", "name": "booking rate", "actual": set_a,
-         "plan": plan_inputs.get("set_rate") or v("set_rate"), "pct": True},
+         "plan": plan_inputs.get("set_rate") or v("set_rate"),
+         "required": None, "pct": True},
         {"id": "lever_show", "name": "turn-up rate", "actual": show_a,
-         "plan": plan_inputs.get("show_rate") or v("show_rate"), "pct": True},
+         "plan": plan_inputs.get("show_rate") or v("show_rate"),
+         "required": None, "pct": True},
         {"id": "lever_close", "name": "close rate", "actual": close_a,
          "plan": plan_inputs.get("close_rate") or v("close_rate"),
          "required": required_close(), "pct": True},
         {"id": "lever_cashpc", "name": "avg cash per new client",
          "actual": cashpc_a, "plan": round(per_client, 2)
-         if metric == "cash_collected" else None, "money": True},
+         if metric == "cash_collected" else None,
+         "required": None, "money": True},
     ]
+    # every lever carries the full shape (a missing key crashed the jinja
+    # render in prod — the render gate caught it; pinned here)
+    for lv in levers:
+        lv.setdefault("required", None)
+        lv.setdefault("plan", None)
+        lv.setdefault("actual", None)
     # off-plan: actual pacing >10% adverse vs plan
     for lv in levers:
         act, pl = lv.get("actual"), lv.get("plan")
