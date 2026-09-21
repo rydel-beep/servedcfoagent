@@ -64,9 +64,12 @@
 
   {% if ns %}
   <section class="tv-northstar" data-def="tv_northstar">
+    {% if ns.empty %}<span>{{ ns.empty }}</span>
+    {% else %}
     <span><b>{{ ns.actual_text }}</b> {{ ns.metric_label }} so far</span>
     <span><b>{{ ns.plan_text }}</b> planned</span>
     <span><b>{{ ns.pace_text }}</b> at this pace</span>
+    {% endif %}
     {% if ns.constraint %}<span class="tv-note">the model's constraint this month: {{ ns.constraint.name }}</span>{% endif %}
   </section>
   {% endif %}

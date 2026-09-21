@@ -407,13 +407,21 @@ def travelling_page():
     try:
         import kv_store as _kv
         raw = (_kv.get("compass:north_star") or {}).get("data") or {}
-        if raw.get("verdict"):
-            fmt = lambda v: (f"${v:,.0f}" if v is not None else "—")
+        # only show the headline when it can actually be measured — an empty
+        # state gives direction instead of a row of dashes
+        if raw.get("actual") is not None:
+            fmt = lambda v: (f"${v:,.0f}" if v is not None else "not set")
             ns = {"metric_label": raw.get("metric_label") or "",
                   "actual_text": fmt(raw.get("actual")),
                   "plan_text": fmt(raw.get("plan")),
                   "pace_text": fmt(raw.get("pace")),
                   "constraint": raw.get("constraint")}
+        elif raw.get("constraint"):
+            ns = {"metric_label": "", "actual_text": "", "plan_text": "",
+                  "pace_text": "", "constraint": raw.get("constraint"),
+                  "empty": ("This month's revenue movement needs a reading "
+                            "from the 1st — it fills in from the next daily "
+                            "record.")}
     except Exception:
         ns = None
     rosters = {s["id"]: {"name": s["name"], "roster": s.get("roster") or [],
