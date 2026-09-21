@@ -163,12 +163,17 @@
   font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
 }
 .s-card-unit { font: 500 var(--fs-caption)/1 var(--font-ui); color: var(--text-muted); margin-left: 4px; }
-.s-card-sub  { font: 400 var(--fs-caption)/1.45 var(--font-ui); color: var(--text-muted); margin-top: 5px; }
+.s-card-sub  { display: block; font: 400 var(--fs-caption)/1.45 var(--font-ui); color: var(--text-muted); margin-top: 5px; }
 .s-card-foot { margin-top: auto; }
 
 /* vs-plan / vs-prior — the word carries the meaning, the colour only agrees */
+/* Each of these owns its own LINE. Left inline they ran into one another —
+   "no figure to compare no day-level history is kept for this one yet
+   three-nets engine · computed 18m ago" — which reads as one confused
+   sentence instead of three separate facts. */
 .s-delta {
-  display: inline-flex; align-items: center; gap: 5px;
+  display: flex; align-items: center; gap: 5px; width: fit-content;
+  max-width: 100%;
   font: 500 var(--fs-caption)/1.3 var(--font-ui);
   margin-top: 7px; padding: 2px 7px; border-radius: 5px;
   background: var(--bg-inset-strong); color: var(--text-secondary);
@@ -181,11 +186,13 @@
    draw; where there isn't, the card says so in words instead. */
 .s-trend { display: block; width: 100%; height: 30px; margin-top: 9px; }
 .s-trend-none {
+  display: block;
   font: 400 var(--fs-micro)/1.4 var(--font-ui); color: var(--text-muted);
   margin-top: 9px; font-style: italic;
 }
 
 .s-stamp {
+  display: block;
   font: 400 var(--fs-micro)/1.4 var(--font-ui);
   color: var(--text-muted); opacity: 0.85;
   margin-top: 8px; padding-top: 7px; border-top: 1px dashed var(--border);
@@ -229,6 +236,8 @@ a.s-card:hover { background: var(--bg-card-hover); border-color: var(--border-ho
   font: 600 var(--fs-emphasis)/1.3 var(--font-display); color: var(--text); margin: 0;
 }
 .s-panel-sub { font: 400 var(--fs-caption)/1.4 var(--font-ui); color: var(--text-muted); }
+.s-panel-sub a, .s-crumbs a, .s-list a { color: var(--accent); text-decoration: none; }
+.s-panel-sub a:hover, .s-list a:hover { text-decoration: underline; }
 
 .s-boundary-fail {
   border: 1px solid rgba(232,97,107,0.45); background: var(--red-dim);

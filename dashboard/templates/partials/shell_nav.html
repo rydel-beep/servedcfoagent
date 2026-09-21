@@ -18,7 +18,7 @@
   <button class="s-nav-link" id="s-palette-open" type="button"
           aria-label="Open the command palette">Jump to <span class="s-kbd">⌘K</span></button>
 </nav>
-{% if nav.crumbs %}
+{% if nav.crumbs and nav.active != 'today' %}
 <div class="s-crumbs" aria-label="Breadcrumb">
   <a href="/dashboard/today">Today</a>
   {% for label, href in nav.crumbs %}

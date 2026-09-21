@@ -499,3 +499,19 @@ def test_every_executive_tile_publishes_a_comparable_value():
         assert tid in src
     # the pulse publishes its numbers too
     assert '"drawer": None, "raw": v}' in src
+
+
+def test_the_simulator_is_published_as_a_model_not_as_actuals():
+    """The simulator's numbers are a MODEL. They now carry an identity so
+    the consistency scan can see them, and a SCENARIO basis so it can never
+    compare them against measured actuals — scenario never contaminates
+    actuals."""
+    html = _read("dashboard", "templates", "scale.html")
+    assert html.count('data-basis="scenario"') >= 5
+    for key in ("sim_leads", "sim_calls", "sim_shows", "sim_clients",
+                "sim_cash_this_month"):
+        assert f'data-metric="{key}"' in html, key
+    # the scan keys on (metric, window, basis), so a scenario row can never
+    # land in the same bucket as an engine row
+    scan = _read("scripts", "triple_scan.py")
+    assert 'key = (r["metric"], r["window"], r["basis"])' in scan

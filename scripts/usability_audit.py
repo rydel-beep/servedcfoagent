@@ -95,6 +95,9 @@ SAFE_PAGES_FOR_WRITES = ()          # there are none; nothing is safe to write
 # How many controls of the SAME SHAPE to actually activate.
 SAMPLE_PER_SHAPE = 3
 
+# shared chrome (the nav) is exercised on the FIRST page that has it
+CHROME_DONE: set = set()
+
 FINDINGS: list[dict] = []
 SEV_ORDER = {"SEV1": 0, "SEV2": 1, "SEV3": 2}
 
@@ -220,6 +223,9 @@ PROBE = r"""(CONTROL_SELECTOR) => {
         type: (el.getAttribute('type') || '').toLowerCase(),
         cls: cls,
         in_form: !!el.closest('form'),
+        // the persistent nav is ONE component. Exercising it again on every
+        // page teaches nothing and costs a page load each time.
+        chrome: !!el.closest('.s-nav, .s-crumbs, .s-palette'),
         label: label,
         id: el.id || '',
         href: el.getAttribute('href') || '',
@@ -570,6 +576,15 @@ def audit_page(page, name, path, expect, job, evd, mobile=False, log=None,
         groups.setdefault(c.get("shape") or c["ref"], []).append(c)
     sampled = 0
     for c in probe["controls"]:
+        if c.get("chrome"):
+            key = (c.get("label") or c.get("id") or c["ref"]).strip()[:40]
+            if key in CHROME_DONE:
+                c["verdict"] = "SHARED-CHROME"
+                c["reason"] = ("the persistent nav, already exercised on an "
+                               "earlier page — one component, tested once")
+                tested.append(c)
+                continue
+            CHROME_DONE.add(key)
         grp = groups.get(c.get("shape") or c["ref"], [])
         if len(grp) > SAMPLE_PER_SHAPE and grp.index(c) >= SAMPLE_PER_SHAPE:
             c["verdict"] = "REPRESENTED-BY-SAMPLE"

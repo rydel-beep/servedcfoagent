@@ -118,7 +118,7 @@
     <div class="sim-op">=</div>
     <div class="sim-field sim-output" data-def="sim_leads">
       <label>Leads per month <span class="sim-io out">always worked out</span></label>
-      <div class="sim-out-value" id="sim-leads">{{ '%.0f' % sim.leads if sim else '—' }}</div>
+      <div class="sim-out-value" id="sim-leads" data-metric="sim_leads" data-window="month" data-clock="modelled month" data-basis="scenario" data-value="{{ '%.2f' % sim.leads if sim else '' }}">{{ '%.0f' % sim.leads if sim else '—' }}</div>
     </div>
   </div>
   <div class="scale-note" id="sim-sentence" data-def="sim_sentence">{% if sim %}At ${{ '{:,.0f}'.format(sim.spend) }}/mo and ${{ '%.2f' % sim.cpl_effective }} per lead → {{ '%.0f' % sim.leads }} leads/month.{% endif %}</div>
@@ -130,25 +130,25 @@
   <div class="sim-chain" id="sim-chain">
     <div class="chain-card" id="chain-calls" data-def="chain_calls">
       <h4>How many calls does that book?</h4>
-      <input type="number" class="chain-count" id="chain-calls-v" aria-label="How many calls does that book? — type a count to solve the rate it needs" value="{{ '%.0f' % sim.calls if sim else '' }}" step="1" min="0"><a href="#" class="count-reset" data-stage="calls" hidden>back to derived</a>
+      <input type="number" class="chain-count" id="chain-calls-v" data-metric="sim_calls" data-window="month" data-clock="modelled month" data-basis="scenario" data-value="{{ '%.2f' % sim.calls if sim else '' }}" aria-label="How many calls does that book? — type a count to solve the rate it needs" value="{{ '%.0f' % sim.calls if sim else '' }}" step="1" min="0"><a href="#" class="count-reset" data-stage="calls" hidden>back to derived</a>
       <span class="chain-rate">× booking rate <input type="number" id="rate-set" step="1" min="0" max="100" value="{{ '%.0f' % (sim.rates.set * 100) if sim else '' }}">% <span class="conf-word" data-def="confidence_word">{{ conf.get('set_rate','') }}</span> <a href="#" class="rate-reset" data-r="set">reset</a></span>
       <span class="req-rate" id="req-calls" hidden></span>
     </div>
     <div class="chain-card" id="chain-shows" data-def="chain_shows">
       <h4>How many turn up?</h4>
-      <input type="number" class="chain-count" id="chain-shows-v" aria-label="How many turn up? — type a count to solve the rate it needs" value="{{ '%.0f' % sim.shows if sim else '' }}" step="1" min="0"><a href="#" class="count-reset" data-stage="shows" hidden>back to derived</a>
+      <input type="number" class="chain-count" id="chain-shows-v" data-metric="sim_shows" data-window="month" data-clock="modelled month" data-basis="scenario" data-value="{{ '%.2f' % sim.shows if sim else '' }}" aria-label="How many turn up? — type a count to solve the rate it needs" value="{{ '%.0f' % sim.shows if sim else '' }}" step="1" min="0"><a href="#" class="count-reset" data-stage="shows" hidden>back to derived</a>
       <span class="chain-rate">× turn-up rate <input type="number" id="rate-show" step="1" min="0" max="100" value="{{ '%.0f' % (sim.rates.show * 100) if sim else '' }}">% <span class="conf-word">{{ conf.get('show_rate','') }}</span> <a href="#" class="rate-reset" data-r="show">reset</a></span>
       <span class="req-rate" id="req-shows" hidden></span>
     </div>
     <div class="chain-card" id="chain-clients" data-def="chain_clients">
       <h4>How many sign?</h4>
-      <input type="number" class="chain-count" id="chain-clients-v" aria-label="How many sign? — type a count to solve the rate it needs" value="{{ '%.1f' % sim.clients if sim else '' }}" step="1" min="0"><a href="#" class="count-reset" data-stage="clients" hidden>back to derived</a>
+      <input type="number" class="chain-count" id="chain-clients-v" data-metric="sim_clients" data-window="month" data-clock="modelled month" data-basis="scenario" data-value="{{ '%.2f' % sim.clients if sim else '' }}" aria-label="How many sign? — type a count to solve the rate it needs" value="{{ '%.1f' % sim.clients if sim else '' }}" step="1" min="0"><a href="#" class="count-reset" data-stage="clients" hidden>back to derived</a>
       <span class="chain-rate">× close rate <input type="number" id="rate-close" step="1" min="0" max="100" value="{{ '%.0f' % (sim.rates.close * 100) if sim else '' }}">% <span class="conf-word">{{ conf.get('close_rate','') }}</span> <a href="#" class="rate-reset" data-r="close">reset</a></span>
       <span class="req-rate" id="req-clients" hidden></span>
     </div>
     <div class="chain-card" id="chain-cash" data-def="chain_cash">
       <h4>What do they pay us?</h4>
-      <b id="chain-cash-v">{{ '${:,.0f}'.format(sim.cash_this_month) if sim else '—' }}</b>
+      <b id="chain-cash-v" data-metric="sim_cash_this_month" data-window="month" data-clock="modelled month" data-basis="scenario" data-value="{{ '%.2f' % sim.cash_this_month if sim else '' }}">{{ '${:,.0f}'.format(sim.cash_this_month) if sim else '—' }}</b>
       <span class="chain-rate">this month · <span id="chain-cashterm-v">{{ '${:,.0f}'.format(sim.cash_over_term) if sim else '—' }}</span> over the term · +<span id="chain-mrr-v">{{ '${:,.0f}'.format(sim.mrr_added) if sim else '—' }}</span>/mo revenue</span>
     </div>
     <div class="chain-card" id="chain-cost" data-def="chain_cost">
