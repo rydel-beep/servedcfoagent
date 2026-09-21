@@ -2602,3 +2602,90 @@ do.
 `today.rulings.items` and `c.values` (#156) all resolve to the dict's own
 method and 500 the page at render time. A test now forbids the paren-less
 form across every template.
+
+---
+
+## #159 — SALES COMMISSIONS → TRUE CAC: one engine, ruled structure, reconciled
+**2026-09-22 · diagnose first, then encode**
+
+**THE DIAGNOSIS CAME FIRST** (`COMMISSIONS_DIAGNOSIS.md`). The suspicion was
+that commissions were understated because the tracker's cells are blank for
+gap-window closes. They were not understated — **they were exactly zero**,
+on every surface. For the September cohort: ad spend $9,112.28, closer
+commission **$0.00**, setter commission **$0.00**, tooling $1,470.83. The
+$490.28-per-close gap between loaded and spend-only CAC was **sales tooling
+and nothing else**. Meanwhile Xero had paid **$50,109** of commission over
+six months.
+
+Four paths were computing a commission and three returned $0 — the tracker
+column sum (`range_unit_economics`), the payout-log sum windowed by PAYOUT
+date (only 42 of 194 rows carry one), and a third sum of the same columns
+under different numbering feeding `snapshot.costs` → `hormozi_metrics`. The
+fourth was a RATE, and it contradicted itself: 6.3% of cash-in-month gave
+$313 a client on the compass roadmap while 6.3% of cash-over-term gave $965
+on the simulator card. A fifth was found during the build — the compass
+cohort CAC applied the rate to contract value, a third answer again.
+
+**THE RULES ARE NOW A RULEBOOK** (`comp_rulebook.py`), versioned and
+effective-dated. R-SET · R-KALIN-CLOSE · R-KALIN-MGR · R-COBY · R-GST as
+ruled, with three earlier regimes reconstructed from the record and carrying
+their evidence. A deal closed in March is costed at March's rules; a date
+outside every reconstructed era is labelled "estimated under current rules"
+rather than silently restated.
+
+**ONE ENGINE** (`commission_engine.py`), event-level, three layers kept
+apart: ACCRUED (rules × facts), RECORDED (what the sources say), PAID (Xero
+by month). **COUNTED = recorded where present, else accrued — a blank cell
+is never $0.** That single rule is what put commission back into CAC.
+
+**THE INVARIANT HOLDS AND IS TESTED**: the company's total on any
+junior-closed deal equals the junior rate. Kalin's 3% moves money from Coby
+to Kalin; it never adds company cost. A deduction that would exceed the
+commission on an event is capped there and raises a decision card — it never
+goes negative. Every worked example Rydel gave is a test: a qualified set
+$50 · Kalin Growth Pro $750 · a $3,355 inc-GST charge paying the setter
+$152.50 (5% of $3,050, never of $3,355) · a Coby Growth Pro splitting $550
+into Kalin $91.50 + Coby $458.50 · a Coby Scale Engine PIF splitting $1,000
+into $435 + $565 · a Coby split paying $500 a collection as $202.50 +
+$297.50 · a PIF paying the setter 5% of the whole prepayment.
+
+**R-GST WAS ALREADY THE PRACTICE.** 62 of 62 checkable payout-log bonuses
+equal 5% of EX-GST cash; none matches GST-inclusive. The rule was encoded to
+match the record, not imposed on it.
+
+**THE BOUNTY IS A SET EVENT, NOT A CLOSE EVENT.** 194 payout rows, every one
+a flat $50, **127 of them on deals that never closed**. So setter cost per
+CLOSE moves with the close rate while cost per SET does not, and the drawer
+says so. The log carries no qualification flag — "qualified" is the
+judgement made when the row is added, and that is stated rather than dressed
+up as a rule the data supports.
+
+**TRUE CAC** = ad spend + commissions + set bounties + the manager retainer
++ sales tooling. September cohort: loaded CAC **$3,525.03 → $5,703.89**;
+**LTGP:CAC 4.10 → 2.53**, which puts the business BELOW the 3:1 benchmark
+once sales cost is counted. That is the picture Rydel asked for, and it
+changes a decision.
+
+**EVERY SURFACE READS THE ENGINE.** The CAC tiles, the compass roadmap, the
+simulator cost card and its cohort CAC, and `sim_core.js` (client/engine
+parity re-pinned, 200 random sets). The simulator's commission input is now
+DOLLARS PER CLOSE from the rulebook for a modelled closer mix — a rate could
+never answer "what if Coby closes more of them", because the whole point of
+the junior rate is that the company's total changes with WHO closes. Proven:
+moving closes from Kalin to Coby drops CAC $4,062.96 → $3,943.72.
+
+**COMMISSIONS LEAVE THE UNLABELLED OPEX BAND.** `outflow_bands` gains a
+named "Sales commissions" sub-line inside opex — visible, with the partition
+invariant untouched.
+
+**OWNER-ONLY.** The rulebook, the per-person figures and EDITH's commission
+answer are owner-only, refused structurally. **This conflicts with the
+standing 2026-07-21 ruling that Piolo sees everything Rydel does — the brief
+said owner-only and that is what shipped, but it is Rydel's to reconcile.**
+
+**THREE FINDINGS FOR RYDEL, none decided here.** Growth Pro's "May-only"
+$900 override was still being paid in June and July, against a config that
+says it reverted to $750. Coby's five recorded closes were paid at the FULL
+rate, not the junior rate — under today's ruling they would total $3,650
+against the $5,700 recorded; no restatement was made. And 121 of 194 payout
+rows have no setter attributed, so per-setter bounty history is unavailable.

@@ -155,6 +155,15 @@
       <h4>What does it cost us?</h4>
       <b id="chain-cac-v">{{ '${:,.0f}'.format(sim.cac) if sim and sim.cac else '—' }}</b>
       <span class="chain-rate">per client, all-in (ads-only <span id="chain-cacso-v">{{ '${:,.0f}'.format(sim.cac_spend_only) if sim and sim.cac_spend_only else '—' }}</span>) · profit-vs-cost <span id="chain-ltgp-v">{{ sim.ltgp_cac if sim else '—' }}</span>×</span>
+      {# THE COST CARD (#159): what a client costs, apart from ad spend.
+         Commissions come from the sales-comp rulebook, so moving closes
+         between closers moves this — a flat rate could never do that. #}
+      <ul class="cost-card" id="cost-card" data-def="cost_card">
+        {% for c in (sim.cost_card if sim else []) %}
+        <li><span>{{ c.label }}</span><b>{{ '${:,.0f}'.format(c.amount) }}</b></li>
+        {% endfor %}
+      </ul>
+      <span class="chain-rate" id="cost-card-note">{% if sim %}commissions on the sales-comp rulebook (v{{ sim.comm_rule_version }}) — ${{ '{:,.0f}'.format(sim.commission_per_close) }} a close, plus ${{ '{:,.0f}'.format(sim.bounty_per_set) }} on every set booked{% endif %}</span>
     </div>
   </div>
 

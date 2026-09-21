@@ -37,6 +37,16 @@ _KV_MONTH_CACHE = "outflow:month_bands"   # {YYYY-MM: {bands..., total}} closed 
 
 BANDS = ("opex", "tax_statutory", "personal", "flagged")
 
+# SUB-LINES inside a band. Sales commissions are real OpEx — they belong in
+# the opex band, so the partition is untouched — but they are a VARIABLE,
+# per-deal acquisition cost and arriving merged with rent and subscriptions
+# told nobody anything. They are named here and rendered as their own line.
+_ACCOUNT_SUBLINE = {
+    "closer commission": "sales_commissions",
+    "setter commission": "sales_commissions",
+}
+SUBLINE_LABELS = {"sales_commissions": "Sales commissions"}
+
 # THIS ORG'S CHART (enumerated from the live books, dashboard/OUTFLOW_DIAGNOSIS.md
 # — never assumed standard codes). The account NAME is the ledger signal.
 _ACCOUNT_BAND = {
@@ -116,17 +126,27 @@ def band_line_items(lines: list[dict]) -> dict:
     """Band a P&L expense-section line list. Returns {bands: {band: total},
     items: [{label, amount, band, basis}], partition: {total, sum, ok}}."""
     bands = {b: 0.0 for b in BANDS}
+    sublines: dict = {}
     items = []
     for line in lines or []:
         label = line.get("label") or ""
         amount = abs(float(line.get("amount") or 0))
         band, basis = classify_account(label)
+        sub = _ACCOUNT_SUBLINE.get(_key(label))
         bands[band] = round(bands[band] + amount, 2)
+        if sub:
+            sublines[sub] = round(sublines.get(sub, 0.0) + amount, 2)
         items.append({"label": label, "amount": round(amount, 2),
-                      "band": band, "basis": basis})
+                      "band": band, "subline": sub, "basis": basis})
     total = round(sum(abs(float(l.get("amount") or 0)) for l in lines or []), 2)
     ssum = round(sum(bands.values()), 2)
     return {"bands": {b: round(v, 2) for b, v in bands.items()},
+            "sublines": {k: {"label": SUBLINE_LABELS.get(k, k), "amount": v,
+                             "inside_band": "opex",
+                             "note": ("a variable, per-deal acquisition cost — "
+                                      "named here so it never arrives merged "
+                                      "into OpEx unlabelled")}
+                         for k, v in sublines.items()},
             "items": items,
             "partition": {"total": total, "sum": ssum,
                           "ok": abs(total - ssum) < 0.05,

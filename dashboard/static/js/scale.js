@@ -290,6 +290,13 @@
     set$('chain-cac-v', c.cac ? fmt$(c.cac) : '—');
     set$('chain-cacso-v', c.cac_spend_only ? fmt$(c.cac_spend_only) : '—');
     set$('chain-ltgp-v', c.ltgp_cac ? c.ltgp_cac.toFixed(2) : '—');
+    // the cost card — what a client costs apart from ads (#159)
+    var card = $('cost-card');
+    if (card && c.cost_card) {
+      card.innerHTML = c.cost_card.map(function (x) {
+        return '<li><span>' + x.label + '</span><b>' + fmt$(x.amount) + '</b></li>';
+      }).join('');
+    }
     if (CURRENT) {
       CURRENT.spend_path.start = simState.spend;
       CURRENT.cpl0 = simState.cpl;

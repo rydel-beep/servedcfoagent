@@ -730,7 +730,13 @@ def forward(inputs: dict, _book: dict | None = None) -> dict:
         # commissions are % of SALES (new-deal collections) — FY26 6.3% of
         # sales, never of the standing book's recurring collections (stated;
         # renewal commissions, if ever agreed, are not modelled)
-        commissions = comm_rate * cash_new
+        # the SAME rulebook cost the simulator uses — a rate applied to a
+        # different cash base is how the roadmap said $313 a client while
+        # the cost card said $965 (the diagnosis).
+        _cm = _modelled_comm(inp)
+        commissions = round(_cm["commission_per_close"] * row["closes"]
+                            + _cm["bounty_per_set"] * row["calls_booked"]
+                            + _cm["monthly_fixed"]["total"], 2)
         # hires: planned + auto (cost from start month; ramp affects capacity)
         hire_cost = 0.0
         for h in hires + auto_hire_cards:
@@ -830,8 +836,14 @@ def forward(inputs: dict, _book: dict | None = None) -> dict:
         n_ev = meta["closes_eventual"]
         if n_ev < 0.05:
             continue
-        comm_est = comm_rate * n_ev * sum(
-            mix[p] * float((pkgs.get(p) or {}).get("contract") or 0) for p in mix)
+        # the SAME rulebook cost, composed the SAME way as simulate_month —
+        # this cohort line was a THIRD commission path (a rate on contract
+        # value) and it disagreed with both the roadmap and the cost card.
+        _cmc = _modelled_comm(inp)
+        _calls_ev = n_ev / max(float(inp["show_rate"]) * float(inp["close_rate"]), 1e-9)
+        comm_est = (_cmc["commission_per_close"] * n_ev
+                    + _cmc["bounty_per_set"] * _calls_ev
+                    + _cmc["monthly_fixed"]["total"])
         cac_cohort = round((meta["spend"] + comm_est + tooling) / n_ev, 2)
         cac_cohort_spend_only = round(meta["spend"] / n_ev, 2)
         # payback: cumulative mix-weighted cash schedule vs CAC
@@ -1366,8 +1378,17 @@ def simulate_month(inputs: dict | None = None, spend: float | None = None,
     mrr_added = clients * mrr_mix
     comm_rate = float(inp["commission_pct_of_cash"])
     tooling = float(inp["sales_tooling_monthly"])
-    commissions_term = comm_rate * cash_term
-    cac = ((S + commissions_term + tooling) / clients) if clients >= 0.01 else None
+    # COMMISSIONS FROM THE RULEBOOK (#159), not a percentage of cash. A rate
+    # could only ever move with cash; it could not answer "what if Coby
+    # closes more of them", which is the whole point of the junior rate —
+    # the company's total changes with WHO closes. Bounties ride on the
+    # modelled SETS (calls booked), because that is when they are owed.
+    comm = _modelled_comm(inp)
+    commissions_term = round(comm["commission_per_close"] * clients, 2)
+    bounties = round(comm["bounty_per_set"] * calls, 2)
+    monthly_fixed = comm["monthly_fixed"]["total"]
+    acq = S + commissions_term + bounties + monthly_fixed + tooling
+    cac = (acq / clients) if clients >= 0.01 else None
     cac_spend_only = (S / clients) if clients >= 0.01 else None
     ltgp_per_client = contract_mix * margin_mix
     return {"spend": round(S, 2), "cpl_effective": round(cpl_eff, 2),
@@ -1378,6 +1399,17 @@ def simulate_month(inputs: dict | None = None, spend: float | None = None,
             "cash_over_term": round(cash_term, 2),
             "mrr_added": round(mrr_added, 2),
             "commissions_over_term": round(commissions_term, 2),
+            "commission_per_close": comm["commission_per_close"],
+            "bounties": bounties, "bounty_per_set": comm["bounty_per_set"],
+            "monthly_fixed": monthly_fixed,
+            "comm_rule_version": comm["rule_version"],
+            "cost_card": [
+                {"label": "ad spend", "amount": round(S, 2)},
+                {"label": "commissions on closes", "amount": commissions_term},
+                {"label": "set bounties", "amount": bounties},
+                {"label": "manager retainer + bonuses", "amount": monthly_fixed},
+                {"label": "sales tooling", "amount": round(tooling, 2)},
+            ],
             "cac": round(cac, 2) if cac else None,
             "cac_spend_only": round(cac_spend_only, 2) if cac_spend_only else None,
             "ltgp_per_client": round(ltgp_per_client, 2),
@@ -1388,12 +1420,34 @@ def simulate_month(inputs: dict | None = None, spend: float | None = None,
             "margin_avg": round(margin_mix, 4),
             "tooling": tooling,
             "comm_rate": comm_rate,
+            "comm_per_close": comm["commission_per_close"],
+            "bounty_per_set_agg": comm["bounty_per_set"],
+            "monthly_fixed_agg": monthly_fixed,
             "epsilon": float(inp["epsilon"]),
             "spend_baseline": S0,
             "m0_share": round(m0_share, 4),
             "rates": {"set": inp["set_rate"], "show": inp["show_rate"],
                       "close": inp["close_rate"]},
             "label": "what-if — never the books"}
+
+
+def _modelled_comm(inp: dict) -> dict:
+    """Per-close commission from the rulebook, for the scenario's mix.
+    Falls back to the old rate ONLY if the rulebook cannot be read, and says
+    so in the payload rather than silently."""
+    try:
+        import sales_cost
+        mix = {"closer_mix": inp.get("closer_mix") or {"kalin": 1.0},
+               "package_mix": inp.get("package_mix") or None,
+               "pif_share": inp.get("pif_share", 0.5)}
+        return sales_cost.modelled_commission(mix)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("rulebook commission unavailable, using the rate: %s", e)
+        rate = float(inp.get("commission_pct_of_cash") or 0.063)
+        return {"commission_per_close": 0.0, "bounty_per_set": 0.0,
+                "monthly_fixed": {"total": 0.0}, "rule_version": None,
+                "fallback_rate": rate,
+                "degraded": f"rulebook unavailable ({str(e)[:70]})"}
 
 
 def confidence_word(n) -> str:

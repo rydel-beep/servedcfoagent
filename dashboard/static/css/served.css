@@ -400,3 +400,13 @@ a.s-verdict:hover { background: var(--bg-card-hover); }
 .req-rate.is-impossible { background: var(--red-dim);   color: var(--red); }
 .req-rate.is-stretch    { background: var(--amber-dim); color: var(--amber); }
 .req-rate.is-ok         { background: var(--green-dim); color: var(--green); }
+
+/* ── the simulator's cost card (#159) ───────────────────────────────────── */
+.cost-card { list-style: none; margin: 8px 0 0; padding: 0; }
+.cost-card li {
+  display: flex; justify-content: space-between; gap: var(--sp-3);
+  font: 400 var(--fs-caption)/1.7 var(--font-ui); color: var(--text-secondary);
+  border-bottom: 1px dashed var(--border);
+}
+.cost-card li:last-child { border-bottom: none; }
+.cost-card b { color: var(--text); font-variant-numeric: tabular-nums; }

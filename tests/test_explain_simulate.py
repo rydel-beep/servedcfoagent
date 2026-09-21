@@ -167,8 +167,16 @@ def test_show_the_math_arithmetic_equals_engine(stub):
     assert abs(s["shows"] - s["calls"] * 0.9) < 0.11
     assert abs(s["clients"] - s["shows"] * 0.28) < 0.02
     assert abs(s["cash_this_month"] - s["clients"] * s["m0_share"] * s["contract_avg"]) < 1.0
-    assert abs(s["cac"] - (10000.0 + s["commissions_over_term"] + s["tooling"])
+    # CAC now carries what sales actually costs (#159): ad spend +
+    # commissions on closes + the set bounties (owed per SET, so they scale
+    # with booked calls, not closes) + the manager retainer and bonuses +
+    # sales tooling.
+    assert abs(s["cac"] - (10000.0 + s["commissions_over_term"] + s["bounties"]
+                           + s["monthly_fixed"] + s["tooling"])
                / s["clients"]) < 0.51
+    # and the cost card adds up to exactly that
+    assert abs(sum(c["amount"] for c in s["cost_card"])
+               - s["cac"] * s["clients"]) < 0.51
 
 
 def test_iwant_inversions_round_trip(stub):
@@ -303,9 +311,15 @@ def test_client_engine_parity_200_random_sets(stub):
     import subprocess
     rng = random.Random(155)
     base = CE.simulate_month()          # aggregates come from the engine
+    # the aggregates the client is handed. `comm_per_close`,
+    # `bounty_per_set_agg` and `monthly_fixed_agg` are the rulebook cost
+    # (#159) — without them the client falls back to the old rate and the
+    # two sides compute different CACs, which is exactly what parity is for.
     agg = {k: base[k] for k in ("m0_share", "contract_avg", "mrr_avg",
                                 "margin_avg", "comm_rate", "tooling",
-                                "epsilon", "spend_baseline")}
+                                "epsilon", "spend_baseline",
+                                "comm_per_close", "bounty_per_set_agg",
+                                "monthly_fixed_agg")}
     sets = []
     for _ in range(200):
         sets.append({
@@ -369,9 +383,15 @@ def test_target_mode_round_trip_via_core(stub):
     import json as _json
     import subprocess
     base = CE.simulate_month()
+    # the aggregates the client is handed. `comm_per_close`,
+    # `bounty_per_set_agg` and `monthly_fixed_agg` are the rulebook cost
+    # (#159) — without them the client falls back to the old rate and the
+    # two sides compute different CACs, which is exactly what parity is for.
     agg = {k: base[k] for k in ("m0_share", "contract_avg", "mrr_avg",
                                 "margin_avg", "comm_rate", "tooling",
-                                "epsilon", "spend_baseline")}
+                                "epsilon", "spend_baseline",
+                                "comm_per_close", "bounty_per_set_agg",
+                                "monthly_fixed_agg")}
     core = os.path.join(ROOT, "dashboard", "static", "js", "sim_core.js")
     script = (
         "const SimCore = require(%r);"

@@ -684,6 +684,32 @@ def unit_econ_view() -> dict:
         cac_full = comp.get("cac_fully_loaded")
         cac_spend = comp.get("cac_spend_only")
         cac_note = None
+        true_cac = None
+        # TRUE CAC — ONE COMMISSION ENGINE (#159). The standing components
+        # summed the tracker's commission cells, which have been empty since
+        # 2026-07-20, so every loaded CAC on the estate was ad spend plus
+        # tooling and not a cent of commission. sales_cost applies the
+        # rulebook in force on each deal's own close date, counts a blank
+        # cell as ACCRUED rather than zero, and adds the set bounties and the
+        # manager retainer that no previous path carried at all.
+        try:
+            import sales_cost
+            sc = sales_cost.build(str(w0), str(w1))
+            if sc.get("closes"):
+                true_cac = sc["true_cac"]
+                cac_full = true_cac["per_close"]
+                cac_spend = sc["cac_spend_only"]
+                cac_note = (
+                    f"TRUE CAC — ad spend + commissions + set bounties + the "
+                    f"manager retainer + sales tooling, over {sc['closes']} "
+                    f"closes. Commissions from the rulebook (v"
+                    f"{sc['rule_version']['version']}); "
+                    f"{sc['commissions']['exact_deals']} deal(s) costed "
+                    f"exactly, {sc['commissions']['averaged_deals']} at the "
+                    f"blended average because the tracker has not recorded "
+                    f"their package or closer.")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("true CAC unavailable, falling back: %s", e)
         if cac_full is None and n:
             # prod-caught: the standing engine counts closes from tracker
             # won-marks, which the gap left empty — compute the pair from
@@ -712,6 +738,7 @@ def unit_econ_view() -> dict:
             "closes": n,
             "cac_note": cac_note,
             "cac_fully_loaded": cac_full,
+            "true_cac": true_cac,
             "cac_spend_only": cac_spend,
             "cac_loaded_standing": comp.get("cac_loaded"),
             "cac_labels": comp.get("cac_labels"),

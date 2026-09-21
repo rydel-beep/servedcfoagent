@@ -42,15 +42,38 @@
     var cashNow = clients * agg.m0_share * agg.contract_avg;
     var cashTerm = clients * agg.contract_avg;
     var mrr = clients * agg.mrr_avg;
-    var comm = agg.comm_rate * cashTerm;
-    var cac = clients >= 0.01 ? (spend + comm + agg.tooling) / clients : null;
+    /* COMMISSIONS FROM THE RULEBOOK (#159), matching compass_engine exactly:
+       dollars per close, plus the bounty on every BOOKED CALL (a set is when
+       the bounty is owed), plus the monthly fixed costs. The old
+       `comm_rate * cashTerm` is kept ONLY as the fallback for a payload that
+       predates the rulebook, so an old cached run still renders. */
+    var comm, bounties, monthlyFixed;
+    if (agg.comm_per_close !== undefined && agg.comm_per_close !== null) {
+      comm = agg.comm_per_close * clients;
+      bounties = (agg.bounty_per_set_agg || 0) * calls;
+      monthlyFixed = agg.monthly_fixed_agg || 0;
+    } else {
+      comm = agg.comm_rate * cashTerm;
+      bounties = 0; monthlyFixed = 0;
+    }
+    var acq = spend + comm + bounties + monthlyFixed + agg.tooling;
+    var cac = clients >= 0.01 ? acq / clients : null;
     var cacSpendOnly = clients >= 0.01 ? spend / clients : null;
     var ltgpPerClient = agg.contract_avg * agg.margin_avg;
     return {
       spend: spend, cpl_effective: eff, leads: leads, calls: calls,
       shows: shows, clients: clients, cash_this_month: cashNow,
       cash_over_term: cashTerm, mrr_added: mrr,
-      commissions_over_term: comm, cac: cac, cac_spend_only: cacSpendOnly,
+      commissions_over_term: comm, bounties: bounties,
+      monthly_fixed: monthlyFixed,
+      cost_card: [
+        {label: 'ad spend', amount: spend},
+        {label: 'commissions on closes', amount: comm},
+        {label: 'set bounties', amount: bounties},
+        {label: 'manager retainer + bonuses', amount: monthlyFixed},
+        {label: 'sales tooling', amount: agg.tooling}
+      ],
+      cac: cac, cac_spend_only: cacSpendOnly,
       ltgp_per_client: ltgpPerClient,
       ltgp_cac: cac ? ltgpPerClient / cac : null
     };

@@ -214,6 +214,68 @@ def today_page():
     return resp
 
 
+# ── SALES COMP RULES (#159) — OWNER ONLY, every edit journaled ──────────────
+
+@bp.route("/api/comp/rules", methods=["GET"])
+@require_owner
+def api_comp_rules():
+    """The rulebook: the current version up front, the reconstructed history
+    behind it, the open items, and the fit against what was recorded.
+
+    OWNER-ONLY. Per-person commission is finance — ad_domain and any future
+    sales role are refused structurally by the decorator, not by hiding a
+    link."""
+    import comp_rulebook as RB
+    import commission_engine as CE
+    import sales_cost as SC
+    out = {
+        "current": RB.current_version(),
+        "versions": [RB._with_overrides(v) for v in RB.VERSIONS],
+        "open_items": RB.open_items(),
+        "coby_policy_flag": RB.coby_policy_flag(),
+        "journal": RB.journal(),
+        "decision_cards": CE.decision_cards(),
+        "set_fee_basis": RB.set_fee_basis(),
+    }
+    try:
+        out["per_close_cost"] = SC.per_close_cost_table()
+    except Exception as e:  # noqa: BLE001
+        out["per_close_cost"] = {"error": str(e)[:120]}
+    try:
+        out["fit"] = CE.fit_check(SC._tracker_deals())
+    except Exception as e:  # noqa: BLE001
+        out["fit"] = {"error": str(e)[:120]}
+    return jsonify(out)
+
+
+@bp.route("/api/comp/rules", methods=["POST"])
+@require_owner
+def api_comp_rules_edit():
+    """Journaled edit — e.g. switching the set-fee wording between
+    'qualified' and 'showed'. Nothing is overwritten; a new effective value
+    is recorded with who changed it and when."""
+    import comp_rulebook as RB
+    from dashboard.auth import current_actor
+    body = request.get_json(silent=True) or {}
+    version = int(body.get("version") or RB.current_version()["version"])
+    changes = body.get("changes") or {}
+    if not isinstance(changes, dict) or not changes:
+        return jsonify({"error": "no changes given"}), 400
+    res = RB.set_override(version, changes,
+                          (current_actor() or {}).get("user") or "owner",
+                          body.get("note") or "")
+    return jsonify(res)
+
+
+@bp.route("/api/comp/cost", methods=["GET"])
+@require_owner
+def api_comp_cost():
+    """The averages and true CAC — owner-only, same reason."""
+    import sales_cost as SC
+    days = int(request.args.get("days") or 90)
+    return jsonify(SC.averages(days))
+
+
 # ── SALES — the team's scoreboard (owner/finance only) ──────────────────────
 
 @bp.route("/sales")
@@ -1576,6 +1638,7 @@ def api_chat():
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
             (lambda m: __import__('open_loops').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # Pillar 1: 'remind me to X' / 'drop it' (internal reminders only)
+            (__import__('sales_cost').handle_commission_query, False),   # #159: 'what do commissions cost per client' → the rulebook average (OWNER-ONLY)
             (__import__('outflow_bands').handle_expense_query, False),    # outflow truth: 'real monthly expenses' → OpEx + tax stated separately
             (__import__('ads_lifecycle').handle_decision_recall, False),   # Board v2: 'why did we kill X' → move reason + mover (journal truth)
             (__import__('ads_lifecycle').handle_stance_recall, False),     # Board v2: 'what does the team think of X' → stances + quotes (one store)
@@ -1849,6 +1912,7 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             (lambda m: __import__('conversation').handle(m, history), False),  # ADVISORY + ANAPHORA/scenario — FIRST so follow-ups ('5 more closes') aren't grabbed by forecast/recital
             (lambda m: __import__('capital_allocation').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # capital allocation: deploy / opportunity-cost / review / set buffer|return
             (lambda m: __import__('open_loops').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # Pillar 1: 'remind me to X' / 'drop it' (internal reminders only)
+            (__import__('sales_cost').handle_commission_query, False),   # #159: 'what do commissions cost per client' → the rulebook average (OWNER-ONLY)
             (__import__('outflow_bands').handle_expense_query, False),    # outflow truth: 'real monthly expenses' → OpEx + tax stated separately
             (__import__('ads_lifecycle').handle_decision_recall, False),   # Board v2: 'why did we kill X' → move reason + mover (journal truth)
             (__import__('ads_lifecycle').handle_stance_recall, False),     # Board v2: 'what does the team think of X' → stances + quotes (one store)
