@@ -635,7 +635,7 @@ def handle_commission_query(text: str):
             f"spend ${tc['ad_spend']:,.0f}, commissions ${tc['commissions']:,.0f}, "
             f"bounties ${tc['bounties']:,.0f}, retainer ${tc['retainer']:,.0f} "
             f"and tooling ${tc['tooling']:,.0f}.")
-    lines.append(f"Rules: version {v['version']} — {v['name']}.")
+    lines.append(f"Rules: version {v['version']}, {v['name'].lstrip('Current — ')}.")
     if a.get("needs_your_number"):
         lines.append(a["needs_your_number"][0]["what"] + ".")
     return " ".join(lines), True

@@ -62,3 +62,4 @@ P2 = next session on the domain, P3 = when convenient).
 - [P2] 2026-09-21T23:26 — **workbook tab change** — unmapped=[{'book': 'ltc', 'tab': 'Health'}, {'book': 'ltc', 'tab': 'Intake Log'}, {'book': 'ltc', 'tab': 'US Leads (Akila)'}, {'book': 'ltc', 'tab': 'Removed Rows'}] changes=[]
 - [P2] 2026-09-22T00:45 — **workbook tab change** — unmapped=[{'book': 'ltc', 'tab': 'Health'}, {'book': 'ltc', 'tab': 'Intake Log'}, {'book': 'ltc', 'tab': 'US Leads (Akila)'}, {'book': 'ltc', 'tab': 'Removed Rows'}] changes=[]
 - [P2] 2026-09-22T00:55 — **workbook tab change** — unmapped=[{'book': 'ltc', 'tab': 'Health'}, {'book': 'ltc', 'tab': 'Intake Log'}, {'book': 'ltc', 'tab': 'US Leads (Akila)'}, {'book': 'ltc', 'tab': 'Removed Rows'}] changes=[]
+- [P2] 2026-09-22T01:04 — **workbook tab change** — unmapped=[{'book': 'ltc', 'tab': 'Health'}, {'book': 'ltc', 'tab': 'Intake Log'}, {'book': 'ltc', 'tab': 'US Leads (Akila)'}, {'book': 'ltc', 'tab': 'Removed Rows'}] changes=[]
