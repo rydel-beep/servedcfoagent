@@ -1,0 +1,256 @@
+{
+ "base": "https://web-production-16b16.up.railway.app",
+ "passes": [
+  {
+   "name": "cold",
+   "steps": {
+    "initial": {
+     "spend": 10161,
+     "cpl": 88.35,
+     "leads": 115,
+     "sentence": "At $10,161/mo and $88.35 per lead \u2192 115 leads/month.",
+     "chart_point": 115,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "17"
+    },
+    "after_spend_15000": {
+     "spend": 15000,
+     "cpl": 88.35,
+     "leads": 170,
+     "sentence": "At $15,000/mo and $88.35 per lead \u2192 170 leads/month.",
+     "chart_point": 170,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "25"
+    },
+    "after_cpl_120": {
+     "spend": 15000,
+     "cpl": 120,
+     "leads": 125,
+     "sentence": "At $15,000/mo and $120.00 per lead \u2192 125 leads/month.",
+     "chart_point": 125,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "18"
+    },
+    "after_drag": {
+     "spend": 49963,
+     "cpl": 120,
+     "leads": 416,
+     "sentence": "At $49,963/mo and $120.00 per lead \u2192 416 leads/month.",
+     "chart_point": 416,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "62"
+    },
+    "after_target_40calls": {
+     "spend": 32476,
+     "cpl": 120,
+     "leads": 271,
+     "sentence": "To get 40 booked calls/month at $120.00/lead, a 14.8% booking rate, 90.2% turn-up and 28.3% close \u2014 you need $32,476/mo.",
+     "chart_point": 271,
+     "cpl_disabled": true,
+     "spend_disabled": true,
+     "cpl_note": "",
+     "calls": "40"
+    },
+    "after_elasticity_on": {
+     "spend": 30000,
+     "cpl": 149.01,
+     "leads": 201,
+     "sentence": "At $30,000/mo and $149.01 per lead \u2192 201 leads/month.",
+     "chart_point": 201,
+     "cpl_disabled": true,
+     "spend_disabled": false,
+     "cpl_note": "effective CPL at this spend: $149.01 (your base $120.00 climbs as spend grows)",
+     "calls": "30"
+    },
+    "after_reset": {
+     "spend": 10161,
+     "cpl": 88.35,
+     "leads": 115,
+     "sentence": "At $10,161/mo and $88.35 per lead \u2192 115 leads/month.",
+     "chart_point": 115,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "17"
+    }
+   }
+  },
+  {
+   "name": "warm",
+   "steps": {
+    "initial": {
+     "spend": 10161,
+     "cpl": 88.35,
+     "leads": 115,
+     "sentence": "At $10,161/mo and $88.35 per lead \u2192 115 leads/month.",
+     "chart_point": 115,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "17"
+    },
+    "after_spend_15000": {
+     "spend": 15000,
+     "cpl": 88.35,
+     "leads": 170,
+     "sentence": "At $15,000/mo and $88.35 per lead \u2192 170 leads/month.",
+     "chart_point": 170,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "25"
+    },
+    "after_cpl_120": {
+     "spend": 15000,
+     "cpl": 120,
+     "leads": 125,
+     "sentence": "At $15,000/mo and $120.00 per lead \u2192 125 leads/month.",
+     "chart_point": 125,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "18"
+    },
+    "after_drag": {
+     "spend": 49963,
+     "cpl": 120,
+     "leads": 416,
+     "sentence": "At $49,963/mo and $120.00 per lead \u2192 416 leads/month.",
+     "chart_point": 416,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "62"
+    },
+    "after_target_40calls": {
+     "spend": 32476,
+     "cpl": 120,
+     "leads": 271,
+     "sentence": "To get 40 booked calls/month at $120.00/lead, a 14.8% booking rate, 90.2% turn-up and 28.3% close \u2014 you need $32,476/mo.",
+     "chart_point": 271,
+     "cpl_disabled": true,
+     "spend_disabled": true,
+     "cpl_note": "",
+     "calls": "40"
+    },
+    "after_elasticity_on": {
+     "spend": 30000,
+     "cpl": 149.01,
+     "leads": 201,
+     "sentence": "At $30,000/mo and $149.01 per lead \u2192 201 leads/month.",
+     "chart_point": 201,
+     "cpl_disabled": true,
+     "spend_disabled": false,
+     "cpl_note": "effective CPL at this spend: $149.01 (your base $120.00 climbs as spend grows)",
+     "calls": "30"
+    },
+    "after_reset": {
+     "spend": 10161,
+     "cpl": 88.35,
+     "leads": 115,
+     "sentence": "At $10,161/mo and $88.35 per lead \u2192 115 leads/month.",
+     "chart_point": 115,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "17"
+    }
+   }
+  },
+  {
+   "name": "third",
+   "steps": {
+    "initial": {
+     "spend": 10161,
+     "cpl": 88.35,
+     "leads": 115,
+     "sentence": "At $10,161/mo and $88.35 per lead \u2192 115 leads/month.",
+     "chart_point": 115,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "17"
+    },
+    "after_spend_15000": {
+     "spend": 15000,
+     "cpl": 88.35,
+     "leads": 170,
+     "sentence": "At $15,000/mo and $88.35 per lead \u2192 170 leads/month.",
+     "chart_point": 170,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "25"
+    },
+    "after_cpl_120": {
+     "spend": 15000,
+     "cpl": 120,
+     "leads": 125,
+     "sentence": "At $15,000/mo and $120.00 per lead \u2192 125 leads/month.",
+     "chart_point": 125,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "18"
+    },
+    "after_drag": {
+     "spend": 49963,
+     "cpl": 120,
+     "leads": 416,
+     "sentence": "At $49,963/mo and $120.00 per lead \u2192 416 leads/month.",
+     "chart_point": 416,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "62"
+    },
+    "after_target_40calls": {
+     "spend": 32476,
+     "cpl": 120,
+     "leads": 271,
+     "sentence": "To get 40 booked calls/month at $120.00/lead, a 14.8% booking rate, 90.2% turn-up and 28.3% close \u2014 you need $32,476/mo.",
+     "chart_point": 271,
+     "cpl_disabled": true,
+     "spend_disabled": true,
+     "cpl_note": "",
+     "calls": "40"
+    },
+    "after_elasticity_on": {
+     "spend": 30000,
+     "cpl": 149.01,
+     "leads": 201,
+     "sentence": "At $30,000/mo and $149.01 per lead \u2192 201 leads/month.",
+     "chart_point": 201,
+     "cpl_disabled": true,
+     "spend_disabled": false,
+     "cpl_note": "effective CPL at this spend: $149.01 (your base $120.00 climbs as spend grows)",
+     "calls": "30"
+    },
+    "after_reset": {
+     "spend": 10161,
+     "cpl": 88.35,
+     "leads": 115,
+     "sentence": "At $10,161/mo and $88.35 per lead \u2192 115 leads/month.",
+     "chart_point": 115,
+     "cpl_disabled": false,
+     "spend_disabled": false,
+     "cpl_note": "",
+     "calls": "17"
+    }
+   }
+  }
+ ],
+ "fails": [],
+ "commit": "e44d650ee04d",
+ "utc": "2026-09-21T05:24:45Z",
+ "console_errors": [],
+ "ok": true
+}
