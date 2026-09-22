@@ -24,6 +24,7 @@ import time
 
 import db
 import ghl_mirror
+import llm_compat
 from config import CHAT_MODEL
 
 logger = logging.getLogger(__name__)
@@ -129,8 +130,9 @@ def _compose(lead: dict, notes: list[dict]) -> dict | None:
         try:
             import anthropic
             client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-            resp = client.messages.create(model=CHAT_MODEL, max_tokens=400, temperature=0.2,
-                                           system=_SYSTEM, messages=[{"role": "user", "content": user}])
+            resp = client.messages.create(model=CHAT_MODEL, max_tokens=400,
+                                           system=_SYSTEM, messages=[{"role": "user", "content": user}],
+                                           **llm_compat.temp(client.messages.create, 0.2))
             txt = resp.content[0].text if resp.content else ""
             s = txt.find("{"); e = txt.rfind("}")
             if s >= 0 and e > s:

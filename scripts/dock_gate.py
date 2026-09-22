@@ -22,9 +22,14 @@ from playwright.sync_api import sync_playwright
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 BASE = os.environ.get("GATE_BASE", "https://web-production-16b16.up.railway.app")
-PW = os.environ.get("GATE_OWNER_PASSWORD")
+# The gate needs a real seat. Either hand it GATE_* explicitly, or run it under
+# `railway run`, which injects the live credential envs — so the value is never
+# typed, echoed or written down anywhere.
+PW = os.environ.get("GATE_OWNER_PASSWORD") or os.environ.get("RYDEL_PASSWORD")
 USER = os.environ.get("GATE_OWNER_USER", "rydel")
-AD_PW = os.environ.get("GATE_AD_PASSWORD")
+AD_PW = (os.environ.get("GATE_AD_PASSWORD")
+         or os.environ.get("ROMANO_PASSWORD")
+         or os.environ.get("MEDIA_BUYER_PASSWORD"))
 
 FAILS: list[str] = []
 REPORT: dict = {"base": BASE, "steps": {}, "fails": FAILS,
@@ -112,6 +117,28 @@ def login(page, user, pw):
     page.wait_for_load_state("domcontentloaded")
 
 
+def wait_for_reply(page, timeout_ms, index=0):
+    """Poll the reply bubble until it stops being the placeholder and stops
+    growing. Returns whatever is there when the budget runs out."""
+    deadline = time.time() + timeout_ms / 1000.0
+    last, stable = "", 0
+    while time.time() < deadline:
+        txt = page.evaluate(
+            "(i) => (document.querySelectorAll('.ed-edith')[i] || {}).innerText || ''",
+            index)
+        txt = (txt or "").strip()
+        if txt and txt != "…":
+            if txt == last:
+                stable += 1
+                if stable >= 3:          # ~1.5s unchanged = she has finished
+                    return txt
+            else:
+                stable = 0
+            last = txt
+        page.wait_for_timeout(500)
+    return last
+
+
 def open_dock(page):
     page.wait_for_selector("#ed-pill", state="visible", timeout=20000)
     page.click("#ed-pill")
@@ -181,9 +208,11 @@ def run():
         open_dock(page)
         page.fill("#ed-text", "what is our cash on hand")
         page.click("#ed-send")
-        page.wait_for_timeout(14000)
-        reply = page.evaluate(
-            "() => (document.querySelectorAll('.ed-edith')[0] || {}).innerText || ''")
+        # Wait for the ANSWER, not for a stopwatch. A definition comes back
+        # instantly; a real figure goes to the model and the first token can be
+        # fifteen seconds out — a fixed 14s wait read the "…" placeholder and
+        # called it an answer with no number in it.
+        reply = wait_for_reply(page, 75000)
         REPORT["steps"]["text_answer"] = reply[:600]
         if not reply.strip():
             fail("the dock returned no answer to a typed question")
@@ -200,7 +229,9 @@ def run():
         # ── 4 · VOICE: tap → transcript → spoken answer → barge-in ──
         page.evaluate("() => { window.__SAY__ = 'what is our committed mrr'; }")
         page.click("#ed-mic")
-        page.wait_for_timeout(15000)
+        # index 1: bubble 0 is the typed answer from step 3
+        REPORT["steps"]["voice_answer"] = wait_for_reply(page, 75000, 1)[:300]
+        page.wait_for_timeout(1500)          # speak() fires right after the stream ends
         after_voice = page.evaluate(
             "() => ({audio: window.__AUDIO__ || {plays:[],pauses:[],srcs:[]},"
             " mic: window.__MIC__ || {started:0,requested:0}})")

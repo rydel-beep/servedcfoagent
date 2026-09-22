@@ -12,6 +12,7 @@ import re
 import time
 from collections import defaultdict
 
+import llm_compat
 from config import CHAT_MODEL
 
 logger = logging.getLogger(__name__)
@@ -648,11 +649,12 @@ def chat(history: list, snapshot_json: str, token: str, voice: bool = False,
             response = client.messages.create(
                 model=CHAT_MODEL,
                 max_tokens=300 if voice else 1000,
-                temperature=0.5,
                 system=system,
                 messages=messages,
+                **llm_compat.temp(client.messages.create, 0.5),
             )
             reply = response.content[0].text if response.content else ""
+            note_brain(True)
             return {"reply": reply, "error": None, "intent": intent}
         except Exception as e:
             last_err = e
@@ -663,6 +665,7 @@ def chat(history: list, snapshot_json: str, token: str, voice: bool = False,
                 continue
             break
     logger.error("Chat API error: %s", last_err)
+    note_brain(False, str(last_err))
     return {"reply": None, "error": f"Chat API error: {str(last_err)[:200]}"}
 
 
@@ -670,6 +673,23 @@ def _estimate_tokens(text: str) -> int:
     """Cheap context-size estimate (~4 chars/token). For debug/telemetry only —
     never used for correctness, just to watch that context stays lean (Phase 4)."""
     return (len(text) + 3) // 4
+
+
+
+# ── EDITH'S OWN PULSE ────────────────────────────────────────────────────────
+# The SDK incompatibility found on 2026-09-22 broke every business answer in
+# production and NOTHING said so — the System page watched the sources, the
+# jobs and the browser, but never the brain. It does now: each model call
+# leaves a one-line result behind, and the System page reads it.
+def note_brain(ok: bool, error: str = "") -> None:
+    try:
+        import kv_store
+        from helpers import now_sydney
+        kv_store.set("edith:last_chat", {
+            "at": now_sydney().isoformat(), "ok": bool(ok),
+            "model": CHAT_MODEL, "error": (error or "")[:200]})
+    except Exception:  # never let bookkeeping break a reply
+        pass
 
 
 def chat_stream(history: list, snapshot_json: str, token: str, voice: bool = False,
@@ -714,9 +734,9 @@ def chat_stream(history: list, snapshot_json: str, token: str, voice: bool = Fal
             with client.messages.stream(
                 model=CHAT_MODEL,
                 max_tokens=300 if voice else 1000,
-                temperature=0.5,
                 system=system,
                 messages=messages,
+                **llm_compat.temp(client.messages.stream, 0.5),
             ) as stream:
                 for delta in stream.text_stream:
                     if delta:
@@ -724,6 +744,7 @@ def chat_stream(history: list, snapshot_json: str, token: str, voice: bool = Fal
                         emitted = True
                         yield ("delta", delta)
             yield ("done", "".join(full))
+            note_brain(True)
             return
         except Exception as e:
             last_err = e
@@ -739,4 +760,5 @@ def chat_stream(history: list, snapshot_json: str, token: str, voice: bool = Fal
                 continue
             break
     logger.error("chat_stream API error: %s", last_err)
+    note_brain(False, str(last_err))
     yield ("error", f"Chat API error: {str(last_err)[:200]}")

@@ -236,7 +236,14 @@ def _freshness_loop() -> None:
     tiles read seventy minutes old, because they only rebuilt on the slow
     loop. This ticks every five minutes and rebuilds ONLY when the inputs
     have actually moved — it is a decision first and work second."""
+    import sys as _sys
     import time as _time
+    if "pytest" in _sys.modules:
+        # NEVER churn engines inside a test process. Found by the suite: the
+        # tick woke 45s into a six-minute run, rebuilt the blocks, bumped the
+        # derivation epoch mid-test and failed the cache-invalidation test —
+        # a background thread quietly editing the world the tests measure.
+        return
     interval = float(os.environ.get("FRESHNESS_TICK_SECONDS", "300"))
     _time.sleep(45)          # let boot settle before the first look
     while True:

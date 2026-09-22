@@ -1,0 +1,20 @@
+{
+ "base": "https://web-production-16b16.up.railway.app",
+ "mark": "harbour lantern",
+ "steps": [
+  {
+   "step": "say on the dock channel",
+   "http": 200,
+   "reply": ""
+  },
+  {
+   "step": "ask on the text channel",
+   "http": 200,
+   "reply": ""
+  }
+ ],
+ "fails": [
+  "the dock channel did not answer (http 200)",
+  "the other channel did not recall 'harbour lantern' \u2014 it said: "
+ ]
+}

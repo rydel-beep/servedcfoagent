@@ -229,6 +229,24 @@ def build(snap: dict | None, owner: bool) -> dict:
             t["delta"] = {"state": "flat", "word": f"comparison unavailable ({str(e)[:40]})",
                           "basis": "", "value": None}
 
+    # ── "as of" — from each tile's INPUTS, never from render time ──
+    # One read of the source stamps for the whole page (~25ms on prod), then
+    # a pure lookup per tile. A tile whose input is past its budget goes amber
+    # and NAMES the source, rather than showing a confident stale number.
+    pulse = _pulse()
+    try:
+        import freshness
+        src = freshness.sources()
+        for t in list(tiles) + list(pulse):
+            a = freshness.as_of(t["id"], src)
+            t["as_of"] = a
+            t["as_of_words"] = ("as of " + a["words"]) if a.get("words") else ""
+            if a["state"] in ("stale", "degraded") and t.get("state") != "degraded":
+                t["state"] = "amber"
+                t["stale_why"] = a["why"]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("today: freshness unavailable: %s", e)
+
     # ── the verdict line (a door to travelling) ──
     tv = kv_store.get(K_TRAVEL) or {}
     tvd = tv.get("data") or {}
@@ -247,7 +265,7 @@ def build(snap: dict | None, owner: bool) -> dict:
         "verdict": verdict,
         "rulings": _rulings(owner),
         "since": _since_you_last_looked(owner),
-        "pulse": _pulse(),
+        "pulse": pulse,
         "today": str(today_sydney()),
         "snapshot_age": exec_top._fmt_age(exec_top._age_h(snap.get("generated_at"))),
     }

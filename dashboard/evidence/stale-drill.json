@@ -1,0 +1,127 @@
+{
+ "baseline": {
+  "stale": [
+   "tracker_mirror",
+   "ghl_opportunities",
+   "meta_today",
+   "engine_blocks"
+  ],
+  "rows": 7
+ },
+ "drills": [
+  {
+   "paused": "tracker_mirror",
+   "aged_hours": 6,
+   "source_row_status": "stale",
+   "tiles_that_went_amber": [
+    {
+     "tile": "ar_outstanding",
+     "says": "Lead-to-Cash tracker (mirror) 6.0 hours ago \u2014 past its 3-minute budget"
+    },
+    {
+     "tile": "cohort_cash_roas",
+     "says": "Meta ad spend (today) 19.1 hours ago \u2014 past its 1-hour budget"
+    },
+    {
+     "tile": "committed_mrr",
+     "says": "Lead-to-Cash tracker (mirror) 6.0 hours ago \u2014 past its 3-minute budget"
+    },
+    {
+     "tile": "ltgp_cac",
+     "says": "Meta ad spend (today) 19.1 hours ago \u2014 past its 1-hour budget"
+    },
+    {
+     "tile": "ltv_cac",
+     "says": "Meta ad spend (today) 19.1 hours ago \u2014 past its 1-hour budget"
+    },
+    {
+     "tile": "pulse_close_rate",
+     "says": "Lead-to-Cash tracker (mirror) 6.0 hours ago \u2014 past its 3-minute budget"
+    },
+    {
+     "tile": "pulse_show_rate",
+     "says": "Lead-to-Cash tracker (mirror) 6.0 hours ago \u2014 past its 3-minute budget"
+    },
+    {
+     "tile": "week_flow",
+     "says": "Lead-to-Cash tracker (mirror) 6.0 hours ago \u2014 past its 3-minute budget"
+    }
+   ],
+   "tiles_that_stayed_silent": [],
+   "tiles_amber_without_depending_on_it": [
+    {
+     "tile": "ad_spend",
+     "says": "Meta ad spend (today) 19.1 hours ago \u2014 past its 1-hour budget"
+    }
+   ]
+  },
+  {
+   "paused": "ghl_opportunities",
+   "aged_hours": 6,
+   "source_row_status": "stale",
+   "tiles_that_went_amber": [
+    {
+     "tile": "pulse_booked_calls",
+     "says": "CRM deals and appointments 6.0 hours ago \u2014 past its 20-minute budget"
+    },
+    {
+     "tile": "pulse_close_rate",
+     "says": "CRM deals and appointments 6.0 hours ago \u2014 past its 20-minute budget"
+    },
+    {
+     "tile": "pulse_show_rate",
+     "says": "CRM deals and appointments 6.0 hours ago \u2014 past its 20-minute budget"
+    },
+    {
+     "tile": "week_flow",
+     "says": "CRM deals and appointments 6.0 hours ago \u2014 past its 20-minute budget"
+    }
+   ],
+   "tiles_that_stayed_silent": [],
+   "tiles_amber_without_depending_on_it": [
+    {
+     "tile": "ad_spend",
+     "says": "Meta ad spend (today) 19.1 hours ago \u2014 past its 1-hour budget"
+    },
+    {
+     "tile": "cohort_cash_roas",
+     "says": "Meta ad spend (today) 19.1 hours ago \u2014 past its 1-hour budget"
+    },
+    {
+     "tile": "ltgp_cac",
+     "says": "Meta ad spend (today) 19.1 hours ago \u2014 past its 1-hour budget"
+    },
+    {
+     "tile": "ltv_cac",
+     "says": "Meta ad spend (today) 19.1 hours ago \u2014 past its 1-hour budget"
+    }
+   ]
+  },
+  {
+   "paused": "meta_today",
+   "aged_hours": 6,
+   "source_row_status": "stale",
+   "tiles_that_went_amber": [
+    {
+     "tile": "ad_spend",
+     "says": "Meta ad spend (today) 6.0 hours ago \u2014 past its 1-hour budget"
+    },
+    {
+     "tile": "cohort_cash_roas",
+     "says": "Meta ad spend (today) 6.0 hours ago \u2014 past its 1-hour budget"
+    },
+    {
+     "tile": "ltgp_cac",
+     "says": "Meta ad spend (today) 6.0 hours ago \u2014 past its 1-hour budget"
+    },
+    {
+     "tile": "ltv_cac",
+     "says": "Meta ad spend (today) 6.0 hours ago \u2014 past its 1-hour budget"
+    }
+   ],
+   "tiles_that_stayed_silent": [],
+   "tiles_amber_without_depending_on_it": []
+  }
+ ],
+ "fails": []
+}

@@ -2689,3 +2689,89 @@ says it reverted to $750. Coby's five recorded closes were paid at the FULL
 rate, not the junior rate — under today's ruling they would total $3,650
 against the $5,700 recorded; no restatement was made. And 121 of 194 payout
 rows have no setter attributed, so per-setter bounty history is unavailable.
+
+---
+
+## #160 — THE SYSTEM PAGE, FRESHNESS AS A CONTRACT, AND EDITH ON EVERY OWNER PAGE
+**2026-09-22 · reproduce first, then fix**
+
+**PHASE 0 MEASURED IT AND KILLED TWO OF MY OWN HYPOTHESES.** I expected the
+System page to be jumping — client-filled panels replacing skeletons, heavy
+work on load. The measurement said otherwise: **CLS = 0** on all three
+passes, **0 ms** of long tasks, FCP 640 ms, and `/api/health` reads stored
+rows rather than running a scan. None of the obvious suspects were guilty.
+
+**What the sixteen-minute idle pass found instead**: the page never stops
+talking. `edith.js` polls `/api/memory-status` **every 60 seconds, forever**,
+on a page that never displays it — sixty requests an hour per open tab.
+`/api/voice-status` every five minutes. And `dashboard.js` ends with
+`setInterval(… render(snap), 600000)`, which rebuilds **every panel**; the
+probe caught it at **+600 s exactly**. The page also pulled `/api/snapshot`,
+`/api/history` and `/api/forecast` it never used, and printed the last dozen
+client errors raw — which in the live data meant **81 errors that are ONE
+problem** (the null-innerHTML defect fixed in #158, last seen 19.1 h ago)
+read as a dozen separate fires.
+
+**THE REBUILT PAGE** (`system_page.py`, `/dashboard/system`) assembles from
+**stored results only**, measured at **134 ms**, and loads no dashboard
+bundle — so those polls and that re-render are gone by construction rather
+than switched off. Five named sections, each with an error boundary; browser
+errors grouped with counts; a gentle 60-second poll that swaps only values
+that changed and never touches innerHTML. "Run checks now" is explicit,
+async, one-at-a-time and rate-limited to one every five minutes. The old
+`/dashboard/view/system` redirects.
+
+**FRESHNESS WAS A CHAIN PROBLEM, NOT A SOURCE PROBLEM.** Every source was
+inside a sensible budget — the sheet mirror **1 minute**, the CRM **1–4
+minutes**, Stripe 14 minutes, Xero 18.4 hours. But the **engine blocks the
+tiles actually read were 70 minutes old**, because they rebuild only inside
+`_scheduled_refresh_loop`, which sleeps **two hours first** and works second.
+A ninety-second mirror was feeding a two-hour cache.
+
+And **neither Refresh button refreshed**: `/api/refresh` and `/api/resync`
+both rebuild the snapshot and leave every cache untouched. That is exactly
+why pressing refresh appeared to do nothing.
+
+`freshness.py` now owns a **stated contract per source** (rendered on the
+System page), an **as-of computed from a value's INPUTS** — never render time
+— which names the laggard on every tile that depends on it, and a
+**five-minute tick** that rebuilds the blocks only when their inputs have
+actually moved. **Refresh now** pulls what is safe and then rebuilds what the
+tiles read. **Xero is never force-pulled** — its refresh token is single-use,
+so the button says when the batched pull is instead.
+
+A third link was found while building: **today's Meta spend could not
+refresh at all.** The archive is store-first and `backfill_history` is
+idempotent by design — right for closed days, wrong for today — so today's
+row had been served for **18.4 hours**. `meta_spend.refresh_today()` fixes
+that; `fetch_day_live` stays read-only because the estate scan depends on it.
+
+Live after: engine blocks **1.6 h → just now**, Meta **18.4 h → just now**,
+**zero stale sources**.
+
+**THE EDITH DOCK IS A NEW CHANNEL, NOT A SECOND EDITH.** The thread model was
+already channel-scoped (the Timeline bridge runs `channel="timeline"` on
+shared memory), so the dock became `channel="dashboard"` on the same brain,
+the same `/api/chat-stream`, and the same server-side ElevenLabs proxy. The
+route previously hardcoded the channel; it now allowlists one, and
+`dashboard` is owner-only.
+
+The dock is owner-only, kill-switchable with `EDITH_DOCK=off` without a
+deploy, loads **after first paint inside its own boundary**, and is silent
+until tapped: **no audio and no microphone on load, ever**. A tap interrupts
+her mid-sentence. A failure is loud and classified — the gate forced a TTS
+500 and got *"EDITH voice unavailable — the speech service did not return
+audio — text is above"*. Blocking the dock script leaves the page with all
+its tiles and zero page errors.
+
+**THE DOCK GATE FOUND TWO THINGS I HAD NOT.** Asking *"what's our cash on
+hand"* returned the **glossary entry**, because the definitions matcher reads
+the possessive as "what is…". The two are separated now: *what IS x* asks
+what the words mean, *what's OUR x* asks for the number. And **"Explain
+this" had nothing to click** — the dock listened for a door the new tiles
+never had; TODAY's tiles carry one now.
+
+**STILL OPEN, NOT DECIDED HERE**: the 60-second `memory-status` poll and the
+ten-minute re-render still run on the LEGACY pages that load
+`dashboard.js` — the System page escaped them by not loading the bundle, but
+the landing and the area pages have not been rebuilt.

@@ -159,6 +159,21 @@ def _jobs() -> dict:
                      "ok": bool(started)})
     except Exception:
         pass
+    # EDITH's brain — the thing nothing was watching when the SDK broke it.
+    try:
+        import kv_store
+        brain = kv_store.get("edith:last_chat") or {}
+        rows.append({
+            "job": "EDITH's answers",
+            "what": "the model call behind chat and voice",
+            "at": brain.get("at"), "words": F.relative(brain.get("at")),
+            "detail": (brain.get("error") or f"answering on {brain.get('model', 'the chat model')}"
+                       if brain else "no answer recorded yet"),
+            "ok": bool(brain.get("ok")) if brain else None,
+        })
+    except Exception as e:  # noqa: BLE001
+        logger.info("brain pulse unavailable: %s", e)
+
     watchdog = []
     try:
         import ground_truth as GT

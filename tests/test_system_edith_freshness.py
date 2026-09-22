@@ -286,7 +286,11 @@ def test_a_non_owner_gets_no_dock(client):
             s["actor"] = {"user": user, "role": role, "display": user}
         r = c.get("/dashboard/today")
         if r.status_code == 200:
-            assert "ed-pill" not in r.data.decode(), f"{role} can see the dock"
+            body = r.data.decode()
+            # the RENDERED dock, not the word: the definitions registry is
+            # injected on every page and names "#ed-pill" as a selector
+            assert 'id="ed-pill"' not in body, f"{role} can see the dock"
+            assert 'id="ed-dock"' not in body, f"{role} can see the dock"
     anon = appmod.app.test_client()
     ra = anon.get("/dashboard/today")
     assert ra.status_code in (302, 401, 403)
@@ -310,3 +314,79 @@ def test_the_dock_carries_the_page_context():
     assert "data-metric][data-value" in js, "she should see the numbers on screen"
     assert "ui: pageContext()" in js
     assert "Explain " in js, "Explain this must pre-fill the dock"
+
+
+# ── the stale drill's findings, locked in ────────────────────────────────────
+
+def _row(key, label, age, budget, status):
+    return {"key": key, "label": label, "at": "2026-09-22T10:00:00+10:00",
+            "age_minutes": age, "age_words": f"{age} minutes ago",
+            "budget_minutes": budget, "status": status, "reason": ""}
+
+
+def test_a_tile_names_the_source_past_its_budget_not_the_oldest_one():
+    """Found by the stale drill: committed MRR reads the tracker AND Xero.
+    Pausing the tracker for six hours left the tile calm, because Xero's
+    nineteen hours is a bigger number — and well inside its 24-hour budget."""
+    import freshness as F
+    src = {"rows": [_row("tracker_mirror", "Lead-to-Cash tracker (mirror)",
+                         360, 3, "stale"),
+                    _row("xero", "Xero (bank + P&L)", 1146, 1440, "ok")]}
+    a = F.as_of("committed_mrr", src)
+    assert a["state"] == "stale"
+    assert a["stale_source"] == "Lead-to-Cash tracker (mirror)"
+    assert "past its" in a["why"]
+
+
+def test_a_tile_with_nothing_late_reports_its_oldest_input_and_stays_calm():
+    import freshness as F
+    src = {"rows": [_row("tracker_mirror", "Lead-to-Cash tracker (mirror)",
+                         1, 3, "ok"),
+                    _row("xero", "Xero (bank + P&L)", 1146, 1440, "ok")]}
+    a = F.as_of("committed_mrr", src)
+    assert a["state"] == "ok"
+    assert a["stale_source"] is None
+    assert a["oldest_input"] == "xero"
+    assert "past its" not in a["why"]
+
+
+# ── the SDK outage: EDITH's brain, and something watching it ─────────────────
+
+def test_the_model_call_never_hardcodes_a_kwarg_the_sdk_may_not_take():
+    """anthropic 1.7.0 dropped `temperature` from messages.create/stream. A
+    floating requirement resolved to it and every business answer became
+    'unexpected keyword argument' — with nothing on screen saying so."""
+    for mod in ("dashboard/chat.py", "ghl_notes_summary.py"):
+        code = _code_only(_read(*mod.split("/")))
+        assert "temperature=" not in code, mod
+        assert "llm_compat.temp(" in code, mod
+
+
+def test_llm_compat_passes_temperature_only_where_it_is_accepted():
+    import llm_compat
+    def takes_it(model=None, temperature=None):
+        pass
+    def does_not(model=None):
+        pass
+    assert llm_compat.temp(takes_it, 0.5) == {"temperature": 0.5}
+    assert llm_compat.temp(does_not, 0.5) == {}
+
+
+def test_a_failing_brain_leaves_a_mark_the_system_page_reads():
+    chat = _code_only(_read("dashboard", "chat.py"))
+    assert "def note_brain(" in chat
+    assert "edith:last_chat" in chat
+    assert chat.count("note_brain(") >= 4, "both paths, success and failure"
+    sysp = _code_only(_read("system_page.py"))
+    assert "edith:last_chat" in sysp, "the System page must show the brain's pulse"
+
+
+def test_the_freshness_tick_never_runs_inside_a_test_process():
+    """It woke 45 seconds into a six-minute suite, rebuilt the engine blocks,
+    bumped the derivation epoch and failed an unrelated cache test. A
+    background thread must not edit the world the tests are measuring."""
+    src = _read("app.py")
+    fn = src[src.index("def _freshness_loop"):src.index("def _email_cadence_loop")]
+    code = _code_only(fn)
+    assert '"pytest" in _sys.modules' in code
+    assert code.index('"pytest" in _sys.modules') < code.index("while True")

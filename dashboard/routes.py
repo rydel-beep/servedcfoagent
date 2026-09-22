@@ -189,7 +189,10 @@ def _shell(active: str = "", crumbs=None) -> dict:
     return {"nav": nav,
             "palette_json": _json.dumps(targets).replace("</", "<\\/"),
             "edith_dock": dock,
-            "edith_dock_json": _json.dumps(dock).replace("</", "<\\/")}
+            "edith_dock_json": _json.dumps(dock).replace("</", "<\\/"),
+            # the ONE definitions registry, so every shell page can explain
+            # itself — encoded once per process, not per request
+            "defs_json": _defs_json()}
 
 
 # ── TODAY — the landing: "are we winning?" in ten seconds ───────────────────

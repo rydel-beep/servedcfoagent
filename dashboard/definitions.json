@@ -8,7 +8,11 @@
   "projection": "Forward projection page",
   "drawers": "The 'show your work' windows",
   "travelling": "How we're travelling",
-  "health": "System health"
+  "health": "System health",
+  "today": "Today — the first page of the morning",
+  "sales_board": "Sales — by setter and by closer",
+  "system": "System — is everything running, and is it current",
+  "edith": "EDITH on the page"
  },
  "entries": {
   "cash_on_hand": {
@@ -1426,6 +1430,246 @@
    "meaning": "Pitched is a lower bound for older deals, but measured for every deal since the stage recorder started watching.",
    "computed": "The recorder writes down each stage change it observes, so entering the pitched stage becomes a real event rather than a snapshot.",
    "selector": "[data-def='pitched_measured']"
+  },
+  "week_flow": {
+   "name": "Leads and consults this week",
+   "kind": "metric",
+   "screen": "today",
+   "meaning": "How many new leads came in since Monday, and how many consults were booked off them.",
+   "computed": "Leads counted from the one attribution engine; consults from the CRM's appointment cache, both since Monday of the current week.",
+   "default_from": "The tracker mirror and the CRM — the week runs Monday to Sunday, Sydney time.",
+   "good": "More consults booked than last week, with leads holding steady.",
+   "selector": "#tile-week_flow"
+  },
+  "ad_spend": {
+   "name": "Ad spend (month to date)",
+   "kind": "metric",
+   "screen": "today",
+   "meaning": "What we have spent on ads so far this month.",
+   "computed": "Meta's daily spend rows for the current month, added up. Meta is the only paid channel running.",
+   "default_from": "The Meta ad archive — today's row is re-fetched on the hour.",
+   "good": "Tracking to the committed plan, not ahead of it.",
+   "selector": "#tile-ad_spend"
+  },
+  "travelling_verdict": {
+   "name": "The travelling line",
+   "kind": "panel",
+   "screen": "today",
+   "meaning": "One sentence on whether the month is on track, and the door through to the full travelling view.",
+   "computed": "The same verdict the travelling page computes — Today shows it, it never recalculates it.",
+   "default_from": "The travelling engine, rebuilt whenever its inputs move.",
+   "selector": "[data-metric='travelling_verdict']"
+  },
+  "today_rulings": {
+   "name": "Needs your ruling",
+   "kind": "panel",
+   "screen": "today",
+   "meaning": "The decisions waiting on you, newest and most expensive first, with the top three named.",
+   "computed": "The open decision cards, ranked by what they are worth and how long they have waited.",
+   "default_from": "The decisions store — a card stays until you rule on it.",
+   "selector": "#rulings-title"
+  },
+  "today_since": {
+   "name": "Since you last looked",
+   "kind": "panel",
+   "screen": "today",
+   "meaning": "EDITH's short digest of what changed, shown only when your last visit was more than a day ago.",
+   "computed": "The difference between the figures now and the figures at your last recorded visit.",
+   "default_from": "Your last visit stamp — if you were here this morning, this panel stays out of the way.",
+   "selector": "#since-title"
+  },
+  "today_pulse": {
+   "name": "The sales pulse",
+   "kind": "panel",
+   "screen": "today",
+   "meaning": "Show rate, close rate and the consults sitting in the next seven days.",
+   "computed": "The same three figures the front page carries, from the same cache — show rate on the confirmed basis with its range beside it.",
+   "default_from": "The one show-basis rule, so every page says the same number.",
+   "selector": "#pulse-title"
+  },
+  "sales_leads": {
+   "name": "Leads worked",
+   "kind": "metric",
+   "screen": "sales",
+   "meaning": "How many leads this person actually worked in the window.",
+   "computed": "Leads with this person named as the setter on the tracker, cross-checked against who owns the lead in the CRM.",
+   "default_from": "The tracker is the record; CRM ownership is the cross-check.",
+   "good": "Enough volume to judge the rates beside it — under ten and the rates are noise.",
+   "selector": "[data-metric='sales_leads']"
+  },
+  "sales_shows_confirmed": {
+   "name": "Shows (confirmed)",
+   "kind": "metric",
+   "screen": "sales",
+   "meaning": "Consults the person actually showed up to, counted the confirmed way, with the honest range beside it.",
+   "computed": "The one show-basis rule: confirmed shows as the number, and the wider possible range shown next to it rather than hidden.",
+   "default_from": "The CRM's appointment outcomes — unmarked consults are listed separately, never counted as shows.",
+   "selector": "[data-metric='sales_shows_confirmed']"
+  },
+  "sales_closes": {
+   "name": "Closes",
+   "kind": "metric",
+   "screen": "sales",
+   "meaning": "Deals this closer signed in the window.",
+   "computed": "Won deals on the tracker with this person as the closer, dated by close date.",
+   "default_from": "The tracker's close date — not the date the cash arrived.",
+   "selector": "[data-metric='sales_closes']"
+  },
+  "sales_cash": {
+   "name": "Cash collected",
+   "kind": "metric",
+   "screen": "sales",
+   "meaning": "Money actually received on this person's deals in the window.",
+   "computed": "Payments received against their deals, from Stripe and the bank — never the contract value.",
+   "default_from": "Stripe and Xero only. A signed deal is not cash until it lands.",
+   "selector": "[data-metric='sales_cash']"
+  },
+  "sales_ownership_fill": {
+   "name": "Who owns the lead",
+   "kind": "metric",
+   "screen": "sales",
+   "meaning": "How much of the CRM actually has an owner recorded against it.",
+   "computed": "The share of leads in the window with a named owner in the CRM.",
+   "default_from": "The CRM's owner field. Where it is blank, the tracker's setter column is the only record.",
+   "good": "High — a blank owner means nobody can be credited or held to it.",
+   "selector": "[data-metric='sales_ownership_fill']"
+  },
+  "sales_pipeline": {
+   "name": "Pipeline by stage",
+   "kind": "panel",
+   "screen": "sales",
+   "meaning": "Every live deal grouped by the stage it sits in now, with what each is worth.",
+   "computed": "Read from the CRM's current stage for each open deal — read-only, nothing is written back.",
+   "default_from": "The CRM. A deal's stage is whatever sales last set it to.",
+   "selector": "#pipeline-title"
+  },
+  "sales_unmarked": {
+   "name": "Unmarked consults",
+   "kind": "panel",
+   "screen": "sales",
+   "meaning": "Consults nobody has marked as showed or no-showed, per closer, with how many days they have been sitting.",
+   "computed": "Past consults with no outcome recorded, aged from the appointment time.",
+   "default_from": "The CRM. These are the reason a show rate carries a range instead of a single number.",
+   "good": "Empty. Every day one sits unmarked, the show rate gets vaguer.",
+   "selector": "#unmarked-title"
+  },
+  "sales_upcoming": {
+   "name": "Consults in the next seven days",
+   "kind": "panel",
+   "screen": "sales",
+   "meaning": "What is booked ahead, with the time and who owns it.",
+   "computed": "Appointments in the next seven days from the CRM's appointment cache.",
+   "default_from": "The CRM.",
+   "selector": "#upcoming-title"
+  },
+  "system_state": {
+   "name": "System state",
+   "kind": "metric",
+   "screen": "system",
+   "meaning": "One word on whether everything that should be running is running and current.",
+   "computed": "Green when every source is inside its stated budget and no check has failed; amber when a source is late; red when a check failed or a job stopped.",
+   "default_from": "Stored results only — opening this page never starts a scan.",
+   "selector": "#sys-headline"
+  },
+  "browser_errors_24h": {
+   "name": "Errors in the browser (24 hours)",
+   "kind": "metric",
+   "screen": "system",
+   "meaning": "How many errors the dashboard threw in people's browsers in the last day, grouped by what actually went wrong.",
+   "computed": "The reported errors of the last 24 hours, grouped by message and page, with a count and a last-seen for each.",
+   "default_from": "Grouped on purpose: eighty errors that are one bug is one problem, not eighty.",
+   "good": "Zero, or one group that stopped hours ago and has a fix shipped.",
+   "selector": "[data-metric='browser_errors_24h']"
+  },
+  "system_sources": {
+   "name": "Where the numbers come from",
+   "kind": "panel",
+   "screen": "system",
+   "meaning": "Every source, when it last succeeded, the budget it is held to, and when it runs next.",
+   "computed": "Read from where each job already records its last success — nothing extra is written to learn it.",
+   "default_from": "Each source's own last-success stamp.",
+   "selector": "#src-title"
+  },
+  "system_checks": {
+   "name": "The three checks",
+   "kind": "panel",
+   "screen": "system",
+   "meaning": "Whether the dashboard works, whether it agrees with itself, and whether it agrees with the outside world.",
+   "computed": "The stored results of the last three scans, with when they ran and what they found.",
+   "default_from": "Stored results. Use Run checks now to start a fresh pass.",
+   "selector": "#chk-title"
+  },
+  "system_jobs": {
+   "name": "What runs in the background",
+   "kind": "panel",
+   "screen": "system",
+   "meaning": "Every scheduled job, when it last ran, and anything that has quietly stopped — including EDITH's own answers.",
+   "computed": "Each job's last-run stamp plus the watchdog's view of what has gone quiet.",
+   "default_from": "A job that stops running is a failure in itself, so silence is shown as a failure.",
+   "selector": "#jobs-title"
+  },
+  "system_gates": {
+   "name": "The latest gate results",
+   "kind": "panel",
+   "screen": "system",
+   "meaning": "What the build gates found the last time they ran.",
+   "computed": "The stored result files from the most recent gate runs.",
+   "default_from": "Stored gate artefacts.",
+   "selector": "#gate-title"
+  },
+  "sys_run_checks": {
+   "name": "Run checks now",
+   "kind": "control",
+   "screen": "system",
+   "meaning": "Starts a fresh pass of the three checks.",
+   "changing": "Runs the scans in the background and refreshes this page's results when they finish. Limited to one run every five minutes, and only you can start one.",
+   "computed": "Nothing runs on page load — this button is the only way a scan starts from here.",
+   "selector": "#sys-run-checks"
+  },
+  "refresh_now": {
+   "name": "Refresh now",
+   "kind": "control",
+   "screen": "system",
+   "meaning": "Pulls the sources that are safe to pull, then rebuilds the figures the tiles read.",
+   "changing": "Re-pulls the sheet mirror, the CRM, the payments and today's ad spend, then rebuilds the stored figures. Xero is not force-pulled — its sign-in can only be refreshed once, so it comes with the scheduled pull instead, and the button says when.",
+   "computed": "Rate-limited and written to the journal, so there is a record of who refreshed and when.",
+   "selector": "[data-def='refresh_now']"
+  },
+  "as_of_chip": {
+   "name": "As of",
+   "kind": "chip",
+   "screen": "system",
+   "meaning": "How old the number beside it actually is.",
+   "computed": "Taken from the oldest of the inputs that number is built from — never from when the page was drawn.",
+   "default_from": "If one of its sources is past its budget, the chip goes amber and names that source.",
+   "selector": ".s-chip[data-def='as_of_chip']"
+  },
+  "edith_dock": {
+   "name": "EDITH",
+   "kind": "panel",
+   "screen": "dashboard",
+   "meaning": "EDITH, on whatever page you are on — typed or spoken.",
+   "computed": "The same EDITH as everywhere else: one brain, one voice, its own thread for this surface. She can see the figures on the page you are looking at.",
+   "default_from": "Only you can see or reach her here.",
+   "selector": "#ed-pill"
+  },
+  "edith_mic": {
+   "name": "Talk to EDITH",
+   "kind": "control",
+   "screen": "dashboard",
+   "meaning": "Tap to speak instead of typing.",
+   "changing": "Turns on the microphone and listens for one question, then answers out loud. The microphone is only ever requested when you tap — nothing listens or speaks on its own, and a tap stops her mid-sentence.",
+   "computed": "Speech in through the browser; speech out through the server, so no key ever reaches the page.",
+   "selector": "#ed-mic"
+  },
+  "explain_this": {
+   "name": "Explain this",
+   "kind": "control",
+   "screen": "dashboard",
+   "meaning": "Asks EDITH about the tile you clicked.",
+   "changing": "Opens EDITH with the question already written — what the number is and where it came from.",
+   "computed": "She answers from the same engines the tile reads; she never states a figure they do not.",
+   "selector": ".s-door"
   }
  }
 }

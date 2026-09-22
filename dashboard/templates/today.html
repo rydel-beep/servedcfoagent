@@ -56,6 +56,9 @@
         <span class="s-trend-none">{{ t.trend.note }}</span>
         {% endif %}
 
+        {% if t.as_of_words %}<span class="s-stamp" data-def="as_of_chip"
+              title="{{ t.as_of.why }}">{{ t.as_of_words }}</span>{% endif %}
+        {% if t.stale_why %}<span class="s-chip s-chip-stale">{{ t.as_of.stale_source }} is late</span>{% endif %}
         {% if t.stamp %}<span class="s-stamp">{{ t.stamp }}</span>{% endif %}
       </div>
     </div>
@@ -137,6 +140,7 @@
 
 {% include "partials/shell_palette.html" %}
 <script src="/dashboard/static/js/shell.js?v={{ asset_v }}"></script>
+{% include "partials/defs.html" %}
 {% include "partials/edith_dock.html" %}
 </body>
 </html>

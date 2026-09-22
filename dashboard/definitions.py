@@ -113,6 +113,24 @@ def coverage_inventory() -> dict:
                           "binding_constraint", "level_simple",
                           "level_advanced", "level_plan"]
 
+    # TODAY — the moved tiles are already covered by landing_tiles; these are
+    # the ones TODAY adds, plus its four panels.
+    inv["today"] = ["week_flow", "ad_spend", "travelling_verdict",
+                    "today_rulings", "today_since", "today_pulse"]
+
+    # SALES — the scoreboard's columns and its three lists
+    inv["sales_board"] = ["sales_leads", "sales_shows_confirmed", "sales_closes",
+                          "sales_cash", "sales_ownership_fill", "sales_pipeline",
+                          "sales_unmarked", "sales_upcoming"]
+
+    # SYSTEM — the headline, the five sections, and the two owner actions
+    inv["system"] = ["system_state", "browser_errors_24h", "system_sources",
+                     "system_checks", "system_jobs", "system_gates",
+                     "sys_run_checks", "refresh_now", "as_of_chip"]
+
+    # EDITH on the page
+    inv["edith"] = ["edith_dock", "edith_mic", "explain_this"]
+
     # every ⓘ drawer key
     import tile_drawers
     inv["drawers"] = ["drawer_" + k for k in sorted(tile_drawers._REGISTRY)]

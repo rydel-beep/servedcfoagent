@@ -270,14 +270,28 @@ def as_of(tile_id: str, src: dict | None = None) -> dict:
                 "state": "degraded", "inputs": list(inputs),
                 "stale_source": degraded[0]["label"],
                 "why": f"{degraded[0]['label']}: {degraded[0]['reason']}"}
-    state = "stale" if oldest["status"] == "stale" else "ok"
+
+    # THE LAGGARD IS THE ONE PAST ITS BUDGET, NOT THE ONE WITH THE BIGGEST
+    # NUMBER. Found by the stale drill: committed MRR reads the tracker and
+    # Xero; pausing the tracker for six hours left the tile calm and talking
+    # about Xero, because Xero's 19 hours is a bigger number — and entirely
+    # within its 24-hour budget. Rank by how far past budget a source is;
+    # only when nothing is late does the oldest input speak for the tile.
+    late = [r for r in dated if r["status"] == "stale"]
+    if late:
+        worst = max(late, key=lambda r: r["age_minutes"] / (r.get("budget_minutes") or 1))
+        return {
+            "at": worst["at"], "words": worst["age_words"], "state": "stale",
+            "inputs": list(inputs), "oldest_input": oldest["key"],
+            "stale_source": worst["label"],
+            "why": (f"{worst['label']} {worst['age_words']} — past its "
+                    f"{_budget_words(worst['budget_minutes'], True)} budget"),
+        }
     return {
-        "at": oldest["at"], "words": oldest["age_words"], "state": state,
+        "at": oldest["at"], "words": oldest["age_words"], "state": "ok",
         "inputs": list(inputs), "oldest_input": oldest["key"],
-        "stale_source": oldest["label"] if state == "stale" else None,
-        "why": (f"{oldest['label']} {oldest['age_words']}"
-                + (f" — past its {_budget_words(oldest['budget_minutes'], True)} budget"
-                   if state == "stale" else "")),
+        "stale_source": None,
+        "why": f"{oldest['label']} {oldest['age_words']}",
     }
 
 
