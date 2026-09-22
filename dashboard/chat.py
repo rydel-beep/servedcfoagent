@@ -743,8 +743,11 @@ def chat_stream(history: list, snapshot_json: str, token: str, voice: bool = Fal
                         full.append(delta)
                         emitted = True
                         yield ("delta", delta)
-            yield ("done", "".join(full))
+            # BEFORE the yield: if the client stops reading after "done",
+            # the generator is closed and anything after that yield never
+            # runs — which is why the first version of this recorded nothing.
             note_brain(True)
+            yield ("done", "".join(full))
             return
         except Exception as e:
             last_err = e

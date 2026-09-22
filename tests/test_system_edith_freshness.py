@@ -390,3 +390,14 @@ def test_the_freshness_tick_never_runs_inside_a_test_process():
     code = _code_only(fn)
     assert '"pytest" in _sys.modules' in code
     assert code.index('"pytest" in _sys.modules') < code.index("while True")
+
+
+def test_the_brain_pulse_is_recorded_before_the_stream_ends():
+    """A generator's code after `yield ("done", …)` never runs once the
+    client stops reading — the first version recorded nothing at all."""
+    src = _read("dashboard", "chat.py")
+    fn = src[src.index("def chat_stream("):]
+    code = _code_only(fn)
+    done = code.index('yield ("done"')
+    mark = code.index("note_brain(True)")
+    assert mark < done, "the success mark must land before the final yield"
