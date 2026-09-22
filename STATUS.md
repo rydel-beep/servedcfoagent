@@ -2,7 +2,8 @@
 
 ## 2026-09-22 (2) — SYSTEM PAGE · FRESHNESS AS A CONTRACT · EDITH ON EVERY OWNER PAGE (#160)
 
-Deploys → 0b1687e7, 21715fe2, 1991a8f0 SUCCESS. Suite **1347**. Zero writes
+Deploys → 0b1687e7, 21715fe2, 1991a8f0, d6357e02, 6eddb77a, 16af00b9,
+2df40867, bb4e0fac SUCCESS. Suite **1351**. Zero writes
 to the tracker, GHL or Xero (the #148 law re-proven); no token minted.
 
 **The System page was not slow — it never stopped talking.** Phase 0's three
