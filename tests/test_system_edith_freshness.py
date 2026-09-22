@@ -426,3 +426,16 @@ def test_todays_ad_spend_is_refreshed_on_every_tick_not_only_rebuild_ticks():
     meta = code.index("refresh_today()")
     decide = code.index("blocks_need_rebuild()")
     assert meta < decide, "Meta must be checked before the rebuild decision"
+
+
+def test_the_kill_switch_actually_removes_the_dock(client, monkeypatch):
+    """Not just that the env var is read — that setting it takes the dock off
+    the page, with the page otherwise intact."""
+    on = client.get("/dashboard/today")
+    assert on.status_code == 200 and 'id="ed-pill"' in on.data.decode()
+    monkeypatch.setenv("EDITH_DOCK", "off")
+    off = client.get("/dashboard/today")
+    assert off.status_code == 200
+    body = off.data.decode()
+    assert 'id="ed-pill"' not in body and 'id="ed-dock"' not in body
+    assert "s-card" in body, "the page must be unharmed without her"

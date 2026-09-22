@@ -1,0 +1,162 @@
+{
+ "base": "https://web-production-16b16.up.railway.app",
+ "path": "/dashboard/system",
+ "commit": "2df408673893",
+ "passes": {
+  "cold": {
+   "wall_ms": 8595,
+   "requests": 7,
+   "api_requests": [],
+   "failures": [],
+   "console_errors": [],
+   "console_warnings": 0,
+   "cls": 0,
+   "shifts": [],
+   "longtasks": [],
+   "longtask_total_ms": 0,
+   "timing": {
+    "fcp": 600,
+    "dcl": 586,
+    "load": 587
+   }
+  },
+  "warm": {
+   "wall_ms": 8588,
+   "requests": 6,
+   "api_requests": [],
+   "failures": [],
+   "console_errors": [],
+   "console_warnings": 0,
+   "cls": 0,
+   "shifts": [],
+   "longtasks": [],
+   "longtask_total_ms": 0,
+   "timing": {
+    "fcp": 588,
+    "dcl": 581,
+    "load": 581
+   }
+  },
+  "idle": {
+   "minutes": 16.0,
+   "timeline": [
+    {
+     "at_s": 60,
+     "api_requests": [
+      "/dashboard/api/system"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 120,
+     "api_requests": [
+      "/dashboard/api/system"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 180,
+     "api_requests": [
+      "/dashboard/api/system"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 240,
+     "api_requests": [
+      "/dashboard/api/system"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 300,
+     "api_requests": [
+      "/dashboard/api/system"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 360,
+     "api_requests": [
+      "/dashboard/api/system"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 420,
+     "api_requests": [
+      "/dashboard/api/system"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 480,
+     "api_requests": [
+      "/dashboard/api/system"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 540,
+     "api_requests": [
+      "/dashboard/api/system"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 600,
+     "api_requests": [
+      "/dashboard/api/system"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 660,
+     "api_requests": [
+      "/dashboard/api/system"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 720,
+     "api_requests": [
+      "/dashboard/api/system"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 780,
+     "api_requests": [
+      "/dashboard/api/system"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 840,
+     "api_requests": [
+      "/dashboard/api/system"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 900,
+     "api_requests": [
+      "/dashboard/api/system"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 960,
+     "api_requests": [
+      "/dashboard/api/system"
+     ],
+     "cls_delta": 0
+    }
+   ],
+   "total_api_requests": 0,
+   "console_errors": [],
+   "cls_at_end": 0,
+   "longtask_total_ms": 0
+  }
+ }
+}
