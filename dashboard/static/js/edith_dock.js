@@ -122,9 +122,18 @@
     e.preventDefault();
     var label = '';
     try {
-      label = (holder.querySelector('.s-card-label, .exec-tile-label') || {}).innerText || metric;
+      var lab = holder.querySelector('.s-card-label, .exec-tile-label');
+      label = lab ? lab.cloneNode(true) : null;
+      if (label) {
+        /* drop the chips and the door itself — they are not part of the name */
+        Array.prototype.slice.call(label.querySelectorAll('button, .s-chip'))
+          .forEach(function (n) { n.remove(); });
+        label = label.innerText;
+      }
+      label = (label || metric).trim();
     } catch (err) { label = metric; }
-    openDock('Explain ' + String(label).trim().toLowerCase() + ' — where does it come from?');
+    openDock("What's our " + String(label).toLowerCase() +
+             ', and where does that number come from?');
   });
 
   /* ── asking ──────────────────────────────────────────────────────────── */

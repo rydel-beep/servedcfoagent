@@ -138,9 +138,20 @@ def coverage_check() -> tuple[list[str], int]:
 _EXPLAIN_RE = re.compile(r"\b(what (is|does|means)|explain|meaning of)\b(.+)",
                          re.I)
 
+# "What IS cash on hand" asks what the words mean.
+# "What's OUR cash on hand" asks for the number.
+# Found by the dock gate: asking for the figure returned the definition,
+# because the possessive reads as "what is …" to the matcher above.
+_POSSESSIVE_RE = re.compile(
+    r"\bwhat(?:'s| is| are)\s+(our|my|the)\b|\bhow much\b|\bhow many\b", re.I)
+
 
 def handle_explain_command(text: str):
-    m = _EXPLAIN_RE.search(text or "")
+    t = text or ""
+    if _POSSESSIVE_RE.search(t) and not re.search(r"\b(explain|meaning of)\b", t, re.I):
+        # they want the figure, not the glossary — let the number path answer
+        return None, False
+    m = _EXPLAIN_RE.search(t)
     if not m:
         return None, False
     subject = m.group(3).strip(" ?.").lower()

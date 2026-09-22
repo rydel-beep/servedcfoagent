@@ -33,6 +33,11 @@
       <span class="s-card-label">{{ t.label }}
         {% if t.state == 'degraded' %}<span class="s-chip s-chip-degraded">degraded</span>
         {% elif t.state == 'amber' %}<span class="s-chip s-chip-stale">stale</span>{% endif %}
+        {# every number is a door (#127) — this one opens EDITH with the
+           question already asked #}
+        <button class="s-door" type="button" data-explain="{{ t.id }}"
+                aria-label="Ask EDITH about {{ t.label }}"
+                title="Ask EDITH about this">ⓘ</button>
       </span>
       <span class="s-card-value">{{ t.value }}</span>
       {% if t.sub %}<span class="s-card-sub">{{ t.sub }}</span>{% endif %}
