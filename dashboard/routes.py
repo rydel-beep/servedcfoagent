@@ -174,8 +174,22 @@ def _shell(active: str = "", crumbs=None) -> dict:
     except Exception as e:  # noqa: BLE001
         logger.warning("palette targets failed: %s", e)
         targets = []
+    # THE EDITH DOCK (#160): owner-only, kill-switchable without a deploy,
+    # and discreet-mode aware. The template renders an inert pill; the script
+    # loads after first paint inside its own boundary.
+    dock = {"enabled": False, "discreet": False}
+    try:
+        import os
+        if nav.get("owner") and os.environ.get("EDITH_DOCK", "on").lower() not in (
+                "off", "0", "false", "no"):
+            dock["enabled"] = True
+            dock["discreet"] = bool(session.get(_CSM_DISCREET_KEY))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("edith dock context failed: %s", e)
     return {"nav": nav,
-            "palette_json": _json.dumps(targets).replace("</", "<\\/")}
+            "palette_json": _json.dumps(targets).replace("</", "<\\/"),
+            "edith_dock": dock,
+            "edith_dock_json": _json.dumps(dock).replace("</", "<\\/")}
 
 
 # ── TODAY — the landing: "are we winning?" in ten seconds ───────────────────
@@ -212,6 +226,76 @@ def today_page():
         **_shell("today")))
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+# ── THE SYSTEM PAGE (#160) — stored results only, no work on load ──────────
+
+@bp.route("/system")
+@require_auth
+def system_page_view():
+    """SERVER-RENDERED FROM STORED RESULTS. Loading this page runs no scan,
+    no sync and no heavy query — Phase 0 found two sections filled by inline
+    fetch() after load and the whole page inheriting a ten-minute
+    re-render."""
+    import system_page
+    try:
+        sys_data = system_page.build()
+    except Exception as e:  # noqa: BLE001
+        logger.exception("system page build failed")
+        sys_data = {"at": "", "poll_seconds": 60,
+                    "headline": {"state": "degraded",
+                                 "line": f"the system page failed honestly: {str(e)[:120]}"},
+                    "sections": {k: {"rows": [], "error": str(e)[:120]}
+                                 for k in ("sources", "checks", "jobs", "errors", "gates")},
+                    "run_state": {"running": False}}
+    resp = make_response(render_template("system.html", sys=sys_data,
+                                         asset_v=_ASSET_VERSION, **_shell("system")))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@bp.route("/api/system", methods=["GET"])
+@require_auth
+def api_system():
+    """The poll payload — the same stored results, nothing recomputed."""
+    import system_page
+    return jsonify(system_page.build())
+
+
+@bp.route("/api/system/run-checks", methods=["GET", "POST"])
+@require_owner
+def api_system_run_checks():
+    """GET = where the run is up to. POST = start one, if none is running and
+    the rate limit allows. Owner-only: these call outside services."""
+    import system_page
+    if request.method == "GET":
+        return jsonify(system_page.run_state())
+    from dashboard.auth import current_actor
+    return jsonify(system_page.start_check_run(
+        (current_actor() or {}).get("user") or "owner"))
+
+
+@bp.route("/api/freshness", methods=["GET"])
+@require_auth
+def api_freshness():
+    """Per-source freshness against the stated contract."""
+    import freshness
+    return jsonify(freshness.sources())
+
+
+@bp.route("/api/refresh-now", methods=["POST"])
+@require_owner
+def api_refresh_now():
+    """REFRESH NOW (#160). Pulls what can safely be pulled, then rebuilds the
+    engine blocks the tiles actually read — the half neither old button did.
+    Xero is never force-pulled; the reply says when its next pull is."""
+    import freshness
+    from dashboard.auth import current_actor
+    body = request.get_json(silent=True) or {}
+    res = freshness.refresh_now(
+        (current_actor() or {}).get("user") or "owner",
+        str(body.get("what") or "all"))
+    return jsonify(res), (429 if res.get("rate_limited") else 200)
 
 
 # ── SALES COMP RULES (#159) — OWNER ONLY, every edit journaled ──────────────
@@ -333,6 +417,11 @@ _AREAS = {
 def area_page(area):
     """A sub-page hosting one area's panels — same renderers, but every panel
     is an error boundary and absent sections are skipped (body[data-area])."""
+    if area == "system":
+        # the System page was rebuilt (#160) — stored results only, no
+        # dashboard bundle, so the 60-second memory-status poll and the
+        # ten-minute re-render cannot ride along. The old path redirects.
+        return redirect(url_for("dashboard.system_page_view"))
     if area not in _AREAS:
         return jsonify({"error": "unknown area", "known": sorted(_AREAS)}), 404
     from dashboard.auth import is_owner
@@ -1788,10 +1877,20 @@ def api_chat_stream():
         return jsonify({"error": "Empty message"}), 400
     # Rate/state bucket: the authenticated user, so per-user sessions stop sharing
     # one "anon" bucket (the legacy dash_token cookie no longer exists per-user).
-    from dashboard.auth import current_actor
+    from dashboard.auth import current_actor, is_owner
     token = current_actor().get("user") or request.cookies.get(COOKIE_NAME, "anon")
+    # CHANNEL (#160): the dashboard dock is a NEW CHANNEL on the SAME brain —
+    # channel-scoped thread, shared memory, exactly as the Timeline bridge
+    # already is. Allowlisted, and `dashboard` is OWNER-ONLY: a non-owner
+    # asking for it gets the ordinary text thread, never a 500 and never
+    # somebody else's thread.
+    requested = str(data.get("channel") or "").strip().lower()
+    if requested == "dashboard" and is_owner():
+        channel = "dashboard"
+    else:
+        channel = "voice" if voice else "text"
     return chat_stream_response(history, voice,
-                                channel=("voice" if voice else "text"), token=token,
+                                channel=channel, token=token,
                                 ui=data.get("ui") or {})
 
 

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>System — Served CFO</title>
+{% include "partials/telemetry.html" %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/dashboard/static/css/served.css?v={{ asset_v }}">
+</head>
+{# SERVER-RENDERED FROM STORED RESULTS. Loading this page runs no scan, no
+   sync and no heavy query — Phase 0 found two sections filled by inline
+   fetch() after load (two reflows every visit) and the whole page inheriting
+   the dashboard's ten-minute re-render. Neither happens here. #}
+<body class="s-page" data-page="system">
+
+{% include "partials/shell_nav.html" %}
+
+<main class="s-main" id="main">
+
+  <div class="s-panel-head" style="margin-top:var(--sp-4)">
+    <h1 class="s-panel-title">System</h1>
+    <span class="s-panel-sub">
+      built {{ sys.at[11:16] }} from stored results · checks every
+      {{ sys.poll_seconds }}s
+    </span>
+  </div>
+
+  <div class="s-verdict{% if sys.headline.state in ('degraded','stale') %} is-degraded{% endif %}"
+       id="sys-headline"
+       data-metric="system_state" data-window="current" data-clock="now"
+       data-basis="stored" data-value="{{ sys.headline.state }}">
+    {{ sys.headline.line }}
+  </div>
+
+  {# ── DATA SOURCES ── #}
+  <section class="s-panel" aria-labelledby="src-title">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="src-title">Data sources</h2>
+      <span class="s-panel-sub">{{ sys.sections.sources.contract_note }}</span>
+    </div>
+    {% if sys.sections.sources.error %}
+      <div class="s-boundary-fail"><b>This section failed honestly.</b> {{ sys.sections.sources.error }}</div>
+    {% else %}
+    <div class="s-table-wrap">
+      <table class="s-table" id="sys-sources">
+        <thead><tr>
+          <th>Source</th><th>Last success</th><th>Budget</th>
+          <th>Runs</th><th>Status</th><th>What that means</th>
+        </tr></thead>
+        <tbody>
+          {% for r in sys.sections.sources.rows %}
+          <tr data-metric="source_{{ r.key }}" data-window="current" data-clock="now"
+              data-basis="stored" data-value="{{ r.age_minutes if r.age_minutes is not none else '' }}">
+            <td>{{ r.label }}</td>
+            <td title="{{ r.at or 'never' }}">{{ r.age_words }}</td>
+            <td class="s-muted">{{ r.budget_words }}</td>
+            <td class="s-muted">{{ r.cadence }}</td>
+            <td>
+              {% if r.status == 'ok' %}<span class="s-delta is-good">fine</span>
+              {% elif r.status == 'stale' %}<span class="s-chip s-chip-stale">stale</span>
+              {% elif r.status == 'degraded' %}<span class="s-chip s-chip-degraded">not reporting</span>
+              {% else %}<span class="s-chip s-chip-placeholder">unknown</span>{% endif %}
+            </td>
+            <td class="s-muted">{{ r.reason }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </section>
+
+  {# ── THE THREE CHECKS ── #}
+  <section class="s-panel" aria-labelledby="chk-title">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="chk-title">The three checks</h2>
+      <span class="s-panel-sub">{{ sys.sections.checks.note }}</span>
+    </div>
+    {% if sys.sections.checks.stale_warning %}
+      <div class="s-empty">{{ sys.sections.checks.stale_warning }}</div>
+    {% endif %}
+
+    <div style="display:flex;gap:var(--sp-3);align-items:center;flex-wrap:wrap;margin-bottom:var(--sp-3)">
+      <button class="s-nav-link" id="sys-run-checks" type="button"
+              {% if sys.run_state.running %}disabled{% endif %}>
+        {% if sys.run_state.running %}Running…{% else %}Run checks now{% endif %}
+      </button>
+      <span class="s-card-sub" id="sys-run-note">
+        {% if sys.run_state.running %}started {{ sys.run_state.step }}
+        {% elif sys.run_state.last_result %}last run
+          {% if sys.run_state.last_result.ok %}passed{% else %}found something{% endif %}
+          — {{ sys.run_state.last_result.passed or 0 }} checks agreed,
+          {{ sys.run_state.last_result.failed or 0 }} differed
+        {% else %}these call outside services, so they're limited to one every five minutes{% endif %}
+      </span>
+    </div>
+
+    {% if sys.sections.checks.rows %}
+    <div class="s-table-wrap">
+      <table class="s-table">
+        <thead><tr>
+          <th>When</th><th>Works</th><th>Agrees with itself</th>
+          <th>Agrees with reality</th><th class="num">Findings</th>
+          <th>Top finding</th><th class="num">Runtime</th>
+        </tr></thead>
+        <tbody>
+          {% for r in sys.sections.checks.rows %}
+          <tr><td>{{ (r.at or '')[:16].replace('T',' ') }}</td>
+            {% for k in ['works','agrees_with_itself','agrees_with_reality'] %}
+            <td>{% if r[k] is sameas true %}<span style="color:var(--green)">passed</span>
+                {% elif r[k] is sameas false %}<span style="color:var(--red)">failed</span>
+                {% else %}<span class="s-muted">not run</span>{% endif %}</td>
+            {% endfor %}
+            <td class="num" data-value="{{ r.findings or 0 }}">{{ r.findings or 0 }}</td>
+            <td class="s-muted">{{ r.top or '—' }}</td>
+            <td class="num">{{ r.runtime_s or 0 }}s</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <div class="s-empty">No scan has recorded a result yet.</div>
+    {% endif %}
+
+    {% if sys.sections.checks.reality_checks %}
+    <h3 class="s-section-title">Against the outside world</h3>
+    <ul class="s-list">
+      {% for c in sys.sections.checks.reality_checks %}
+      <li><b>{{ c.name }}</b> —
+        {% if c.ok is sameas true %}<span style="color:var(--green)">agrees</span>
+        {% elif c.ok is sameas false %}<span style="color:var(--red)">differs</span>
+        {% else %}<span class="s-muted">not comparable</span>{% endif %}
+        <div class="s-card-sub">{{ c.detail }}</div></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
+  {# ── JOBS + WATCHDOG ── #}
+  <section class="s-panel" aria-labelledby="jobs-title">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="jobs-title">Jobs</h2>
+      <span class="s-panel-sub">{{ sys.sections.jobs.note }}</span>
+    </div>
+    {% if sys.sections.jobs.watchdog %}
+      {% for w in sys.sections.jobs.watchdog %}
+      <div class="s-boundary-fail">{{ w.title }}{% if w.detail %} — {{ w.detail }}{% endif %}</div>
+      {% endfor %}
+    {% endif %}
+    <div class="s-table-wrap">
+      <table class="s-table">
+        <thead><tr><th>Job</th><th>What it does</th><th>Last run</th><th>Detail</th></tr></thead>
+        <tbody>
+          {% for r in sys.sections.jobs.rows %}
+          <tr><td>{{ r.job }}</td><td class="s-muted">{{ r.what }}</td>
+            <td title="{{ r.at or '' }}">{{ r.words }}</td>
+            <td class="s-muted">{{ r.detail }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {# ── BROWSER ERRORS, AGGREGATED ── #}
+  <section class="s-panel" aria-labelledby="err-title">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="err-title">Browser errors</h2>
+      <span class="s-panel-sub">{{ sys.sections.errors.note }}</span>
+    </div>
+    {% if sys.sections.errors.groups %}
+    <p class="s-card-sub" data-metric="browser_errors_24h" data-window="24h"
+       data-clock="trailing 24 hours" data-basis="stored"
+       data-value="{{ sys.sections.errors.total }}">
+      <b>{{ sys.sections.errors.total }}</b> in the last
+      {{ sys.sections.errors.window_hours }} hours, and they are
+      <b>{{ sys.sections.errors.distinct }}</b> distinct problem{% if sys.sections.errors.distinct != 1 %}s{% endif %}.
+    </p>
+    <div class="s-table-wrap">
+      <table class="s-table">
+        <thead><tr><th class="num">Count</th><th>What went wrong</th><th>Where</th><th>Last seen</th></tr></thead>
+        <tbody>
+          {% for g in sys.sections.errors.groups %}
+          <tr><td class="num" data-value="{{ g.count }}">{{ g.count }}</td>
+            <td>{{ g.detail }}</td>
+            <td class="s-muted">{% for r in g.routes %}{{ r.route }} ({{ r.n }}){% if not loop.last %} · {% endif %}{% endfor %}</td>
+            <td class="s-muted" title="{{ g.last_at }}">{{ g.last_words }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <div class="s-empty">Nothing recorded — quiet is healthy.</div>
+    {% endif %}
+  </section>
+
+  {# ── GATES ── #}
+  <section class="s-panel" aria-labelledby="gate-title">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="gate-title">Latest gate results</h2>
+      <span class="s-panel-sub">{{ sys.sections.gates.note }}</span>
+    </div>
+    {% if sys.sections.gates.rows %}
+    <ul class="s-list">
+      {% for g in sys.sections.gates.rows %}
+      <li><b>{{ g.gate }}</b> — commit {{ g.commit }}
+        {% if g.ok is sameas true %}<span style="color:var(--green)">passed</span>
+        {% elif g.ok is sameas false %}<span style="color:var(--red)">failed</span>{% endif %}
+        {% if g.findings is not none %}· {{ g.findings }} finding{% if g.findings != 1 %}s{% endif %}{% endif %}
+        <div class="s-card-sub">{{ g.dir }}</div></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+      <div class="s-empty">{{ sys.sections.gates.note }}</div>
+    {% endif %}
+  </section>
+</main>
+
+{% include "partials/shell_palette.html" %}
+{% include "partials/edith_dock.html" %}
+<script src="/dashboard/static/js/shell.js?v={{ asset_v }}"></script>
+<script src="/dashboard/static/js/system.js?v={{ asset_v }}"></script>
+</body>
+</html>

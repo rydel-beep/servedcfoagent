@@ -15,6 +15,12 @@
   </a>
   {% endfor %}
   <span class="s-nav-spacer"></span>
+  {% if nav.owner %}
+  <button class="s-nav-link" id="s-refresh-now" type="button"
+          aria-label="Refresh the data now"
+          title="Pulls what can safely be pulled, then rebuilds what the tiles read">
+    Refresh now</button>
+  {% endif %}
   <button class="s-nav-link" id="s-palette-open" type="button"
           aria-label="Open the command palette">Jump to <span class="s-kbd">⌘K</span></button>
 </nav>

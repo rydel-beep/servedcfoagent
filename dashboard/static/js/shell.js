@@ -131,11 +131,44 @@
     });
   });
 
+  /* ── REFRESH NOW (#160) ───────────────────────────────────────────────
+     The old buttons rebuilt the snapshot and left every cache the tiles
+     read untouched, which is why pressing refresh changed nothing. This
+     one pulls what is safe, rebuilds the blocks, and reports per step. */
+  boundary('refresh-now', function () {
+    var btn = $('#s-refresh-now');
+    if (!btn) return;
+    var original = btn.textContent;
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      btn.textContent = 'Refreshing…';
+      fetch('/dashboard/api/refresh-now', { method: 'POST' })
+        .then(function (r) { return r.json().then(function (d) { return {s: r.status, d: d}; }); })
+        .then(function (res) {
+          var d = res.d || {};
+          if (res.s === 429 || d.rate_limited) {
+            btn.textContent = 'Just refreshed';
+            setTimeout(function () { btn.textContent = original; btn.disabled = false; }, 2500);
+            return;
+          }
+          var failed = (d.steps || []).filter(function (x) { return !x.ok; });
+          btn.textContent = failed.length ? (failed.length + ' step failed') : 'Up to date';
+          /* the page re-reads itself so every "as of" resets from its inputs */
+          setTimeout(function () { location.reload(); }, 700);
+        })
+        .catch(function () {
+          btn.textContent = 'Refresh failed';
+          btn.disabled = false;
+          setTimeout(function () { btn.textContent = original; }, 2500);
+        });
+    });
+  });
+
   /* ── keyboard shortcuts — single keys, never while typing ─────────── */
   boundary('shortcuts', function () {
     var GO = { t: '/dashboard/today', a: '/ads', s: '/dashboard/sales',
                m: '/dashboard/view/cash', p: '/dashboard/scale',
-               d: '/dashboard/view/decisions', y: '/dashboard/view/system' };
+               d: '/dashboard/view/decisions', y: '/dashboard/system' };
     document.addEventListener('keydown', function (e) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       var el = document.activeElement;

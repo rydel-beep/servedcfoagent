@@ -219,6 +219,39 @@ def backfill_history(since: str | None = None) -> dict:
 
 
 
+def refresh_today() -> dict:
+    """Re-capture TODAY's spend into the archive.
+
+    backfill_history is idempotent by design — a day already archived is
+    never re-fetched — which is right for closed days and wrong for today.
+    Phase 0 found today's row being served from a capture 18 hours old with
+    nothing ever refreshing it, so an intraday number silently aged out.
+
+    This re-reads today and updates that one row. It is a READ of Meta and a
+    write to OUR OWN archive; no external system is written. `fetch_day_live`
+    stays read-only because the estate scan depends on it being so.
+    """
+    import datetime as _dt
+    from helpers import today_sydney, now_sydney
+    day = str(today_sydney())
+    live = fetch_day_live(day) or {}
+    if live.get("spend") is None:
+        return {"ok": False, "day": day,
+                "why": live.get("error") or "Meta returned no spend for today"}
+    store = _load_store()
+    prev = (store.get(day) or {}).get("spend")
+    store[day] = {**(store.get(day) or {}),
+                  "spend": live["spend"],
+                  "impressions": live.get("impressions"),
+                  "clicks": live.get("clicks"),
+                  "captured": "intraday",
+                  "last_fetched": now_sydney().isoformat()}
+    _save_store(store)
+    return {"ok": True, "day": day, "spend": live["spend"], "was": prev,
+            "changed": (prev != live["spend"]),
+            "note": "today is intraday — it moves until the day closes"}
+
+
 def fetch_day_live(day: str) -> dict:
     """ONE day, read live from the ad platform, WITHOUT touching the archive.
 

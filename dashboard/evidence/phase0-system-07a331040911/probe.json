@@ -1,0 +1,188 @@
+{
+ "base": "https://web-production-16b16.up.railway.app",
+ "path": "/dashboard/view/system",
+ "commit": "07a331040911",
+ "passes": {
+  "cold": {
+   "wall_ms": 8914,
+   "requests": 23,
+   "api_requests": [
+    "/dashboard/api/telemetry",
+    "/dashboard/api/health",
+    "/dashboard/api/whoami",
+    "/dashboard/api/snapshot",
+    "/dashboard/api/history?n=14",
+    "/dashboard/api/voice-status",
+    "/dashboard/api/entrance-audio",
+    "/dashboard/api/memory-status",
+    "/dashboard/api/forecast",
+    "/dashboard/api/whoami"
+   ],
+   "failures": [],
+   "console_errors": [],
+   "console_warnings": 0,
+   "cls": 0,
+   "shifts": [],
+   "longtasks": [],
+   "longtask_total_ms": 0,
+   "timing": {
+    "fcp": 640,
+    "dcl": 897,
+    "load": 897
+   }
+  },
+  "warm": {
+   "wall_ms": 9020,
+   "requests": 23,
+   "api_requests": [
+    "/dashboard/api/telemetry",
+    "/dashboard/api/health",
+    "/dashboard/api/whoami",
+    "/dashboard/api/snapshot",
+    "/dashboard/api/history?n=14",
+    "/dashboard/api/voice-status",
+    "/dashboard/api/entrance-audio",
+    "/dashboard/api/memory-status",
+    "/dashboard/api/forecast",
+    "/dashboard/api/whoami"
+   ],
+   "failures": [],
+   "console_errors": [],
+   "console_warnings": 0,
+   "cls": 0,
+   "shifts": [],
+   "longtasks": [],
+   "longtask_total_ms": 0,
+   "timing": {
+    "fcp": 632,
+    "dcl": 1007,
+    "load": 1008
+   }
+  },
+  "idle": {
+   "minutes": 16.0,
+   "timeline": [
+    {
+     "at_s": 59,
+     "api_requests": [
+      "/dashboard/api/memory-status"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 120,
+     "api_requests": [
+      "/dashboard/api/memory-status"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 180,
+     "api_requests": [
+      "/dashboard/api/memory-status"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 240,
+     "api_requests": [
+      "/dashboard/api/memory-status"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 300,
+     "api_requests": [
+      "/dashboard/api/voice-status",
+      "/dashboard/api/memory-status"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 360,
+     "api_requests": [
+      "/dashboard/api/memory-status"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 420,
+     "api_requests": [
+      "/dashboard/api/memory-status"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 480,
+     "api_requests": [
+      "/dashboard/api/memory-status"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 540,
+     "api_requests": [
+      "/dashboard/api/memory-status"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 600,
+     "api_requests": [
+      "/dashboard/api/snapshot",
+      "/dashboard/api/voice-status",
+      "/dashboard/api/memory-status"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 660,
+     "api_requests": [
+      "/dashboard/api/memory-status"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 720,
+     "api_requests": [
+      "/dashboard/api/memory-status"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 780,
+     "api_requests": [
+      "/dashboard/api/memory-status"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 840,
+     "api_requests": [
+      "/dashboard/api/memory-status"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 900,
+     "api_requests": [
+      "/dashboard/api/voice-status",
+      "/dashboard/api/memory-status"
+     ],
+     "cls_delta": 0
+    },
+    {
+     "at_s": 960,
+     "api_requests": [
+      "/dashboard/api/memory-status"
+     ],
+     "cls_delta": 0
+    }
+   ],
+   "total_api_requests": 0,
+   "console_errors": [],
+   "cls_at_end": 0,
+   "longtask_total_ms": 0
+  }
+ }
+}

@@ -228,6 +228,26 @@ def _scheduled_refresh_loop() -> None:
             logger.warning("health watchdog failed: %s", e)
 
 
+def _freshness_loop() -> None:
+    """THE FRESHNESS TICK (#160). The heavy snapshot stays on its two-hour
+    cadence; this keeps the CHEAP engine blocks close to their inputs.
+
+    Phase 0 found the sheet mirror ninety seconds fresh and the blocks the
+    tiles read seventy minutes old, because they only rebuilt on the slow
+    loop. This ticks every five minutes and rebuilds ONLY when the inputs
+    have actually moved — it is a decision first and work second."""
+    import time as _time
+    interval = float(os.environ.get("FRESHNESS_TICK_SECONDS", "300"))
+    _time.sleep(45)          # let boot settle before the first look
+    while True:
+        try:
+            import freshness
+            freshness.tick()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("freshness tick failed: %s", e)
+        _time.sleep(interval)
+
+
 def _email_cadence_loop() -> None:
     """Monday 09:00 Sydney drafts-only cadence (weekly generation + Library + PD ingest
     sweeps). By construction this can NEVER stage or send — it only writes pipeline rows
@@ -243,6 +263,7 @@ def _email_cadence_loop() -> None:
 
 def _start_email_cadence() -> None:
     import threading
+    threading.Thread(target=_freshness_loop, daemon=True, name="freshness-tick").start()
     threading.Thread(target=_email_cadence_loop, daemon=True, name="email-cadence").start()
     logger.info("email cadence thread started (Mon 09:00 Sydney window)")
 

@@ -1,0 +1,65 @@
+{# THE EDITH DOCK — owner-only, on every owner page.
+
+   Rendered only for an owner and only when the kill switch is off. The
+   markup is inert: a pill and an empty panel. The script that makes it work
+   loads AFTER first paint, inside its own error boundary, so a broken dock
+   can never take the dashboard with it.
+
+   Nothing here autoplays. Nothing requests the microphone. Both wait for a
+   tap, every time. #}
+{% if nav.owner and edith_dock and edith_dock.enabled %}
+<button class="ed-pill" id="ed-pill" type="button"
+        aria-label="Ask EDITH" aria-expanded="false" hidden>
+  <span class="ed-pill-dot" aria-hidden="true"></span>
+  <span>Ask EDITH</span>
+</button>
+
+<aside class="ed-dock" id="ed-dock" role="dialog" aria-label="EDITH" hidden>
+  <header class="ed-head">
+    <span class="ed-title">EDITH</span>
+    <span class="ed-ctx" id="ed-ctx"></span>
+    <button class="ed-x" id="ed-close" type="button" aria-label="Close">&times;</button>
+  </header>
+
+  {% if edith_dock.discreet %}
+  <div class="ed-discreet" id="ed-discreet">
+    Discreet mode is on. I'll keep this collapsed and I won't read anything
+    confidential out — the CSM plan, director pay or per-person commissions —
+    until you turn it off.
+  </div>
+  {% endif %}
+
+  <div class="ed-log" id="ed-log" aria-live="polite"></div>
+
+  <div class="ed-status" id="ed-status" hidden></div>
+
+  <div class="ed-input">
+    <button class="ed-mic" id="ed-mic" type="button"
+            aria-label="Tap to talk">🎙</button>
+    <textarea class="ed-text" id="ed-text" rows="1"
+              placeholder="Ask about any number on this page…"></textarea>
+    <button class="ed-send" id="ed-send" type="button" aria-label="Send">→</button>
+  </div>
+</aside>
+
+<script id="ed-dock-cfg" type="application/json">{{ edith_dock_json | safe }}</script>
+<script>
+/* Load the dock AFTER first paint, in its own boundary. If it throws, the
+   pill says so and the page is untouched. */
+(function () {
+  function boot() {
+    var s = document.createElement('script');
+    s.src = '/dashboard/static/js/edith_dock.js?v={{ asset_v }}';
+    s.async = true;
+    s.onerror = function () {
+      var p = document.getElementById('ed-pill');
+      if (p) { p.hidden = false; p.disabled = true;
+               p.lastElementChild.textContent = 'EDITH unavailable — script blocked'; }
+    };
+    document.body.appendChild(s);
+  }
+  if (document.readyState === 'complete') setTimeout(boot, 0);
+  else window.addEventListener('load', function () { setTimeout(boot, 0); }, { once: true });
+})();
+</script>
+{% endif %}

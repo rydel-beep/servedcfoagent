@@ -26,7 +26,7 @@ NAV = [
     ("plan",      "Plan",      "/dashboard/scale",           True),
     ("csm",       "CSM",       "/dashboard/csm",             True),
     ("decisions", "Decisions", "/dashboard/view/decisions",  True),
-    ("system",    "System",    "/dashboard/view/system",     False),
+    ("system",    "System",    "/dashboard/system",          False),
 ]
 
 # Where each page sits, so a breadcrumb is the real trail and not decoration.
@@ -151,7 +151,7 @@ def palette_targets(owner: bool, ad_only: bool = False) -> list[dict]:
             "the live month beside the model")
         add("page", "CSM", "/dashboard/csm", "the owner-only cockpit")
         add("page", "Decisions", "/dashboard/view/decisions", "needs your ruling")
-    add("page", "System", "/dashboard/view/system", "is the estate honest")
+    add("page", "System", "/dashboard/system", "is the estate honest")
     add("page", "Definitions", "/dashboard/definitions", "what every word means")
     for area, label in (("brief", "Morning brief"), ("sales", "Ads & sales"),
                         ("unit-econ", "Unit economics"),
