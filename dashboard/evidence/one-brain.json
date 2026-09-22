@@ -5,16 +5,13 @@
   {
    "step": "say on the dock channel",
    "http": 200,
-   "reply": ""
+   "reply": "Noted \u2014 harbour lantern test it is."
   },
   {
    "step": "ask on the text channel",
    "http": 200,
-   "reply": ""
+   "reply": "The \"harbour lantern test.\" You mentioned it earlier in this thread \u2014 I've got it logged."
   }
  ],
- "fails": [
-  "the dock channel did not answer (http 200)",
-  "the other channel did not recall 'harbour lantern' \u2014 it said: "
- ]
+ "fails": []
 }

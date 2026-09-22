@@ -140,6 +140,10 @@ def wait_for_reply(page, timeout_ms, index=0):
 
 
 def open_dock(page):
+    # idempotent: an already-open dock covers its own pill, so clicking again
+    # hangs on an intercepted pointer rather than toggling.
+    if page.evaluate("() => !!document.querySelector('#ed-dock.is-open')"):
+        return
     page.wait_for_selector("#ed-pill", state="visible", timeout=20000)
     page.click("#ed-pill")
     page.wait_for_selector("#ed-dock.is-open", timeout=10000)
@@ -262,14 +266,21 @@ def run():
         page.wait_for_timeout(2500)
         clicked = page.evaluate("""() => {
           const el = document.querySelector('[data-metric="ltv_cac"]');
-          if (!el) return false;
-          el.querySelector('.s-card-label').click();
+          const door = el && el.querySelector('.s-door, [data-explain]');
+          if (!door) return false;
+          door.click();
           return true;
         }""")
         if clicked:
             page.wait_for_timeout(600)
         prefill = page.evaluate("() => (document.getElementById('ed-text')||{}).value || ''")
         REPORT["steps"]["explain_this"] = {"clicked": clicked, "prefill": prefill}
+        # this recorded an empty prefill for two runs and said nothing, because
+        # nothing asserted on it. A measurement with no assertion is decoration.
+        if not clicked:
+            fail("the tile carries no door to ask EDITH about it")
+        elif "ltv" not in prefill.lower() and "cac" not in prefill.lower():
+            fail(f"Explain this did not pre-fill the question (got {prefill!r})")
 
         # ── 6 · a forced TTS failure is LOUD and classified ──
         page.route("**/api/tts**", lambda route: route.fulfill(status=500, body="nope"))

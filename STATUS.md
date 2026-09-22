@@ -1,5 +1,58 @@
 # STATUS — served-cfo-agent session log
 
+## 2026-09-22 (2) — SYSTEM PAGE · FRESHNESS AS A CONTRACT · EDITH ON EVERY OWNER PAGE (#160)
+
+Deploys → 0b1687e7, 21715fe2, 1991a8f0 SUCCESS. Suite **1347**. Zero writes
+to the tracker, GHL or Xero (the #148 law re-proven); no token minted.
+
+**The System page was not slow — it never stopped talking.** Phase 0's three
+passes killed my two obvious hypotheses (CLS **0**, long tasks **0 ms**). The
+sixteen-minute idle pass found `/api/memory-status` every 60 s forever, a
+`/api/voice-status` every 5 min and a **full panel re-render at +600 s**, all
+riding along on the dashboard bundle. Rebuilt from stored results only
+(**134 ms** to assemble): requests 23 → **6**, API calls on load 10 → **0**,
+idle → exactly one `/api/system` a minute, no re-render, CLS still 0, zero
+console errors. Telemetry is now grouped — 81 browser errors that are ONE
+bug (the #158 null-innerHTML defect, last seen 19.1 h ago) read as a dozen
+fires when streamed raw.
+
+**Freshness was a chain problem.** Every source was inside budget, but the
+engine blocks the tiles read were **70 min** old (they rebuilt only on a loop
+that sleeps two hours first), today's Meta spend could not refresh at all
+(**18.4 h** — store-first archive, idempotent backfill), and NEITHER refresh
+button touched what the tiles read. `freshness.py` now owns a stated contract
+per source, an as-of computed from a value's INPUTS, a five-minute tick that
+rebuilds only when inputs move, and a real Refresh now (owner, rate-limited,
+journaled, **Xero never force-pulled** — single-use token). Live after:
+blocks 1.6 h → *just now* · Meta 18.4 h → *just now* · **zero stale sources**.
+
+**The dock is a new CHANNEL, not a second EDITH** — same brain, same chat
+route, same server-side voice proxy, `channel="dashboard"` beside the
+Timeline bridge's `"timeline"`. Owner-only, `EDITH_DOCK=off` kill switch,
+loads after first paint in its own boundary, silent until tapped.
+
+**What the gates found that I had not:**
+1. **EDITH's brain was DOWN in production.** `anthropic 1.7.0` (resolved from
+   a floating `>=0.52.0`) dropped `temperature` from messages.create/stream;
+   every business answer failed while glossary answers still worked, so
+   nothing showed it. `llm_compat.temp()` fixes it and EDITH's pulse is now a
+   System-page row — the brain was the one thing nothing watched.
+2. A tile named its OLDEST input, not the LATE one (tracker aged 6 h, tile
+   calmly cited Xero's 19 h inside a 24 h budget). Ranked by budget breach now.
+3. TODAY's tiles carried **no as-of at all** — `as_of()` existed, nothing used
+   it. All eight carry one now, amber + named source when an input is late.
+4. The freshness tick ran **inside the test process**, bumping the derivation
+   epoch mid-suite and failing an unrelated cache test. Guarded + pinned.
+5. "What's our cash on hand" returned the **glossary** — the possessive read
+   as "what is…". Split: *what IS x* explains, *what's OUR x* answers.
+
+Gate artefacts: `dock-1991a8f03e00/report.json` (8 steps, fails []) ·
+`stale-drill.json` (pause a sync → the right tiles go amber and name it) ·
+`one-brain.json` (said on `dashboard` conv 28, recalled on `text` conv 29) ·
+`phase0-system-*` before/after. 26 registry entries for the new UI, coverage
+gate extended, jargon grep zero. DECISIONS #160.
+
+
 ## 2026-09-17 (3) — VISIBILITY FIX (#151): ratios on screen, AR internal-only, three paid closes
 
 Deploys → a4a17bca SUCCESS. Suite **1106**. The shipped-≠-visible class

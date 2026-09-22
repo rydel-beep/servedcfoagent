@@ -130,7 +130,10 @@
           .forEach(function (n) { n.remove(); });
         label = label.innerText;
       }
-      label = (label || metric).trim();
+      /* the label spans lines and pads its punctuation — "LTV : CAC" reads
+         wrong in a spoken question */
+      label = String(label || metric).replace(/\s+/g, ' ')
+                                     .replace(/\s*:\s*/g, ':').trim();
     } catch (err) { label = metric; }
     openDock("What's our " + String(label).toLowerCase() +
              ', and where does that number come from?');
