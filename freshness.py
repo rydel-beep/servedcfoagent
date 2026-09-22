@@ -333,22 +333,30 @@ def tick() -> dict:
     """Rides a SHORT loop. Cheap by construction: it reads stamps, decides,
     and only then rebuilds. No external pull happens here — the blocks are
     recomputed from data the sync jobs already landed."""
-    decision = blocks_need_rebuild()
-    out = {"at": now_sydney().isoformat(), **decision, "rebuilt": []}
-    if not decision["rebuild"]:
-        kv_store.put(K_TICK, out)
-        return out
-    # today's Meta row ages out on its own: the archive is store-first, so a
-    # day already captured is never re-fetched. Refresh it when it is past
-    # budget — otherwise an intraday number quietly goes stale.
+    out = {"at": now_sydney().isoformat(), "rebuilt": []}
+
+    # TODAY'S META ROW AGES OUT ON ITS OWN, whatever the blocks are doing.
+    # The archive is store-first, so a day already captured is never
+    # re-fetched. This check used to sit INSIDE the rebuild branch, so on a
+    # quiet tick — blocks fresh, nothing to rebuild — the intraday spend
+    # number drifted past its hour and nobody refreshed it. Same defect as
+    # the one this whole module exists to fix, one level down.
     try:
         s = sources()
         meta = next((r for r in s["rows"] if r["key"] == "meta_today"), None)
-        if meta and meta["status"] in ("stale", "unknown"):
+        if meta and meta["status"] in ("stale", "unknown", "degraded"):
             import meta_spend
             out["meta_today"] = meta_spend.refresh_today()
     except Exception as e:  # noqa: BLE001
         logger.info("freshness tick: meta refresh skipped: %s", e)
+
+    decision = blocks_need_rebuild()
+    out.update(decision)
+    if not decision["rebuild"] and not (out.get("meta_today") or {}).get("changed"):
+        kv_store.put(K_TICK, out)
+        return out
+    if not decision["rebuild"]:
+        out["why"] = "today's ad spend moved — the tiles that read it rebuild"
     for name, fn in _block_builders():
         try:
             fn()

@@ -413,3 +413,16 @@ def test_the_brain_pulse_uses_the_kv_api_that_exists():
     fn = fn[:fn.index("\ndef ")]
     for call in re.findall(r"kv_store\.(\w+)\(", fn):
         assert hasattr(kv_store, call), f"kv_store has no {call}()"
+
+
+def test_todays_ad_spend_is_refreshed_on_every_tick_not_only_rebuild_ticks():
+    """The Meta check sat INSIDE the rebuild branch, so on a quiet tick —
+    blocks fresh, nothing to rebuild — the intraday number drifted past its
+    hour and nobody refreshed it. Caught live: 'meta_today' stale again the
+    day it was fixed."""
+    src = _read("freshness.py")
+    fn = src[src.index("def tick("):src.index("def _block_builders")]
+    code = _code_only(fn)
+    meta = code.index("refresh_today()")
+    decide = code.index("blocks_need_rebuild()")
+    assert meta < decide, "Meta must be checked before the rebuild decision"

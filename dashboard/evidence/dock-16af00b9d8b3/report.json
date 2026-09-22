@@ -1,0 +1,81 @@
+{
+ "base": "https://web-production-16b16.up.railway.app",
+ "steps": {
+  "silent_on_load": {
+   "audio": {
+    "plays": [],
+    "pauses": [],
+    "srcs": []
+   },
+   "mic": {
+    "requested": 0,
+    "started": 0
+   }
+  },
+  "first_paint_with_dock": {
+   "fcp": 652,
+   "dcl": 648,
+   "dock_start": 649
+  },
+  "cash_tile": {
+   "value": "170088.69",
+   "shown": "$170,088.69"
+  },
+  "text_answer": "Same answer, Rydel \u2014 **$170,088.69** in the bank, **$175,786.50** with Stripe incoming, **$150,088.69** deployable after the tax reserve.",
+  "numbers_in_reply": [
+   "",
+   "170088.69",
+   "",
+   "175786.50",
+   "",
+   "150088.69"
+  ],
+  "voice_answer": "Committed MRR is REVENUE, never a cost: $72,887.52/mo across 38 active clients \u2014 the monthly amount clients are contracted to pay us (Health tab + declarations + the sheet renewal ledger). The drawer on the tile lists all rows with provenance; cross-tab deltas (9) are surfaced until Piolo fixes them",
+  "voice": {
+   "mic_started": 1,
+   "audio_plays": 1,
+   "tts_src": [
+    "/dashboard/api/tts?text=Committed%20MRR%20is%20REVENUE%2C%20never%20a%20cost%3A%20%2472%2C887.52%2Fmo%20across%2038%20active%20clients%20%E2%80%94%20the%20monthly%20amount%20clients%20are%20contracted%20to%20pay%20us%20(Health%20tab%20%2B%20declarations%20%2B%20the%20sheet%20renewal%20ledger).%20The%20drawer%20on%20the%20tile%20lists%20all%20rows%20with%20provenance%3B%20cross-tab%20deltas%20(9)%20are%20surfaced%20until%20Piolo%20fixes%20them%20at%20source."
+   ]
+  },
+  "barge_in": {
+   "pauses_before": 0,
+   "after": 1
+  },
+  "explain_this": {
+   "clicked": true,
+   "prefill": "What's our ltv:cac, and where does that number come from?"
+  },
+  "forced_tts_failure": "EDITH voice unavailable \u2014 the speech service did not return audio \u2014 text is above",
+  "access": [
+   {
+    "who": "ad_domain",
+    "status": 200,
+    "dock_visible": false,
+    "refresh_now_status": 403
+   },
+   {
+    "who": "anon",
+    "status": 200,
+    "dock_visible": false,
+    "refresh_now_status": 401
+   }
+  ],
+  "dock_blocked": {
+   "tiles": 11,
+   "pill_disabled": true,
+   "pill_text": "EDITH unavailable \u2014 script blocked",
+   "pageerrors": []
+  }
+ },
+ "fails": [],
+ "mocks": [
+  "SpeechRecognition (headless cannot grant a mic)",
+  "HTMLAudioElement.play (headless has no audio device)"
+ ],
+ "commit": "16af00b9d8b3",
+ "console_errors": [
+  "console: Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+ ],
+ "ok": true
+}
