@@ -401,3 +401,15 @@ def test_the_brain_pulse_is_recorded_before_the_stream_ends():
     done = code.index('yield ("done"')
     mark = code.index("note_brain(True)")
     assert mark < done, "the success mark must land before the final yield"
+
+
+def test_the_brain_pulse_uses_the_kv_api_that_exists():
+    """note_brain swallows its own exceptions so a failed write can never
+    break a reply — which also means a typo'd call is silent. It called
+    kv_store.set(); the module only has put()."""
+    import kv_store
+    code = _code_only(_read("dashboard", "chat.py"))
+    fn = code[code.index("def note_brain("):]
+    fn = fn[:fn.index("\ndef ")]
+    for call in re.findall(r"kv_store\.(\w+)\(", fn):
+        assert hasattr(kv_store, call), f"kv_store has no {call}()"

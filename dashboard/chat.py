@@ -685,7 +685,7 @@ def note_brain(ok: bool, error: str = "") -> None:
     try:
         import kv_store
         from helpers import now_sydney
-        kv_store.set("edith:last_chat", {
+        kv_store.put("edith:last_chat", {
             "at": now_sydney().isoformat(), "ok": bool(ok),
             "model": CHAT_MODEL, "error": (error or "")[:200]})
     except Exception:  # never let bookkeeping break a reply
