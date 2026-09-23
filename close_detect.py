@@ -49,6 +49,11 @@ K_LAST_SCAN = "closes:last_scan"
 # (the standing authority) alone.
 _AUTHORITY = "tracker"
 
+# Who gets to say WHEN it closed. A payment is evidence that a deal exists,
+# not evidence of the day it was signed — an instalment can land days before
+# or after. Lower rank wins.
+_DATE_RANK = {"tracker": 0, "ghl stage": 1, "stage recorder": 2, "payment": 3}
+
 
 def _norm(s) -> str:
     return re.sub(r"[^a-z0-9]+", " ", str(s or "").lower()).strip()
@@ -274,7 +279,8 @@ def scan(days: int = 60) -> dict:
                 continue
             e = found.setdefault(key, {
                 "person": row.get("person") or "", "close_date": row["close_date"],
-                "sources": [], "evidence": {}, "email": row.get("email")})
+                "dated_by": row["source"], "sources": [], "evidence": {},
+                "email": row.get("email")})
             if row.get("person") and not e["person"]:
                 e["person"] = row["person"]
             e["email"] = e["email"] or row.get("email")
@@ -282,9 +288,15 @@ def scan(days: int = 60) -> dict:
                                  "provenance": row["provenance"],
                                  "close_date": row["close_date"]})
             e["evidence"].update(row.get("evidence") or {})
-            if row["source"] == _AUTHORITY:
-                e["close_date"] = row["close_date"]      # the authority dates it
-            elif row["close_date"] < e["close_date"]:
+            # WHO GETS TO SAY WHEN IT CLOSED. Ranked, because a payment date
+            # is not a close date: William Cooney's earlier instalment pulled
+            # his close from 11 Sep back to 1 Sep when the merge simply took
+            # the earliest date it had seen.
+            if _DATE_RANK[row["source"]] < _DATE_RANK[e["dated_by"]]:
+                e["close_date"] = row["close_date"]
+                e["dated_by"] = row["source"]
+            elif (row["source"] == e["dated_by"]
+                  and row["close_date"] < e["close_date"]):
                 e["close_date"] = row["close_date"]
 
     entries = []

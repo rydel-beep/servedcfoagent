@@ -483,3 +483,43 @@ def test_a_non_owner_turn_never_gets_owner_scope_memory(monkeypatch):
 def test_both_chat_paths_pass_the_owner_flag():
     src = _code_only(_read("dashboard", "routes.py"))
     assert src.count("build_recall_context(") == src.count("owner=is_owner()") >= 2
+
+
+def test_a_payment_date_never_overrides_a_close_date(monkeypatch):
+    """Caught live: William Cooney's close moved from 11 Sep to 1 Sep because
+    an earlier instalment landed then and the merge took the earliest date it
+    had seen. A payment proves the deal exists, not the day it was signed."""
+    kv_store._MEM.clear()
+    import close_detect as C
+    monkeypatch.setattr(C, "_from_tracker", lambda: [])
+    monkeypatch.setattr(C, "_from_stage_recorder", lambda: [])
+    monkeypatch.setattr(C, "_from_ghl", lambda: [{
+        "person": "William Cooney", "close_date": "2026-09-11",
+        "source": "ghl stage", "provenance": "stage",
+        "evidence": {"opp_id": "o1"}, "email": None}])
+    monkeypatch.setattr(C, "_from_payments", lambda: [{
+        "person": "William Cooney", "close_date": "2026-09-01",
+        "source": "payment", "provenance": "payment matched",
+        "evidence": {"charge_ids": ["ch_1"]}, "email": None}])
+    e = C.scan(days=90)["entries"][0]
+    assert e["close_date"] == "2026-09-11"
+    assert e["dated_by"] == "ghl stage"
+    assert e["state"] == "CONFIRMED"
+
+
+def test_the_panel_publishes_the_real_count_not_the_slice(app_client, monkeypatch):
+    """Scan 2 caught this on the live page: the panel shows five rows and was
+    publishing the length of the SLICE, so the page said 5 while the engine
+    said 10. A page that disagrees with its own engine is the defect scan 2
+    exists to find — including when the page is mine."""
+    import close_detect
+    entries = [{"key": f"k{i}", "person": f"Venue {i}", "close_date": "2026-09-01",
+                "state": "DETECTED", "sources": [{"source": "ghl stage",
+                                                  "provenance": "stage"}],
+                "missing": ["contract value"], "evidence": {}} for i in range(10)]
+    monkeypatch.setattr(close_detect, "latest",
+                        lambda: {"entries": entries, "at": "now"})
+    html = _as(app_client, "owner", "rydel").get("/dashboard/today").data.decode()
+    m = re.search(r'data-metric="closes_detected"[^>]*data-value="(\d+)"', html)
+    assert m and m.group(1) == "10", html[:0] or (m.group(1) if m else "absent")
+    assert "showing" in html and "most recent" in html

@@ -228,7 +228,7 @@ def today_page():
                 "unmatched": {"count": 0, "total": 0, "rows": [],
                               "available": False,
                               "note": "today failed before the payment scan"},
-                "new_closes": []}
+                "new_closes": [], "new_closes_total": 0}
     resp = make_response(render_template(
         "today.html", today=data, asset_v=_ASSET_VERSION, owner=owner,
         **_shell("today")))

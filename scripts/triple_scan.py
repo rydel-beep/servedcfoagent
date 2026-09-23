@@ -35,7 +35,9 @@ import urllib.request
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 BASE = os.environ.get("GATE_BASE", "https://web-production-16b16.up.railway.app")
-PW = os.environ.get("GATE_OWNER_PASSWORD")
+# GATE_* explicitly, or run under `railway run`, which injects the live
+# credential envs — so the value is never typed or written down.
+PW = os.environ.get("GATE_OWNER_PASSWORD") or os.environ.get("RYDEL_PASSWORD")
 USER = os.environ.get("GATE_OWNER_USER", "rydel")
 LEGACY_TOKEN = os.environ.get("GATE_LEGACY_TOKEN")
 

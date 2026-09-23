@@ -273,17 +273,22 @@ def build(snap: dict | None, owner: bool) -> dict:
     try:
         import close_detect
         det = close_detect.latest()
-        new_closes = [e for e in (det.get("entries") or [])
-                      if e.get("state") == "DETECTED"][:5]
+        detected = [e for e in (det.get("entries") or [])
+                    if e.get("state") == "DETECTED"]
+        # the panel shows five; the COUNT it publishes is all of them. Scan 2
+        # caught the first version publishing the length of the slice — the
+        # page said five while the engine said ten.
+        new_closes, new_closes_total = detected[:5], len(detected)
     except Exception as e:  # noqa: BLE001
         logger.warning("today: close detection unavailable: %s", e)
-        new_closes = []
+        new_closes, new_closes_total = [], 0
 
     return {
         "tiles": tiles[:8],
         "verdict": verdict,
         "unmatched": unmatched,
         "new_closes": new_closes,
+        "new_closes_total": new_closes_total,
         "rulings": _rulings(owner),
         "since": _since_you_last_looked(owner),
         "pulse": pulse,

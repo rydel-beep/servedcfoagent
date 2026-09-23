@@ -128,11 +128,13 @@
   <section class="s-panel" aria-labelledby="newcloses-title"
            data-metric="closes_detected" data-window="60d"
            data-clock="close date" data-basis="evidence"
-           data-value="{{ today.new_closes | length }}">
+           data-value="{{ today.new_closes_total }}">
     <div class="s-panel-head">
       <h2 class="s-panel-title" id="newcloses-title">New closes detected
-        ({{ today.new_closes | length }})</h2>
-      <span class="s-panel-sub">seen by one source; the others have not caught up</span>
+        ({{ today.new_closes_total }})</h2>
+      <span class="s-panel-sub">seen by one source; the others have not caught
+        up{% if today.new_closes_total > today.new_closes | length %} · showing
+        the {{ today.new_closes | length }} most recent{% endif %}</span>
     </div>
     <ul class="s-list">
       {% for c in today.new_closes %}
