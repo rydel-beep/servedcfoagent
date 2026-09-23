@@ -1,0 +1,14 @@
+{
+ "files": [
+  "close_detect.py",
+  "unmatched_payments.py",
+  "role_access.py",
+  "gap_reconcile.py",
+  "stripe_reconcile.py",
+  "sales_scoreboard.py",
+  "dashboard/today.py",
+  "dashboard/routes.py",
+  "dashboard/auth.py"
+ ],
+ "findings": []
+}
