@@ -331,3 +331,21 @@ def test_a_confirmed_alias_counts_as_payment_evidence():
     hits = GR._stripe_hits("Koji Person", "koji@venue.com", charges, client="Koji")
     assert len(hits) == 1 and hits[0]["match"] == "confirmed alias"
     assert hits[0]["charge_id"] == "ch_koji"
+
+
+def test_piolo_is_never_shown_a_door_he_cannot_open(app_client):
+    """No dead links: a nav entry or an in-page link he cannot open is worse
+    than the carve-out itself — it reads as something broken."""
+    import role_access as RA
+    c = _as(app_client, "coo", "piolo")
+    dead = {}
+    for page in ("/dashboard/today", "/dashboard/sales", "/dashboard/scale",
+                 "/dashboard/system", "/dashboard/landing",
+                 "/dashboard/scale/travelling"):
+        r = c.get(page)
+        assert r.status_code == 200, page
+        links = set(re.findall(r'href="(/dashboard[^"#?]*)"', r.data.decode()))
+        bad = [l for l in sorted(links) if not RA.coo_permitted(l, "GET")[0]]
+        if bad:
+            dead[page] = bad
+    assert not dead, dead
