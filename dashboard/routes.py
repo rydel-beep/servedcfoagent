@@ -14,7 +14,8 @@ from flask import (
     url_for, Response, stream_with_context, session,
 )
 
-from dashboard.auth import require_auth, require_owner, DASHBOARD_TOKEN, COOKIE_NAME, COOKIE_MAX_AGE
+from dashboard.auth import (require_auth, require_owner, is_owner,
+                            DASHBOARD_TOKEN, COOKIE_NAME, COOKIE_MAX_AGE)
 from dashboard.chat import chat as chat_fn, chat_stream as chat_stream_fn
 from config import CFO_REFRESH_KEY
 
@@ -1879,7 +1880,8 @@ def api_chat():
                 memory.record_turn(conv_id, "assistant", _r, channel=channel, intent="command")
             return jsonify({"reply": _r, "error": None, "intent": "command"})
 
-    recall = memory.build_recall_context(user_msg, conversation_id=conv_id)
+    recall = memory.build_recall_context(user_msg, conversation_id=conv_id,
+                                        owner=is_owner())
 
     # Ground affordability/salary questions on VERIFIED SALARY-tab figures (deterministic), so the
     # model does its cost/FX math on real numbers instead of memory.
@@ -2170,7 +2172,8 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
         return Response(gen_cmd(), mimetype="text/event-stream",
                         headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
-    recall = memory.build_recall_context(user_msg, conversation_id=conv_id)
+    recall = memory.build_recall_context(user_msg, conversation_id=conv_id,
+                                        owner=is_owner())
     # Ground affordability/salary questions on VERIFIED SALARY-tab figures (deterministic).
     import salary_view, tracker_read
     _mem_block = recall["block"]

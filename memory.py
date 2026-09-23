@@ -105,7 +105,24 @@ _PAST_REF_RE = re.compile(
 )
 
 
-def build_recall_context(user_message: str, conversation_id: int | None = None) -> dict:
+# OWNER-SCOPE MEMORY (#161). Found live: asked "what's the csm roi status",
+# Piolo got a silent fall-through from the CSM handler — which handed the
+# question to the MODEL, which answered it from remembered context, cost
+# range and all. Silence is not confidentiality when something else is
+# listening. A non-owner session never receives a remembered fact or an
+# earlier snippet on a carved-out subject.
+_OWNER_SCOPE_RE = re.compile(
+    r"\bcsm\b|customer success|\bmiguel\b|director comp|comp offset|"
+    r"commission|salary|salaries|payout|take[- ]home|per set|set fee|"
+    r"junior rate|what .{0,12}earns?\b", re.I)
+
+
+def owner_scope(text: str) -> bool:
+    return bool(_OWNER_SCOPE_RE.search(text or ""))
+
+
+def build_recall_context(user_message: str, conversation_id: int | None = None,
+                         owner: bool = True) -> dict:
     """Assemble the memory block to prepend to the system prompt.
 
     ALWAYS includes the active distilled facts (the "knows me" layer). When the user
@@ -134,6 +151,8 @@ def build_recall_context(user_message: str, conversation_id: int | None = None) 
             fact_budget = MEMORY_MAX_CONTEXT_CHARS - 2000
             used = len(lines[-1])
             for f in facts:
+                if not owner and owner_scope(f.get("fact")):
+                    continue          # never hand a carve-out to the model
                 ts = f.get("last_referenced_at")
                 stamp = ts.date().isoformat() if hasattr(ts, "date") else ""
                 line = f"- [{f['category']}] {f['fact']}" + (f" (as of {stamp})" if stamp else "")
@@ -152,6 +171,8 @@ def build_recall_context(user_message: str, conversation_id: int | None = None) 
         if hits:
             lines.append("\nRelevant earlier discussion (recalled from past conversations):")
             for h in hits:
+                if not owner and owner_scope(h.get("content")):
+                    continue
                 ts = h.get("created_at")
                 stamp = ts.date().isoformat() if hasattr(ts, "date") else "?"
                 snippet = " ".join((h["content"] or "").split())[:240]
@@ -167,6 +188,8 @@ def build_recall_context(user_message: str, conversation_id: int | None = None) 
                 lines.append("\nArchived facts matching this topic (demoted, still true "
                              "unless superseded):")
                 for a in arch:
+                    if not owner and owner_scope(a.get("fact")):
+                        continue
                     lines.append(f"- (archived) [{a['category']}] {a['fact']}")
         except Exception:
             pass

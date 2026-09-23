@@ -1,0 +1,55 @@
+{
+ "base": "https://web-production-16b16.up.railway.app",
+ "granted": {
+  "/dashboard/today": 200,
+  "/dashboard/sales": 200,
+  "/dashboard/scale": 200,
+  "/dashboard/scale/travelling": 200,
+  "/dashboard/system": 200,
+  "/dashboard/landing": 200,
+  "/dashboard/api/travelling": 200,
+  "/dashboard/api/unit-economics": 200,
+  "/dashboard/api/decision-cards": 200,
+  "/dashboard/api/ar": 200,
+  "/dashboard/api/outflow-bands": 200,
+  "/dashboard/api/scale/defaults": 200,
+  "/dashboard/api/unmatched": 200,
+  "/dashboard/api/closes/pending": 200,
+  "/dashboard/api/finance-analysis": 200,
+  "/dashboard/api/ground-truth": 200,
+  "/dashboard/api/renewal/clients": 200,
+  "/dashboard/api/snapshot": 200
+ },
+ "refused_get": {
+  "/dashboard/api/csm/model": 403,
+  "/dashboard/api/comp/rules": 403,
+  "/dashboard/api/comp/cost": 403,
+  "/dashboard/api/tts": 403,
+  "/dashboard/memory/api/facts": 403,
+  "/dashboard/api/voice-status": 403
+ },
+ "refused_post": {
+  "/dashboard/api/unmatched/confirm": 403,
+  "/dashboard/api/closes/confirm": 403,
+  "/dashboard/api/renewal/declare": 403,
+  "/dashboard/api/targets/set": 403,
+  "/dashboard/api/scale/commit-plan": 403,
+  "/dashboard/api/gap/rebuild": 403,
+  "/dashboard/api/refresh-now": 403,
+  "/dashboard/api/comp/rules": 403
+ },
+ "unknown_route": {
+  "GET": 404,
+  "POST": 404
+ },
+ "fails": [],
+ "anon": {
+  "/dashboard/today": 302,
+  "/dashboard/api/snapshot": 401
+ },
+ "owner_still_has_it": {
+  "/dashboard/api/comp/rules": 200,
+  "/dashboard/csm": 200,
+  "/dashboard/api/tts?text=hello": 200
+ }
+}

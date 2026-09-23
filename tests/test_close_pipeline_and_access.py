@@ -451,3 +451,35 @@ def test_a_sentence_is_never_learned_as_a_client_name():
     assert "walkway" not in sr._aliases()
     ok, why = sr.alias_looks_like_a_name("a" * 80)
     assert not ok and "sentence" in why
+
+
+def test_a_non_owner_turn_never_gets_owner_scope_memory(monkeypatch):
+    """Found LIVE: asked "what's the csm roi status", Piolo got a silent
+    fall-through from the CSM handler — which handed the question to the
+    MODEL, which answered from remembered context, cost range and all.
+    Silence is not confidentiality when something else is listening."""
+    import memory
+    facts = [
+        {"id": 1, "category": "context", "fact": "The CSM hire is Miguel; "
+         "the restructure offsets his comp against the director line.",
+         "last_referenced_at": None},
+        {"id": 2, "category": "context", "fact": "Kalin's commission is $750 "
+         "on a Growth Pro close.", "last_referenced_at": None},
+        {"id": 3, "category": "context", "fact": "Rydel prefers the numbers "
+         "before the narrative.", "last_referenced_at": None},
+    ]
+    monkeypatch.setattr("db.db_configured", lambda: True)
+    monkeypatch.setattr("db.active_facts", lambda limit=60: facts)
+    monkeypatch.setattr("db.search_messages", lambda *a, **k: [])
+    monkeypatch.setattr("memory_maintenance.search_archived", lambda *a, **k: [])
+
+    owner_block = memory.build_recall_context("anything", owner=True)["block"]
+    coo_block = memory.build_recall_context("anything", owner=False)["block"]
+    assert "Miguel" in owner_block and "Kalin" in owner_block
+    assert "Miguel" not in coo_block and "Kalin" not in coo_block
+    assert "before the narrative" in coo_block, "ordinary context still flows"
+
+
+def test_both_chat_paths_pass_the_owner_flag():
+    src = _code_only(_read("dashboard", "routes.py"))
+    assert src.count("build_recall_context(") == src.count("owner=is_owner()") >= 2
