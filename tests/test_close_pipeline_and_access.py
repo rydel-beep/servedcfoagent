@@ -349,3 +349,56 @@ def test_piolo_is_never_shown_a_door_he_cannot_open(app_client):
         if bad:
             dead[page] = bad
     assert not dead, dead
+
+
+# ── the carve-out has to hold in the PAYLOAD, not just at the door ──────────
+
+def test_the_snapshot_carries_no_per_person_pay_to_a_non_owner(app_client):
+    """Found by the leak hunt: the snapshot is one object many surfaces read,
+    and it carried per-closer commission totals, per-setter payouts WITH
+    NAMES, per-deal commission detail and the roster's salaries — to a role
+    the comp routes correctly refuse."""
+    import json
+    owner = json.loads(_as(app_client, "owner", "rydel")
+                       .get("/dashboard/api/snapshot").data.decode())
+    coo = _as(app_client, "coo", "piolo").get("/dashboard/api/snapshot").data.decode()
+    if "error" in owner:
+        pytest.skip("no snapshot on this machine")
+    for marker in ("closer_commission", "commission_total", "salary_aud",
+                   "salary_php", "owner_pay", "set_fees", "per_setter\":[{\"name"):
+        assert marker not in coo, marker
+    payload = json.loads(coo)
+    assert payload["comp_scope"] == "owner-only"
+    assert "owner-only" in payload["comp_scope_note"]
+    # Stripe's own bank payouts are money INTO the business, not a person's
+    # pay — scrubbing those would break the cash view for no reason
+    assert (payload.get("stripe") or {}).get("payouts") is not None
+
+
+def test_a_scrubbed_payload_never_reads_as_nobody_was_paid():
+    js = _read("dashboard", "static", "js", "dashboard.js")
+    i = js.index("function renderCommissions")
+    fn = js[i:i + 2000]
+    assert "comp_scope === 'owner-only'" in fn
+    assert fn.index("comp_scope") < fn.index("No commission data"), (
+        "the owner-only branch must come BEFORE the empty-state branch, or "
+        "Piolo is told nobody earned anything")
+
+
+def test_only_one_contributor_suppresses_the_total_too():
+    import role_access as RA
+    snap = {"sales": {"per_closer": [{"name": "Kalin", "commission_total": 900.0}],
+                      "payout": {"per_setter": []}},
+            "costs": {"closer_commission": 900.0}}
+    out = RA.scrubbed_for("coo", snap)
+    assert out["comp_total_suppressed"] is True
+    assert "their pay with a different label" in out["comp_scope_note"]
+    snap["sales"]["payout"]["per_setter"] = [{"name": "Coby", "owed": 150.0}]
+    out2 = RA.scrubbed_for("coo", snap)
+    assert out2["comp_total_suppressed"] is False
+
+
+def test_the_owner_sees_the_payload_untouched():
+    import role_access as RA
+    snap = {"costs": {"closer_commission": 900.0}}
+    assert RA.scrubbed_for("owner", snap) is snap

@@ -2876,3 +2876,17 @@ name — identity or a recorded decision, never a resemblance. This is a
 deliberate behaviour change: the old rule is how money gets attached to the
 wrong venue with nobody ever seeing the choice. The Fiona Fitzgerald / Glen
 case still resolves automatically — as a confirmed alias.
+
+**THE CARVE-OUT HELD AT THE DOOR AND LEAKED THROUGH THE WINDOW.** A leak hunt
+over all 88 surfaces Piolo can open found the snapshot — one JSON object many
+pages read, not a "comp" endpoint, so the route list let it through — serving
+him **per-closer commission totals, per-setter payouts WITH NAMES, per-deal
+commission detail, the loaded-CAC set-fee rate, and the team roster's
+per-person salaries.** The payload is scrubbed for a non-owner now, and the
+legacy commissions panel says so instead of rendering "No commission data",
+which would have been a lie with a number's confidence. Stripe's own bank
+payouts are explicitly kept — money into the business is not a person's pay.
+Two findings were examined and ACCEPTED with reasons recorded in the hunt
+itself: a degraded note naming a blank commission cell (no person, no
+amount), and the roster's names and roles once the salaries are gone.
+

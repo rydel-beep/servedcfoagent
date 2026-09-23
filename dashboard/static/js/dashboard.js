@@ -1077,7 +1077,11 @@
 
     const details = [];
     if (trueTeam != null) details.push({ label: 'Team Cost', value: fmt$(trueTeam), sub: 'payroll + owner + super' });
-    if (totalComm > 0) details.push({ label: 'Commissions', value: fmt$(totalComm), sub: 'closer + setter' });
+    if (snap && snap.comp_scope === 'owner-only') {
+      details.push({ label: 'Commissions', value: '—', sub: 'owner-only' });
+    } else if (totalComm > 0) {
+      details.push({ label: 'Commissions', value: fmt$(totalComm), sub: 'closer + setter' });
+    }
     if (adSpend != null) details.push({ label: 'Ad Spend', value: fmt$(adSpend), sub: adSpendSub });
 
     // "Other" = opex - known items
@@ -2712,6 +2716,15 @@
 
     const totalComm = ((closerComm || 0) + (setterComm || 0));
 
+    // R-PIOLO (#161): a scrubbed payload means NOT ALLOWED, not "nobody was
+    // paid". Saying "no commission data" to Piolo would be a lie with a
+    // number's confidence.
+    if (snap && snap.comp_scope === 'owner-only') {
+      summary.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">' +
+        esc(snap.comp_scope_note || 'Per-person pay is owner-only.') + '</div>';
+      detail.innerHTML = '';
+      return;
+    }
     if (totalComm === 0 && perCloser.length === 0 && perSetter.length === 0) {
       summary.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">No commission data</div>';
       detail.innerHTML = '';

@@ -246,3 +246,102 @@ def scrub_person_pay(rows: list, keys=("commission",)) -> list:
             c.pop(k, None)
         out.append(c)
     return out
+
+
+# ── the payload carve-out ───────────────────────────────────────────────────
+# Guarding the front door is not enough. The snapshot is ONE json object that
+# many surfaces read, and it carries: per-closer commission totals, per-setter
+# payouts WITH NAMES, per-deal commission detail, and the team roster's
+# per-person salaries. The route list let it through because it is not a
+# "comp" endpoint. Found by scripts/carveout_leak_hunt.py.
+#
+# What survives for a non-owner: the BLENDED commission cost (that is the
+# number Rydel wants Piolo to have, inside CAC and the outflow bands) — and
+# even that goes when only one person contributed to it, because then the
+# total IS their pay.
+
+_DROP_EXACT = {
+    "payout", "payout_log", "payout_status", "per_setter", "by_person",
+    "kalin_override", "coby_nets", "owner_pay", "set_fees", "setter_payout",
+    "commission_detail", "paid_log",
+    # the setter-commission half of loaded CAC: it carries the rate itself
+    # ("$50 per set + 5% of cash") in its own source line, which is the comp
+    # RULE — owner-only. Its contribution still reaches him inside CAC.
+    "loaded_cac",
+}
+_DROP_SUBSTRING = ("commission", "salary", "take_home", "set_fee",
+                   "setter_comm", "closer_comm", "pct_bonus")
+# never confuse Stripe's bank payouts (money INTO the business) with a
+# person's payout
+_KEEP_EXACT = {"payouts", "payout_count", "total_paid_out"}
+
+
+def _is_pay_key(key: str) -> bool:
+    k = str(key).lower()
+    if k in _KEEP_EXACT:
+        return False
+    if k in _DROP_EXACT:
+        return True
+    return any(t in k for t in _DROP_SUBSTRING)
+
+
+def scrub_payload(obj, _depth: int = 0):
+    """Every per-person pay figure removed, at any depth.
+
+    Whole-key removal, never a zero: a scrubbed payload should make a
+    consumer show NOTHING rather than a number, because this is an absence of
+    permission, not an absence of pay."""
+    if _depth > 12:
+        return obj
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            if _is_pay_key(k):
+                continue
+            if isinstance(v, dict) and v.get("name") is not None:
+                v = {kk: vv for kk, vv in v.items()
+                     if kk not in ("owed", "rate", "paid", "pending")}
+            out[k] = scrub_payload(v, _depth + 1)
+        return out
+    if isinstance(obj, list):
+        return [scrub_payload(v, _depth + 1) for v in obj]
+    return obj
+
+
+def contributors(rows, keys=("commission_total", "owed", "commission")) -> int:
+    """How many people actually earned anything in this list."""
+    n = 0
+    for r in rows or []:
+        if not isinstance(r, dict):
+            continue
+        if any(float(r.get(k) or 0) > 0 for k in keys):
+            n += 1
+    return n
+
+
+def scrubbed_for(actor_role: str, payload):
+    """Owner sees everything; anyone else gets per-person pay removed and is
+    TOLD so, rather than shown an empty panel that reads as 'nobody earned
+    anything'."""
+    if actor_role == "owner":
+        return payload
+    single = False
+    try:
+        sales = (payload or {}).get("sales") or {}
+        closers = contributors(sales.get("per_closer"))
+        setters = contributors((sales.get("payout") or {}).get("per_setter"))
+        single = (closers + setters) <= 1
+    except Exception:  # noqa: BLE001
+        single = True            # if it cannot be judged, hold it back
+    out = scrub_payload(payload)
+    if isinstance(out, dict):
+        out["comp_scope"] = "owner-only"
+        out["comp_scope_note"] = (
+            "Per-person pay is owner-only. The total commission cost is still "
+            "inside CAC and the outflow bands."
+            if not single else
+            "Per-person pay is owner-only — and this month only one person "
+            "earned any, so the total is held back too: it would be their pay "
+            "with a different label.")
+        out["comp_total_suppressed"] = bool(single)
+    return out

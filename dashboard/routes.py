@@ -1078,12 +1078,18 @@ def logout():
 @bp.route("/api/snapshot", methods=["GET"])
 @require_auth
 def api_snapshot():
-    """Return current snapshot as JSON."""
+    """Return current snapshot as JSON.
+
+    R-PIOLO (#161): the snapshot carries per-person pay, so a non-owner gets
+    it with those figures removed and a note saying they were — the leak hunt
+    found them here, reaching a role the comp routes correctly refuse."""
     from snapshot import load_persisted
+    from dashboard.auth import current_actor
+    import role_access as RA
     snap = load_persisted()
     if snap is None:
         return jsonify({"error": "No snapshot available"}), 404
-    resp = jsonify(snap)
+    resp = jsonify(RA.scrubbed_for((current_actor() or {}).get("role"), snap))
     # Never let a client/proxy serve a stale snapshot after a refresh.
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     return resp
