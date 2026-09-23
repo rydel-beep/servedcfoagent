@@ -207,12 +207,34 @@ def _ghl_closed_in_window(w0: str, w1: str) -> list[dict]:
     return out
 
 
-def _stripe_hits(name: str, email: str | None, charges: list[dict]) -> list[dict]:
+def _stripe_hits(name: str, email: str | None, charges: list[dict],
+                 client: str | None = None) -> list[dict]:
     """Email-exact first; else full-name containment (surname-only never
-    matches alone — the Jagjeet/Harman surname collision class)."""
+    matches alone — the Jagjeet/Harman surname collision class); and now
+    CONFIRMED PAYER ALIASES.
+
+    The alias store existed and this function never read it (#161): money
+    arriving under a payer name Rydel had already ruled on still counted as
+    no payment, which left the close PROPOSED and out of every metric. An
+    alias is a recorded decision about whose money this is — it belongs here
+    as much as an exact email does."""
     import datetime as dt
     from helpers import SYDNEY_TZ
     nn = _norm(name)
+    # the alias store is keyed by the RECONCILER's normaliser, which keeps
+    # word boundaries; this module's strips them. Compare in theirs, or the
+    # lookup silently never matches.
+    alias_payers = set()
+    try:
+        import stripe_reconcile as SR
+        targets = {SR._norm(name)}
+        if client:
+            targets.add(SR._norm(client))
+        for payer_norm, biz in (SR._aliases() or {}).items():
+            if SR._norm(biz) in targets or payer_norm in targets:
+                alias_payers.add(payer_norm)
+    except Exception as e:  # noqa: BLE001
+        logger.info("alias lookup failed: %s", e)
     hits = []
     for ch in charges:
         if not (ch.get("paid") and ch.get("status") == "succeeded"):
@@ -221,14 +243,21 @@ def _stripe_hits(name: str, email: str | None, charges: list[dict]) -> list[dict
         cust = ch.get("customer") if isinstance(ch.get("customer"), dict) else {}
         ce = (bd.get("email") or (cust.get("email") if cust else "") or "").lower()
         cn = _norm(cust.get("name") or bd.get("name"))
-        if (email and ce == email) or (nn and len(nn) > 6 and nn in cn):
+        payer_raw = cust.get("name") or bd.get("name") or ""
+        try:
+            import stripe_reconcile as _SR
+            by_alias = _SR._norm(payer_raw) in alias_payers
+        except Exception:  # noqa: BLE001
+            by_alias = False
+        if (email and ce == email) or (nn and len(nn) > 6 and nn in cn) or by_alias:
             hits.append({"charge_id": ch.get("id"),
                          "amount": round((ch.get("amount") or 0) / 100, 2),
                          "date": str(dt.datetime.fromtimestamp(
                              ch["created"], tz=SYDNEY_TZ).date()),
                          "payer": cust.get("name") or bd.get("name"),
-                         "match": "email-exact" if (email and ce == email)
-                                  else "full-name"})
+                         "match": ("email-exact" if (email and ce == email)
+                                   else "confirmed alias" if by_alias
+                                   else "full-name")})
     return hits
 
 
@@ -304,8 +333,10 @@ def rebuild_closes(apply: bool = True) -> dict:
         if nn in seen_people:
             continue
         seen_people.add(nn)
-        hits = _stripe_hits(person, cand["email"], charges)
         tracker = _tracker_row_for(person, cand["email"])
+        hits = _stripe_hits(person, cand["email"], charges,
+                            client=str((tracker or {}).get("business") or "")
+                            or cand.get("opp_name"))
         # the tracker row's BUSINESS name is the evidence-based person→venue
         # bridge (#151 — the Grappino case: person 'Harman singh', venue
         # 'Grappino ristorante trattoria', email-exact row)

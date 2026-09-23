@@ -75,6 +75,78 @@
     <br><span class="s-card-sub">Open how we're travelling → · computed {{ today.verdict.age }}</span>
   </a>
 
+  {# MONEY RECEIVED, NOT YET ATTACHED TO A CLIENT (#161). Cash that has
+     landed and has no name against it is an anomaly, not a background card. #}
+  <section class="s-panel" aria-labelledby="unmatched-title"
+           data-metric="unmatched_payments" data-window="60d"
+           data-clock="receipt date" data-basis="stripe"
+           data-value="{{ today.unmatched.count }}">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="unmatched-title">Money received, not yet
+        attached to a client ({{ today.unmatched.count }},
+        ${{ '{:,.0f}'.format(today.unmatched.total or 0) }})</h2>
+      <span class="s-panel-sub">{{ today.unmatched.note }}</span>
+    </div>
+    {% if not today.unmatched.available %}
+      <div class="s-boundary-fail"><b>Not checked.</b> {{ today.unmatched.note }}</div>
+    {% elif today.unmatched.rows %}
+      <div class="s-table-wrap">
+        <table class="s-table">
+          <thead><tr><th>Payer</th><th class="num">Amount</th><th>Date</th>
+            <th>Best guess</th><th>Charge</th>{% if owner %}<th></th>{% endif %}</tr></thead>
+          <tbody>
+            {% for r in today.unmatched.rows %}
+            <tr data-charge="{{ r.charge_id }}">
+              <td>{{ r.payer }}</td>
+              <td class="num">${{ '{:,.2f}'.format(r.amount or 0) }}</td>
+              <td class="s-muted">{{ r.date }}</td>
+              <td class="s-muted">
+                {% if r.suggested %}{{ r.suggested[0].business }}
+                  <span class="s-chip">{{ r.suggested[0].basis }}</span>
+                {% else %}nothing close enough to guess{% endif %}
+              </td>
+              <td class="s-muted">{{ r.charge_id }}</td>
+              {% if owner %}
+              <td><button class="s-door up-confirm" type="button"
+                          data-payer="{{ r.payer }}" data-charge="{{ r.charge_id }}"
+                          data-client="{{ r.suggested[0].business if r.suggested else '' }}"
+                >This is…</button></td>
+              {% endif %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="s-empty">Every payment in the last {{ today.unmatched.days or 60 }} days
+        is attached to a client.</div>
+    {% endif %}
+  </section>
+
+  {% if today.new_closes %}
+  {# A CLOSE ONE SOURCE CAN SEE AND THE OTHERS CANNOT — named, with what is missing. #}
+  <section class="s-panel" aria-labelledby="newcloses-title"
+           data-metric="closes_detected" data-window="60d"
+           data-clock="close date" data-basis="evidence"
+           data-value="{{ today.new_closes | length }}">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="newcloses-title">New closes detected
+        ({{ today.new_closes | length }})</h2>
+      <span class="s-panel-sub">seen by one source; the others have not caught up</span>
+    </div>
+    <ul class="s-list">
+      {% for c in today.new_closes %}
+      <li><b>{{ c.person or 'unnamed' }}</b> · {{ c.close_date }}
+        <div class="s-card-sub">
+          {{ c.sources[0].provenance if c.sources else 'source unknown' }}
+          {% if c.missing %}· still missing: {{ c.missing | join(', ') }}{% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
   {% if not today.rulings.hidden %}
   <section class="s-panel" aria-labelledby="rulings-title">
     <div class="s-panel-head">
@@ -140,6 +212,7 @@
 
 {% include "partials/shell_palette.html" %}
 <script src="/dashboard/static/js/shell.js?v={{ asset_v }}"></script>
+{% if owner %}<script defer src="/dashboard/static/js/unmatched.js?v={{ asset_v }}"></script>{% endif %}
 {% include "partials/defs.html" %}
 {% include "partials/edith_dock.html" %}
 </body>

@@ -131,6 +131,10 @@ def coverage_inventory() -> dict:
     # EDITH on the page
     inv["edith"] = ["edith_dock", "edith_mic", "explain_this"]
 
+    # the close pipeline (#161)
+    inv["closes"] = ["unmatched_payments", "closes_detected", "confirm_payer",
+                     "owner_only_chip"]
+
     # every ⓘ drawer key
     import tile_drawers
     inv["drawers"] = ["drawer_" + k for k in sorted(tile_drawers._REGISTRY)]

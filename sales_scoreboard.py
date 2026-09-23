@@ -76,9 +76,13 @@ def _rate(hits: int, n: int) -> dict:
 
 
 def build(window: str = "mtd", start: str | None = None,
-          end: str | None = None) -> dict:
+          end: str | None = None, comp_visible: bool = True) -> dict:
     """The whole scoreboard. Every block guarded: a failing source degrades
-    its own section and is said plainly, never blanks the page."""
+    its own section and is said plainly, never blanks the page.
+
+    comp_visible=False (R-PIOLO, #161) strips per-person pay: the commission
+    column goes, and so does the commission TOTAL whenever one person is the
+    only contributor — because that total IS their pay."""
     win = resolve_window(window, start, end)
     w0, w1 = win["start"], win["end"]
     out = {"window": win, "generated_at": now_sydney().isoformat(),
@@ -136,6 +140,20 @@ def build(window: str = "mtd", start: str | None = None,
         "tracker_cash": round(sum(float(l.get("cash") or 0) for l in closes_in), 2),
         "contract": round(sum(float(l.get("contract") or 0) for l in closes_in), 2),
     }
+    # ── the per-person pay carve-out ──
+    out["comp_visible"] = bool(comp_visible)
+    if not comp_visible:
+        import role_access as RA
+        out["comp_hidden_note"] = ("Per-person pay is owner-only. The TOTAL "
+                                   "commission cost still sits inside CAC and "
+                                   "the outflow bands.")
+        for key in ("setters", "closers"):
+            rows = out.get(key) or []
+            out[key] = RA.scrub_person_pay(rows)
+        out["comp_total_suppressed"] = (
+            RA.hide_single_person_total(out.get("closers") or [], "closes")
+            or RA.hide_single_person_total(out.get("setters") or [], "sets"))
+
     out["cash"] = _guard("cash", lambda: _cash(closes_in, w0, w1), {})
     out["ownership"] = _guard(
         "ownership", lambda: _ownership_health(leads_all, in_window), {})

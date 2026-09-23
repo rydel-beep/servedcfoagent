@@ -475,3 +475,14 @@ a.s-verdict:hover { background: var(--bg-card-hover); }
 .ed-mic:hover, .ed-send:hover { background: var(--bg-card-hover); }
 .ed-mic.is-live { background: var(--red-dim); border-color: var(--red); color: var(--red); }
 @media (max-width: 560px) { .ed-dock { width: 100%; } }
+
+/* ── money that landed without a name (#161) ─────────────────────────────── */
+.up-form { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+.up-client {
+  font: inherit; padding: 4px 8px; min-width: 14rem;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg-inset); color: var(--text);
+}
+.up-client:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.up-note { margin-top: 4px; color: var(--text-secondary); }
+.up-note.is-bad { color: var(--red); }

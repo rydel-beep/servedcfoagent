@@ -1,0 +1,6086 @@
+{
+ "static": {
+  "/dashboard/": {
+   "view": "index",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/landing": {
+   "view": "landing_page",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/today": {
+   "view": "today_page",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/system": {
+   "view": "system_page_view",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/system": {
+   "view": "api_system",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/system/run-checks": {
+   "view": "api_system_run_checks",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/freshness": {
+   "view": "api_freshness",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/refresh-now": {
+   "view": "api_refresh_now",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/unmatched": {
+   "view": "api_unmatched_payments",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/unmatched/confirm": {
+   "view": "api_unmatched_confirm",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/closes/pending": {
+   "view": "api_closes_pending",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/closes/confirm": {
+   "view": "api_closes_confirm",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/comp/rules": {
+   "view": "api_comp_rules_edit",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/comp/cost": {
+   "view": "api_comp_cost",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/sales": {
+   "view": "sales_board_page",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/view/<area>": {
+   "view": "area_page",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/scale": {
+   "view": "scale_page",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/definitions": {
+   "view": "definitions_page",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/definitions": {
+   "view": "api_definitions",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/scale/calibration-log": {
+   "view": "api_scale_calibration_log",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/scale/north-star": {
+   "view": "api_scale_north_star",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/scale/behaviour-verified": {
+   "view": "api_scale_behaviour_verified",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/scale/travelling": {
+   "view": "travelling_page",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/ground-truth": {
+   "view": "api_ground_truth",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/health-row": {
+   "view": "api_health_row",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/health": {
+   "view": "api_health_rows",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/travelling": {
+   "view": "api_travelling",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/travelling/remodel": {
+   "view": "api_travelling_remodel",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/travelling/save": {
+   "view": "api_travelling_save",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/travelling/history": {
+   "view": "api_travelling_history",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/scale/simulate": {
+   "view": "api_scale_simulate",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/scale/defaults": {
+   "view": "api_scale_defaults",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/scale/run": {
+   "view": "api_scale_run",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/scale/solve": {
+   "view": "api_scale_solve",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/scale/bands": {
+   "view": "api_scale_bands",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/scale/backtest": {
+   "view": "api_scale_backtest",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/scale/scenarios": {
+   "view": "api_scale_scenarios",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/scale/commit-plan": {
+   "view": "api_scale_commit_plan",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/scale/scenario-pdf": {
+   "view": "api_scale_scenario_pdf",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/scale/plan-vs-actual": {
+   "view": "api_scale_plan_vs_actual",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/scale/expiring": {
+   "view": "api_scale_expiring",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/scale/expiring-preview": {
+   "view": "api_scale_expiring_preview",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/login": {
+   "view": "login_submit",
+   "guards": [],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/logout": {
+   "view": "logout",
+   "guards": [],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/snapshot": {
+   "view": "api_snapshot",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/refresh": {
+   "view": "api_refresh",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/history": {
+   "view": "api_history",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/voice-status": {
+   "view": "api_voice_status",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/memory-status": {
+   "view": "api_memory_status",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/tts": {
+   "view": "api_tts",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/brief": {
+   "view": "api_brief",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/greeting": {
+   "view": "api_greeting",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/collab/log": {
+   "view": "api_collab_log",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/collab/queue": {
+   "view": "api_collab_queue",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/collab/resolve": {
+   "view": "api_collab_resolve",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/collab/digest": {
+   "view": "api_collab_digest",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/collab/journal": {
+   "view": "api_collab_journal",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/collab/export": {
+   "view": "api_collab_export",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/whoami": {
+   "view": "api_whoami",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/geolocation": {
+   "view": "api_geolocation",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/action-feed": {
+   "view": "api_action_feed",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/triage": {
+   "view": "api_triage",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/bas": {
+   "view": "api_bas",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/forecast": {
+   "view": "api_forecast",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/capacity": {
+   "view": "api_capacity",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/voice-config": {
+   "view": "api_voice_config",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/audio/entrance": {
+   "view": "audio_entrance",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/entrance-audio": {
+   "view": "api_entrance_audio",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/hiring-scenario": {
+   "view": "api_hiring_scenario",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/sales-summary": {
+   "view": "api_sales_summary",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/briefing-pdf": {
+   "view": "api_briefing_pdf",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/chat": {
+   "view": "api_chat",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/chat-stream": {
+   "view": "api_chat_stream",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/targets": {
+   "view": "targets_page",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/targets": {
+   "view": "api_targets",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/targets/set": {
+   "view": "api_targets_set",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/targets/reset": {
+   "view": "api_targets_reset",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/data-sources": {
+   "view": "data_sources_page",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/data-sources": {
+   "view": "api_data_sources",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/ghl-backfill": {
+   "view": "api_ghl_backfill",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/reactivation": {
+   "view": "api_reactivation",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/capital": {
+   "view": "api_capital",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/capital/settings": {
+   "view": "api_capital_settings",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/capital/review": {
+   "view": "api_capital_review",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/capital/reset": {
+   "view": "api_capital_reset",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/capital/deploy": {
+   "view": "api_capital_deploy",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/test-lead-scan": {
+   "view": "api_test_lead_scan",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/test-leads/override": {
+   "view": "api_test_lead_override",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/test-leads/confirm": {
+   "view": "api_test_lead_confirm",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/leads": {
+   "view": "sales_page",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/lead-lookup": {
+   "view": "api_lead_lookup",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/reactivation/export.csv": {
+   "view": "api_reactivation_csv",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/reactivation/brief.pdf": {
+   "view": "api_reactivation_brief",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/resync": {
+   "view": "api_resync",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/unit-economics": {
+   "view": "api_unit_economics",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/payback": {
+   "view": "api_payback",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/leads": {
+   "view": "api_leads",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/quarterly-pack": {
+   "view": "api_quarterly_pack",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/quarterly-review": {
+   "view": "api_quarterly_review",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/renewal/scan": {
+   "view": "api_renewal_scan",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/renewal/state": {
+   "view": "api_renewal_state",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/renewal/clients": {
+   "view": "api_renewal_clients",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/renewal/declare": {
+   "view": "api_renewal_declare",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/outflow-bands": {
+   "view": "api_outflow_bands",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/outflow-bands/assign": {
+   "view": "api_outflow_bands_assign",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/projection": {
+   "view": "api_projection",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/projection/config": {
+   "view": "api_projection_config",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/renewal/reverse": {
+   "view": "api_renewal_reverse",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/collab/undismiss": {
+   "view": "api_collab_undismiss",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/collab/restore": {
+   "view": "api_collab_restore",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/worklog": {
+   "view": "page_worklog",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/bookkeeping": {
+   "view": "page_bookkeeping",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/ops-summary": {
+   "view": "api_ops_summary",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/worklog": {
+   "view": "api_worklog",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/csm": {
+   "view": "page_csm",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/csm/summary": {
+   "view": "api_csm_summary",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/csm/card": {
+   "view": "api_csm_card",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/csm/discreet": {
+   "view": "api_csm_discreet",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/csm/model": {
+   "view": "api_csm_model",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/csm/scoreboard": {
+   "view": "api_csm_scoreboard",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/csm/baselines": {
+   "view": "api_csm_baselines",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/csm/calendar": {
+   "view": "api_csm_calendar",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/csm/gates": {
+   "view": "api_csm_gates",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/csm/risks": {
+   "view": "api_csm_risks",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/csm/config": {
+   "view": "api_csm_config",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/csm/tier": {
+   "view": "api_csm_tier",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/csm/scenario-overlay": {
+   "view": "api_csm_scenario_overlay",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/csm/analysis": {
+   "view": "api_csm_analysis",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/csm/analysis.pdf": {
+   "view": "api_csm_analysis_pdf",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/csm/comp-preflight": {
+   "view": "api_csm_comp_preflight",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/csm/comp-page.pdf": {
+   "view": "api_csm_comp_page_pdf",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/csm/explain": {
+   "view": "api_csm_explain",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/roas": {
+   "view": "api_roas",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/gap": {
+   "view": "api_gap",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/gap/rebuild": {
+   "view": "api_gap_rebuild",
+   "guards": [
+    "require_owner"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/finance-analysis": {
+   "view": "api_finance_analysis",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/finance-analysis.pdf": {
+   "view": "api_finance_analysis_pdf",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/drawer/<tile>": {
+   "view": "api_drawer",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/client-error": {
+   "view": "api_client_error",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/telemetry": {
+   "view": "api_telemetry",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/nets": {
+   "view": "api_nets",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/ar": {
+   "view": "api_ar",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/unit-econ-honest": {
+   "view": "api_unit_econ_honest",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/tab-map": {
+   "view": "api_tab_map",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/dashboard/api/decision-cards": {
+   "view": "api_decision_cards",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/routes.py"
+  },
+  "/ads/": {
+   "view": "page",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/ads.py"
+  },
+  "/ads/api/board": {
+   "view": "board",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/ads.py"
+  },
+  "/ads/api/deal": {
+   "view": "deal_panel",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/ads.py"
+  },
+  "/ads/api/dossier": {
+   "view": "dossier",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/ads.py"
+  },
+  "/ads/api/roster": {
+   "view": "roster",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/ads.py"
+  },
+  "/ads/api/discussion": {
+   "view": "discussion_post",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/ads.py"
+  },
+  "/ads/api/discussion/edit": {
+   "view": "discussion_edit",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/ads.py"
+  },
+  "/ads/api/discussion/delete": {
+   "view": "discussion_delete",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/ads.py"
+  },
+  "/ads/api/discussion/resolve": {
+   "view": "discussion_resolve",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/ads.py"
+  },
+  "/ads/api/lifecycle/move": {
+   "view": "lifecycle_move",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/ads.py"
+  },
+  "/ads/api/lifecycle/reverse": {
+   "view": "lifecycle_reverse",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/ads.py"
+  },
+  "/ads/api/lifecycle/confirm-executed": {
+   "view": "lifecycle_confirm_executed",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/ads.py"
+  },
+  "/ads/api/strategy": {
+   "view": "strategy_set",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/ads.py"
+  },
+  "/ads/api/strategy/map-set": {
+   "view": "strategy_map_set",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/ads.py"
+  },
+  "/ads/api/sets": {
+   "view": "sets_view",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/ads.py"
+  },
+  "/ads/api/review/keep": {
+   "view": "review_keep",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/ads.py"
+  },
+  "/ads/api/review/sessions": {
+   "view": "review_sessions_get",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/ads.py"
+  },
+  "/ads/api/experiment": {
+   "view": "experiment_view",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/ads.py"
+  },
+  "/bridge/ping": {
+   "view": "bridge_ping",
+   "guards": [
+    "require_bridge"
+   ],
+   "file": "dashboard/bridge.py"
+  },
+  "/bridge/chat-stream": {
+   "view": "bridge_chat_stream",
+   "guards": [
+    "require_bridge"
+   ],
+   "file": "dashboard/bridge.py"
+  },
+  "/bridge/tts": {
+   "view": "bridge_tts",
+   "guards": [
+    "require_bridge"
+   ],
+   "file": "dashboard/bridge.py"
+  },
+  "/bridge/greeting": {
+   "view": "bridge_greeting",
+   "guards": [
+    "require_bridge"
+   ],
+   "file": "dashboard/bridge.py"
+  },
+  "/bridge/email/list": {
+   "view": "bridge_email_list",
+   "guards": [
+    "require_bridge"
+   ],
+   "file": "dashboard/bridge.py"
+  },
+  "/bridge/email/draft/<int:draft_id>": {
+   "view": "bridge_email_draft",
+   "guards": [
+    "require_bridge"
+   ],
+   "file": "dashboard/bridge.py"
+  },
+  "/bridge/email/generate": {
+   "view": "bridge_email_generate",
+   "guards": [
+    "require_bridge"
+   ],
+   "file": "dashboard/bridge.py"
+  },
+  "/bridge/email/act": {
+   "view": "bridge_email_act",
+   "guards": [
+    "require_bridge"
+   ],
+   "file": "dashboard/bridge.py"
+  },
+  "/bridge/email/ingest": {
+   "view": "bridge_email_ingest",
+   "guards": [
+    "require_bridge"
+   ],
+   "file": "dashboard/bridge.py"
+  },
+  "/bridge/email/stage": {
+   "view": "bridge_email_stage",
+   "guards": [
+    "require_bridge"
+   ],
+   "file": "dashboard/bridge.py"
+  },
+  "/bridge/email/recipients/<int:draft_id>": {
+   "view": "bridge_email_recipients",
+   "guards": [
+    "require_bridge"
+   ],
+   "file": "dashboard/bridge.py"
+  },
+  "/bridge/email/send": {
+   "view": "bridge_email_send",
+   "guards": [
+    "require_bridge"
+   ],
+   "file": "dashboard/bridge.py"
+  },
+  "/bridge/attribution": {
+   "view": "attribution",
+   "guards": [
+    "require_bridge_any_role"
+   ],
+   "file": "dashboard/bridge.py"
+  },
+  "/bridge/attribution/scoreboard": {
+   "view": "attribution_scoreboard",
+   "guards": [
+    "require_bridge_any_role"
+   ],
+   "file": "dashboard/bridge.py"
+  },
+  "/bridge/attribution/rows": {
+   "view": "attribution_rows",
+   "guards": [
+    "require_bridge_any_role"
+   ],
+   "file": "dashboard/bridge.py"
+  },
+  "/dashboard/memory/": {
+   "view": "memory_page",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/memory_routes.py"
+  },
+  "/dashboard/memory/api/status": {
+   "view": "api_status",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/memory_routes.py"
+  },
+  "/dashboard/memory/api/conversations": {
+   "view": "api_conversations",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/memory_routes.py"
+  },
+  "/dashboard/memory/api/conversation/<int:cid>": {
+   "view": "api_delete_conversation",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/memory_routes.py"
+  },
+  "/dashboard/memory/api/conversation/<int:cid>/archive": {
+   "view": "api_archive",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/memory_routes.py"
+  },
+  "/dashboard/memory/api/facts": {
+   "view": "api_facts",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/memory_routes.py"
+  },
+  "/dashboard/memory/api/facts/<int:fid>": {
+   "view": "api_delete_fact",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/memory_routes.py"
+  },
+  "/dashboard/memory/api/clear-all": {
+   "view": "api_clear_all",
+   "guards": [
+    "require_auth"
+   ],
+   "file": "dashboard/memory_routes.py"
+  }
+ },
+ "live": {
+  "/ads/": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/leads"
+    },
+    "anon": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    }
+   }
+  },
+  "/ads/api/board": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/ads/api/deal": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 400,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 400,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 400,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/ads/api/discussion": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/ads/api/discussion/delete": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/ads/api/discussion/edit": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/ads/api/discussion/resolve": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/ads/api/dossier": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 400,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 400,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 400,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/ads/api/experiment": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/ads/api/lifecycle/confirm-executed": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/ads/api/lifecycle/move": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/ads/api/lifecycle/reverse": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/ads/api/review/keep": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/ads/api/review/sessions": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/ads/api/roster": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 400,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 400,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 400,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/ads/api/sets": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/ads/api/strategy": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/ads/api/strategy/map-set": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/bridge/attribution": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/bridge/attribution/rows": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/bridge/attribution/scoreboard": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/bridge/chat-stream": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/bridge/email/act": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/bridge/email/draft/<int:draft_id>": {
+   "methods": [
+    "GET"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/bridge/email/generate": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/bridge/email/ingest": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/bridge/email/list": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/bridge/email/recipients/<int:draft_id>": {
+   "methods": [
+    "GET"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/bridge/email/send": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/bridge/email/stage": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/bridge/greeting": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/bridge/ping": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/bridge/tts": {
+   "methods": [
+    "GET",
+    "POST"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/cfo/attribution": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/cfo/attribution/rows": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/cfo/attribution/scoreboard": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/cfo/refresh": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/cfo/snapshot": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/today"
+    },
+    "coo": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/today"
+    },
+    "ad_domain": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/ads"
+    },
+    "sales": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/leads"
+    },
+    "anon": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    }
+   }
+  },
+  "/dashboard/api/action-feed": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/ar": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/bas": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/brief": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/briefing-pdf": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/capacity": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/capital": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/capital/deploy": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/capital/reset": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/capital/review": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/capital/settings": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/chat": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/chat-stream": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/client-error": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/closes/confirm": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/closes/pending": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/collab/digest": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/collab/export": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/collab/journal": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/collab/log": {
+   "methods": [
+    "GET",
+    "POST"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/collab/queue": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/collab/resolve": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/collab/restore": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/collab/undismiss": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/comp/cost": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/comp/rules": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/csm/analysis": {
+   "methods": [
+    "GET",
+    "POST"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/csm/analysis.pdf": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/csm/baselines": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/csm/calendar": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/csm/card": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/csm/comp-page.pdf": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/csm/comp-preflight": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/csm/config": {
+   "methods": [
+    "GET",
+    "POST"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/csm/discreet": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/csm/explain": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/csm/gates": {
+   "methods": [
+    "GET",
+    "POST"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/csm/model": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/csm/risks": {
+   "methods": [
+    "GET",
+    "POST"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/csm/scenario-overlay": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/csm/scoreboard": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/csm/summary": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/csm/tier": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/data-sources": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/decision-cards": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/definitions": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/drawer/<tile>": {
+   "methods": [
+    "GET"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/entrance-audio": {
+   "methods": [
+    "DELETE",
+    "GET",
+    "POST"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/finance-analysis": {
+   "methods": [
+    "GET",
+    "POST"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/finance-analysis.pdf": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/forecast": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/freshness": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/gap": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/gap/rebuild": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/geolocation": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/ghl-backfill": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/greeting": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/ground-truth": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/health": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/health-row": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/hiring-scenario": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/history": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/lead-lookup": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/leads": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/memory-status": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/nets": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/ops-summary": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/outflow-bands": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/outflow-bands/assign": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/payback": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/projection": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/projection/config": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/quarterly-pack": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/quarterly-review": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/reactivation": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/reactivation/brief.pdf": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/reactivation/export.csv": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 500,
+     "verdict": "ERROR",
+     "redirect": null
+    },
+    "coo": {
+     "status": 500,
+     "verdict": "ERROR",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 500,
+     "verdict": "ERROR",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/refresh": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/refresh-now": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/renewal/clients": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/renewal/declare": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/renewal/reverse": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/renewal/scan": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/renewal/state": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/resync": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/roas": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/sales-summary": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/scale/backtest": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/scale/bands": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/scale/behaviour-verified": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/scale/calibration-log": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/scale/commit-plan": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/scale/defaults": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/scale/expiring": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/scale/expiring-preview": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/scale/north-star": {
+   "methods": [
+    "GET",
+    "POST"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/scale/plan-vs-actual": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/scale/run": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/scale/scenario-pdf": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/scale/scenarios": {
+   "methods": [
+    "GET",
+    "POST"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/scale/simulate": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/scale/solve": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/snapshot": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/system": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/system/run-checks": {
+   "methods": [
+    "GET",
+    "POST"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/tab-map": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/targets": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/targets/reset": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/targets/set": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/telemetry": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/test-lead-scan": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/test-leads/confirm": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/test-leads/override": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/travelling": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/travelling/history": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/travelling/remodel": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/travelling/save": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/triage": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/tts": {
+   "methods": [
+    "GET",
+    "POST"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 503,
+     "verdict": "ERROR",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/unit-econ-honest": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/unit-economics": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/unmatched": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/unmatched/confirm": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/voice-config": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/api/voice-status": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/whoami": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/api/worklog": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/audio/entrance": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 404,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/landing"
+    },
+    "ad_domain": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/ads"
+    },
+    "sales": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/leads"
+    },
+    "anon": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    }
+   }
+  },
+  "/dashboard/bookkeeping": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/ads"
+    },
+    "sales": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/leads"
+    },
+    "anon": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    }
+   }
+  },
+  "/dashboard/csm": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/landing"
+    },
+    "ad_domain": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/ads"
+    },
+    "sales": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/leads"
+    },
+    "anon": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    }
+   }
+  },
+  "/dashboard/data-sources": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/ads"
+    },
+    "sales": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/leads"
+    },
+    "anon": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    }
+   }
+  },
+  "/dashboard/definitions": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/ads"
+    },
+    "sales": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/leads"
+    },
+    "anon": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    }
+   }
+  },
+  "/dashboard/landing": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/ads"
+    },
+    "sales": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/leads"
+    },
+    "anon": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    }
+   }
+  },
+  "/dashboard/leads": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/ads"
+    },
+    "sales": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    }
+   }
+  },
+  "/dashboard/login": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/logout": {
+   "methods": [
+    "GET",
+    "POST"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    },
+    "coo": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    },
+    "ad_domain": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    },
+    "sales": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    },
+    "anon": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    }
+   }
+  },
+  "/dashboard/memory/": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/landing"
+    },
+    "ad_domain": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/ads"
+    },
+    "sales": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/leads"
+    },
+    "anon": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    }
+   }
+  },
+  "/dashboard/memory/api/clear-all": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/memory/api/conversation/<int:cid>": {
+   "methods": [
+    "DELETE"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/memory/api/conversation/<int:cid>/archive": {
+   "methods": [
+    "POST"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/memory/api/conversations": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/memory/api/facts": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/memory/api/facts/<int:fid>": {
+   "methods": [
+    "DELETE"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/memory/api/status": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 403,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/dashboard/sales": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/ads"
+    },
+    "sales": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/leads"
+    },
+    "anon": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    }
+   }
+  },
+  "/dashboard/scale": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/ads"
+    },
+    "sales": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/leads"
+    },
+    "anon": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    }
+   }
+  },
+  "/dashboard/scale/travelling": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/ads"
+    },
+    "sales": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/leads"
+    },
+    "anon": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    }
+   }
+  },
+  "/dashboard/static/<path:filename>": {
+   "methods": [
+    "GET"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/system": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/ads"
+    },
+    "sales": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/leads"
+    },
+    "anon": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    }
+   }
+  },
+  "/dashboard/targets": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/ads"
+    },
+    "sales": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/leads"
+    },
+    "anon": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    }
+   }
+  },
+  "/dashboard/today": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/ads"
+    },
+    "sales": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/leads"
+    },
+    "anon": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    }
+   }
+  },
+  "/dashboard/view/<area>": {
+   "methods": [
+    "GET"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/dashboard/worklog": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/ads"
+    },
+    "sales": {
+     "status": 302,
+     "verdict": "REDIRECT",
+     "redirect": "/dashboard/leads"
+    },
+    "anon": {
+     "status": 302,
+     "verdict": "DENIED (login)",
+     "redirect": "/dashboard/login"
+    }
+   }
+  },
+  "/debug/bas-refresh": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/debug/sources": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/debug/stripe-ping": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/debug/xero-banksummary": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/debug/xero-probe": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/debug/xero-raw": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 401,
+     "verdict": "DENIED",
+     "redirect": null
+    }
+   }
+  },
+  "/health": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 200,
+     "verdict": "REACHED",
+     "redirect": null
+    }
+   }
+  },
+  "/static/<path:filename>": {
+   "methods": [
+    "GET"
+   ],
+   "probed": false,
+   "note": "not probed (parameterised or write-only)"
+  },
+  "/xero/callback": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 400,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "coo": {
+     "status": 400,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 400,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "sales": {
+     "status": 400,
+     "verdict": "REACHED",
+     "redirect": null
+    },
+    "anon": {
+     "status": 400,
+     "verdict": "REACHED",
+     "redirect": null
+    }
+   }
+  },
+  "/xero/connect": {
+   "methods": [
+    "GET"
+   ],
+   "probed": true,
+   "roles": {
+    "owner": {
+     "status": 500,
+     "verdict": "ERROR",
+     "redirect": null
+    },
+    "coo": {
+     "status": 500,
+     "verdict": "ERROR",
+     "redirect": null
+    },
+    "ad_domain": {
+     "status": 500,
+     "verdict": "ERROR",
+     "redirect": null
+    },
+    "sales": {
+     "status": 500,
+     "verdict": "ERROR",
+     "redirect": null
+    },
+    "anon": {
+     "status": 500,
+     "verdict": "ERROR",
+     "redirect": null
+    }
+   }
+  }
+ }
+}

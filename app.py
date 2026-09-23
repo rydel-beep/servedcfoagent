@@ -178,6 +178,18 @@ def _scheduled_refresh_loop() -> None:
             mrr_snapshot.take_snapshot()   # idempotent per day; null-guarded
         except Exception as e:  # noqa: BLE001
             logger.warning("scheduled mrr snapshot failed: %s", e)
+        # UNMATCHED PAYMENTS (#161): the only part of the close pipeline that
+        # needs an external call, so it rides the slow loop rather than the
+        # five-minute tick. A payment under an unknown payer name is visible
+        # within one snapshot cycle; a CRM stage move is visible in five
+        # minutes.
+        try:
+            import unmatched_payments
+            res = unmatched_payments.scan()
+            logger.info("unmatched payments: %s row(s), $%s",
+                        res.get("count"), res.get("total_unmatched"))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("unmatched payment scan failed: %s", e)
         try:
             import automations
             automations.publish_feed_state()   # dead jobs → LOUD feed items

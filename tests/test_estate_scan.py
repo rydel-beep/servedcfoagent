@@ -128,10 +128,16 @@ def test_health_rows_and_the_watchdog():
 
 
 def test_health_panel_and_endpoints_exist():
+    """R-PIOLO (#161): the estate's health is a READ Piolo has — recording a
+    health row is still Rydel's, because it changes what the numbers say."""
     routes = _read("dashboard", "routes.py")
-    for ep in ("api_ground_truth", "api_health_row"):
-        i = routes.index(f"def {ep}")
-        assert "@require_owner" in routes[i - 200:i], ep
+    i = routes.index("def api_health_row")
+    assert "@require_owner" in routes[i - 200:i]
+    j = routes.index("def api_ground_truth")
+    assert "@require_auth" in routes[j - 200:j]
+    import role_access as RA
+    assert RA.coo_permitted("/dashboard/api/ground-truth", "GET")[0]
+    assert not RA.coo_permitted("/dashboard/api/health-row", "POST")[0]
     panel = _read("dashboard", "templates", "partials", "area_system.html")
     assert "estate-health-body" in panel and "agree with reality" in panel
 

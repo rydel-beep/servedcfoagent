@@ -35,15 +35,32 @@ def test_email_match(monkeypatch):
     m = sr._match_payment("Jeni Arul", "jeni@gb.com", 1500, _idx(), _ROSTER)
     assert m["category"] == "existing_client_repeat" and m["business"] == "Gone Burger" and m["basis"] == "email"
 
-def test_name_token_match(monkeypatch):
-    _reset(monkeypatch)  # Nirosha Jayasekara ⊆ Nirosha Dushani Jayasekara
+def test_name_containment_is_a_proposal_not_a_match(monkeypatch):
+    """R-ALIAS (#161): Nirosha Jayasekara ⊆ Nirosha Dushani Jayasekara is a
+    resemblance, not an identity. It is offered for confirmation now — it
+    used to attach the money on its own."""
+    _reset(monkeypatch)
     m = sr._match_payment("Nirosha Jayasekara", "", 1677.5, _idx(), _ROSTER)
-    assert m["confidence"] == "high" and m["business"] == "Nirosha Dushani Jayasekara" and "contact name" in m["basis"]
+    assert m["category"] == "needs_review"
+    assert m["suggested"][0]["business"] == "Nirosha Dushani Jayasekara"
+    assert "business" not in m
 
-def test_distinctive_surname(monkeypatch):
-    _reset(monkeypatch)  # Fiona FITZGERALD → unique surname → Glen's venue
+
+def test_exact_name_still_matches(monkeypatch):
+    _reset(monkeypatch)
+    m = sr._match_payment("Nirosha Dushani Jayasekara", "", 1677.5, _idx(), _ROSTER)
+    assert m["confidence"] == "high" and m["basis"] == "contact name (exact)"
+
+def test_surname_never_auto_assigns(monkeypatch):
+    """The Fiona Fitzgerald / Glen class resolves through a CONFIRMED ALIAS
+    now — a recorded decision — never through a surname inference."""
+    _reset(monkeypatch)
     m = sr._match_payment("Fiona Fitzgerald", "", 5500, _idx(), _ROSTER)
-    assert m["confidence"] == "high" and m["business"] == "62Thirty Cafe & Bar" and "surname" in m["basis"]
+    assert m["category"] == "needs_review" and "business" not in m
+    assert m["suggested"][0]["business"] == "62Thirty Cafe & Bar"
+    sr.learn_alias("Fiona Fitzgerald", "62Thirty Cafe & Bar")
+    again = sr._match_payment("Fiona Fitzgerald", "", 5500, _idx(), _ROSTER)
+    assert again["business"] == "62Thirty Cafe & Bar" and again["basis"] == "confirmed alias"
 
 def test_common_surname_not_forced(monkeypatch):
     _reset(monkeypatch)  # Jagjeet Singh → 3 Singh clients, none Jagjeet → NOT auto-matched
@@ -51,10 +68,14 @@ def test_common_surname_not_forced(monkeypatch):
     assert m["category"] in ("needs_review", "unrecognised")
     assert "business" not in m  # never forced to a wrong Singh
 
-def test_first_name_plus_amount(monkeypatch):
-    _reset(monkeypatch)  # "Jeni Arul Pragasam" no email, but first-name Jeni ⊆ + amount 1275 ≈ Gone Burger MRR
+def test_first_name_plus_amount_is_a_proposal(monkeypatch):
+    """A first name and a plausible amount is a good guess, and a guess is
+    something a person confirms."""
+    _reset(monkeypatch)
     m = sr._match_payment("Jeni Arul Pragasam", "", 1275, _idx(), _ROSTER)
-    assert m.get("business") == "Gone Burger"  # resolved via first-name + amount corroboration
+    assert m["category"] == "needs_review"
+    assert m["suggested"][0]["business"] == "Gone Burger"
+    assert "amount" in m["suggested"][0]["basis"]
 
 def test_unknown_payer_flags(monkeypatch):
     _reset(monkeypatch)

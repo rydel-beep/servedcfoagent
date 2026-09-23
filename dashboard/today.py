@@ -260,9 +260,30 @@ def build(snap: dict | None, owner: bool) -> dict:
         "age": exec_top._fmt_age(exec_top._age_h(tv.get("computed_at"))),
     }
 
+    # MONEY THAT LANDED WITHOUT A NAME, and closes no source has logged yet
+    # (#161). Both read stored results only — the page never calls Stripe or
+    # the CRM.
+    try:
+        import unmatched_payments
+        unmatched = unmatched_payments.panel()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("today: unmatched panel unavailable: %s", e)
+        unmatched = {"count": 0, "total": 0.0, "rows": [], "available": False,
+                     "note": f"the payment scan is unavailable ({str(e)[:60]})"}
+    try:
+        import close_detect
+        det = close_detect.latest()
+        new_closes = [e for e in (det.get("entries") or [])
+                      if e.get("state") == "DETECTED"][:5]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("today: close detection unavailable: %s", e)
+        new_closes = []
+
     return {
         "tiles": tiles[:8],
         "verdict": verdict,
+        "unmatched": unmatched,
+        "new_closes": new_closes,
         "rulings": _rulings(owner),
         "since": _since_you_last_looked(owner),
         "pulse": pulse,

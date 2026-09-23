@@ -1670,6 +1670,42 @@
    "changing": "Opens EDITH with the question already written — what the number is and where it came from.",
    "computed": "She answers from the same engines the tile reads; she never states a figure they do not.",
    "selector": ".s-door"
+  },
+  "unmatched_payments": {
+   "name": "Money received, not yet attached to a client",
+   "kind": "panel",
+   "screen": "today",
+   "meaning": "Payments that have landed in Stripe with no client against them.",
+   "computed": "Every succeeded charge in the last sixty days that no alias, no exact email and no exact name could attach to a client.",
+   "default_from": "Attaching money to a client is a decision you make — a resemblance is only ever offered as a guess.",
+   "good": "Empty. Cash sitting here is money we cannot count towards anyone.",
+   "selector": "[data-metric='unmatched_payments']"
+  },
+  "closes_detected": {
+   "name": "New closes detected",
+   "kind": "panel",
+   "screen": "today",
+   "meaning": "Deals one source can see and the others have not caught up with yet.",
+   "computed": "The tracker, the CRM stage, the stage recorder and matched payments are read together; whichever moves first makes the close visible, with the others listed as still to confirm.",
+   "default_from": "A close is never invented — each one names the evidence that produced it.",
+   "selector": "[data-metric='closes_detected']"
+  },
+  "owner_only_chip": {
+   "name": "Owner-only",
+   "kind": "chip",
+   "screen": "sales",
+   "meaning": "This figure is Rydel's to see.",
+   "computed": "Per-person pay is owner-only, and a total that only one person contributed to is that person's pay — so it is held back too rather than shown as a number that says more than it means.",
+   "selector": "[data-def='owner_only_chip']"
+  },
+  "confirm_payer": {
+   "name": "This is…",
+   "kind": "control",
+   "screen": "today",
+   "meaning": "Tells the system which client a payment belongs to.",
+   "changing": "Records the payer name against that client, notes who said so and which payment proved it, re-runs the match, and rebuilds the figures — so the close, the cash and the ratios move straight away. Future payments from the same payer attach on their own.",
+   "computed": "Owner-only: attaching money to a client changes what the numbers say.",
+   "selector": ".up-confirm"
   }
  }
 }

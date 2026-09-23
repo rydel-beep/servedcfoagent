@@ -350,6 +350,16 @@ def tick() -> dict:
     except Exception as e:  # noqa: BLE001
         logger.info("freshness tick: meta refresh skipped: %s", e)
 
+    # EVIDENCE-FIRST CLOSE DETECTION (#161) rides this loop: four reads of
+    # stores the syncs already maintain, no external call. A close that
+    # appears in ANY source invalidates the blocks itself, so the tiles are
+    # right on the next page load rather than after the next slow rebuild.
+    try:
+        import close_detect
+        out["closes"] = close_detect.tick()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("freshness tick: close detection failed: %s", e)
+
     decision = blocks_need_rebuild()
     out.update(decision)
     if not decision["rebuild"] and not (out.get("meta_today") or {}).get("changed"):

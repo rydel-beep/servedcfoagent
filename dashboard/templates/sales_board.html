@@ -17,7 +17,11 @@
 <main class="s-main" id="main">
 
   <div class="s-panel-head" style="margin-top:var(--sp-4)">
-    <h1 class="s-panel-title">Sales — {{ board.window.label }}</h1>
+    <h1 class="s-panel-title">Sales — {{ board.window.label }}
+      {% if not board.comp_visible %}
+      <span class="s-chip" data-def="owner_only_chip"
+            title="{{ board.comp_hidden_note }}">pay: owner-only</span>
+      {% endif %}</h1>
     <span class="s-panel-sub">
       {{ board.window.start }} → {{ board.window.end }} · {{ board.window.progress }}
       &nbsp;·&nbsp;
@@ -144,7 +148,8 @@
         <thead><tr>
           <th>Closer</th><th class="num">Consults</th><th class="num">Confirmed</th>
           <th>Show range</th><th class="num">Closes</th><th class="num">Close rate</th>
-          <th class="num">Cash (tracker)</th><th class="num">Commission</th>
+          <th class="num">Cash (tracker)</th>
+          {% if board.comp_visible %}<th class="num">Commission</th>{% endif %}
           <th>Pitched</th><th>How much to read into it</th>
         </tr></thead>
         <tbody>
@@ -160,7 +165,9 @@
             <td class="num" data-value="{{ r.close_rate.value }}">{{ r.close_rate.text }}
               <span class="s-muted">n={{ r.close_rate.n }}</span></td>
             <td class="num" data-value="{{ r.tracker_cash }}">${{ '{:,.0f}'.format(r.tracker_cash) }}</td>
+            {% if board.comp_visible %}
             <td class="num" data-value="{{ r.commission }}">${{ '{:,.0f}'.format(r.commission) }}</td>
+            {% endif %}
             <td class="s-muted">{{ r.pitched_note }}</td>
             <td class="s-muted">{{ r.close_rate.confidence }}</td>
           </tr>
@@ -185,7 +192,8 @@
         <thead><tr>
           <th>Setter</th><th class="num">Leads worked</th><th class="num">Sets</th>
           <th class="num">Set rate</th><th class="num">Qualified</th>
-          <th class="num">Closes from them</th><th class="num">Commission</th>
+          <th class="num">Closes from them</th>
+          {% if board.comp_visible %}<th class="num">Commission</th>{% endif %}
           <th>How much to read into it</th>
         </tr></thead>
         <tbody>
@@ -200,7 +208,9 @@
               <span class="s-muted">n={{ r.set_rate.n }}</span></td>
             <td class="num" data-value="{{ r.qualified }}">{{ r.qualified }}</td>
             <td class="num" data-value="{{ r.closes }}">{{ r.closes }}</td>
+            {% if board.comp_visible %}
             <td class="num" data-value="{{ r.commission }}">${{ '{:,.0f}'.format(r.commission) }}</td>
+            {% endif %}
             <td class="s-muted">{{ r.set_rate.confidence }}</td>
           </tr>
           {% endfor %}

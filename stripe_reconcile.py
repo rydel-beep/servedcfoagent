@@ -194,8 +194,17 @@ def _amount_ok(amount, business_norm: str, amounts: dict) -> bool:
 
 
 def _match_payment(name: str, email: str, amount, idx: dict, roster: dict) -> dict:
-    """Score a Stripe payment against tracker + roster identity signals. Returns the resolved match
-    with confidence + basis, a review suggestion, or an 'unrecognised' verdict. Never forces a match."""
+    """Score a Stripe payment against the tracker + roster identity signals.
+
+    AUTO-MATCH IS IDENTITY ONLY (R-ALIAS, #161). A confirmed alias, an exact
+    email, or an exact full name resolves on its own. Everything else —
+    name containment, a business-name token, a distinctive surname, a first
+    name plus a plausible amount — is now a PROPOSAL, ranked, for a human to
+    confirm. It used to auto-assign on those, which is how a payment could
+    be attached to the wrong venue with nobody ever seeing the decision.
+    The Fiona Fitzgerald / Glen case is still resolved automatically — as a
+    CONFIRMED ALIAS, which is a recorded decision rather than an inference.
+    """
     aliases = _aliases()
     alias_biz = aliases.get(_norm(name))
     if alias_biz:
@@ -203,19 +212,27 @@ def _match_payment(name: str, email: str, amount, idx: dict, roster: dict) -> di
                 "category": "existing_client_repeat" if _norm(alias_biz) in roster["active"] else "matched_known"}
 
     ptoks, sur = _tokens(name), _surname(name)
-    cands: list[tuple] = []             # (business, score, basis)
     if email and email in idx["by_email"]:
-        cands.append((idx["by_email"][email], 100, "email"))
+        biz = idx["by_email"][email]
+        return {"business": biz, "confidence": "high", "basis": "email",
+                "category": "existing_client_repeat" if _norm(biz) in roster["active"] else "matched_known"}
+
+    cands: list[tuple] = []             # (business, score, basis) — PROPOSALS
     for ctoks, biz, _csur in idx["contacts"]:
         if not ctoks or not ptoks:
             continue
+        if ptoks == ctoks:              # the payer IS the contact, exactly
+            return {"business": biz, "confidence": "high",
+                    "basis": "contact name (exact)",
+                    "category": "existing_client_repeat" if _norm(biz) in roster["active"]
+                    else "matched_known"}
         shared = ptoks & ctoks
         if (ptoks <= ctoks or ctoks <= ptoks) and len(shared) >= 2:
-            cands.append((biz, 80, "contact name"))          # e.g. Nirosha ⊆ Nirosha Dushani
+            cands.append((biz, 80, "contact name (partial)"))
         elif len(shared) >= 2:
-            cands.append((biz, 58, "contact name (partial)"))
+            cands.append((biz, 58, "contact name (some words)"))
         elif ctoks <= ptoks and len(ctoks) == 1 and len(next(iter(ctoks))) >= 4:
-            cands.append((biz, 50, "first name"))            # e.g. contact "Jeni" ⊆ "Jeni Arul Pragasam"
+            cands.append((biz, 50, "first name"))
     for bnorm, label in idx["by_business"].items():
         btoks = _tokens(label)
         if btoks and ptoks and (btoks <= ptoks or ptoks <= btoks) and (ptoks & btoks):
@@ -227,24 +244,22 @@ def _match_payment(name: str, email: str, amount, idx: dict, roster: dict) -> di
         for b in sur_biz:
             cands.append((b, 26, "surname (ambiguous)"))
 
-    # amount corroboration boost
+    # amount corroboration RANKS a proposal; it never promotes one to a match
     cands = [(b, s + (20 if _amount_ok(amount, _norm(b), roster["amounts"]) else 0),
               bs + ("+amount" if _amount_ok(amount, _norm(b), roster["amounts"]) else "")) for b, s, bs in cands]
     if not cands:
         return {"category": "unrecognised", "confidence": "none"}
     cands.sort(key=lambda x: -x[1])
-    best = cands[0]
-    strong = {b for b, s, _ in cands if s >= 60}
-    if best[1] >= 60 and len(strong) <= 1:
-        cat = "existing_client_repeat" if _norm(best[0]) in roster["active"] else "matched_known"
-        return {"business": best[0], "confidence": "high", "basis": best[2], "category": cat}
-    if best[1] >= 26:
-        seen, sug = set(), []
-        for b, s, bs in cands:
-            if b not in seen:
-                seen.add(b); sug.append({"business": b, "basis": bs})
-        return {"category": "needs_review", "confidence": "medium", "suggested": sug[:3]}
-    return {"category": "unrecognised", "confidence": "none"}
+    seen, sug = set(), []
+    for b, s, bs in cands:
+        if b not in seen:
+            seen.add(b)
+            sug.append({"business": b, "basis": bs, "score": s})
+    return {"category": "needs_review", "confidence": "medium",
+            "suggested": sug[:3],
+            "why": ("name evidence only — a payer is attached to a client on "
+                    "an alias, an exact email or an exact name, never on a "
+                    "resemblance")}
 
 
 def _known_businesses() -> set:

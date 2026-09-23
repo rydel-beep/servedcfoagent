@@ -366,19 +366,26 @@ def test_landing_renders_pulse_strip_server_side():
 
 # ── access + read-only law ──────────────────────────────────────────────────
 
-def test_scale_is_owner_only_and_anon_refused():
-    routes = _read("dashboard", "routes.py")
-    i = routes.index('def scale_page')
-    assert "@require_owner" in routes[i - 200:i]
-    for ep in ("api_scale_run", "api_scale_solve", "api_scale_commit_plan",
-               "api_scale_scenarios", "api_scale_defaults"):
-        j = routes.index(f"def {ep}")
-        assert "@require_owner" in routes[j - 250:j], ep
+def test_the_plan_is_readable_by_piolo_and_committed_only_by_rydel():
+    """R-PIOLO (#161) replaces the old owner-only rule on /scale: Piolo reads
+    the plan and RUNS the simulator (it computes, it never commits), while
+    everything that changes the plan itself stays with Rydel."""
     os.environ.setdefault("DASHBOARD_TOKEN", "testtok-compass")
     import app as appmod
+    anon = appmod.app.test_client()
+    assert anon.get("/dashboard/scale").status_code in (302, 401, 403)
+
     c = appmod.app.test_client()
-    r = c.get("/dashboard/scale")
-    assert r.status_code in (302, 401, 403)
+    with c.session_transaction() as s:
+        s["actor"] = {"user": "piolo", "role": "coo", "display": "Piolo"}
+    assert c.get("/dashboard/scale").status_code == 200
+    assert c.get("/dashboard/api/scale/defaults").status_code == 200
+    assert c.post("/dashboard/api/scale/simulate", json={}).status_code != 403
+    for committing in ("/dashboard/api/scale/commit-plan",
+                       "/dashboard/api/scale/bands",
+                       "/dashboard/api/scale/north-star",
+                       "/dashboard/api/scale/scenarios"):
+        assert c.post(committing, json={}).status_code == 403, committing
 
 
 def test_read_only_law_no_mutations_in_compass():

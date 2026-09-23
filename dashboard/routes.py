@@ -223,9 +223,13 @@ def today_page():
                 "verdict": {"line": f"today failed honestly: {str(e)[:120]}",
                             "state": "degraded", "href": "/dashboard/scale/travelling",
                             "gap": "", "age": "unknown"},
-                "today": "", "snapshot_age": "unknown"}
+                "today": "", "snapshot_age": "unknown",
+                "unmatched": {"count": 0, "total": 0, "rows": [],
+                              "available": False,
+                              "note": "today failed before the payment scan"},
+                "new_closes": []}
     resp = make_response(render_template(
-        "today.html", today=data, asset_v=_ASSET_VERSION,
+        "today.html", today=data, asset_v=_ASSET_VERSION, owner=owner,
         **_shell("today")))
     resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -266,7 +270,7 @@ def api_system():
 
 
 @bp.route("/api/system/run-checks", methods=["GET", "POST"])
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def api_system_run_checks():
     """GET = where the run is up to. POST = start one, if none is running and
     the rate limit allows. Owner-only: these call outside services."""
@@ -299,6 +303,59 @@ def api_refresh_now():
         (current_actor() or {}).get("user") or "owner",
         str(body.get("what") or "all"))
     return jsonify(res), (429 if res.get("rate_limited") else 200)
+
+
+# ── MONEY THAT LANDED WITHOUT A NAME, AND CLOSES NOBODY LOGGED (#161) ──────
+
+@bp.route("/api/unmatched", methods=["GET"])
+@require_auth
+def api_unmatched_payments():
+    """The unmatched-payments panel. Stored results only — a page load never
+    calls Stripe. ?full=1 returns every row instead of the panel's eight."""
+    import unmatched_payments as UP
+    if request.args.get("full"):
+        return jsonify(UP.latest())
+    return jsonify(UP.panel())
+
+
+@bp.route("/api/unmatched/confirm", methods=["POST"])
+@require_owner
+def api_unmatched_confirm():
+    """Rydel's word: this payer pays for this client. Writes the alias,
+    journals who said so and which charge proved it, re-runs the match and
+    rebuilds what the tiles read — so the number moves now, not in two hours.
+
+    OWNER-ONLY: attaching money to a client is a money-truth action."""
+    import unmatched_payments as UP
+    from dashboard.auth import current_actor
+    body = request.get_json(silent=True) or {}
+    res = UP.confirm(str(body.get("payer") or ""), str(body.get("client") or ""),
+                     (current_actor() or {}).get("user") or "owner",
+                     body.get("charge_id"))
+    return jsonify(res), (200 if res.get("ok") else 400)
+
+
+@bp.route("/api/closes/pending", methods=["GET"])
+@require_auth
+def api_closes_pending():
+    """Closes any source can see, with provenance and what is still missing."""
+    import close_detect
+    return jsonify(close_detect.latest())
+
+
+@bp.route("/api/closes/confirm", methods=["POST"])
+@require_owner
+def api_closes_confirm():
+    """Owner confirms a DETECTED close — the date is recorded through the
+    sanctioned derivation lane with its evidence, and the engine blocks
+    rebuild immediately. Never creates a close without evidence: the entry
+    must already exist in the detection ledger."""
+    import close_detect
+    from dashboard.auth import current_actor
+    body = request.get_json(silent=True) or {}
+    res = close_detect.confirm(str(body.get("key") or ""),
+                               (current_actor() or {}).get("user") or "owner")
+    return jsonify(res), (200 if res.get("ok") else 400)
 
 
 # ── SALES COMP RULES (#159) — OWNER ONLY, every edit journaled ──────────────
@@ -366,19 +423,23 @@ def api_comp_cost():
 # ── SALES — the team's scoreboard (owner/finance only) ──────────────────────
 
 @bp.route("/sales")
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def sales_board_page():
     """The scoreboard: per setter and per closer, the pipeline, the next
     seven days, and the consults nobody marked.
 
-    OWNER-ONLY by decorator — commissions are finance, so an ad_domain
-    session is refused here structurally, not by hiding a link."""
+    ad_domain and sales sessions are refused structurally by their own
+    allowlists, not by hiding a link. Piolo reads the page (R-PIOLO, #161);
+    the per-person COMMISSION column is owner-only and is not rendered for
+    him — including the total, when one person is the only contributor."""
     from dashboard import shell as _shell_mod  # noqa: F401 (shell context below)
+    from dashboard.auth import is_owner
     import sales_scoreboard
     window = request.args.get("window") or "mtd"
     try:
         board = sales_scoreboard.build(
-            window, request.args.get("start"), request.args.get("end"))
+            window, request.args.get("start"), request.args.get("end"),
+            comp_visible=is_owner())   # R-PIOLO: per-person pay is owner-only
     except Exception as e:  # noqa: BLE001 — the page degrades, never blanks
         logger.exception("sales scoreboard failed")
         board = {"window": {"label": "unavailable", "key": window, "start": "",
@@ -388,6 +449,7 @@ def sales_board_page():
                  "pipeline": {"stages": [], "note": ""},
                  "upcoming": {"rows": [], "count": 0, "note": ""},
                  "unmarked": {"rows": [], "count": 0, "note": "", "by_closer": []},
+                 "comp_visible": is_owner(),
                  "speed_to_lead": {"available": False, "note": "unavailable"},
                  "targets": {"available": False, "note": "unavailable", "found": []},
                  "cash": {"total": 0, "source": "—"}, "notes": []}
@@ -488,7 +550,7 @@ def _burn_box() -> dict | None:
 # ── THE SCALING COMPASS (/scale — owner-only) ───────────────────────────────
 
 @bp.route("/scale")
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def scale_page():
     """The compass tab. First paint is SERVER-RENDERED from the kv-cached
     Base run (hardening doctrine); interactivity is the bounded JS layer."""
@@ -616,7 +678,7 @@ def api_definitions():
 
 
 @bp.route("/api/scale/calibration-log", methods=["GET"])
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def api_scale_calibration_log():
     import kv_store
     import compass_engine
@@ -625,7 +687,7 @@ def api_scale_calibration_log():
 
 
 @bp.route("/api/scale/north-star", methods=["GET", "POST"])
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def api_scale_north_star():
     import kv_store
     import compass_engine
@@ -660,7 +722,7 @@ def api_scale_behaviour_verified():
 
 
 @bp.route("/scale/travelling")
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def travelling_page():
     """HOW WE'RE TRAVELLING — the live month beside the model. Server-rendered
     from the URL inputs (refresh-safe); the only client work is opening the
@@ -731,7 +793,7 @@ def travelling_page():
 
 
 @bp.route("/api/ground-truth", methods=["GET"])
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def api_ground_truth():
     """SCAN 3 — the engine against the outside world (read-only)."""
     import ground_truth
@@ -759,7 +821,7 @@ def api_health_rows():
 
 
 @bp.route("/api/travelling", methods=["GET"])
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def api_travelling():
     import travelling as TV
     return jsonify(TV.build(window=request.args.get("window") or "mtd",
@@ -769,7 +831,7 @@ def api_travelling():
 
 
 @bp.route("/api/travelling/remodel", methods=["GET"])
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def api_travelling_remodel():
     import travelling as TV
     return jsonify(TV.remodel_inputs(window=request.args.get("window") or "mtd",
@@ -789,14 +851,14 @@ def api_travelling_save():
 
 
 @bp.route("/api/travelling/history", methods=["GET"])
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def api_travelling_history():
     import travelling as TV
     return jsonify(TV.history(int(request.args.get("n", 8))))
 
 
 @bp.route("/api/scale/simulate", methods=["POST"])
-@require_owner
+@require_auth   # R-PIOLO: the simulator computes, it never commits
 def api_scale_simulate():
     """The simulator's server truth — the gate compares the page's arithmetic
     against this (math shown must equal math computed)."""
@@ -810,7 +872,7 @@ def api_scale_simulate():
 
 
 @bp.route("/api/scale/defaults", methods=["GET"])
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def api_scale_defaults():
     import compass_engine
     return jsonify({"defaults": compass_engine.measured_defaults(),
@@ -818,7 +880,7 @@ def api_scale_defaults():
 
 
 @bp.route("/api/scale/run", methods=["POST"])
-@require_owner
+@require_auth   # R-PIOLO: the simulator computes, it never commits
 def api_scale_run():
     import compass_engine
     body = request.get_json(silent=True) or {}
@@ -826,7 +888,7 @@ def api_scale_run():
 
 
 @bp.route("/api/scale/solve", methods=["POST"])
-@require_owner
+@require_auth   # R-PIOLO: the simulator computes, it never commits
 def api_scale_solve():
     import compass_engine
     body = request.get_json(silent=True) or {}
@@ -843,7 +905,7 @@ def api_scale_bands():
 
 
 @bp.route("/api/scale/backtest", methods=["GET"])
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def api_scale_backtest():
     import compass_engine
     import kv_store
@@ -854,7 +916,7 @@ def api_scale_backtest():
 
 
 @bp.route("/api/scale/scenarios", methods=["GET", "POST"])
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def api_scale_scenarios():
     import compass_engine
     if request.method == "GET":
@@ -881,7 +943,7 @@ def api_scale_commit_plan():
 
 
 @bp.route("/api/scale/scenario-pdf", methods=["GET"])
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def api_scale_scenario_pdf():
     """Owner-only briefing PDF of a saved scenario (or the Base run)."""
     import compass_engine
@@ -943,7 +1005,7 @@ def api_scale_scenario_pdf():
 
 
 @bp.route("/api/scale/plan-vs-actual", methods=["GET"])
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def api_scale_plan_vs_actual():
     import compass_engine
     return jsonify(compass_engine.plan_vs_actual())
@@ -1357,7 +1419,7 @@ def api_action_feed():
 
 
 @bp.route("/api/triage", methods=["POST"])
-@require_owner
+@require_auth   # R-PIOLO: the simulator computes, it never commits
 def api_triage():
     """Dismiss / snooze / delegate / restore an action item (owner-only). The ONLY
     ways an ACTION item leaves besides deciding it — explicit, logged, reversible."""
@@ -1762,6 +1824,7 @@ def api_chat():
             (__import__('resolution').handle_autofix_log_command, False),     # 'what did you auto-fix'
             (__import__('action_feed').handle_action_feed_command, False),  # 'what needs my attention'
             (lambda m: __import__('collab').handle_collab_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # work log / queue / digest
+            (__import__('close_detect').handle_closed_today, False),  # 'what closed today' → the detection ledger, with provenance
             (__import__('stripe_reconcile').handle_reconciliation_query, False),  # unmatched payments
             (__import__('cash_truth').handle_latest_cash_command, False),   # "last cash collected" → Stripe-actual
             (__import__('cash_truth').handle_needs_logging_command, False), # "what needs logging?"
@@ -2046,6 +2109,7 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             (__import__('resolution').handle_autofix_log_command, False),     # 'what did you auto-fix'
             (__import__('action_feed').handle_action_feed_command, False),
             (lambda m: __import__('collab').handle_collab_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),
+            (__import__('close_detect').handle_closed_today, False),  # 'what closed today' → the detection ledger, with provenance
             (__import__('stripe_reconcile').handle_reconciliation_query, False),
             (__import__('cash_truth').handle_latest_cash_command, False),   # "last cash collected" → Stripe-actual
             (__import__('cash_truth').handle_needs_logging_command, False), # "what needs logging?"
@@ -2662,7 +2726,7 @@ def api_renewal_state():
 
 
 @bp.route("/api/renewal/clients", methods=["GET"])
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def api_renewal_clients():
     """Type-ahead over the CURRENT client set — selection binds to a roster
     entry (IDs are truth); free text matching nothing is honestly empty."""
@@ -3185,7 +3249,7 @@ def api_gap_rebuild():
 
 
 @bp.route("/api/finance-analysis", methods=["GET", "POST"])
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def api_finance_analysis():
     import finance_analysis
     if request.method == "POST":
@@ -3196,7 +3260,7 @@ def api_finance_analysis():
 
 
 @bp.route("/api/finance-analysis.pdf", methods=["GET"])
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def api_finance_analysis_pdf():
     import finance_analysis
     from helpers import today_sydney
@@ -3265,7 +3329,7 @@ def api_client_error():
 
 
 @bp.route("/api/telemetry", methods=["GET"])
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def api_telemetry():
     """Owner view: recent client errors + hourly rate + the render-health
     self-check state (the sentinel's watch reads the same keys)."""
@@ -3326,7 +3390,7 @@ def api_tab_map():
 
 
 @bp.route("/api/decision-cards", methods=["GET"])
-@require_owner
+@require_auth   # R-PIOLO: read granted to the coo role; the allowlist in role_access.py decides
 def api_decision_cards():
     """Owner-only: everything only Rydel can rule, evidence attached."""
     import decision_cards

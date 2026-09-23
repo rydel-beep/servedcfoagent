@@ -22,6 +22,8 @@ import secrets
 
 from flask import redirect, request, make_response, url_for, session, g, jsonify
 
+from role_access import coo_permitted, carve_out_for  # R-PIOLO, #161
+
 logger = logging.getLogger(__name__)
 
 # ── Legacy shared token (fallback only while no per-user accounts are configured) ──
@@ -188,6 +190,16 @@ def require_auth(f):
                     return jsonify({"error": "This view is limited to lead reactivation.",
                                     "scope": "sales"}), 403
                 return redirect(url_for("dashboard.sales_page"))
+            # R-PIOLO (#161): the coo role is allowlisted the same fail-closed
+            # way — full READ across the estate, his queue actions, and three
+            # carve-outs that deny first. A route nobody has granted is
+            # refused, so a new endpoint cannot open by omission.
+            if act.get("role") == "coo":
+                ok, why = coo_permitted(request.path, request.method)
+                if not ok:
+                    if "/api/" in (request.path or ""):
+                        return jsonify({"error": why, "scope": "coo"}), 403
+                    return redirect(url_for("dashboard.landing_page"))
             if act.get("role") in _AD_DOMAIN_ROLES and not ad_domain_permitted(request.path):
                 if "/api/" in (request.path or ""):
                     return jsonify({"error": "This view is limited to the ad dashboard.",
