@@ -13,7 +13,7 @@ each one on its own is enough to produce exactly what he saw.**
 
 | link | state | what breaks it |
 |---|---|---|
-| **1 · the close event** | **BROKEN** | the tracker's close columns have been empty since **24 July** (R-GAP). The engine's own close list is built from them, so a close today produces no row. |
+| **1 · the close event** | **BROKEN** | the engine's close list is built from the tracker's close columns, and the previous close date in that sheet was **23 July**. Koji's row was typed in later the same day — that human act is what finally moved the numbers, and it is the dependency this wave removes. |
 | **2 · the money** | **BROKEN** | the matcher attaches a payment to a client by name. The payer name is not the client's name, there is no alias for it, and no path exists to attach the two — so the money counts as cash and belongs to nobody. |
 | **3 · the recompute** | **BROKEN** | the one job that reads closes out of the CRM instead of the tracker (`gap_reconcile.rebuild_closes`) is called from **exactly one place: the owner-only `/api/gap/rebuild` button.** No loop runs it. Neither Refresh button touches it. |
 
@@ -110,19 +110,32 @@ rule Rydel asked for.
 
 ---
 
-## LIVE EVIDENCE — NOT YET COLLECTED
+## LIVE EVIDENCE — COLLECTED
 
-The Railway CLI session expired mid-session (`railway login` needs a human),
-so the parts of Part 0 that need production data are **not done and are not
-claimed**:
+| what | what production actually held |
+|---|---|
+| tracker row | **present and complete** — Koji · Pompoko Ramen · close 9/23/2026 · contract $18,300 · cash $1,650.00 · setter Coby · closer Coby · offer Growth Pro · closer commission cell $900 |
+| the tracker before it | **the previous close date was 23 JULY** — Koji's is the first tracker close in two months |
+| CRM | opp `rMxl33qNd7paIccfvmMX`, stage **✅ Closed Deal**, moved **06:03 today**, contact Koji, hello@pompokoramen.com.au |
+| stage recorder | captured it at **16:41** — Consult Call Booked → ✅ Closed Deal, recorded as a jump |
+| closed-deal form | **not in the mirrored custom fields** — the sixteen held are the qualification form. Contract value comes from the tracker cell |
+| the money | `ch_3UIj5RBjA5FwcLGQ0Cqpj3Fv` · **$1,650.00** · 2026-09-23 · payer **Sanatani Rombola** · pending, available 24 Sep |
+| the matcher, before the fix | `_stripe_hits("Koji", …)` → **`[]`** · Koji **absent from the gap ledger entirely** |
+| unattached payments | **15 totalling $42,412.50** across 120 days |
+| lead attribution | **ID-exact to an ad**: `B019_A05_Full-Funnel · TH_Kin Hook_Noodle Asia_v1 [Served Q4 LP 2026]`, tier "ad" · input 9/22 · set 9/22 (from the CRM appointment) · showed · closed 9/23 |
 
-- the Koji opportunity's actual stage, owner and stage-change time,
-- whether the stage recorder captured the transition,
-- Kalin's Closed Deal Form entry (package, term, contract value),
-- the charge id, amount and date under "Sanatani Rombola",
-- the full list of currently unmatched payments.
+**One claim above needed correcting**: the tracker's close columns are no
+longer empty. Somebody filled Koji's row during the day — which is exactly
+why the numbers eventually moved, and exactly the dependency this wave
+removes. The sequence was:
 
-Everything above this line is read off the code paths and the route map,
-which is where all three broken links live. The live pull confirms **which
-link fired first for this particular deal** and supplies the figures for the
-before/after table — it cannot change the fact that all three are broken.
+```
+06:03  CRM stage → ✅ Closed Deal      nothing downstream reads it
+ ~day  $1,650 lands as "Sanatani Rombola"   matched to nobody
+16:41  the stage recorder sees the move     recorded, unused by any metric
+later  a human types the tracker row        ← only now do the numbers move
+```
+
+Had nobody typed the row, the deal would still be invisible: the gap ledger
+is only rebuilt by an owner-only button, and even when rebuilt it would have
+left the close PROPOSED for want of a payment it could not match.

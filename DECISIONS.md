@@ -2890,3 +2890,67 @@ Two findings were examined and ACCEPTED with reasons recorded in the hunt
 itself: a degraded note naming a blank commission cell (no person, no
 amount), and the roster's names and roles once the salaries are gone.
 
+**WHAT THE LIVE EVIDENCE CHANGED IN THIS VERDICT.** One claim above needed
+correcting the moment production was reachable: the tracker's close columns
+are no longer empty — **Koji's row is filled**, and it is the FIRST tracker
+close since 23 July. Somebody typed it in during the day. So the mechanism
+stands exactly as described, and the sequence for this deal was:
+
+  06:03  the CRM stage moves to ✅ Closed Deal — nothing downstream reads it
+         unless a human presses the gap-rebuild button
+  ~day   the Stripe charge lands: $1,650.00, payer "Sanatani Rombola"
+         (`ch_3UIj5RBjA5FwcLGQ0Cqpj3Fv`) — matched to nobody
+  16:41  the stage recorder captures the transition
+  later  a human fills the tracker row — and only THEN do the numbers move
+
+Proved on production before the fix: `_stripe_hits("Koji", …)` returned
+**`[]`**, and Koji was **absent from the gap ledger entirely**. Had nobody
+typed the row, the deal would still be invisible today.
+
+**KOJI, RESOLVED.** Rydel's word — the payer "Sanatani Rombola" pays for Koji
+(Pompoko Ramen) — is journaled with the actor, the charge id and the
+timestamp. On the same 120-day window, unattached payments went **15 →
+14** ($42,412.50 → $40,762.50): exactly his charge leaving. His close now
+carries **all four sources** and nothing missing; the gap ledger finds the
+charge as "confirmed alias"; the epoch bumped and all three engine blocks
+rebuilt in the same request.
+
+**FOUR THINGS LIVE DATA FOUND THAT THE TESTS COULD NOT:**
+1. **My own date parser** read the tracker's US-first dates day-first,
+   raised on month 23, swallowed it, and dropped thirteen close rows —
+   Koji's among them — while the row count still looked healthy.
+2. **A payment date was overriding a close date**: William Cooney moved from
+   11 Sep to 1 Sep because an earlier instalment landed then. Who may date a
+   close is ranked now; a payment dates nothing that another source can date.
+3. **A matched payment became a second close** — a payment names a CLIENT, a
+   close is keyed by the PERSON who signed, so Grappino's payment stood beside
+   Harman singh's. Bridged through the tracker's own business→person column.
+4. **A sentence had been learned as a client name**: the alias store held
+   "resigning with us same price, Bluebells as well, Panini is resigning at 2k
+   per month…" against the payer "walkway". Refused now. **The existing row is
+   flagged for Rydel, not deleted.**
+
+**AND TWO THE GATES FOUND IN MY OWN WORK:** scan 2 caught the new panel
+publishing the length of its five-row SLICE while the engine held ten — a page
+disagreeing with its own engine, on a panel added this wave. And the live
+EDITH drill caught the CSM carve-out leaking: asked "what's the csm roi
+status" on Piolo's session, she answered with the framing and a cost range,
+because the CSM handler's deliberate SILENCE handed the question to the model,
+which answered from remembered context. Silence is not confidentiality when
+something else is listening — a non-owner turn no longer receives a
+remembered fact, a recalled snippet or an archived fact on a carved-out
+subject.
+
+**STANDING OBSERVATIONS FOR RYDEL** (not decided here):
+· the tracker's `closer_commission` cell for Koji says **$900**, while the
+  rulebook costs a Coby-closed Growth Pro at **$550 total** — $505 to Coby
+  after Kalin's $45 override (3% of $1,500 ex-GST), plus Coby's $50 set fee
+  and $75 set bonus as setter. Worth a ruling.
+· **seven payments totalling $19,552.50** are still unattached inside sixty
+  days (fourteen and $40,762.50 across 120) — Fiona Fitzgerald ×3, Nirosha
+  ×3, Pottery Green Bakers Gordon ×2 among them. Each is one click.
+· cohort cash for an engine-sourced close still comes from the **tracker's
+  Cash Collected cell**, not from Stripe. For Koji the two agree exactly
+  ($1,650.00) — but R-CASH says Stripe/Xero, and that is a ruling-level
+  question, not something to change quietly.
+
