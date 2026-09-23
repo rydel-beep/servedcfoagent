@@ -176,19 +176,47 @@ def _from_tracker() -> list[dict]:
     return out
 
 
+def _client_to_person() -> dict:
+    """business name → the tracker's person for that row. A payment names a
+    CLIENT; a close is keyed by the PERSON who signed. Without this bridge a
+    matched payment for Grappino reads as a second, separate close beside
+    Harman singh's."""
+    idx = {}
+    try:
+        import attribution_engine as AE
+        import sheet_mirror
+        rows = sheet_mirror.read_tab("ltc_tracker") or []
+        if not rows:
+            return idx
+        cols = AE.tracker_cols(rows[0])
+        bi, ni = cols.get("business"), cols.get("name")
+        for r in rows[1:]:
+            b = (r[bi] if bi is not None and bi < len(r) else "") or ""
+            n = (r[ni] if ni is not None and ni < len(r) else "") or ""
+            if b and n:
+                idx.setdefault(_norm(b), n.strip())
+    except Exception as e:  # noqa: BLE001
+        logger.info("close_detect: client→person bridge unavailable: %s", e)
+    return idx
+
+
 def _from_payments() -> list[dict]:
     """Money matched to a client that has no close on file. Cash cannot
     create a close on its own — it is a candidate with the charge as its
     evidence, and it says what is missing."""
     out = []
+    bridge = _client_to_person()
     try:
         import unmatched_payments as UP
         for m in UP.matched_without_close():
+            client = m.get("client") or m.get("payer")
             out.append({
-                "person": m.get("client") or m.get("payer"),
+                "person": bridge.get(_norm(client)) or client,
                 "close_date": m.get("date"),
                 "source": "payment",
-                "provenance": f"payment matched to {m.get('client')} with no close on file",
+                "provenance": (f"payment matched to {m.get('client')} with no "
+                               f"close on file"),
+                "client": m.get("client"),
                 "evidence": {"charge_ids": [m.get("charge_id")],
                              "payer": m.get("payer"), "amount": m.get("amount")},
                 "email": None,
@@ -199,16 +227,20 @@ def _from_payments() -> list[dict]:
 
 
 def _date(v) -> str | None:
-    m = re.search(r"(\d{4})-(\d{1,2})-(\d{1,2})", str(v or ""))
+    """The tracker writes dates US-first (9/23/2026 is September). My first
+    version read that as day-first, raised on month 23, swallowed it and
+    dropped THIRTEEN close rows — including Koji's — while reporting a
+    healthy-looking row count. Same order as the rest of the estate now."""
+    v = str(v or "").strip()
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y"):
+        try:
+            return str(dt.datetime.strptime(v[:10], fmt).date())
+        except ValueError:
+            continue
+    m = re.search(r"(\d{4})-(\d{1,2})-(\d{1,2})", v)
     if m:
         try:
             return str(dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3))))
-        except ValueError:
-            return None
-    m = re.search(r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})", str(v or ""))
-    if m:
-        try:
-            return str(dt.date(int(m.group(3)), int(m.group(2)), int(m.group(1))))
         except ValueError:
             return None
     return None

@@ -402,3 +402,52 @@ def test_the_owner_sees_the_payload_untouched():
     import role_access as RA
     snap = {"costs": {"closer_commission": 900.0}}
     assert RA.scrubbed_for("owner", snap) is snap
+
+
+def test_us_first_tracker_dates_are_not_silently_dropped():
+    """Caught on live data: the tracker writes 9/23/2026 meaning September.
+    Read day-first it raises on month 23 — and the exception was swallowed,
+    so thirteen close rows (Koji's among them) vanished while the row count
+    still looked healthy."""
+    import close_detect as C
+    assert C._date("9/23/2026") == "2026-09-23"
+    assert C._date("7/16/2026") == "2026-07-16"
+    assert C._date("2026-09-23") == "2026-09-23"
+    assert C._date("23/09/2026") == "2026-09-23"      # unambiguous day-first
+    assert C._date("") is None and C._date("nonsense") is None
+
+
+def test_a_matched_payment_does_not_become_a_second_close(monkeypatch):
+    """A payment names a CLIENT; a close is keyed by the PERSON who signed.
+    Without the bridge, Grappino's payment reads as a close beside Harman's."""
+    kv_store._MEM.clear()
+    import close_detect as C
+    from helpers import today_sydney
+    monkeypatch.setattr(C, "_client_to_person",
+                        lambda: {"grappino ristorante": "Harman singh"})
+    monkeypatch.setattr("unmatched_payments.matched_without_close", lambda: [
+        {"client": "Grappino Ristorante", "payer": "Harman Singh",
+         "charge_id": "ch_x", "amount": 3355.0, "date": str(today_sydney())}])
+    monkeypatch.setattr(C, "_from_tracker", lambda: [])
+    monkeypatch.setattr(C, "_from_stage_recorder", lambda: [])
+    monkeypatch.setattr(C, "_from_ghl", lambda: [{
+        "person": "Harman singh", "close_date": str(today_sydney()),
+        "source": "ghl stage", "provenance": "stage",
+        "evidence": {"opp_id": "o1"}, "email": None}])
+    res = C.scan()
+    assert len(res["entries"]) == 1, [e["person"] for e in res["entries"]]
+    assert res["entries"][0]["state"] == "CONFIRMED"
+
+
+def test_a_sentence_is_never_learned_as_a_client_name():
+    """Found in production: the alias store held somebody's whole sentence
+    ("resigning with us same price, Bluebells as well, …") as a client name,
+    learned through the conversational path."""
+    import stripe_reconcile as sr
+    kv_store._MEM.clear()
+    assert sr.learn_alias("Sanatani Rombola", "Pompoko Ramen") is True
+    assert sr.learn_alias("walkway", "resigning with us same price, Bluebells "
+                          "as well, Panini is resigning at 2k per month") is False
+    assert "walkway" not in sr._aliases()
+    ok, why = sr.alias_looks_like_a_name("a" * 80)
+    assert not ok and "sentence" in why

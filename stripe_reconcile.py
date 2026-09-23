@@ -163,7 +163,31 @@ def _aliases() -> dict:
         return {}
 
 
+# An alias is a ruling about whose money this is. Found in production: the
+# store held {"walkway": "resigning with us same price, Bluebells as well,
+# Panini is resigning at 2k per month…"} — somebody's sentence, learned as a
+# client name by the conversational path. A name is a name; a paragraph is a
+# mistake, and it belongs in the reply, not in the trust surface.
+_MAX_ALIAS_WORDS = 8
+_MAX_ALIAS_CHARS = 60
+
+
+def alias_looks_like_a_name(business: str) -> tuple[bool, str]:
+    b = (business or "").strip()
+    if not b:
+        return False, "no client name given"
+    if len(b) > _MAX_ALIAS_CHARS:
+        return False, f"that is {len(b)} characters — a client name, not a sentence"
+    if len(b.split()) > _MAX_ALIAS_WORDS:
+        return False, "that reads as a sentence rather than a client name"
+    return True, ""
+
+
 def learn_alias(payer_name: str, business: str) -> bool:
+    ok, why = alias_looks_like_a_name(business)
+    if not ok:
+        logger.warning("alias refused for %r: %s", payer_name, why)
+        return False
     try:
         import kv_store
         d = kv_store.get("stripe:payer_aliases") or {}
