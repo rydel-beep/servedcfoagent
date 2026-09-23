@@ -2,40 +2,42 @@
 
 ## 2026-09-23 — R-PIOLO · EVIDENCE-FIRST CLOSES · MONEY UNDER ANOTHER NAME (#161)
 
-Built + committed; **not deployed yet** — the Railway CLI session expired
-mid-session, so the live evidence, Part 2 (Koji specifically) and every
-production check are outstanding and are NOT claimed. Suite **1377 passed**,
-compileall + import clean.
+Deploys → 15d9527d, 957139c3, 881dce08, 76445b5b SUCCESS. Suite **1388**.
+Triple scan **0 findings**. Live role matrix, carve-out leak hunt and six
+close-pipeline drills all pass. Zero writes to the tracker, GHL or Xero.
 
-**THE THREE-LINK VERDICT (read off the code paths, all three broken):**
-1. the close event — `_closes_union` builds from the tracker (close columns
-   empty since 24 July) plus the gap ledger's AUTO entries;
-2. the money — the matcher attaches by name, and `_stripe_hits` (which
-   decides AUTO vs PROPOSED) **never read the payer-alias store at all**;
-3. the recompute — `rebuild_closes()` is called from exactly ONE place, an
-   owner-only button. No loop, no refresh path. "Refreshed and still not
-   updated" is literally true.
+**THE THREE LINKS, WITH THE EVIDENCE.** The CRM stage moved at **06:03**; the
+money landed as **"Sanatani Rombola" $1,650** matched to nobody; the recorder
+saw the move at **16:41**; and the numbers only moved when a human typed the
+tracker row — the first tracker close since **23 July**. Proved before the
+fix: `_stripe_hits("Koji", …)` → **`[]`**, and Koji **absent from the gap
+ledger entirely**. The one job that reads closes from the CRM is called from
+exactly ONE owner-only button.
 
-**Built**: `close_detect.py` (four sources read together, provenance on every
-entry, corroboration-pending listed, immediate invalidation on the 5-minute
-tick) · `unmatched_payments.py` (TODAY panel + one-click owner confirm that
-writes and journals the alias, re-matches, rebuilds) · the gap ledger now
-counts a confirmed alias as payment evidence (normaliser mismatch caught by a
-test) · the matcher attaches on **identity only** — a distinctive surname or
-first-name+amount used to AUTO-ASSIGN and are proposals now · `role_access.py`
-(R-PIOLO: central allowlist, deny by default, carve-outs first, single-person
-totals suppressed) · EDITH answers "what closed today" from the ledger ·
-scan-2 keys for both new panels · registry 212/212, jargon zero.
+**KOJI RESOLVED**: alias journaled (actor + charge id + timestamp);
+unattached payments **15 → 14** on the same 120-day window ($42,412.50 →
+$40,762.50 — exactly his charge); his close now carries **all four sources**
+and nothing missing; lead attribution **ID-exact to an ad**
+(`B019_A05_Full-Funnel · TH_Kin Hook_Noodle Asia_v1`).
 
-**Artefacts**: `CLOSE_PIPELINE_DIAGNOSIS.md` · `dashboard/evidence/role-matrix-after.json`
-(every route × role, real status codes) · `dashboard/evidence/close-pipeline-drills.json`
-(six drills, all passing, including "a surname is never auto-assigned" and
-"evidence → blocks rebuilt") · DECISIONS #161.
+**R-PIOLO live**: 18/18 granted surfaces 200 · every carve-out and every
+money-truth POST 403 · owner unchanged · anonymous refused.
 
-**Flagged, not slipped in**: Piolo loses EDITH's **voice** (Rydel's ruling)
-and EDITH's **memory pages** (my judgement call — owner-scope facts; one line
-lifts it).
+**SIX DEFECTS FOUND BY EVIDENCE, FOUR OF THEM MINE**: my date parser dropped
+13 tracker close rows (US-first dates read day-first, exception swallowed) ·
+a payment date overrode a close date (William Cooney 11 Sep → 1 Sep) · a
+matched payment became a second close (client vs person) · scan 2 caught my
+new panel publishing the length of its slice (5 vs the engine's 10) · the
+snapshot was serving Piolo every per-person pay figure the comp routes refuse
+· and the live EDITH drill caught the CSM carve-out leaking through
+*remembered context*, because the handler's deliberate silence handed the
+question to the model.
 
+**Flagged for Rydel, not decided**: the tracker's $900 closer-commission cell
+vs the rulebook's $550 total on a Coby-closed Growth Pro · 7 payments
+($19,552.50) still unattached inside 60 days · cohort cash for engine-sourced
+closes still reads the tracker's cash cell, not Stripe · a junk alias
+("walkway" → a whole sentence) left in place rather than deleted.
 
 ## 2026-09-22 (2) — SYSTEM PAGE · FRESHNESS AS A CONTRACT · EDITH ON EVERY OWNER PAGE (#160)
 
