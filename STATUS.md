@@ -1,5 +1,42 @@
 # STATUS — served-cfo-agent session log
 
+## 2026-09-23 — R-PIOLO · EVIDENCE-FIRST CLOSES · MONEY UNDER ANOTHER NAME (#161)
+
+Built + committed; **not deployed yet** — the Railway CLI session expired
+mid-session, so the live evidence, Part 2 (Koji specifically) and every
+production check are outstanding and are NOT claimed. Suite **1377 passed**,
+compileall + import clean.
+
+**THE THREE-LINK VERDICT (read off the code paths, all three broken):**
+1. the close event — `_closes_union` builds from the tracker (close columns
+   empty since 24 July) plus the gap ledger's AUTO entries;
+2. the money — the matcher attaches by name, and `_stripe_hits` (which
+   decides AUTO vs PROPOSED) **never read the payer-alias store at all**;
+3. the recompute — `rebuild_closes()` is called from exactly ONE place, an
+   owner-only button. No loop, no refresh path. "Refreshed and still not
+   updated" is literally true.
+
+**Built**: `close_detect.py` (four sources read together, provenance on every
+entry, corroboration-pending listed, immediate invalidation on the 5-minute
+tick) · `unmatched_payments.py` (TODAY panel + one-click owner confirm that
+writes and journals the alias, re-matches, rebuilds) · the gap ledger now
+counts a confirmed alias as payment evidence (normaliser mismatch caught by a
+test) · the matcher attaches on **identity only** — a distinctive surname or
+first-name+amount used to AUTO-ASSIGN and are proposals now · `role_access.py`
+(R-PIOLO: central allowlist, deny by default, carve-outs first, single-person
+totals suppressed) · EDITH answers "what closed today" from the ledger ·
+scan-2 keys for both new panels · registry 212/212, jargon zero.
+
+**Artefacts**: `CLOSE_PIPELINE_DIAGNOSIS.md` · `dashboard/evidence/role-matrix-after.json`
+(every route × role, real status codes) · `dashboard/evidence/close-pipeline-drills.json`
+(six drills, all passing, including "a surname is never auto-assigned" and
+"evidence → blocks rebuilt") · DECISIONS #161.
+
+**Flagged, not slipped in**: Piolo loses EDITH's **voice** (Rydel's ruling)
+and EDITH's **memory pages** (my judgement call — owner-scope facts; one line
+lifts it).
+
+
 ## 2026-09-22 (2) — SYSTEM PAGE · FRESHNESS AS A CONTRACT · EDITH ON EVERY OWNER PAGE (#160)
 
 Deploys → 0b1687e7, 21715fe2, 1991a8f0, d6357e02, 6eddb77a, 16af00b9,

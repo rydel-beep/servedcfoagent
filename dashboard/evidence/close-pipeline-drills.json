@@ -1,0 +1,77 @@
+{
+ "drills": [
+  {
+   "drill": "1 \u00b7 a closed-won transition with no tracker row becomes visible",
+   "ok": true,
+   "ms": 2,
+   "state": "DETECTED",
+   "provenance": "recorded move into 'Closed Deal' (watching since 2026-09-21)",
+   "missing": [
+    "contract value",
+    "a matched payment"
+   ],
+   "feed_title": "close detected, tracker not updated \u2014 Drill Venue",
+   "package_rows": 1
+  },
+  {
+   "drill": "2 \u00b7 a payment under an unknown payer lands in the panel",
+   "ok": true,
+   "ms": 65,
+   "count": 1,
+   "total": 3050.0,
+   "row": {
+    "payer": "Unknown Payer",
+    "amount": 3050.0,
+    "date": "2026-09-23",
+    "charge_id": "ch_drill",
+    "category": "unrecognised",
+    "suggested": [],
+    "why": "no client matched this payer on an alias, an email or an exact name"
+   }
+  },
+  {
+   "drill": "3 \u00b7 the owner confirms it \u2014 alias saved, row clears, blocks rebuild",
+   "ok": true,
+   "ms": 1,
+   "before": 1,
+   "after": 0,
+   "journal": {
+    "at": "2026-09-23T21:14:42.032562+10:00",
+    "payer": "Unknown Payer",
+    "client": "Drill Venue",
+    "by": "rydel",
+    "charge_id": "ch_drill",
+    "ok": true
+   },
+   "invalidations": 1
+  },
+  {
+   "drill": "4 \u00b7 the same payer pays again later \u2014 attached on its own",
+   "ok": true,
+   "ms": 1,
+   "match": "confirmed alias",
+   "counts_as_payment_evidence": true
+  },
+  {
+   "drill": "5 \u00b7 a surname-only resemblance is never auto-assigned",
+   "ok": true,
+   "ms": 0,
+   "category": "needs_review",
+   "offered": "62Thirty Cafe & Bar",
+   "basis": "surname (unique)"
+  },
+  {
+   "drill": "6 \u00b7 evidence \u2192 on screen: the invalidation is immediate",
+   "ok": true,
+   "ms": 1,
+   "detect_to_rebuild_ms": 0,
+   "blocks_rebuilt": [
+    "exec_top",
+    "today",
+    "sales_pulse"
+   ],
+   "second_tick_refires": false
+  }
+ ],
+ "failed": 0
+}

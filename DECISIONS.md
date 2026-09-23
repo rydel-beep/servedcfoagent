@@ -2775,3 +2775,104 @@ never had; TODAY's tiles carry one now.
 ten-minute re-render still run on the LEGACY pages that load
 `dashboard.js` — the System page escaped them by not loading the bundle, but
 the landing and the area pages have not been rebuilt.
+
+---
+
+## #161 — PIOLO SEES THE ESTATE · A CLOSE IS VISIBLE THE MOMENT ANY SOURCE SHOWS IT
+**2026-09-23 · diagnose first**
+
+**R-PIOLO (Rydel's ruling).** Piolo gets FULL READ across the estate: the
+home dashboard, Ads, Sales, Money, Plan (the simulator, the compass, how
+we're travelling), System, and the decision cards. He keeps his queue
+actions. Three things stay owner-only, each for a stated reason he can lift
+with one line:
+
+- **CSM and everything in it** — the Miguel restructure and the director comp
+  offset. Miguel hears it from Rydel in person first.
+- **Per-person compensation** — the comp rules page, the commission column on
+  SALES, and any figure that says what ONE person earns. Piolo sees the TOTAL
+  commission cost inside CAC and the outflow bands; never who earns it.
+- **Money-truth actions** — applying date cards, confirming proposed closes
+  and payer aliases, declarations, rule edits, refresh and config changes.
+
+**HOW IT IS ENFORCED — one allowlist, not a check per page.** `role_access.py`
+holds the estate by role: a path must appear in `COO_READ` (GET) or
+`COO_WRITE` (anything else), and everything else is refused. The carve-outs
+are checked FIRST, so a careless addition to the allowlist cannot open one.
+`@require_owner` stays where it is on the actions — this is the second lock,
+not a replacement for the first. **A route nobody has classified fails the
+test suite**, which is stronger than denying it quietly: an access decision
+should be made on purpose, not by omission.
+
+**THE ARITHMETIC CARVE-OUT.** A month in which only Kalin closed makes "total
+commission" and "Kalin's commission" the same number. Those totals are
+suppressed with an owner-only chip rather than shown — an honest blank beats
+a number that says more than it means.
+
+**TWO THINGS HE HAD AND NO LONGER DOES, both flagged rather than slipped in:**
+EDITH's **voice** (the ruling says owner-exclusive; chat is unchanged) and
+EDITH's **memory pages** (the fact store and conversation transcripts carry
+owner-scope context — my judgement call, one line lifts it).
+
+Four tests that encoded the older "owner-only" rules were rewritten to the
+new ruling rather than deleted, each with the reason in its docstring.
+
+---
+
+**KOJI: THREE LINKS, ALL THREE BROKEN.** Rydel closed a deal, the money
+arrived under the payer name "Sanatani Rombola", he pressed refresh, and
+nothing moved. Every one of these three is on its own enough to produce
+exactly that:
+
+**1 · THE CLOSE EVENT.** `finance_analysis._closes_union()` is where the
+estate agrees on what closed. It unions the tracker (whose close columns have
+been empty since **24 July** — the reason R-GAP exists) with the gap ledger's
+`AUTO` entries. The tracker half has produced nothing for two months.
+
+**2 · THE MONEY.** The matcher attaches a payment to a client by name, and
+the payer name here is neither the contact's nor the venue's. Worse:
+`gap_reconcile._stripe_hits()` — the function that decides `AUTO` vs
+`PROPOSED` — **never read the payer-alias store at all**, so even a
+confirmed alias would not have made this close `AUTO`. `_closes_union`
+ignores `PROPOSED`. The cash still counted, because R-CASH reads Stripe
+totals — which is the most misleading shape this failure can take: the bank
+figure is right while the client is invisible.
+
+**3 · THE RECOMPUTE.** `gap_reconcile.rebuild_closes()` is called from
+**exactly one place: the owner-only `/api/gap/rebuild` button.** No loop runs
+it; `/api/refresh`, `/api/resync` and even the new `/api/refresh-now` (#160)
+all skip it. "Refreshed and still not updated" is the literal truth — he
+refreshed everything except the step that finds the close.
+
+None of the three is a crash. Each is a pipeline waiting on a human: fill a
+cell, press a button, name a payer.
+
+**THE FIX — EVIDENCE FIRST, NOT AUTHORITY FIRST.** `close_detect.py` reads
+four sources together — the tracker, the CRM stage (**not** limited to the
+detected gap window), the stage recorder's own transitions, and payments
+matched to a client with no close on file. Whichever moves first makes the
+close visible, carrying its provenance, with the others listed as
+corroboration-pending and what is still missing named. Two independent
+sources (or the tracker alone) make it CONFIRMED. A close is never created
+without evidence, and `confirm()` can only confirm something already in the
+ledger — there is no path from a typed name to a close.
+
+**EVENT-DRIVEN, NOT TIMED.** A new close or a confirmed alias bumps the
+derivation epoch and rebuilds the engine blocks immediately, so the next page
+load is already right rather than right in two hours. Detection rides the
+five-minute freshness tick (four reads of stores the syncs already maintain,
+no external call); the payment scan rides the slow loop because it is the
+only part that calls out.
+
+**MONEY WITHOUT A NAME IS AN ANOMALY.** `unmatched_payments.py` puts it on
+TODAY: payer, amount, date, charge id, the best guess and what the guess
+rests on, with a one-click owner confirmation that writes the alias, journals
+who said so and which charge proved it, re-runs the match and rebuilds.
+
+**AND THE MATCHER STOPPED GUESSING.** It used to auto-attach on a
+**distinctive surname** or a **first name plus a plausible amount**. Both are
+proposals now; a payment is attached on an alias, an exact email or an exact
+name — identity or a recorded decision, never a resemblance. This is a
+deliberate behaviour change: the old rule is how money gets attached to the
+wrong venue with nobody ever seeing the choice. The Fiona Fitzgerald / Glen
+case still resolves automatically — as a confirmed alias.

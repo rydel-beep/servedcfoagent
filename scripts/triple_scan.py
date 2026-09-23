@@ -69,6 +69,7 @@ DRILLS = [
     ("how are we travelling this month", ["travelling"]),
     ("what's my LTV to CAC", ["unit_econ"]),
     ("what's committed", ["committed_mrr"]),
+    ("what closed today", ["closes_detected"]),
 ]
 
 FINDINGS: list[dict] = []
@@ -214,6 +215,27 @@ def scan_agrees_with_itself(page, evd):
                 ("cash_on_hand", ((api.get("cash_position") or {}).get("cash_in_bank"))),
                 ("committed_mrr", ((api.get("client_health") or {}).get("current_mrr"))),
             ]
+            # #161: the close pipeline's own two counters, against their
+            # engines. A panel that says "3 unattached" while the endpoint
+            # says 5 is the same class of lie as a tile disagreeing with the
+            # snapshot.
+            extra = page.evaluate(
+                """async () => {
+                     const out = {};
+                     for (const [k, u] of [['unmatched_payments', '/dashboard/api/unmatched'],
+                                           ['closes_detected', '/dashboard/api/closes/pending']]) {
+                       try { const r = await fetch(u); if (r.ok) out[k] = await r.json(); }
+                       catch (e) {}
+                     }
+                     return out;
+                   }""")
+            if (extra or {}).get("unmatched_payments") is not None:
+                pairs.append(("unmatched_payments",
+                              extra["unmatched_payments"].get("count")))
+            if (extra or {}).get("closes_detected") is not None:
+                pairs.append(("closes_detected", len([
+                    e for e in (extra["closes_detected"].get("entries") or [])
+                    if e.get("state") == "DETECTED"])))
             for metric, engine_val in pairs:
                 if engine_val is None:
                     continue
