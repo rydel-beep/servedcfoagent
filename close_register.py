@@ -252,12 +252,17 @@ def build(days: int = ALL_TIME_DAYS) -> dict:
                   or det.get("client") or "")
 
         # CASH — matched Stripe charges only (R-CASH). The tracker cell is
-        # corroboration beside the figure, never the figure.
+        # corroboration beside the figure, never the figure. A matched charge
+        # IS payment evidence: it joins evidence.charge_ids, so the Stripe
+        # chip and the "missing" line agree with the cash beside them (found
+        # live: Koji read "missing: a matched payment" with $1,650 attached).
         seen_charge = set(ev.get("charge_ids") or [])
         matched = list(charges_by_client.get(_norm(client)) or [])
         for m in matched:
             if m.get("charge_id") and m["charge_id"] not in seen_charge:
                 seen_charge.add(m["charge_id"])
+                ev.setdefault("charge_ids", [])
+                ev["charge_ids"].append(m["charge_id"])
         cash_amount = None
         if matched:
             cash_amount = round(sum(float(m.get("amount") or 0) for m in matched), 2)

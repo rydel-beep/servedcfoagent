@@ -413,13 +413,18 @@ def api_register():
     if clock not in ("activity", "cohort"):
         return jsonify({"error": "clock must be activity or cohort"}), 400
     w0, w1, label = _register_window(window)
-    return jsonify({
+    payload = {
         "window": {"key": window, "label": label, "start": str(w0), "end": str(w1)},
         "clock": clock,
         "totals": CR.totals(str(w0), str(w1), clock),
         "entries": CR.closes(str(w0), str(w1), clock, include_proposed=True),
         "built_at": CR.latest().get("at"),
-    })
+    }
+    # R-PIOLO: register entries carry the tracker's commission cells — a
+    # per-person pay figure. Scrubbed for every non-owner role, whole-key.
+    import role_access as RA
+    from dashboard.auth import current_actor
+    return jsonify(RA.scrubbed_for((current_actor() or {}).get("role"), payload))
 
 
 @bp.route("/api/register/reconciliation", methods=["GET"])

@@ -136,3 +136,75 @@ def test_register_endpoints_are_role_gated():
 def test_scorecard_cell_is_labelled_a_reference_not_a_count():
     src = _src("metrics_engine.py")
     assert "NEVER a close" in src and "close_register" in src
+
+
+import pytest
+
+
+@pytest.fixture()
+def app_client():
+    os.environ.setdefault("DASHBOARD_TOKEN", "testtok-164")
+    import sys
+    sys.path.insert(0, ROOT)
+    import app as appmod
+    return appmod.app
+
+
+def _as(app, role, user):
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s["actor"] = {"user": user, "role": role, "display": user}
+    return c
+
+
+def test_register_api_scrubs_per_person_pay_for_coo(app_client, monkeypatch):
+    """R-PIOLO: register entries carry the tracker's commission cells — the
+    coo's read gets them REMOVED whole-key, never zeroed; the owner's read
+    keeps them."""
+    import close_register as CR
+    import kv_store
+    entry = {
+        "id": "cr:pay test", "key": "pay test", "person": "Pay Test",
+        "client": "PAY VENUE", "email": None, "contact_id": None,
+        "opp_id": "opp9", "close_date": "2026-09-10", "dated_by": "tracker",
+        "sources": [{"source": "tracker", "provenance": "tracker close row",
+                     "close_date": "2026-09-10"}],
+        "corroboration_pending": [], "status": "confirmed",
+        "contract": {"value": 10000.0, "source": "tracker contract cell",
+                     "signed": True},
+        "cash": {"amount": 1000.0, "charge_ids": ["ch_p"],
+                 "source": "matched Stripe charges", "tracker_cell": None},
+        "closer": "Kalin", "closer_ghl_owner_id": None, "setter": "Coby",
+        "closer_commission_cell": 900.0, "setter_commission_cell": 125.0,
+        "offer": "Growth Pro",
+        "lead": {"input_date": "2026-08-01", "lead_source": None,
+                 "tracker_row": True},
+        "attribution": {"tier": "unattributed", "why": "no ad stamp",
+                        "creative_key": None, "creative": None},
+        "clocks": {"activity": "2026-09-10", "cohort": "2026-08-01",
+                   "cohort_why": None},
+        "evidence": {"opp_id": "opp9"},
+        "chips": {"tracker_row": True, "ghl_opp": True, "stripe": True,
+                  "form": False},
+        "missing": [],
+    }
+    kv_store.put(CR.K_REGISTER, {"at": "seeded", "entries": [entry],
+                                 "confirmed": 1, "proposed": 0})
+    coo = _as(app_client, "coo", "piolo")
+    r = coo.get("/dashboard/api/register?window=90d&clock=activity")
+    assert r.status_code == 200
+    body = r.get_json()
+    blob = str(body)
+    assert "closer_commission_cell" not in blob
+    assert "900.0" not in blob and "125.0" not in blob
+    assert body["entries"][0]["person"] == "Pay Test"    # the close itself stays
+    owner = _as(app_client, "owner", "rydel")
+    ro = owner.get("/dashboard/api/register?window=90d&clock=activity")
+    assert ro.get_json()["entries"][0]["closer_commission_cell"] == 900.0
+
+
+def test_declare_and_evidence_options_refused_for_coo(app_client):
+    coo = _as(app_client, "coo", "piolo")
+    assert coo.get("/dashboard/api/register/evidence-options").status_code == 403
+    assert coo.post("/dashboard/api/register/declare", json={}).status_code == 403
+    assert coo.post("/dashboard/api/register/rebuild").status_code == 403
