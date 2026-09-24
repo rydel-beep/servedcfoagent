@@ -153,6 +153,7 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
                        "feed:extra:compass",        # compass drift/variance/capacity
                        "feed:extra:close_detect",   # a close one source can see
                        "feed:extra:status_stale",   # paying client marked stale (#162)
+                       "feed:extra:pl_reconcile",   # revenue/cost reconciliation (#165)
                        "feed:extra:picklist_drift",  # a dropdown changed at source
                        "feed:extra:close_register")  # register reconciliation (#164)
                                                      # (self-retiring on OK)

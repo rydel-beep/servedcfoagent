@@ -81,6 +81,7 @@ MONEY_TRUTH: tuple[str, ...] = (
     "/dashboard/api/travelling/save",
     "/dashboard/api/unmatched/confirm",     # confirming a payer alias (#161)
     "/dashboard/api/closes/confirm",        # confirming a proposed close (#161)
+    "/dashboard/api/pl/mapping",            # the account mapping IS the numbers (#165)
     "/dashboard/api/register/declare",      # RECORD A CLOSE (#164) — owner declaration
     "/dashboard/api/register/rebuild",      # rebuilding the close register (#164)
     "/dashboard/api/register/evidence-options",  # the declare dialog's evidence
@@ -145,6 +146,8 @@ COO_READ: tuple[str, ...] = (
     "/dashboard/api/collab/queue", "/dashboard/api/collab/log",
     "/dashboard/api/worklog", "/dashboard/api/greeting",
     "/dashboard/api/unmatched",                      # #161, read
+    "/dashboard/pl", "/dashboard/api/pl",            # #165, the ladder (read)
+    "/dashboard/api/pl/summary",
     "/dashboard/api/clients/names",                  # #162, the picker's list
     "/dashboard/api/closes/pending",                 # #161, read
     "/dashboard/closes",                             # #164, the closes ledger page

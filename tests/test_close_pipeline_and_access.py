@@ -481,8 +481,12 @@ def test_a_non_owner_turn_never_gets_owner_scope_memory(monkeypatch):
 
 
 def test_both_chat_paths_pass_the_owner_flag():
+    """Every recall call carries the owner flag; other owner-scoped call
+    sites may exist beside them (#164 added one)."""
     src = _code_only(_read("dashboard", "routes.py"))
-    assert src.count("build_recall_context(") == src.count("owner=is_owner()") >= 2
+    n = src.count("build_recall_context(")
+    assert n >= 2
+    assert src.count("owner=is_owner()") >= n
 
 
 def test_a_payment_date_never_overrides_a_close_date(monkeypatch):

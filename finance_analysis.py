@@ -594,26 +594,28 @@ def handle_finance_command(text: str) -> tuple[str | None, bool]:
 def unit_econ_view() -> dict:
     """LTV:CAC + LTGP:CAC with honest inputs: fully-loaded vs spend-only CAC
     both present; LTV per package from the config term authority; LTGP via
-    Xero gross margin (FY26 42.9% contribution as the labelled fallback).
+    GROSS margin from the P&L engine (FY26 63.8% as the labelled fallback —
+    contribution is never used: it already subtracts acquisition, #165).
     Benchmark 3:1 labelled 'benchmark, not target'."""
     import range_unit_economics as RUE
     from config import PACKAGE_TERMS
     inputs = _ltv_inputs()
+    # #165 — F2 CLOSED: this used to fall back to "FY26 contribution margin
+    # 42.9%", and contribution already subtracts advertising and commissions
+    # — the acquisition costs that ARE CAC. LTGP:CAC was dividing by
+    # acquisition twice (2.95× where the honest figure is ≈4.4×). Hormozi's
+    # LTGP is revenue − DELIVERY cost only, so the margin is GROSS, from the
+    # one P&L engine, with FY26's 63.8% as the labelled fallback.
     try:
-        from snapshot import load_persisted
-        snap = load_persisted() or {}
-        margin = ((snap.get("xero") or {}).get("gross_margin_pct"))
-    except Exception:
-        margin = None
-    # prod-caught: a 100% Xero margin = COGS timing (no delivery cost booked
-    # in-month), not truth — implausible reads fall to the labelled FY26 rate
-    if margin is None or margin >= 95:
-        margin_prov = (f"FY26 contribution margin 42.9% (labelled fallback — "
-                       f"Xero read {'unavailable' if margin is None else f'{margin}% (COGS timing, implausible)'})")
-        margin_val = 42.9
-    else:
-        margin_prov = f"Xero P&L gross margin {margin}%"
-        margin_val = margin
+        import pl_engine
+        gm = pl_engine.gross_margin_for_ltgp()
+        margin_val, margin_prov = gm["pct"], gm["provenance"]
+    except Exception as e:
+        margin_val = 63.8
+        margin_prov = (f"FY26 gross margin 63.8% (labelled fallback; the P&L "
+                       f"engine was unavailable: {str(e)[:60]})")
+    margin_prov += (" — basis changed from contribution to GROSS: "
+                    "contribution double-counted acquisition")
     out = {"benchmark": {"value": 3.0,
                          "label": "3:1 — benchmark, not target"},
            "ltv_inputs": inputs, "margin_provenance": margin_prov,

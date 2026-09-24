@@ -12,7 +12,8 @@
   "today": "Today — the first page of the morning",
   "sales_board": "Sales — by setter and by closer",
   "system": "System — is everything running, and is it current",
-  "edith": "EDITH on the page"
+  "edith": "EDITH on the page",
+  "pl": "Profit & loss — the ladder, three bases"
  },
  "entries": {
   "cash_on_hand": {
@@ -1778,6 +1779,69 @@
    "changing": "Setting it makes tool costs grow with the sales team instead of staying flat.",
    "default_from": "0 until you supply a number — the books record the tools as account totals, not per seat.",
    "selector": "[data-def='ctl_tooling_seat']"
+  },
+  "net_margin": {
+   "name": "Net margin",
+   "kind": "metric",
+   "screen": "today",
+   "meaning": "What's left of each revenue dollar after everything — delivery, acquisition, overhead, and the income-tax set-aside.",
+   "computed": "Revenue minus refunds, minus delivery cost, minus acquisition cost, minus overhead, minus a 25% income-tax estimate on the profit — divided by revenue. Shown on the management basis: contract revenue, commissions counted when earned, lumpy costs spread.",
+   "default_from": "The P&L engine, calendar windows only. The tax line is a planning estimate — the accountant does the real lodgement.",
+   "good": "FY26 finished at 11.5% — a baseline to beat, not a ceiling.",
+   "selector": "#tile-net_margin"
+  },
+  "gross_margin": {
+   "name": "Gross margin",
+   "kind": "metric",
+   "screen": "pl",
+   "meaning": "What's left after the cost of DELIVERING the work — contractors and client tools — before any spending on getting new clients.",
+   "computed": "Revenue minus refunds minus delivery cost, divided by revenue. This is the margin used in LTGP:CAC — not contribution margin, which also subtracts ads and commissions and would count acquisition twice.",
+   "default_from": "FY26 ran at about 63.8%.",
+   "selector": "[data-metric='gross_margin']"
+  },
+  "contribution_margin": {
+   "name": "Contribution margin",
+   "kind": "metric",
+   "screen": "pl",
+   "meaning": "What's left after both delivering the work AND paying to acquire the client — ads, commissions, sales costs.",
+   "computed": "Gross profit minus acquisition cost, divided by revenue. Useful for 'does each client pay for itself'; never used inside LTGP:CAC, because CAC is already the denominator there.",
+   "default_from": "FY26 ran at 42.9%.",
+   "selector": "[data-metric='contribution_margin']"
+  },
+  "pl_waterfall": {
+   "name": "The profit ladder",
+   "kind": "page",
+   "screen": "pl",
+   "meaning": "Every step from revenue to net profit, with the accounts behind each line and the FY26 baseline beside it.",
+   "computed": "One engine computes it on three bases — management (the run-rate truth), recognised (the books), cash (the bank) — for named calendar windows only. The bases are switched, never blended.",
+   "default_from": "Xero's own account lines, the contract schedule, Stripe receipts ex-GST, and the commission rulebook.",
+   "selector": "[data-page='pl']"
+  },
+  "pl_bridge": {
+   "name": "The bridge",
+   "kind": "panel",
+   "screen": "pl",
+   "meaning": "Why the three bases give different answers for the same month — every timing difference in dollars, with a name.",
+   "computed": "Management vs recognised vs cash net, with each difference listed: tax accrued vs booked, commissions earned vs paid, lumpy costs spread vs landed, invoices raised vs cash received.",
+   "default_from": "The same month is the same business underneath — the bridge shows the timing.",
+   "selector": "#bridge-title"
+  },
+  "pl_mapping_ctl": {
+   "name": "P&L mapping",
+   "kind": "control",
+   "screen": "pl",
+   "meaning": "Your ruling on which ladder line each Xero account belongs to.",
+   "changing": "Moves an account between delivery, acquisition, overhead, refunds, tax and excluded. Every change is recorded with who and when, and the figures rebuild. An account nobody has ruled on shows as 'needs your call' — it is never quietly dropped.",
+   "computed": "Owner-only: the mapping decides what the numbers are.",
+   "selector": ".pl-map-save"
+  },
+  "cash_net_window": {
+   "name": "Net cash for the window",
+   "kind": "metric",
+   "screen": "pl",
+   "meaning": "Bank receipts minus outflows for the chosen window — the runway view.",
+   "computed": "Stripe receipts with the GST taken out, minus operating outflows and tax actually paid. Lumpy by nature; it is not a margin and is never labelled as one.",
+   "selector": "[data-metric='cash_net_window']"
   }
  }
 }

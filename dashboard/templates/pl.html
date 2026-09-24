@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Profit &amp; loss — Served</title>
+  <link rel="stylesheet" href="/dashboard/static/css/served.css?v={{ asset_v }}">
+</head>
+<body data-page="pl">
+{% include "partials/shell_nav.html" %}
+
+<main id="main" class="s-main">
+  <div class="s-panel-head" style="margin-top:var(--sp-4)">
+    <h1 class="s-panel-title">Profit &amp; loss —
+      {{ {'management':'Management','recognised':'Recognised','cash':'Cash'}[basis] }} basis</h1>
+    <span class="s-panel-sub">
+      {{ ladder.window_words or ladder.month or wname }} ·
+      {% if basis == 'management' %}the run-rate truth: contract revenue, rulebook commissions, tax accrued
+      {% elif basis == 'recognised' %}the books: Xero, calendar months, one mapping
+      {% else %}{{ ladder.label or 'bank receipts minus outflows — the runway view, not a margin' }}{% endif %}
+    </span>
+  </div>
+
+  {# basis + window switches — links, server-rendered, nothing recomputes client-side #}
+  <div class="s-panel" style="padding:var(--sp-3)">
+    {% for b in ('management','recognised','cash') %}
+    <a class="s-chip{% if b == basis %} s-chip-active{% endif %}"
+       href="/dashboard/pl?basis={{ b }}&window={{ wname }}">{{ b }}</a>
+    {% endfor %}
+    &nbsp;·&nbsp;
+    {% for w in windows %}
+    <a class="s-chip{% if w == wname %} s-chip-active{% endif %}"
+       href="/dashboard/pl?basis={{ basis }}&window={{ w }}">{{ {'mtd':'this month so far','last_month':'last month','t3':'trailing 3','t12':'trailing 12','fytd':'FY to date','same_month_ly':'same month last year'}[w] }}</a>
+    {% endfor %}
+  </div>
+
+  {% if not ladder.ok %}
+  <div class="s-boundary-fail"><b>This window failed honestly.</b>
+    {{ ladder.reason or ladder.note or 'not computable' }}</div>
+  {% elif basis == 'cash' %}
+  <section class="s-panel" data-metric="cash_net_window" data-window="{{ wname }}"
+           data-clock="{{ ladder.window_words or ladder.month }}" data-basis="cash"
+           data-value="{{ ladder.net_cash }}">
+    <table class="s-table">
+      <tr><td>Bank receipts (Stripe, ex-GST)</td>
+          <td class="num">${{ '{:,.2f}'.format(ladder.receipts_ex_gst or 0) }}</td></tr>
+      <tr><td>− Operating outflows</td>
+          <td class="num">${{ '{:,.2f}'.format((ladder.outflows or {}).opex or 0) }}</td></tr>
+      <tr><td>− Tax &amp; statutory paid</td>
+          <td class="num">${{ '{:,.2f}'.format((ladder.outflows or {}).tax_statutory or 0) }}</td></tr>
+      <tr><td><b>Net cash</b></td>
+          <td class="num"><b>${{ '{:,.2f}'.format(ladder.net_cash or 0) }}</b></td></tr>
+    </table>
+    <p class="s-card-sub">{{ ladder.label }}</p>
+  </section>
+  {% else %}
+  {# THE WATERFALL — every rung with its own bar, margin %, and the accounts behind it #}
+  <section class="s-panel" aria-labelledby="wf-title"
+           data-metric="net_margin" data-window="{{ wname }}"
+           data-clock="{{ ladder.window_words or ladder.month }}"
+           data-basis="{{ basis }}" data-value="{{ ladder.net_margin_pct }}">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="wf-title">The ladder</h2>
+      <span class="s-panel-sub">FY26 beside every rung — a baseline, not a target</span>
+    </div>
+    {% set rev = ladder.net_revenue or 1 %}
+    {% macro rung(label, amount, pct, fybase, cls, mid) %}
+    <div class="pl-rung {{ cls }}" {% if mid %}data-metric="{{ mid }}"
+         data-window="{{ wname }}" data-clock="{{ ladder.window_words or ladder.month }}"
+         data-basis="{{ basis }}" data-value="{{ pct if pct is not none else amount }}"{% endif %}>
+      <span class="pl-rung-label">{{ label }}</span>
+      <span class="pl-rung-bar"><i style="width:{{ [100, (100 * (amount or 0) / rev) | abs] | min }}%"></i></span>
+      <span class="pl-rung-amt num">${{ '{:,.0f}'.format(amount or 0) }}</span>
+      <span class="pl-rung-pct">{% if pct is not none %}{{ pct }}%{% endif %}
+        {% if fybase is not none %}<em class="s-muted">FY26 {{ fybase }}%</em>{% endif %}</span>
+    </div>
+    {% endmacro %}
+    {{ rung('Revenue', ladder.revenue, none, none, 'is-rev', none) }}
+    {% if ladder.contra_revenue %}{{ rung('− Refunds & rebates', -ladder.contra_revenue, none, none, 'is-cost', none) }}{% endif %}
+    {{ rung('− Delivery cost', -ladder.delivery, none, none, 'is-cost', none) }}
+    {{ rung('= Gross profit', ladder.gross_profit, ladder.gross_margin_pct, fy26.gross, 'is-sub', 'gross_margin') }}
+    {{ rung('− Acquisition cost', -ladder.acquisition, none, none, 'is-cost', none) }}
+    {{ rung('= Contribution', ladder.contribution, ladder.contribution_margin_pct, fy26.contribution, 'is-sub', 'contribution_margin') }}
+    {{ rung('− Overhead', -ladder.overhead, none, none, 'is-cost', none) }}
+    {{ rung('= Operating profit', ladder.operating_profit, ladder.operating_margin_pct, fy26.pbt, 'is-sub', none) }}
+    {{ rung('− Income tax accrual', -ladder.tax_accrual, none, none, 'is-cost', none) }}
+    {{ rung('= Net profit', ladder.net_profit, ladder.net_margin_pct, fy26.net, 'is-net', none) }}
+    <p class="s-card-sub">{{ ladder.tax_note }}. GST and PAYG never enter the
+      ladder — pass-through, not expenses. All figures ex-GST.</p>
+    {% if ladder.projection and ladder.projection.available %}
+    <p class="s-card-sub"><b>Month-end projection:</b>
+      net ${{ '{:,.0f}'.format(ladder.projection.net_profit) }}
+      ({{ ladder.projection.net_margin_pct }}%) — {{ ladder.projection.how }}</p>
+    {% endif %}
+    {% if ladder.unmapped_note %}<p class="s-card-sub">⚠ {{ ladder.unmapped_note }}</p>{% endif %}
+
+    {# drill: the accounts behind each line, read-only #}
+    {% if ladder.lines %}
+    <details class="pl-drill"><summary>Show the accounts behind every line</summary>
+      {% for ln, blk in ladder.lines.items() %}
+        {% if blk['items'] and ln != 'revenue' %}
+        <h4>{{ ln.replace('_',' ') }} — ${{ '{:,.2f}'.format(blk.total) }}</h4>
+        <table class="s-table">{% for i in blk['items'] %}
+          <tr><td>{{ i.account }}</td><td class="s-muted">{{ i.source or '' }}</td>
+              <td class="num">${{ '{:,.2f}'.format(i.amount) }}</td></tr>
+        {% endfor %}</table>
+        {% endif %}
+      {% endfor %}
+    </details>
+    {% endif %}
+    {% if ladder.one_offs_flagged %}
+    <div class="s-panel-head"><h3 class="s-panel-title">One-offs, flagged in the open</h3></div>
+    <ul class="s-list">{% for f in ladder.one_offs_flagged %}
+      <li>{{ f.account }}: ${{ '{:,.0f}'.format(f.amount) }} vs a usual
+        ${{ '{:,.0f}'.format(f.usual) }} — {{ f.note }}</li>{% endfor %}</ul>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {# THE BRIDGE — why the bases differ for this month #}
+  <section class="s-panel" aria-labelledby="bridge-title">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="bridge-title">The bridge — {{ bridge.month }}</h2>
+      <span class="s-panel-sub">{{ bridge.note }}</span>
+    </div>
+    <table class="s-table">
+      <thead><tr><th>Between</th><th>Item</th><th class="num">$</th><th>Why</th></tr></thead>
+      <tbody>
+      {% for i in bridge['items'] %}
+        <tr><td class="s-muted">{{ i.between }}</td><td>{{ i.label }}</td>
+            <td class="num">${{ '{:,.0f}'.format(i.amount) }}</td>
+            <td class="s-muted">{{ i.why }}</td></tr>
+      {% endfor %}
+      {% if not bridge['items'] %}<tr><td colspan="4" class="s-muted">no computed bridge yet</td></tr>{% endif %}
+      </tbody>
+    </table>
+    <p class="s-card-sub">Nets: management
+      ${{ '{:,.0f}'.format(bridge.nets.management or 0) }} · recognised
+      ${{ '{:,.0f}'.format(bridge.nets.recognised or 0) }} · cash
+      ${{ '{:,.0f}'.format(bridge.nets.cash or 0) }}</p>
+  </section>
+
+  {% if owner and mapping %}
+  {# THE MAPPING — owner-only, journaled, like the comp rulebook #}
+  <section class="s-panel" aria-labelledby="map-title">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="map-title">P&amp;L mapping
+        {% if mapping.needs_call %}<span class="s-chip s-chip-stale">{{ mapping.needs_call | length }} need your call</span>{% endif %}</h2>
+      <span class="s-panel-sub">{{ mapping.note }}</span>
+    </div>
+    <div class="s-table-wrap"><table class="s-table">
+      <thead><tr><th>Account</th><th>Ladder line</th><th>Source</th><th></th></tr></thead>
+      <tbody>
+      {% for r in mapping.rows %}
+      <tr {% if r.needs_call %}class="is-amber"{% endif %}>
+        <td>{{ r.account }}</td>
+        <td><select class="pl-map-line" data-account="{{ r.account }}">
+          {% for ln in mapping.lines %}
+          <option value="{{ ln }}" {% if ln == r.line %}selected{% endif %}>{{ mapping.line_labels[ln] }}</option>
+          {% endfor %}
+          {% if r.line == 'unmapped' %}<option value="unmapped" selected>— needs your call —</option>{% endif %}
+        </select></td>
+        <td class="s-muted">{{ r.source }}</td>
+        <td><button class="s-door pl-map-save" type="button"
+                    data-account="{{ r.account }}">Save</button></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <p class="s-card-sub">Wages delivery share: {{ mapping.wages_delivery_pct }}%
+      (config `PL_WAGES_DELIVERY_PCT`). Every change is journaled.</p>
+  </section>
+  <script>
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('.pl-map-save');
+    if (!b) return;
+    var row = b.closest('tr');
+    var sel = row.querySelector('.pl-map-line');
+    b.disabled = true; b.textContent = 'saving…';
+    fetch('/dashboard/api/pl/mapping', {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({account: b.dataset.account, line: sel.value})})
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        b.textContent = j.ok ? 'saved ✓' : ('failed: ' + (j.error || ''));
+        b.disabled = false;
+        if (j.ok) row.classList.remove('is-amber');
+      })
+      .catch(function () { b.textContent = 'failed'; b.disabled = false; });
+  });
+  </script>
+  {% endif %}
+</main>
+
+{% include "partials/shell_palette.html" %}
+<script src="/dashboard/static/js/shell.js?v={{ asset_v }}"></script>
+{% include "partials/defs.html" %}
+{% include "partials/edith_dock.html" %}
+</body>
+</html>

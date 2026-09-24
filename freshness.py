@@ -143,8 +143,15 @@ def _source_stamps() -> dict:
     try:
         from snapshot import load_persisted
         snap = load_persisted() or {}
-        out["stripe"] = {"at": snap.get("generated_at"),
-                         "note": "arrives with the snapshot"}
+        # #165: the snapshot refreshes every ~2h; stamping Stripe with its
+        # time breached the 20-minute contract BY DESIGN ("STRIPE RECEIPTS
+        # IS LATE" on two tiles). The tick now probes Stripe itself and
+        # stamps its own pull; the snapshot time is only the floor.
+        _sp = kv_store.get("stripe:last_pull") or {}
+        _best = max(filter(None, [_sp.get("at"), snap.get("generated_at")]),
+                    default=None)
+        out["stripe"] = {"at": _best,
+                         "note": "probed on the tick; snapshot is the floor"}
         out["xero"] = {"at": (snap.get("cash_position") or {}).get("cash_as_of")
                        or snap.get("generated_at")}
         out["mrr_snapshot"] = {"at": (kv_store.get("mrr:last_snapshot") or {}).get("at")
@@ -384,6 +391,20 @@ def tick() -> dict:
     except Exception as e:  # noqa: BLE001
         logger.warning("freshness tick: close register daily tick failed: %s", e)
 
+    # #165: keep the Stripe stamp honest — a tiny 2-day charge probe when
+    # the last pull is older than 15 minutes. Read-only, one page.
+    try:
+        _sp = kv_store.get("stripe:last_pull") or {}
+        if (_age_min(_sp.get("at")) or 999) > 15:
+            import cash_truth
+            ch = cash_truth._recent_charges(2)
+            if ch is not None:
+                kv_store.put("stripe:last_pull",
+                             {"at": now_sydney().isoformat(), "n": len(ch)})
+                out["stripe_probe"] = len(ch)
+    except Exception as e:  # noqa: BLE001
+        logger.info("freshness tick: stripe probe failed: %s", e)
+
     decision = blocks_need_rebuild()
     out.update(decision)
     if not decision["rebuild"] and not (out.get("meta_today") or {}).get("changed"):
@@ -477,6 +498,12 @@ def refresh_now(actor: str = "owner", what: str = "all") -> dict:
             r = appointments.sync()
             return {"ok": r.get("ok"), "events": len(r.get("events") or [])}
         _step("CRM calendars", _appts)
+
+        def _pl():
+            import pl_engine
+            r = pl_engine.refresh_summary()
+            return {"ok": not r.get("error"), "error": r.get("error")}
+        _step("P&L summary", _pl)
 
         def _meta():
             import meta_spend

@@ -50,7 +50,12 @@ CPL_THRESHOLD_MULT = 2.0         # leads-constraint: CPL beyond this × CPL₀
 CLIENT_FINANCED_BENCHMARK = 2.0  # 30-day cash ÷ CAC (benchmark, not target)
 DEFAULT_EPSILON = 0.2            # labelled assumption when the fit lacks n
 DEFAULT_LAG = [0.70, 0.20, 0.10]  # labelled fallback close-lag curve
-FY26_MARGIN_PCT = 42.9
+# #165 — F2: this was 42.9, the FY26 CONTRIBUTION margin, which already
+# subtracts advertising and commissions. Using it in LTGP:CAC divided by
+# acquisition twice (the simulator inherited the same defect). Hormozi's
+# LTGP is revenue − DELIVERY cost only: FY26 delivery $252,750 of $698,599
+# → GROSS margin 63.8%.
+FY26_MARGIN_PCT = 63.8
 
 # capacity throughput defaults (config where unmeasured — labelled)
 THROUGHPUT_DEFAULTS = {
@@ -1552,8 +1557,10 @@ def simulate_month(inputs: dict | None = None, spend: float | None = None,
                  f"+{cap['extra_total']} (from {cap['hire_from']})"
                  if cap["extra_total"] else
                  "sales headcount: today's team covers this volume")
-    margin_note = ("packages carry last year's 42.9% margin until this "
-                   "year's delivery costs are measured per package — labelled")
+    margin_note = ("packages carry FY26's 63.8% GROSS margin (delivery cost "
+                   "only) until this year's delivery costs are measured per "
+                   "package — labelled. Was 42.9% contribution, which "
+                   "double-counted acquisition (#165)")
     return {"spend": round(S, 2), "cpl_effective": round(cpl_eff, 2),
             "cpl_base": round(cpl0, 2), "cpl_curve": bool(cpl_curve),
             "leads": round(leads, 1), "calls": round(calls, 1),

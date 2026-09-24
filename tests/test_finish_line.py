@@ -131,15 +131,18 @@ def test_today_request_path_makes_no_external_call():
     assert "meta_spend" in refresh and "travelling.build" in refresh
 
 
-def test_today_has_at_most_eight_tiles_and_the_named_ones(client):
+def test_today_has_at_most_nine_tiles_and_the_named_ones(client):
+    """Was eight; #165 added the net-margin tile to TODAY by name —
+    profitability joined the ten-second question."""
     r = client.get("/dashboard/today")
     assert r.status_code == 200
     html = r.data.decode()
     ids = re.findall(r'id="tile-([a-z_]+)"', html)
     tiles = [i for i in ids if not i.startswith("pulse_")]
-    assert len(tiles) <= 8, tiles
+    assert len(tiles) <= 9, tiles
     for want in ("cash_on_hand", "committed_mrr", "ar_outstanding",
-                 "cash_net_mtd", "ltv_cac", "ltgp_cac", "week_flow", "ad_spend"):
+                 "cash_net_mtd", "net_margin", "ltv_cac", "ltgp_cac",
+                 "week_flow", "ad_spend"):
         assert want in tiles, f"{want} missing from TODAY"
 
 

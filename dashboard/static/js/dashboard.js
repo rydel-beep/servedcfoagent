@@ -4722,7 +4722,8 @@
         (hc.cac_fully_loaded != null ? Math.round(hc.cac_fully_loaded).toLocaleString() : '—');
       var s2 = document.getElementById('brief-ltgpcac-sub');
       if (s2) s2.textContent = ((_ratioData.margin_provenance || '').indexOf('fallback') >= 0 ?
-        'margin: FY26 42.9% fallback (labelled)' : 'margin: Xero P&L') + ' · 3:1 = benchmark, not target';
+        'margin: GROSS, FY26 63.8% fallback (was contribution — double-counted acquisition)' :
+        'margin: GROSS (P&L engine)') + ' · 3:1 = benchmark, not target';
     } catch (e) { /* placeholders persist — never hidden */ }
   }
   function _ratioTile(label, val, drawerKey, subBits) {

@@ -486,3 +486,25 @@ a.s-verdict:hover { background: var(--bg-card-hover); }
 .up-client:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .up-note { margin-top: 4px; color: var(--text-secondary); }
 .up-note.is-bad { color: var(--red); }
+
+/* ── the P&L waterfall (#165) ────────────────────────────────────────────── */
+.pl-rung { display: grid; grid-template-columns: 200px 1fr 110px 130px;
+  gap: var(--sp-2); align-items: center; padding: 5px 0;
+  border-bottom: 1px solid var(--border); }
+.pl-rung-bar { height: 14px; background: var(--bg-inset); border-radius: 4px;
+  overflow: hidden; }
+.pl-rung-bar i { display: block; height: 100%; background: var(--brand-muted); }
+.pl-rung.is-rev .pl-rung-bar i { background: var(--brand-bright); }
+.pl-rung.is-sub { font-weight: 600; }
+.pl-rung.is-sub .pl-rung-bar i { background: var(--green); }
+.pl-rung.is-net { font-weight: 700; border-bottom: none; }
+.pl-rung.is-net .pl-rung-bar i { background: var(--green); }
+.pl-rung.is-cost .pl-rung-bar i { background: var(--red-dim); }
+.pl-rung-amt, .pl-rung-pct { text-align: right; font-variant-numeric: tabular-nums; }
+.pl-rung-pct em { font-style: normal; font-size: var(--fs-caption); margin-left: 6px; }
+.pl-drill { margin-top: var(--sp-3); }
+.pl-drill summary { cursor: pointer; color: var(--text-secondary); }
+.pl-map-line { font: inherit; background: var(--bg-inset); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
+tr.is-amber td { background: var(--amber-dim); }
+.s-chip-active { outline: 2px solid var(--accent); }

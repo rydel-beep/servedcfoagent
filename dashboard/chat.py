@@ -449,10 +449,26 @@ def _build_context_block(snapshot_json: str, lean: bool = False) -> str:
     if rv:
         sections.append("REVENUE VIEWS:\n" + json.dumps(rv, indent=2))
 
-    # Profit (Xero P&L)
-    profit = snap.get("profit")
-    if profit:
-        sections.append("PROFIT & LOSS:\n" + json.dumps(profit, indent=2))
+    # Profit — THE P&L ENGINE ONLY (#165). The old snapshot block was a
+    # rolling mid-month Xero window; EDITH divided two of its numbers and
+    # stated "6.9%" as fact. That block can no longer be cited: the engine's
+    # three-basis summary (named calendar windows, as-of stamped) replaces
+    # it, and the raw dump below loses the key too.
+    try:
+        import pl_engine
+        _pl = pl_engine.cached_summary()
+        if _pl.get("data"):
+            sections.append("PROFIT & LOSS (the P&L engine — three bases, "
+                            "named calendar windows; never blend them):\n"
+                            + json.dumps(_pl["data"], indent=2, default=str))
+        else:
+            sections.append("PROFIT & LOSS: the engine has not computed a "
+                            "summary yet"
+                            + (f" ({_pl.get('error')})" if _pl.get("error") else "")
+                            + " — say so; do not improvise margins.")
+    except Exception as _e:  # noqa: BLE001
+        sections.append(f"PROFIT & LOSS: engine unavailable ({str(_e)[:80]}) "
+                        "— say so; do not improvise margins.")
 
     # Team model (for hiring/team questions)
     team = snap.get("team_model")
@@ -567,7 +583,18 @@ def _build_context_block(snapshot_json: str, lean: bool = False) -> str:
     # the curated sections above are comprehensive, and the raw dump is what most
     # inflates time-to-first-token on the spoken path.
     if not lean:
-        sections.append("FULL SNAPSHOT:\n" + snapshot_json)
+        # #165: the raw dump loses the rolling-window profit block — it is
+        # the stale summary EDITH once divided into "6.9%". The engine's
+        # section above is the only citable P&L.
+        dump = snapshot_json
+        try:
+            _s = json.loads(snapshot_json)
+            _s.pop("profit", None)
+            dump = json.dumps(_s)
+        except (json.JSONDecodeError, TypeError):
+            pass
+        sections.append("FULL SNAPSHOT (the 'profit' block is withheld — use "
+                        "the P&L engine section above):\n" + dump)
 
     return "\n\n".join(sections)
 
@@ -655,7 +682,11 @@ def chat(history: list, snapshot_json: str, token: str, voice: bool = False,
             )
             reply = response.content[0].text if response.content else ""
             note_brain(True)
-            return {"reply": reply, "error": None, "intent": intent}
+            from dashboard import answer_guard
+            reply, _guard = answer_guard.apply(
+                reply, system if business_intent else None)
+            return {"reply": reply, "error": None, "intent": intent,
+                    "guard": ({} if _guard.get("ok", True) else _guard)}
         except Exception as e:
             last_err = e
             # 529 = Anthropic transiently overloaded — retry with backoff
@@ -747,7 +778,17 @@ def chat_stream(history: list, snapshot_json: str, token: str, voice: bool = Fal
             # the generator is closed and anything after that yield never
             # runs — which is why the first version of this recorded nothing.
             note_brain(True)
-            yield ("done", "".join(full))
+            full_text = "".join(full)
+            # THE ANSWER GUARD (#165): on a business turn every financial
+            # number must match an engine value from THIS TURN's context.
+            # The UI replaces streamed text with the done payload, so a
+            # blocked reply lands as the rewrite.
+            from dashboard import answer_guard
+            full_text, _guard = answer_guard.apply(
+                full_text, system if business_intent else None)
+            if not _guard.get("ok", True):
+                yield ("guard", _guard)
+            yield ("done", full_text)
             return
         except Exception as e:
             last_err = e

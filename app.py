@@ -190,6 +190,24 @@ def _scheduled_refresh_loop() -> None:
                         res.get("count"), res.get("total_unmatched"))
         except Exception as e:  # noqa: BLE001
             logger.warning("unmatched payment scan failed: %s", e)
+        # #165: the P&L engine's summary is computed HERE, never on a page
+        # load — it may pull Xero (current month, ≤ every 30 min via its own
+        # stamp). The reconciliation rides once a day, kv-claimed.
+        try:
+            import pl_engine
+            pl_engine.refresh_summary()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("pl summary refresh failed: %s", e)
+        try:
+            import kv_store as _kv
+            from helpers import today_sydney as _tds
+            if _kv.put_if_absent(f"pl:reconcile_daily:{_tds()}", {"pid": os.getpid()}):
+                import pl_reconcile
+                rr = pl_reconcile.run()
+                if rr.get("findings"):
+                    logger.info("pl reconciliation: %d finding(s)", len(rr["findings"]))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("pl reconciliation failed: %s", e)
         # #162: the standing rule rides the same cadence — a client with
         # payments in the last 60 days but a zero/expired roster status is a
         # finding, with the charge ids as evidence.

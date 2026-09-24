@@ -51,6 +51,7 @@ TREND_SPEC = {
     "ltgp_cac":      ("", "", "gain", "ratio"),
     "week_flow":     ("", "leads", "gain", "count"),
     "ad_spend":      ("", "spend", "cost", "money"),
+    "net_margin":    ("", "", "gain", "ratio"),
 }
 
 
@@ -233,6 +234,51 @@ def build(snap: dict | None, owner: bool) -> dict:
     # One read of the source stamps for the whole page (~25ms on prod), then
     # a pure lookup per tile. A tile whose input is past its budget goes amber
     # and NAMES the source, rather than showing a confident stale number.
+    # ── NET MARGIN (#165) — management MTD, engine-cached, never computed
+    #    on a page load. Recognised + run-rate + FY26 ride in the sub-line.
+    try:
+        import pl_engine
+        c = pl_engine.cached_summary()
+        d = c.get("data") or {}
+        mg = d.get("management_mtd") or {}
+        if mg.get("ok"):
+            proj = mg.get("projection") or {}
+            rr = d.get("run_rate_t3") or {}
+            rec = d.get("recognised_last_month") or {}
+            fy = d.get("fy26_baseline") or {}
+            sub = (f"projected month-end {proj.get('net_margin_pct')}%"
+                   if proj.get("available") else "projection pending")
+            sub += (f" · recognised {rec.get('net_margin_pct')}% "
+                    f"({rec.get('window_words') or rec.get('month')})"
+                    if rec.get("ok") else "")
+            sub += (f" · run-rate {rr.get('net_margin_pct')}%"
+                    if rr.get("ok") else "")
+            _ins = next((i + 1 for i, t in enumerate(tiles)
+                         if t["id"] == "cash_net_mtd"), len(tiles))
+            tiles.insert(_ins, exec_top._tile(
+                "net_margin", "Net margin (management basis)",
+                f"{mg.get('net_margin_pct')}%",
+                sub + f" · FY26 baseline {fy.get('net')}%",
+                f"the P&L engine · {mg.get('window_words') or 'this month'} · "
+                f"computed {exec_top._fmt_age(exec_top._age_h(c.get('computed_at')))}",
+                exec_top._state_for(exec_top._age_h(c.get("computed_at")), None),
+                drawer=None, raw=mg.get("net_margin_pct")))
+        else:
+            _ins = next((i + 1 for i, t in enumerate(tiles)
+                         if t["id"] == "cash_net_mtd"), len(tiles))
+            tiles.insert(_ins, exec_top._tile(
+                "net_margin", "Net margin (management basis)", "—",
+                c.get("error") or (mg.get("reason") if mg else None)
+                or "the P&L engine has not computed yet — first refresh pending",
+                "", "degraded"))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("today: net margin tile unavailable: %s", e)
+        _ins = next((i + 1 for i, t in enumerate(tiles)
+                     if t["id"] == "cash_net_mtd"), len(tiles))
+        tiles.insert(_ins, exec_top._tile(
+            "net_margin", "Net margin (management basis)", "—",
+            f"engine unavailable ({str(e)[:60]})", "", "degraded"))
+
     pulse = _pulse()
     try:
         import freshness
@@ -284,7 +330,9 @@ def build(snap: dict | None, owner: bool) -> dict:
         new_closes, new_closes_total = [], 0
 
     return {
-        "tiles": tiles[:8],
+        # nine, not eight: #165 adds the net-margin tile to TODAY by name —
+        # profitability joined the ten-second question.
+        "tiles": tiles[:9],
         "verdict": verdict,
         "unmatched": unmatched,
         "new_closes": new_closes,

@@ -131,6 +131,11 @@ def coverage_inventory() -> dict:
     # EDITH on the page
     inv["edith"] = ["edith_dock", "edith_mic", "explain_this"]
 
+    # the P&L ladder (#165)
+    inv["pl"] = ["net_margin", "gross_margin", "contribution_margin",
+                 "pl_waterfall", "pl_bridge", "pl_mapping_ctl",
+                 "cash_net_window"]
+
     # the close pipeline (#161) + the close register and its ledger (#164)
     inv["closes"] = ["unmatched_payments", "closes_detected", "confirm_payer",
                      "owner_only_chip", "status_stale_finding",

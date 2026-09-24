@@ -306,6 +306,97 @@ def api_refresh_now():
     return jsonify(res), (429 if res.get("rate_limited") else 200)
 
 
+# ── NET PROFIT, TRUTHFULLY (#165): the ladder, three bases, the bridge ─────
+
+@bp.route("/pl")
+@require_auth
+def pl_page():
+    """The Money → Profit & loss waterfall. Server-rendered from the CACHED
+    engine summary and cached months — a page load never pulls Xero."""
+    import pl_engine
+    basis = request.args.get("basis") or "management"
+    if basis not in ("management", "recognised", "cash"):
+        basis = "management"
+    wname = request.args.get("window") or "last_month"
+    if wname not in pl_engine.WINDOWS:
+        wname = "last_month"
+    try:
+        ladder = pl_engine.window(basis, wname)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("pl window failed")
+        ladder = {"ok": False, "basis": basis, "window": wname,
+                  "reason": str(e)[:160]}
+    mkey = (ladder.get("month")
+            or (ladder.get("months") or [pl_engine.months_back(1)[0]])[0])
+    try:
+        br = pl_engine.bridge(mkey)
+    except Exception as e:  # noqa: BLE001
+        br = {"month": mkey, "items": [], "nets": {},
+              "note": f"bridge unavailable: {str(e)[:120]}"}
+    from dashboard.auth import is_owner
+    mapping = None
+    if is_owner():
+        import pl_mapping
+        mapping = pl_mapping.mapping_page()
+    resp = make_response(render_template(
+        "pl.html", ladder=ladder, basis=basis, wname=wname,
+        windows=pl_engine.WINDOWS, bridge=br, fy26=pl_engine.FY26,
+        mapping=mapping, owner=is_owner(), asset_v=_ASSET_VERSION,
+        **_shell("money")))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@bp.route("/api/pl", methods=["GET"])
+@require_auth
+def api_pl():
+    """The ladder for a named basis + window. Reads caches; never a live
+    Xero pull from a request."""
+    import pl_engine
+    basis = request.args.get("basis") or "management"
+    wname = request.args.get("window") or "last_month"
+    if basis not in ("management", "recognised", "cash")             or wname not in pl_engine.WINDOWS:
+        return jsonify({"error": "basis or window unknown — bases are "
+                        "management/recognised/cash; windows are named "
+                        "calendar windows only"}), 400
+    return jsonify(pl_engine.window(basis, wname))
+
+
+@bp.route("/api/pl/summary", methods=["GET"])
+@require_auth
+def api_pl_summary():
+    import pl_engine
+    return jsonify(pl_engine.cached_summary())
+
+
+@bp.route("/api/pl/mapping", methods=["GET"])
+@require_owner
+def api_pl_mapping():
+    import pl_mapping
+    return jsonify(pl_mapping.mapping_page())
+
+
+@bp.route("/api/pl/mapping", methods=["POST"])
+@require_owner
+def api_pl_mapping_edit():
+    """The owner's ruling on one account code — journaled, reversible.
+    Changing a mapping changes what the numbers ARE: owner-only."""
+    import pl_mapping
+    import pl_engine
+    from dashboard.auth import current_actor
+    body = request.get_json(silent=True) or {}
+    res = pl_mapping.set_override(str(body.get("account") or ""),
+                                  str(body.get("line") or ""),
+                                  (current_actor() or {}).get("user") or "owner",
+                                  str(body.get("note") or ""))
+    if res.get("ok"):
+        try:
+            pl_engine.refresh_summary()
+        except Exception as e:  # noqa: BLE001
+            res["refresh_note"] = str(e)[:100]
+    return jsonify(res), (200 if res.get("ok") else 400)
+
+
 # ── MONEY THAT LANDED WITHOUT A NAME, AND CLOSES NOBODY LOGGED (#161) ──────
 
 @bp.route("/api/unmatched", methods=["GET"])
@@ -1959,6 +2050,8 @@ def api_chat():
             (__import__('resolution').handle_autofix_log_command, False),     # 'what did you auto-fix'
             (__import__('action_feed').handle_action_feed_command, False),  # 'what needs my attention'
             (lambda m: __import__('collab').handle_collab_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # work log / queue / digest
+            (__import__('pl_engine').handle_margin_query, False),   # net/gross margin → three bases, engine-only, or an honest decline
+            (__import__('pl_engine').handle_bridge_query, False),   # 'why is this month below run-rate' → the bridge, named
             (__import__('close_detect').handle_closed_today, False),  # 'what closed today' → the detection ledger, with provenance
             (__import__('stripe_reconcile').handle_reconciliation_query, False),  # unmatched payments
             (__import__('cash_truth').handle_latest_cash_command, False),   # "last cash collected" → Stripe-actual
@@ -2245,6 +2338,8 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             (__import__('resolution').handle_autofix_log_command, False),     # 'what did you auto-fix'
             (__import__('action_feed').handle_action_feed_command, False),
             (lambda m: __import__('collab').handle_collab_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),
+            (__import__('pl_engine').handle_margin_query, False),   # net/gross margin → three bases, engine-only, or an honest decline
+            (__import__('pl_engine').handle_bridge_query, False),   # 'why is this month below run-rate' → the bridge, named
             (__import__('close_detect').handle_closed_today, False),  # 'what closed today' → the detection ledger, with provenance
             (__import__('stripe_reconcile').handle_reconciliation_query, False),
             (__import__('cash_truth').handle_latest_cash_command, False),   # "last cash collected" → Stripe-actual
