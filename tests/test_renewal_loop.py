@@ -413,18 +413,20 @@ def _client_as(monkeypatch, user, password):
 
 
 def test_non_owner_403_on_declare_and_scan(monkeypatch):
+    """R-PIOLO-PARITY (#167): the finance role declares at parity — the
+    safeguard is attribution + owner reversal, not a locked door. The
+    403s belong to the OTHER roles now."""
     c = _client_as(monkeypatch, "piolo", "piolo-pw")
-    assert c.post("/dashboard/api/renewal/scan").status_code == 403
+    assert c.get("/dashboard/api/renewal/clients?q=h").status_code == 200
+    assert c.get("/dashboard/api/renewal/state").status_code == 200
+    # finance passes the gate (the body may 400 on validation — that is the
+    # handler speaking, not the door)
+    assert c.post("/dashboard/api/renewal/scan").status_code != 403
     assert c.post("/dashboard/api/renewal/declare",
                   json={"stage": "preview", "client": "X", "kind": "churn"}
-                  ).status_code == 403
-    # R-PIOLO (#161): the client list is a READ he now has; declaring a
-    # churn or a renewal is a money-truth action and stays Rydel's.
-    assert c.get("/dashboard/api/renewal/clients?q=h").status_code == 200
+                  ).status_code != 403
     assert c.post("/dashboard/api/renewal/reverse",
-                  json={"id": 1, "confirm": True}).status_code == 403
-    # the coo still SEES the loop state (full visibility, no write authority)
-    assert c.get("/dashboard/api/renewal/state").status_code == 200
+                  json={"id": 1, "confirm": True}).status_code != 403
 
 
 def test_owner_unknown_client_400_honest(monkeypatch):

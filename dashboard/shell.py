@@ -86,9 +86,9 @@ def _health_dot() -> tuple[str, str]:
 def nav_context(active: str = "", crumbs: list | None = None) -> dict:
     """What every page needs to render the shell. Cheap: kv reads only, no
     engine call and no external pull on the request path."""
-    from dashboard.auth import is_owner, is_ad_domain, current_actor
+    from dashboard.auth import is_owner, is_finance, is_ad_domain, current_actor
     try:
-        owner = is_owner()
+        owner = is_finance()   # R-PIOLO-PARITY (#167): finance-grade nav
     except Exception:
         owner = False
     try:
@@ -109,7 +109,10 @@ def nav_context(active: str = "", crumbs: list | None = None) -> dict:
                       "active": active == "ads", "count": None})
     else:
         n_dec = _decisions_count()
+        import role_access as _RA
         for key, label, href, owner_only in NAV:
+            if key == "csm" and owner and not is_owner() and _RA.csm_withdrawn():
+                continue          # withdrawn from finance by the owner's toggle
             if owner_only and not owner:
                 continue
             links.append({"key": key, "label": label, "href": href,

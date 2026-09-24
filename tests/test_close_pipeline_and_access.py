@@ -7,6 +7,7 @@ Three things are pinned here:
     resemblance
 """
 
+import json
 import os
 import re
 
@@ -53,67 +54,77 @@ def test_piolo_reads_the_estate(app_client):
         assert c.get(path).status_code == 200, path
 
 
-def test_the_three_carve_outs_refuse_him(app_client):
+def test_parity_replaces_the_carve_outs(app_client):
+    """R-PIOLO-PARITY (#167, supersedes #161): the finance role reaches the
+    old carve-outs and passes the old money-truth gates. The safeguard is
+    attribution + owner reversal, not a locked door. Only the THREE strict
+    items refuse him."""
     c = _as(app_client, "coo", "piolo")
-    # CSM — the whole section
-    assert c.get("/dashboard/csm").status_code in (302, 403)
-    assert c.get("/dashboard/api/csm/model").status_code == 403
-    # per-person pay
-    assert c.get("/dashboard/api/comp/rules").status_code == 403
-    assert c.get("/dashboard/api/comp/cost").status_code == 403
-    # money-truth actions
+    assert c.get("/dashboard/csm").status_code == 200          # toggle ON
+    assert c.get("/dashboard/api/comp/rules").status_code == 200
+    assert c.get("/dashboard/api/comp/cost").status_code == 200
     for path in ("/dashboard/api/renewal/declare", "/dashboard/api/targets/set",
                  "/dashboard/api/scale/commit-plan", "/dashboard/api/gap/rebuild",
                  "/dashboard/api/unmatched/confirm", "/dashboard/api/closes/confirm",
                  "/dashboard/api/refresh-now"):
-        assert c.post(path, json={}).status_code == 403, path
+        assert c.post(path, json={}).status_code != 403, path
+    # the three strict items
+    assert c.post("/dashboard/api/csm/discreet", json={"on": True}).status_code == 403
+    assert c.get("/dashboard/api/parity/exceptions").status_code == 403
+    assert c.post("/dashboard/api/parity/exceptions",
+                  json={"section": "csm", "withdrawn": True}).status_code == 403
 
 
-def test_a_new_route_is_denied_to_piolo_until_granted():
-    """The point of an allowlist: nobody has to remember to lock a new door."""
+def test_a_new_route_is_inherited_by_finance_automatically():
+    """#167 inverts #161: parity by INHERITANCE. A brand-new owner route is
+    reachable by finance with no grant; only the exception list denies."""
     import role_access as RA
-    assert not RA.coo_permitted("/dashboard/api/brand-new-thing", "GET")[0]
-    assert not RA.coo_permitted("/dashboard/api/brand-new-thing", "POST")[0]
-    assert not RA.coo_permitted("/dashboard/secret-page", "GET")[0]
+    assert RA.coo_permitted("/dashboard/api/brand-new-thing", "GET")[0]
+    assert RA.coo_permitted("/dashboard/api/brand-new-thing", "POST")[0]
+    RA.set_exception("csm", True, "rydel")
+    try:
+        assert not RA.coo_permitted("/dashboard/api/csm/model", "GET")[0]
+    finally:
+        RA.set_exception("csm", False, "rydel")
+    assert RA.coo_permitted("/dashboard/api/csm/model", "GET")[0]
 
 
-def test_the_allowlist_never_grants_a_whole_prefix():
-    """A pattern like "/dashboard/" as a prefix would hand over the estate."""
+def test_the_exception_list_ships_empty_and_journals():
+    """#167: the toggle ships ON (CSM included — NOT withdrawn); every flip
+    is journaled with who and when."""
     import role_access as RA
-    for pat in RA.COO_READ + RA.COO_WRITE:
-        if pat.endswith("*"):
-            assert pat.count("/") >= 3, f"{pat} is too broad a prefix"
+    import kv_store as _kv
+    _kv._MEM.pop(RA.K_EXCEPTIONS, None)
+    assert RA.exceptions() == []
+    assert RA.csm_withdrawn() is False
+    RA.set_exception("csm", True, "rydel")
+    j = _kv.get(RA.K_JOURNAL)
+    assert j[-1]["withdrawn"] is True and j[-1]["by"] == "rydel"
+    RA.set_exception("csm", False, "rydel")
+    assert RA.exceptions() == []
+    assert RA.set_exception("nonsense", True, "rydel")["ok"] is False
 
 
-def test_every_route_in_the_app_is_classified(app_client):
-    """A route nobody has thought about should FAIL the build, not quietly
-    deny — silence is how an access decision gets made by accident."""
-    import role_access as RA
-    unclassified = []
-    for rule in app_client.url_map.iter_rules():
-        path = str(rule)
-        if path.startswith(("/static", "/health", "/bridge", "/cfo", "/debug",
-                            "/xero")):
-            continue                       # other auth layers own these
-        probe = re.sub(r"<[^>]+>", "x", path)
-        allowed_get = RA.coo_permitted(probe, "GET")[0]
-        allowed_post = RA.coo_permitted(probe, "POST")[0]
-        carved = RA.carve_out_for(probe) is not None
-        money = RA._matches(probe, RA.MONEY_TRUTH) is not None
-        gone = RA._matches(probe, RA.DESTRUCTIVE) is not None
-        if not (allowed_get or allowed_post or carved or money or gone):
-            unclassified.append(path)
-    assert not unclassified, (
-        "these routes are denied to Piolo by omission rather than by a "
-        f"decision — classify them in role_access.py: {unclassified}")
+def test_other_roles_are_exactly_as_walled_as_before(app_client):
+    """#167 changed FINANCE only. ad_domain, sales and anonymous keep their
+    fail-closed scopes — spot-checked across the finance estate."""
+    for role, user in (("ad_domain", "romano"), ("sales", "kalin")):
+        c = _as(app_client, role, user)
+        for path in ("/dashboard/api/snapshot", "/dashboard/api/comp/rules",
+                     "/dashboard/api/unit-economics", "/dashboard/api/pl",
+                     "/dashboard/api/csm/model"):
+            assert c.get(path).status_code in (302, 403), (role, path)
+    anon = app_client.test_client()
+    assert anon.get("/dashboard/api/snapshot").status_code in (302, 401)
 
 
-def test_the_commission_column_is_not_rendered_for_piolo(app_client):
+def test_the_commission_column_is_rendered_for_piolo_too(app_client):
+    """#167: per-person pay is his at parity — the column renders for both."""
     owner = _as(app_client, "owner", "rydel").get("/dashboard/sales").data.decode()
     coo = _as(app_client, "coo", "piolo").get("/dashboard/sales").data.decode()
     assert ">Commission<" in owner
-    assert ">Commission<" not in coo
-    assert "pay: owner-only" in coo
+    assert ">Commission<" in coo
+    assert "pay: owner-only" not in coo
 
 
 def test_a_total_that_is_one_persons_pay_is_suppressed():
@@ -127,28 +138,37 @@ def test_a_total_that_is_one_persons_pay_is_suppressed():
     assert "commission" not in RA.scrub_person_pay(one)[0]
 
 
-def test_edith_refuses_per_person_pay_to_piolo(monkeypatch):
+def test_edith_refuses_per_person_pay_only_to_non_finance(monkeypatch):
+    """#167: finance hears pay figures; a non-finance role still doesn't."""
     import sales_cost
-    monkeypatch.setattr("dashboard.auth.is_owner", lambda: False)
+    monkeypatch.setattr("dashboard.auth.is_finance", lambda: False)
     reply, handled = sales_cost.handle_commission_query(
         "what do commissions cost us per client")
-    assert handled and "owner-only" in reply
+    assert handled and "limited to the owner and the finance role" in reply
 
 
-def test_edith_is_silent_about_csm_for_piolo():
+def test_edith_answers_csm_for_piolo_unless_withdrawn():
     import csm_plan
-    reply, handled = csm_plan.handle_csm_command(
-        "csm roi status", {"user": "piolo", "role": "coo"})
-    assert reply is None and handled is False
+    import role_access as RA
+    assert csm_plan._csm_role_ok({"user": "piolo", "role": "coo"}) is True
+    RA.set_exception("csm", True, "rydel")
+    try:
+        reply, handled = csm_plan.handle_csm_command(
+            "csm roi status", {"user": "piolo", "role": "coo"})
+        assert reply is None and handled is False
+    finally:
+        RA.set_exception("csm", False, "rydel")
 
 
-def test_edith_voice_stays_owner_exclusive():
+def test_edith_voice_is_his_too(app_client):
+    """#167: chat AND voice, same fallback rules. The routes answer a
+    finance session (the TTS may 4xx on missing text — the door is open)."""
     import role_access as RA
     for path in ("/dashboard/api/tts", "/dashboard/api/voice-status",
-                 "/dashboard/audio/entrance", "/dashboard/api/entrance-audio"):
-        ok, why = RA.coo_permitted(path, "GET")
-        assert not ok and "voice" in why
-    assert RA.coo_permitted("/dashboard/api/chat-stream", "POST")[0]
+                 "/dashboard/api/chat-stream"):
+        assert RA.coo_permitted(path, "GET")[0], path
+    c = _as(app_client, "coo", "piolo")
+    assert c.get("/dashboard/api/voice-status").status_code == 200
 
 
 # ── PART 3 · evidence-first detection ───────────────────────────────────────
@@ -364,15 +384,13 @@ def test_the_snapshot_carries_no_per_person_pay_to_a_non_owner(app_client):
     coo = _as(app_client, "coo", "piolo").get("/dashboard/api/snapshot").data.decode()
     if "error" in owner:
         pytest.skip("no snapshot on this machine")
-    for marker in ("closer_commission", "commission_total", "salary_aud",
-                   "salary_php", "owner_pay", "set_fees", "per_setter\":[{\"name"):
-        assert marker not in coo, marker
+    # #167: finance sees the snapshot UNTOUCHED; the scrub now guards only
+    # non-finance roles (asserted through scrubbed_for directly)
     payload = json.loads(coo)
-    assert payload["comp_scope"] == "owner-only"
-    assert "owner-only" in payload["comp_scope_note"]
-    # Stripe's own bank payouts are money INTO the business, not a person's
-    # pay — scrubbing those would break the cash view for no reason
-    assert (payload.get("stripe") or {}).get("payouts") is not None
+    assert "comp_scope" not in payload
+    import role_access as RA
+    other = RA.scrubbed_for("some_future_role", json.loads(coo))
+    assert other.get("comp_scope") == "owner-only"
 
 
 def test_a_scrubbed_payload_never_reads_as_nobody_was_paid():
@@ -385,17 +403,15 @@ def test_a_scrubbed_payload_never_reads_as_nobody_was_paid():
         "Piolo is told nobody earned anything")
 
 
-def test_only_one_contributor_suppresses_the_total_too():
+def test_finance_is_never_scrubbed_and_others_always_are():
     import role_access as RA
     snap = {"sales": {"per_closer": [{"name": "Kalin", "commission_total": 900.0}],
                       "payout": {"per_setter": []}},
             "costs": {"closer_commission": 900.0}}
-    out = RA.scrubbed_for("coo", snap)
-    assert out["comp_total_suppressed"] is True
-    assert "their pay with a different label" in out["comp_scope_note"]
-    snap["sales"]["payout"]["per_setter"] = [{"name": "Coby", "owed": 150.0}]
-    out2 = RA.scrubbed_for("coo", snap)
-    assert out2["comp_total_suppressed"] is False
+    assert RA.scrubbed_for("coo", snap) is snap          # parity (#167)
+    assert RA.scrubbed_for("owner", snap) is snap
+    other = RA.scrubbed_for("ad_domain", snap)
+    assert "closer_commission" not in json.dumps(other)
 
 
 def test_the_owner_sees_the_payload_untouched():
@@ -480,13 +496,15 @@ def test_a_non_owner_turn_never_gets_owner_scope_memory(monkeypatch):
     assert "before the narrative" in coo_block, "ordinary context still flows"
 
 
-def test_both_chat_paths_pass_the_owner_flag():
-    """Every recall call carries the owner flag; other owner-scoped call
-    sites may exist beside them (#164 added one)."""
+def test_both_chat_paths_pass_the_parity_flag():
+    """#167: recall passes is_finance() — no fact withheld from his channel."""
     src = _code_only(_read("dashboard", "routes.py"))
     n = src.count("build_recall_context(")
     assert n >= 2
-    assert src.count("owner=is_owner()") >= n
+    assert src.count("owner=is_finance()") >= n
+    # true_owner=is_owner() (the CSM template's strict flag) is legitimate;
+    # a RECALL call carrying is_owner is not
+    assert "owner=is_owner()" not in src.replace("true_owner=is_owner()", "")
 
 
 def test_a_payment_date_never_overrides_a_close_date(monkeypatch):

@@ -55,18 +55,31 @@ _CSM_APIS = ("/dashboard/api/csm/summary", "/dashboard/api/csm/model",
 
 
 def test_identity_route_matrix(monkeypatch):
-    """piolo (full-visibility coo) 403s on EVERY csm API — the ruled
-    exception; ad_domain + sales walled; anon refused; owner 200."""
+    """R-PIOLO-PARITY (#167): the finance role reaches every CSM surface at
+    parity — UNLESS the owner's "Withdraw from Piolo" toggle is on, in
+    which case every path 403s/redirects again. Both states drilled here.
+    ad_domain + sales stay walled; anon refused; owner always 200."""
     _kv_reset(monkeypatch)
     app, login = _clients(monkeypatch)
+    import role_access as RA
     piolo = login("piolo")
-    for path in _CSM_APIS:
-        r = piolo.get(path)
-        # /explain is POST-only → GET resolves 405 at routing (piolo POST is
-        # asserted 403 in test_posts_owner_only)
-        want = (403, 405) if path.endswith("/explain") else (403,)
-        assert r.status_code in want, f"piolo reached {path}: {r.status_code}"
-    assert piolo.get("/dashboard/csm").status_code == 302   # page redirects
+    # parity (toggle shipped ON = not withdrawn): the cheap endpoints answer
+    for path in ("/dashboard/api/csm/config",
+                 "/dashboard/api/csm/comp-preflight"):
+        assert piolo.get(path).status_code == 200, path
+    assert piolo.get("/dashboard/csm").status_code == 200
+    # withdrawn: every CSM path refuses him, and ONLY him
+    RA.set_exception("csm", True, "rydel")
+    try:
+        for path in _CSM_APIS:
+            r = piolo.get(path)
+            want = (403, 405) if path.endswith("/explain") else (403,)
+            assert r.status_code in want, f"piolo reached {path}: {r.status_code}"
+        assert piolo.get("/dashboard/csm").status_code == 302
+        rydel_still = login("rydel")
+        assert rydel_still.get("/dashboard/api/csm/config").status_code == 200
+    finally:
+        RA.set_exception("csm", False, "rydel")
     romano = login("romano")
     for path in ("/dashboard/csm", "/dashboard/api/csm/summary",
                  "/dashboard/api/csm/card"):
@@ -87,17 +100,17 @@ def test_identity_route_matrix(monkeypatch):
 
 
 def test_posts_owner_only(monkeypatch):
+    """#167: finance acts at parity on the CSM actions — EXCEPT the discreet
+    toggle, which is one of the three strict owner-only items."""
     _kv_reset(monkeypatch)
     app, login = _clients(monkeypatch)
     piolo = login("piolo")
-    for path, body in (("/dashboard/api/csm/config", {"start_date": "2026-12-01"}),
-                       ("/dashboard/api/csm/gates", {"id": "floor_test", "done": True}),
+    assert piolo.post("/dashboard/api/csm/discreet",
+                      json={"on": True}).status_code == 403   # strict
+    for path, body in (("/dashboard/api/csm/gates", {"id": "floor_test", "done": True}),
                        ("/dashboard/api/csm/risks", {"id": "routing_around", "status": "ok"}),
-                       ("/dashboard/api/csm/discreet", {"on": True}),
-                       ("/dashboard/api/csm/tier", {"client": "X", "tier": 1}),
-                       ("/dashboard/api/csm/analysis", {}),
-                       ("/dashboard/api/csm/explain", {"q": "csm"})):
-        assert piolo.post(path, json=body).status_code == 403, path
+                       ("/dashboard/api/csm/tier", {"client": "X", "tier": 1})):
+        assert piolo.post(path, json=body).status_code != 403, path
 
 
 def test_discreet_mode_hides_card(monkeypatch):
@@ -122,11 +135,20 @@ def test_discreet_mode_hides_card(monkeypatch):
 
 
 def test_edith_silence_for_non_owner():
-    """Non-owner drill: (None, False) — silent fall-through, never a refusal
-    that confirms the domain exists. Context injector likewise empty."""
+    """#167: the finance role hears CSM answers at parity (unless
+    withdrawn); every OTHER role still gets the silent fall-through that
+    never confirms the domain exists."""
     import csm_plan
-    for actor in ({"user": "piolo", "role": "coo"},
-                  {"user": "romano", "role": "ad_domain"},
+    import role_access as RA
+    import kv_store as _kv
+    _kv._MEM.pop(RA.K_EXCEPTIONS, None) if hasattr(_kv, "_MEM") else None
+    assert csm_plan._csm_role_ok({"user": "piolo", "role": "coo"}) is True
+    RA.set_exception("csm", True, "rydel")
+    try:
+        assert csm_plan._csm_role_ok({"user": "piolo", "role": "coo"}) is False
+    finally:
+        RA.set_exception("csm", False, "rydel")
+    for actor in ({"user": "romano", "role": "ad_domain"},
                   {"user": "sales", "role": "sales"}, {}, None):
         reply, handled = csm_plan.handle_csm_command("csm roi status", actor)
         assert reply is None and handled is False, actor

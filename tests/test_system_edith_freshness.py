@@ -252,7 +252,7 @@ def test_there_is_only_one_edith_and_one_voice_pipeline():
     assert "elevenlabs" not in js.lower(), "the key must never reach the browser"
     assert "channel: 'dashboard'" in js, "its own thread on shared memory"
     routes = _read("dashboard", "routes.py")
-    assert 'requested == "dashboard" and is_owner()' in routes
+    assert 'requested == "dashboard" and is_finance()' in routes   # parity (#167)
 
 
 def test_the_dock_loads_after_first_paint_in_its_own_boundary():
@@ -279,8 +279,14 @@ def test_discreet_mode_collapses_the_dock_and_says_so():
 
 
 def test_a_non_owner_gets_no_dock(client):
+    """#167: the dock (and the voice behind it) is finance-grade — Piolo has
+    it; ad_domain and sales still don't."""
     import app as appmod
-    for role, user in (("coo", "piolo"), ("ad_domain", "romano"), ("sales", "kalin")):
+    coo = appmod.app.test_client()
+    with coo.session_transaction() as s:
+        s["actor"] = {"user": "piolo", "role": "coo", "display": "Piolo"}
+    assert 'id="ed-pill"' in coo.get("/dashboard/today").data.decode()
+    for role, user in (("ad_domain", "romano"), ("sales", "kalin")):
         c = appmod.app.test_client()
         with c.session_transaction() as s:
             s["actor"] = {"user": user, "role": role, "display": user}
@@ -297,8 +303,16 @@ def test_a_non_owner_gets_no_dock(client):
 
 
 def test_run_checks_and_refresh_are_owner_only(client):
+    """#167: finance runs checks and refreshes at parity; ad_domain stays
+    walled."""
     import app as appmod
-    for role, user in (("coo", "piolo"), ("ad_domain", "romano")):
+    coo = appmod.app.test_client()
+    with coo.session_transaction() as s:
+        s["actor"] = {"user": "piolo", "role": "coo", "display": "Piolo"}
+    for path in ("/dashboard/api/system/run-checks",
+                 "/dashboard/api/refresh-now"):
+        assert coo.post(path).status_code != 403, path
+    for role, user in (("ad_domain", "romano"),):
         c = appmod.app.test_client()
         with c.session_transaction() as s:
             s["actor"] = {"user": user, "role": role, "display": user}

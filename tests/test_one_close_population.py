@@ -126,11 +126,12 @@ def test_register_endpoints_are_role_gated():
                  "/dashboard/api/register/reconciliation"):
         ok, why = RA.coo_permitted(path, "GET")
         assert ok, f"{path}: {why}"
-    # record-a-close and rebuild are owner-only money-truth actions
+    # R-PIOLO-PARITY (#167): record-a-close and rebuild are his actions
+    # too — attributed and owner-reversible, not locked
     for path in ("/dashboard/api/register/declare",
                  "/dashboard/api/register/rebuild"):
         ok, why = RA.coo_permitted(path, "POST")
-        assert not ok and "owner" in why.lower()
+        assert ok, f"{path}: {why}"
 
 
 def test_scorecard_cell_is_labelled_a_reference_not_a_count():
@@ -158,9 +159,9 @@ def _as(app, role, user):
 
 
 def test_register_api_scrubs_per_person_pay_for_coo(app_client, monkeypatch):
-    """R-PIOLO: register entries carry the tracker's commission cells — the
-    coo's read gets them REMOVED whole-key, never zeroed; the owner's read
-    keeps them."""
+    """R-PIOLO-PARITY (#167): the finance role reads the commission cells at
+    parity; the scrub now guards only non-finance roles (checked through
+    scrubbed_for directly, since no such role can reach this route)."""
     import close_register as CR
     import kv_store
     entry = {
@@ -194,17 +195,21 @@ def test_register_api_scrubs_per_person_pay_for_coo(app_client, monkeypatch):
     r = coo.get("/dashboard/api/register?window=90d&clock=activity")
     assert r.status_code == 200
     body = r.get_json()
-    blob = str(body)
-    assert "closer_commission_cell" not in blob
-    assert "900.0" not in blob and "125.0" not in blob
-    assert body["entries"][0]["person"] == "Pay Test"    # the close itself stays
+    assert body["entries"][0]["closer_commission_cell"] == 900.0   # parity
     owner = _as(app_client, "owner", "rydel")
     ro = owner.get("/dashboard/api/register?window=90d&clock=activity")
     assert ro.get_json()["entries"][0]["closer_commission_cell"] == 900.0
+    import role_access as RA
+    other = RA.scrubbed_for("ad_domain", body)
+    assert "closer_commission_cell" not in str(other)
 
 
 def test_declare_and_evidence_options_refused_for_coo(app_client):
+    """#167: Record-a-close is his action too — attributed, owner-reversible.
+    The 403s belong to the other roles."""
     coo = _as(app_client, "coo", "piolo")
-    assert coo.get("/dashboard/api/register/evidence-options").status_code == 403
-    assert coo.post("/dashboard/api/register/declare", json={}).status_code == 403
-    assert coo.post("/dashboard/api/register/rebuild").status_code == 403
+    assert coo.get("/dashboard/api/register/evidence-options").status_code != 403
+    assert coo.post("/dashboard/api/register/declare", json={}).status_code != 403
+    assert coo.post("/dashboard/api/register/rebuild").status_code != 403
+    ad = _as(app_client, "ad_domain", "romano")
+    assert ad.post("/dashboard/api/register/declare", json={}).status_code in (302, 403)

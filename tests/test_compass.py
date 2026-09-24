@@ -406,11 +406,13 @@ def test_the_plan_is_readable_by_piolo_and_committed_only_by_rydel():
     assert c.get("/dashboard/scale").status_code == 200
     assert c.get("/dashboard/api/scale/defaults").status_code == 200
     assert c.post("/dashboard/api/scale/simulate", json={}).status_code != 403
+    # R-PIOLO-PARITY (#167): committing is his at parity — attributed and
+    # owner-reversible; only the three strict items refuse him
     for committing in ("/dashboard/api/scale/commit-plan",
                        "/dashboard/api/scale/bands",
                        "/dashboard/api/scale/north-star",
                        "/dashboard/api/scale/scenarios"):
-        assert c.post(committing, json={}).status_code == 403, committing
+        assert c.post(committing, json={}).status_code != 403, committing
 
 
 def test_read_only_law_no_mutations_in_compass():

@@ -1,0 +1,13 @@
+{
+ "files": [
+  "role_access.py",
+  "dashboard/auth.py",
+  "dashboard/routes.py",
+  "dashboard/shell.py",
+  "dashboard/ads.py",
+  "csm_plan.py",
+  "sales_cost.py",
+  "dashboard/templates/csm.html"
+ ],
+ "findings": []
+}

@@ -632,13 +632,13 @@ def handle_commission_query(text: str):
     if not _COMM_RE.search(text or ""):
         return None, False
     try:
-        from dashboard.auth import is_owner
-        owner = is_owner()
+        from dashboard.auth import is_finance
+        owner = is_finance()   # R-PIOLO-PARITY (#167)
     except Exception:
         owner = False
     if not owner:
-        return ("Commission figures are owner-only — I can't share what "
-                "individual people are paid."), True
+        return ("Commission figures are limited to the owner and the finance "
+                "role — I can't share what individual people are paid."), True
     try:
         a = averages(90)
         t = per_close_cost_table()

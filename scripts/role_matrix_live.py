@@ -23,7 +23,8 @@ ACCOUNTS = [
     ("anon", None, None),
 ]
 
-# what Piolo must be able to open
+# R-PIOLO-PARITY (#167): piolo == owner everywhere except the three strict
+# items and the exception list. GRANTED covers the old carve-outs on purpose.
 GRANTED = [
     "/dashboard/today", "/dashboard/sales", "/dashboard/scale",
     "/dashboard/scale/travelling", "/dashboard/system", "/dashboard/landing",
@@ -35,16 +36,17 @@ GRANTED = [
     "/dashboard/api/renewal/clients", "/dashboard/api/snapshot",
 ]
 # what must refuse him
+GRANTED_EXTRA = [
+    "/dashboard/csm", "/dashboard/api/csm/config", "/dashboard/api/comp/rules",
+    "/dashboard/api/comp/cost", "/dashboard/api/voice-status",
+    "/dashboard/memory/api/facts",
+]
 REFUSED_GET = [
-    "/dashboard/api/csm/model", "/dashboard/api/comp/rules",
-    "/dashboard/api/comp/cost", "/dashboard/api/tts",
-    "/dashboard/memory/api/facts", "/dashboard/api/voice-status",
+    "/dashboard/api/parity/exceptions",       # one of the THREE
 ]
 REFUSED_POST = [
-    "/dashboard/api/unmatched/confirm", "/dashboard/api/closes/confirm",
-    "/dashboard/api/renewal/declare", "/dashboard/api/targets/set",
-    "/dashboard/api/scale/commit-plan", "/dashboard/api/gap/rebuild",
-    "/dashboard/api/refresh-now", "/dashboard/api/comp/rules",
+    "/dashboard/api/csm/discreet",            # the owner's own toggle
+    "/dashboard/api/parity/exceptions",
 ]
 # a route nobody has classified
 UNKNOWN = "/dashboard/api/not-a-real-route-161"
@@ -72,7 +74,7 @@ def main():
         sessions[label] = session_for(user, pw)
 
     coo = sessions["coo"]
-    for p in GRANTED:
+    for p in GRANTED + GRANTED_EXTRA:
         code = coo.get(BASE + p, timeout=90, allow_redirects=False).status_code
         out["granted"][p] = code
         if code != 200:
@@ -88,10 +90,28 @@ def main():
         out["refused_post"][p] = code
         if code != 403:
             out["fails"].append(f"piolo could POST {p} ({code})")
+    # parity on the old money-truth actions: the gate opens (any non-403)
+    out["parity_posts"] = {}
+    for p in ("/dashboard/api/renewal/scan", "/dashboard/api/targets/set",
+              "/dashboard/api/scale/commit-plan", "/dashboard/api/register/rebuild"):
+        code = coo.post(BASE + p, json={}, timeout=120,
+                        allow_redirects=False).status_code
+        out["parity_posts"][p] = code
+        if code == 403:
+            out["fails"].append(f"piolo still 403 on {p}")
     out["unknown_route"] = {
         "GET": coo.get(BASE + UNKNOWN, timeout=30, allow_redirects=False).status_code,
         "POST": coo.post(BASE + UNKNOWN, json={}, timeout=30,
                          allow_redirects=False).status_code}
+    # inheritance: piolo's status on any real owner surface equals owner's
+    out["inheritance"] = {}
+    owner_s = sessions["owner"]
+    for p in ("/dashboard/pl", "/dashboard/closes", "/dashboard/api/register"):
+        a = owner_s.get(BASE + p, timeout=90, allow_redirects=False).status_code
+        b = coo.get(BASE + p, timeout=90, allow_redirects=False).status_code
+        out["inheritance"][p] = {"owner": a, "piolo": b}
+        if a != b:
+            out["fails"].append(f"inheritance broken on {p}: owner {a} vs piolo {b}")
 
     anon = sessions["anon"]
     out["anon"] = {p: anon.get(BASE + p, timeout=30,
@@ -105,7 +125,8 @@ def main():
     out["owner_still_has_it"] = {
         p: owner.get(BASE + p, timeout=60, allow_redirects=False).status_code
         for p in ("/dashboard/api/comp/rules", "/dashboard/csm",
-                  "/dashboard/api/tts?text=hello")}
+                  "/dashboard/api/tts?text=hello",
+                  "/dashboard/api/parity/exceptions")}
     for p, code in out["owner_still_has_it"].items():
         if code != 200:
             out["fails"].append(f"OWNER lost {p} ({code})")

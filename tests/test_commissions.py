@@ -288,9 +288,13 @@ def app_client():
 
 
 def test_comp_rules_are_owner_only(app_client):
-    """Per-person commission is finance. ad_domain, sales and anonymous are
-    all refused — structurally, by the decorator."""
-    for role, user in (("ad_domain", "romano"), ("sales", "kalin"), ("coo", "piolo")):
+    """R-PIOLO-PARITY (#167): the finance role reads the rulebook at parity;
+    ad_domain, sales and anonymous stay refused — structurally."""
+    coo = app_client.app.test_client()
+    with coo.session_transaction() as s:
+        s["actor"] = {"user": "piolo", "role": "coo", "display": "Piolo"}
+    assert coo.get("/dashboard/api/comp/rules").status_code == 200
+    for role, user in (("ad_domain", "romano"), ("sales", "kalin")):
         c = app_client.app.test_client()
         with c.session_transaction() as s:
             s["actor"] = {"user": user, "role": role, "display": user}
@@ -311,7 +315,7 @@ def test_edith_refuses_commission_figures_to_a_non_owner(app_client):
         reply, handled = SC.handle_commission_query(
             "what do commissions cost us per client")
         assert handled is True
-        assert "owner-only" in reply.lower()
+        assert "limited to the owner and the finance role" in reply
         for name in ("kalin", "coby", "maran"):
             assert name not in reply.lower()
         assert "$" not in reply

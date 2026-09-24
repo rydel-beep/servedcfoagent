@@ -55,6 +55,31 @@ svg text{font-family:inherit}
   <div class="header-left">
     <a href="/dashboard/" class="ops-back" title="Back to dashboard">← Dashboard</a>
     <h1 class="wordmark" style="font-size:1.1rem">CSM Investment</h1>
+    {% if true_owner %}
+    <button id="parity-csm-toggle" type="button" title="One of the three
+      strict owner-only controls: hides this whole section from the finance
+      role without a deploy. Journaled both ways."
+      style="margin-left:12px;font-size:11px;padding:4px 9px;border-radius:7px;
+             border:1px solid rgba(122,154,191,.3);background:transparent;
+             color:inherit;cursor:pointer">
+      {{ 'Restore to Piolo' if csm_withdrawn else 'Withdraw from Piolo' }}</button>
+    <script>
+    document.getElementById('parity-csm-toggle').addEventListener('click', function () {
+      var b = this; b.disabled = true;
+      fetch('/dashboard/api/parity/exceptions', {method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({section: 'csm',
+                              withdrawn: b.textContent.indexOf('Withdraw') >= 0})})
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          b.disabled = false;
+          if (j.ok) b.textContent = j.withdrawn ? 'Restore to Piolo' : 'Withdraw from Piolo';
+          else b.textContent = 'failed: ' + (j.error || '');
+        })
+        .catch(function () { b.disabled = false; b.textContent = 'failed'; });
+    });
+    </script>
+    {% endif %}
     <span class="wordmark-sub" id="csm-who"></span>
   </div>
 </header>

@@ -22,7 +22,7 @@ import secrets
 
 from flask import redirect, request, make_response, url_for, session, g, jsonify
 
-from role_access import coo_permitted, carve_out_for  # R-PIOLO, #161
+from role_access import finance_blocked  # R-PIOLO-PARITY, #167
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +155,23 @@ def is_owner() -> bool:
     return current_actor().get("role") == "owner"
 
 
+# ── R-PIOLO-PARITY (#167) — Rydel's ruling, 24 Sep, supersedes the #161
+# carve-outs. The finance role (Piolo, CFO/bookkeeper) sees and does
+# EVERYTHING the owner does: every tab, drawer, export and action, EDITH
+# chat AND voice with the same facts. The safeguards that replace the
+# carve-outs: every action is attributed and journaled, the owner can
+# reverse any action, and discreet mode stays the owner's own toggle.
+# Exactly three things remain truly owner-only: the discreet-mode toggle,
+# credential/env management, and the parity exception list itself.
+_FINANCE_ROLES = ("owner", "coo")
+
+
+def is_finance(role: str | None = None) -> bool:
+    """Owner-grade access: the owner, or the finance role at parity."""
+    r = role if role is not None else current_actor().get("role")
+    return r in _FINANCE_ROLES
+
+
 def audit_login(actor: dict, ok: bool = True) -> None:
     """Append a login event to the durable audit (kv_store); never stores the password."""
     try:
@@ -190,15 +207,16 @@ def require_auth(f):
                     return jsonify({"error": "This view is limited to lead reactivation.",
                                     "scope": "sales"}), 403
                 return redirect(url_for("dashboard.sales_page"))
-            # R-PIOLO (#161): the coo role is allowlisted the same fail-closed
-            # way — full READ across the estate, his queue actions, and three
-            # carve-outs that deny first. A route nobody has granted is
-            # refused, so a new endpoint cannot open by omission.
+            # R-PIOLO-PARITY (#167): the finance role inherits the owner's
+            # reach — no allowlist to maintain, so a route granted to the
+            # owner is granted to finance at the same moment. The ONLY
+            # denials come from the explicit exception list (default empty;
+            # the CSM toggle writes to it) and the three strict items.
             if act.get("role") == "coo":
-                ok, why = coo_permitted(request.path, request.method)
-                if not ok:
+                blocked, why = finance_blocked(request.path)
+                if blocked:
                     if "/api/" in (request.path or ""):
-                        return jsonify({"error": why, "scope": "coo"}), 403
+                        return jsonify({"error": why, "scope": "finance"}), 403
                     return redirect(url_for("dashboard.landing_page"))
             if act.get("role") in _AD_DOMAIN_ROLES and not ad_domain_permitted(request.path):
                 if "/api/" in (request.path or ""):
@@ -226,12 +244,28 @@ def require_auth(f):
 
 
 def require_owner(f):
-    """Owner-only gate (server-side). Both accounts have full caps today, so this is reserved for
-    anything Rydel later marks owner-only; returns 403 for a non-owner actor."""
+    """FINANCE-GRADE gate (R-PIOLO-PARITY, #167): the owner or the finance
+    role at full parity. The name stays for the sixty-plus call sites; the
+    meaning is the ruling's. For the three truly-owner-only items use
+    require_owner_strict."""
+    @functools.wraps(f)
+    @require_auth
+    def wrapper(*args, **kwargs):
+        if not is_finance():
+            return jsonify({"error": "finance-only",
+                            "role": current_actor().get("role")}), 403
+        return f(*args, **kwargs)
+    return wrapper
+
+
+def require_owner_strict(f):
+    """The THREE (#167): the discreet-mode toggle, credential/env
+    management, and the parity exception list. Nobody but the owner."""
     @functools.wraps(f)
     @require_auth
     def wrapper(*args, **kwargs):
         if not is_owner():
-            return jsonify({"error": "owner-only", "role": current_actor().get("role")}), 403
+            return jsonify({"error": "owner-only (strict)",
+                            "role": current_actor().get("role")}), 403
         return f(*args, **kwargs)
     return wrapper

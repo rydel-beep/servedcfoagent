@@ -301,10 +301,12 @@ def test_queue_admin_routes_owner_only(monkeypatch):
     c = app.test_client()
     assert c.post("/dashboard/login",
                   data={"username": "piolo", "password": "pp"}).status_code == 302
+    # R-PIOLO-PARITY (#167): the finance role passes the gate; only a
+    # missing/invalid body can refuse him now
     assert c.post("/dashboard/api/collab/undismiss",
-                  json={"flag_id": "x"}).status_code == 403
+                  json={"flag_id": "x"}).status_code != 403
     assert c.post("/dashboard/api/collab/restore",
-                  json={"signature": "x"}).status_code == 403
+                  json={"signature": "x"}).status_code != 403   # parity (#167)
     # Piolo can still RESOLVE (it's his queue) — never 403'd from resolving
     r = c.post("/dashboard/api/collab/resolve", json={"flag_id": "nope", "note": "n"})
     assert r.status_code != 403          # (500 here = no test DB, not a gate)

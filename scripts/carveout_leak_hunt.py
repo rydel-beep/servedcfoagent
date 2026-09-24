@@ -77,11 +77,11 @@ def main():
         path = str(rule)
         if "<" in path or "GET" not in rule.methods:
             continue
-        if not RA.coo_permitted(path, "GET")[0]:
-            continue
+        # R-PIOLO-PARITY (#167): the finance role is EXPECTED to see pay —
+        # this hunt now polices the roles that must not: ad_domain.
         c = app.test_client()
         with c.session_transaction() as s:
-            s["actor"] = {"user": "piolo", "role": "coo", "display": "Piolo"}
+            s["actor"] = {"user": "romano", "role": "ad_domain", "display": "Romano"}
         try:
             r = c.get(path)
         except Exception as e:  # noqa: BLE001

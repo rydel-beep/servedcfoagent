@@ -14,7 +14,8 @@ from flask import (
     url_for, Response, stream_with_context, session,
 )
 
-from dashboard.auth import (require_auth, require_owner, is_owner,
+from dashboard.auth import (require_auth, require_owner, require_owner_strict,
+                            is_owner, is_finance,
                             DASHBOARD_TOKEN, COOKIE_NAME, COOKIE_MAX_AGE)
 from dashboard.chat import chat as chat_fn, chat_stream as chat_stream_fn
 from config import CFO_REFRESH_KEY
@@ -91,15 +92,17 @@ def landing_page():
     headline. With JS disabled the page still reads correctly."""
     from snapshot import load_persisted
     from dashboard import exec_top
-    from dashboard.auth import is_owner
     snap = load_persisted()
     try:
-        owner = is_owner()
+        owner = is_finance()       # R-PIOLO-PARITY (#167): finance-grade view
     except Exception:
         owner = False
-    # CSM card honors DISCREET MODE (#146): owner AND discreet-off
+    # CSM card honors DISCREET MODE (#146) and the parity toggle (#167):
+    # hidden for finance when the owner has withdrawn the section
     try:
-        csm_visible = owner and not bool(session.get(_CSM_DISCREET_KEY))
+        import role_access as _RA
+        csm_visible = (owner and not bool(session.get(_CSM_DISCREET_KEY))
+                       and (is_owner() or not _RA.csm_withdrawn()))
     except Exception:
         csm_visible = False
     try:
@@ -209,9 +212,8 @@ def today_page():
     only; no external call happens on page load."""
     from snapshot import load_persisted
     from dashboard import today as today_mod
-    from dashboard.auth import is_owner
     try:
-        owner = is_owner()
+        owner = is_finance()       # R-PIOLO-PARITY (#167)
     except Exception:
         owner = False
     snap = load_persisted()
@@ -333,15 +335,14 @@ def pl_page():
     except Exception as e:  # noqa: BLE001
         br = {"month": mkey, "items": [], "nets": {},
               "note": f"bridge unavailable: {str(e)[:120]}"}
-    from dashboard.auth import is_owner
     mapping = None
-    if is_owner():
+    if is_finance():               # parity (#167): the mapping is his too
         import pl_mapping
         mapping = pl_mapping.mapping_page()
     resp = make_response(render_template(
         "pl.html", ladder=ladder, basis=basis, wname=wname,
         windows=pl_engine.WINDOWS, bridge=br, fy26=pl_engine.FY26,
-        mapping=mapping, owner=is_owner(), asset_v=_ASSET_VERSION,
+        mapping=mapping, owner=is_finance(), asset_v=_ASSET_VERSION,
         **_shell("money")))
     resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -469,7 +470,7 @@ def closes_ledger_page():
     else:
         flash_error = None
     rows = sorted(rows, key=lambda r: r["close_date"], reverse=True)
-    from dashboard.auth import is_owner as _is_owner
+    from dashboard.auth import is_finance as _is_owner  # parity (#167)
     return render_template(
         "closes.html", asset_v=_ASSET_VERSION, defs_json=_defs_json(),
         rows=rows, totals=totals, window=window, window_label=label,
@@ -578,6 +579,31 @@ def api_closes_confirm():
     return jsonify(res), (200 if res.get("ok") else 400)
 
 
+# ── THE PARITY EXCEPTION LIST (#167) — one of the THREE strict items ───────
+
+@bp.route("/api/parity/exceptions", methods=["GET"])
+@require_owner_strict
+def api_parity_exceptions():
+    import role_access as RA
+    import kv_store as _kv
+    return jsonify({"exceptions": RA.exceptions(),
+                    "csm_withdrawn": RA.csm_withdrawn(),
+                    "journal": (_kv.get(RA.K_JOURNAL) or [])[-10:]})
+
+
+@bp.route("/api/parity/exceptions", methods=["POST"])
+@require_owner_strict
+def api_parity_exceptions_edit():
+    """The owner's "Withdraw from Piolo" toggle — journaled, no deploy."""
+    import role_access as RA
+    from dashboard.auth import current_actor
+    body = request.get_json(silent=True) or {}
+    res = RA.set_exception(str(body.get("section") or "csm"),
+                           bool(body.get("withdrawn")),
+                           (current_actor() or {}).get("user") or "owner")
+    return jsonify(res), (200 if res.get("ok") else 400)
+
+
 # ── SALES COMP RULES (#159) — OWNER ONLY, every edit journaled ──────────────
 
 @bp.route("/api/comp/rules", methods=["GET"])
@@ -659,7 +685,7 @@ def sales_board_page():
     try:
         board = sales_scoreboard.build(
             window, request.args.get("start"), request.args.get("end"),
-            comp_visible=is_owner())   # R-PIOLO: per-person pay is owner-only
+            comp_visible=is_finance())   # R-PIOLO-PARITY (#167): his too
     except Exception as e:  # noqa: BLE001 — the page degrades, never blanks
         logger.exception("sales scoreboard failed")
         board = {"window": {"label": "unavailable", "key": window, "start": "",
@@ -669,7 +695,7 @@ def sales_board_page():
                  "pipeline": {"stages": [], "note": ""},
                  "upcoming": {"rows": [], "count": 0, "note": ""},
                  "unmarked": {"rows": [], "count": 0, "note": "", "by_closer": []},
-                 "comp_visible": is_owner(),
+                 "comp_visible": is_finance(),
                  "speed_to_lead": {"available": False, "note": "unavailable"},
                  "targets": {"available": False, "note": "unavailable", "found": []},
                  "cash": {"total": 0, "source": "—"}, "notes": []}
@@ -709,9 +735,8 @@ def area_page(area):
         return redirect(url_for("dashboard.system_page_view"))
     if area not in _AREAS:
         return jsonify({"error": "unknown area", "known": sorted(_AREAS)}), 404
-    from dashboard.auth import is_owner
-    if area == "decisions" and not is_owner():
-        return jsonify({"error": "owner only"}), 403
+    if area == "decisions" and not is_finance():
+        return jsonify({"error": "finance only"}), 403
     import json as _json
     from snapshot import load_persisted
     snap = load_persisted()
@@ -2103,7 +2128,7 @@ def api_chat():
             return jsonify({"reply": _r, "error": None, "intent": "command"})
 
     recall = memory.build_recall_context(user_msg, conversation_id=conv_id,
-                                        owner=is_owner())
+                                        owner=is_finance())
 
     # Ground affordability/salary questions on VERIFIED SALARY-tab figures (deterministic), so the
     # model does its cost/FX math on real numbers instead of memory.
@@ -2181,7 +2206,7 @@ def api_chat_stream():
     # asking for it gets the ordinary text thread, never a 500 and never
     # somebody else's thread.
     requested = str(data.get("channel") or "").strip().lower()
-    if requested == "dashboard" and is_owner():
+    if requested == "dashboard" and is_finance():
         channel = "dashboard"
     else:
         channel = "voice" if voice else "text"
@@ -2398,7 +2423,7 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
                         headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
     recall = memory.build_recall_context(user_msg, conversation_id=conv_id,
-                                        owner=is_owner())
+                                        owner=is_finance())
     # Ground affordability/salary questions on VERIFIED SALARY-tab figures (deterministic).
     import salary_view, tracker_read
     _mem_block = recall["block"]
@@ -3190,10 +3215,12 @@ _CSM_DISCREET_KEY = "csm_discreet"
 @bp.route("/csm", methods=["GET"])
 @require_auth
 def page_csm():
-    from dashboard.auth import is_owner
-    if not is_owner():
+    import role_access as _RA
+    if not is_finance() or (not is_owner() and _RA.csm_withdrawn()):
         return redirect(url_for("dashboard.index"))
-    return render_template("csm.html", asset_v=_ASSET_VERSION)
+    return render_template("csm.html", asset_v=_ASSET_VERSION,
+                           true_owner=is_owner(),
+                           csm_withdrawn=_RA.csm_withdrawn())
 
 
 @bp.route("/api/csm/summary", methods=["GET"])
@@ -3225,7 +3252,7 @@ def api_csm_card():
 
 
 @bp.route("/api/csm/discreet", methods=["POST"])
-@require_owner
+@require_owner_strict   # one of the THREE (#167): the owner's own screen-share toggle
 def api_csm_discreet():
     """One-click discreet toggle — session-persisted, default OFF."""
     d = request.get_json(silent=True) or {}

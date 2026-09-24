@@ -869,11 +869,28 @@ def _deep_link() -> str:
     return (base + "/dashboard/csm") if base else "/dashboard/csm"
 
 
+def _csm_role_ok(actor: dict | None) -> bool:
+    """R-PIOLO-PARITY (#167): the finance role hears the same answers as the
+    owner — unless the owner has withdrawn the CSM section with the parity
+    toggle, in which case finance falls through silently exactly as every
+    other role does."""
+    role = (actor or {}).get("role")
+    if role == "owner":
+        return True
+    if role == "coo":
+        try:
+            import role_access
+            return not role_access.csm_withdrawn()
+        except Exception:  # noqa: BLE001
+            return False
+    return False
+
+
 def handle_csm_command(text: str, actor: dict | None) -> tuple[str | None, bool]:
-    """Tier-2 drill. NON-OWNER: (None, False) — falls through to normal
-    conversation without confirming the domain exists. Registered in BOTH
-    handler lists (text + streaming/voice/timeline)."""
-    if (actor or {}).get("role") != "owner":
+    """Tier-2 drill. A role outside the parity ruling (or finance while the
+    section is withdrawn): (None, False) — falls through without confirming
+    the domain exists. Registered in BOTH handler lists."""
+    if not _csm_role_ok(actor):
         return None, False
     t = (text or "").lower()
     if not _CSM_RE.search(t):
@@ -939,7 +956,7 @@ def csm_context(text: str, actor: dict | None) -> str:
     """Grounded-context injector for tier-3 OWNER turns that mention the
     domain. Returns '' for non-owners or unrelated turns. Any turn this
     fires on is marked sensitive by the routes (never persisted/distilled)."""
-    if (actor or {}).get("role") != "owner":
+    if not _csm_role_ok(actor):
         return ""
     if not _CSM_RE.search((text or "").lower()):
         return ""

@@ -1050,9 +1050,9 @@ def lifecycle_move():
 def lifecycle_reverse():
     """Owner reversal (R-B) — reason required, journaled."""
     import ads_lifecycle
-    from dashboard.auth import is_owner, current_actor
-    if not is_owner():
-        return jsonify({"error": "reversal is owner-only (R-B)",
+    from dashboard.auth import is_finance, current_actor
+    if not is_finance():   # R-PIOLO-PARITY (#167): his action too, journaled
+        return jsonify({"error": "reversal is finance-only (R-B)",
                         "role": current_actor().get("role")}), 403
     j = request.get_json(silent=True) or {}
     ok, err = ads_lifecycle.reverse(current_actor(), j.get("creative"), j.get("reason"))

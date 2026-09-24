@@ -322,9 +322,10 @@ def test_projection_access(monkeypatch):
     assert r.status_code in (302, 403)               # ad_domain walled
     anon = app.test_client()
     assert anon.get("/dashboard/api/projection").status_code in (302, 401)
-    # config: owner-only (coo 403 — require_owner)
+    # config: R-PIOLO-PARITY (#167) — the finance role acts at parity,
+    # attributed and reversible; ad_domain/anon stay refused above.
     assert login("piolo").post("/dashboard/api/projection/config",
-                               json={"default_renewal_pct": 10}).status_code == 403
+                               json={"default_renewal_pct": 10}).status_code == 200
     assert login("rydel").post("/dashboard/api/projection/config",
                                json={"default_renewal_pct": 10}).status_code == 200
 
