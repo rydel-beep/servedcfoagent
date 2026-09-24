@@ -334,22 +334,47 @@ def test_scenarios_save_list_commit_never_actuals(stub_defaults):
 # ── pulse ───────────────────────────────────────────────────────────────────
 
 def test_booked_calls_kept_only_and_windowed(monkeypatch):
+    """#162: the tile reads the CALENDAR-LEVEL source when it exists — the
+    per-contact cache is only the labelled fallback before the first sync,
+    and this test now pins BOTH halves."""
+    import kv_store as KV
+    import appointments as AP
     import consult_schedule as CS
     from helpers import now_sydney
     import datetime as dt
     now = now_sydney()
+
+    def ev(days, status="confirmed", kind="consult"):
+        d = now + dt.timedelta(days=days)
+        return {"id": f"e{days}{status}", "when": d.isoformat(),
+                "day": str(d.date()), "title": "X — Free Consultation",
+                "status": status, "cancelled": status == "cancelled",
+                "calendar": "Consultation", "calendar_kind": kind,
+                "contact_id": "c", "assigned_user_id": "u", "owner": "Kalin",
+                "booked_at": None, "follow_up": False}
+
+    KV.put(AP.K_EVENTS, {"ok": True, "at": now.isoformat(), "events": [
+        ev(2), ev(3, "cancelled"), ev(12), ev(-1), ev(4, kind="test")]})
+    out = CE.booked_calls_next_7d()
+    assert out["count"] == 1                       # in-window, live, non-test
+    assert out["cancelled_count"] == 1             # beside, never inside
+    assert "calendar" in out["source"]
+    assert out["window_words"].startswith("now →")
+
+    # fallback: cache path, labelled as the incomplete view it is
+    KV.put(AP.K_EVENTS, {})
     def iso(days):
         return (now + dt.timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
     cache = {
         "c1": {"appts": [{"startTime": iso(2), "appointmentStatus": "confirmed"}]},
-        "c2": {"appts": [{"startTime": iso(3), "appointmentStatus": "cancelled"}]},   # never counts
-        "c3": {"appts": [{"startTime": iso(12), "appointmentStatus": "confirmed"}]},  # outside 7d
-        "c4": {"appts": [{"startTime": iso(-1), "appointmentStatus": "confirmed"}]},  # past
+        "c2": {"appts": [{"startTime": iso(3), "appointmentStatus": "cancelled"}]},
+        "c3": {"appts": [{"startTime": iso(12), "appointmentStatus": "confirmed"}]},
+        "c4": {"appts": [{"startTime": iso(-1), "appointmentStatus": "confirmed"}]},
     }
     monkeypatch.setattr(CS, "_cache", lambda: cache)
     out = CE.booked_calls_next_7d()
     assert out["count"] == 1
-    assert "read-only" in out["source"]
+    assert "sync has not run" in out["source"]
 
 
 def test_landing_renders_pulse_strip_server_side():

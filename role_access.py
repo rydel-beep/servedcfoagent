@@ -141,6 +141,7 @@ COO_READ: tuple[str, ...] = (
     "/dashboard/api/collab/queue", "/dashboard/api/collab/log",
     "/dashboard/api/worklog", "/dashboard/api/greeting",
     "/dashboard/api/unmatched",                      # #161, read
+    "/dashboard/api/clients/names",                  # #162, the picker's list
     "/dashboard/api/closes/pending",                 # #161, read
     # system + plumbing
     "/dashboard/api/system", "/dashboard/api/freshness",

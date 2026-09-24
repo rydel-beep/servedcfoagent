@@ -84,7 +84,7 @@
     <div class="s-panel-head">
       <h2 class="s-panel-title" id="unmatched-title">Money received, not yet
         attached to a client ({{ today.unmatched.count }},
-        ${{ '{:,.0f}'.format(today.unmatched.total or 0) }})</h2>
+        {{ today.unmatched.total_text }})</h2>
       <span class="s-panel-sub">{{ today.unmatched.note }}</span>
     </div>
     {% if not today.unmatched.available %}
@@ -110,7 +110,7 @@
               <td><button class="s-door up-confirm" type="button"
                           data-payer="{{ r.payer }}" data-charge="{{ r.charge_id }}"
                           data-client="{{ r.suggested[0].business if r.suggested else '' }}"
-                >This is…</button></td>
+                >Attach to client…</button></td>
               {% endif %}
             </tr>
             {% endfor %}

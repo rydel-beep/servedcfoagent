@@ -121,17 +121,43 @@ def measured_defaults(force: bool = False) -> dict:
     except Exception as e:  # noqa: BLE001
         logger.warning("compass lead-detail read failed: %s", e)
     lag_window0 = t - dt.timedelta(days=179)
+    closer_counts: dict[str, int] = {}
+    setter_counts: dict[str, int] = {}
+    se_rows = se_pif_rows = 0
+    sets_seen = sets_qualified = 0
     for l in leads_all or []:
         try:
             idate = l.get("input_date")
             if idate and w0 <= idate <= w1:
                 mk = (l.get("market") or "unknown").lower()
                 markets[mk if mk in markets else "unknown"] += 1
+            # qualified share of SETS (90d, by set date) — the bounty basis.
+            # The ONE qualification rule (attribution_engine.qualify_lead)
+            # judges the lead; a qualified SET is a set on a qualified lead.
+            if l.get("set"):
+                sd = l.get("set_date") or idate
+                if sd and w0 <= sd <= w1:
+                    sets_seen += 1
+                    try:
+                        import attribution_engine as _AE
+                        if _AE.qualify_lead(l).get("qualified"):
+                            sets_qualified += 1
+                    except Exception:
+                        sets_seen -= 1     # can't judge → don't count either side
             if l.get("won") and l.get("close_date"):
                 cd = l["close_date"]
                 if lag_window0 <= cd <= w1:
                     offer = (l.get("offer") or "unknown").strip().lower() or "unknown"
                     mix[offer] = mix.get(offer, 0) + 1
+                    who = (l.get("closer") or "").strip().lower() or "unattributed"
+                    closer_counts[who] = closer_counts.get(who, 0) + 1
+                    swho = (l.get("setter") or "").strip().lower() or "unattributed"
+                    setter_counts[swho] = setter_counts.get(swho, 0) + 1
+                    if "scale" in offer and "content" not in offer:
+                        se_rows += 1
+                        pt = (l.get("payment_type") or "").lower()
+                        if "pif" in pt or "full" in pt or "upfront" in pt:
+                            se_pif_rows += 1
                     if idate:
                         off = (cd.year - idate.year) * 12 + cd.month - idate.month
                         lag_pairs.append(max(0, min(off, 5)))
@@ -178,6 +204,47 @@ def measured_defaults(force: bool = False) -> dict:
         {"growth pro": 1.0},
         tot_mix, "180d won rows", "tracker offer column on won rows",
         assumption=not tot_mix)
+
+    # closer / setter mix (same 180d won rows) — WHO closes and sets moves
+    # the company's commission cost (the junior rate is the company's total)
+    n_closers = sum(closer_counts.values())
+    it["closer_mix"] = _item(
+        ({k: round(v / n_closers, 3) for k, v in closer_counts.items()}
+         if n_closers else {"kalin": 1.0}),
+        n_closers, "180d won rows",
+        "tracker closer column on won rows; the mirrored GHL opportunity "
+        "owner is an id with no name map yet — cross-check pending",
+        assumption=not n_closers)
+    n_setters = sum(setter_counts.values())
+    it["setter_mix"] = _item(
+        ({k: round(v / n_setters, 3) for k, v in setter_counts.items()}
+         if n_setters else {"unattributed": 1.0}),
+        n_setters, "180d won rows",
+        "tracker setter column on won rows (cost-neutral — every setter is "
+        "paid the same rule; shown so the record says who)",
+        assumption=not n_setters)
+    it["pif_share"] = _item(
+        round(se_pif_rows / se_rows, 3) if se_rows else 0.5,
+        se_rows, "180d Scale Engine won rows",
+        ("payment-type cell on Scale Engine won rows" if se_rows else
+         "no Scale Engine close in the window carries a payment type — "
+         "half-and-half until one does (labelled)"),
+        assumption=not se_rows)
+    # qualified share of sets — the $50 bounty is owed per QUALIFIED set
+    # (rulebook R-SET), so the basis is an input, never an assumption
+    if sets_seen:
+        it["qualified_rate"] = _item(
+            round(sets_qualified / sets_seen, 4), sets_seen, win,
+            "sets whose lead passes the one qualification rule "
+            "(not disqualified, revenue at or above the floor, revenue "
+            "question answered) ÷ all sets in the window")
+    else:
+        it["qualified_rate"] = _item(
+            1.0, 0, win,
+            "no sets in the window to judge — every recorded set in the "
+            "payout log was paid the $50 (194 of 194), so booked sets are "
+            "treated as qualified until the measured read has sample",
+            assumption=True)
 
     # lag curve
     if len(lag_pairs) >= 8:
@@ -242,12 +309,16 @@ def measured_defaults(force: bool = False) -> dict:
     if comm_rate and abs(comm_rate - fy26) <= fy26:      # within 2× of FY26
         it["commission_pct_of_cash"] = _item(
             comm_rate, None, win,
-            "tracker commission cells ÷ cash in window; FY26 sanity 6.3% "
-            "(closer 5.1 + setter 1.2) beside")
+            "REFERENCE ONLY — what commissions ran as a share of cash in "
+            "this window, shown beside the rulebook figure to sanity-check "
+            "it. The cost card is priced by the sales-comp rulebook, never "
+            "by this rate.")
     else:
         it["commission_pct_of_cash"] = _item(
             fy26, None, "FY26 actuals",
-            ("FY26 6.3% of sales (Rydel 2026-09-17). "
+            ("REFERENCE ONLY — last year's share of sales (Rydel "
+             "2026-09-17), shown beside the rulebook figure to sanity-check "
+             "it, never the source. "
              + (f"In-window read {comm_rate*100:.1f}% DISAGREES — distorted "
                 "by lagging tracker cash cells (the gap class); SURFACED, "
                 "never averaged. " if comm_rate else "")
@@ -261,9 +332,17 @@ def measured_defaults(force: bool = False) -> dict:
 
     # OpEx ex-tax — outflow bands trailing avg + FIXED COSTS tab total
     it["opex_monthly_ex_tax"] = _opex_measured()
-    from config import SALES_TOOLING_MONTHLY
-    it["sales_tooling_monthly"] = _item(SALES_TOOLING_MONTHLY, None, "config",
-                                        "itemised subscriptions override")
+    from config import SALES_TOOLING_MONTHLY, SALES_TOOLING_PER_SEAT
+    it["sales_tooling_monthly"] = _item(
+        SALES_TOOLING_MONTHLY, None, "config",
+        "itemised subscriptions override — the FIXED base (account-level "
+        "totals; the books hold no per-seat price)")
+    it["sales_tooling_per_seat"] = _item(
+        SALES_TOOLING_PER_SEAT, None, "config",
+        "per sales seat per month — the books can't split the tools per "
+        "seat, so this stays 0 (needs your number); when set, tooling "
+        "scales with sales headcount, not with spend",
+        assumption=True)
 
     # market lanes
     it["lanes"] = _item(
@@ -485,12 +564,17 @@ def default_inputs() -> dict:
         "show_rate": v("show_rate") or 0.9,
         "close_rate": v("close_rate") or 0.28,
         "deal_mix": v("deal_mix") or {"growth pro": 1.0},
+        "closer_mix": v("closer_mix") or {"kalin": 1.0},
+        "setter_mix": v("setter_mix") or {"unattributed": 1.0},
+        "pif_share": v("pif_share", 0.5),
+        "qualified_rate": v("qualified_rate", 1.0),
         "packages": v("packages") or {},
         "lag_curve": v("lag_curve") or DEFAULT_LAG,
         "renewal_rate": v("renewal_rate") or 0.0,
         "commission_pct_of_cash": v("commission_pct_of_cash") or 0.063,
         "opex_monthly_ex_tax": v("opex_monthly_ex_tax") or 29671.0,
         "sales_tooling_monthly": v("sales_tooling_monthly") or 2132.0,
+        "sales_tooling_per_seat": v("sales_tooling_per_seat", 0.0) or 0.0,
         "seasonality": v("seasonality") or {},
         "team": v("team") or _team_snapshot(),
         "hires": [],                                  # planned hires
@@ -1299,8 +1383,28 @@ def sales_pulse(fresh: bool = False) -> dict:
 
 
 def booked_calls_next_7d() -> dict:
-    """Consults scheduled in the next 7 days from the GHL appointment CACHE
-    (read-only; kept status only — cancelled never counts)."""
+    """Consults in the next 7 days from the CALENDAR-LEVEL source (#162).
+
+    The per-contact cache this used to read is warmed only for contacts
+    with a tracker lead row — it showed 3 of the 12 booked consults that
+    the calendars actually held. Every booked-calls surface reads
+    appointments.py now; the cache remains only as the fallback before the
+    first calendar sync."""
+    import appointments
+    if (appointments.store() or {}).get("events"):
+        up = appointments.upcoming(7)
+        return {"count": up["count"],
+                "consults": [{"when": e["when"],
+                              "formatted": appointments.format_when(e["when"]),
+                              "title": e["title"], "owner": e["owner"],
+                              "contact_id": e["contact_id"],
+                              "status": e["status"],
+                              "follow_up": e["follow_up"]}
+                             for e in up["rows"][:25]],
+                "cancelled_count": up["cancelled_count"],
+                "window_words": up["window_words"],
+                "as_of": up["as_of"], "source": up["source"]}
+    # fallback: the old per-contact cache, labelled as the incomplete view it is
     import consult_schedule as CS
     now = now_sydney()
     horizon = now + dt.timedelta(days=7)
@@ -1320,8 +1424,8 @@ def booked_calls_next_7d() -> dict:
                                         or cur.get("status") or "")})
     upcoming.sort(key=lambda u: u["when"])
     return {"count": len(upcoming), "consults": upcoming[:25],
-            "source": "GHL appointment cache (read-only, kept status; "
-                      "cancelled never counts)"}
+            "source": "per-contact appointment cache — tracker-lead contacts "
+                      "only; the calendar sync has not run yet"}
 
 
 def expiring_preview(pins: dict | None, slider_pct: float | None,
@@ -1431,23 +1535,102 @@ def simulate_month(inputs: dict | None = None, spend: float | None = None,
             "label": "what-if — never the books"}
 
 
+def _capacity_need(leads: float, calls: float, inp: dict) -> dict:
+    """Sales headcount the modelled volume requires, against today's team —
+    whole people (a half-setter cannot be hired), costed at the config role
+    costs (labelled; today's setters and closers are commission-only, so the
+    monthly figure is the assumption for a NEW hire, Manila lane), dated by
+    the hire lead time. Delivery seats are a COGS matter and stay out of
+    acquisition cost. The SAME formula runs in sim_core.js — parity-tested."""
+    team = inp.get("team") or {}
+    thr = team.get("throughput") or THROUGHPUT_DEFAULTS
+    costs = team.get("role_costs_monthly") or ROLE_COSTS_MONTHLY
+    cur_s = float(team.get("setters") or 0)
+    cur_c = float(team.get("closers") or 0)
+    lps = float(thr.get("leads_per_setter_month") or
+                THROUGHPUT_DEFAULTS["leads_per_setter_month"])
+    cpc = float(thr.get("calls_per_closer_month") or
+                THROUGHPUT_DEFAULTS["calls_per_closer_month"])
+    need_s = leads / lps if lps > 0 else 0.0
+    need_c = calls / cpc if cpc > 0 else 0.0
+    gap_s = max(int(math.ceil(need_s - 1e-9)) - int(cur_s), 0)
+    gap_c = max(int(math.ceil(need_c - 1e-9)) - int(cur_c), 0)
+    cost = gap_s * float(costs.get("setter") or 0) \
+        + gap_c * float(costs.get("closer") or 0)
+    lead_m = int(math.ceil(float(inp.get("hire_lead_weeks") or HIRE_LEAD_WEEKS)
+                           / 4.33))
+    return {
+        "setters": cur_s, "closers": cur_c,
+        "setters_needed": round(need_s, 2), "closers_needed": round(need_c, 2),
+        "setters_extra": gap_s, "closers_extra": gap_c,
+        "extra_total": gap_s + gap_c,
+        "cost_monthly": round(cost, 2),
+        "setter_cost_monthly": float(costs.get("setter") or 0),
+        "closer_cost_monthly": float(costs.get("closer") or 0),
+        "leads_per_setter_month": lps, "calls_per_closer_month": cpc,
+        "hire_from": _month_add(str(today_sydney())[:7], lead_m),
+        "note": ("new closers close at the junior rates — shift the closer "
+                 "mix to model their commissions; the monthly figure here is "
+                 "the config role cost for a new hire (labelled)"),
+    }
+
+
 def _modelled_comm(inp: dict) -> dict:
-    """Per-close commission from the rulebook, for the scenario's mix.
-    Falls back to the old rate ONLY if the rulebook cannot be read, and says
-    so in the payload rather than silently."""
+    """Per-close commission from the rulebook, for THE ONE MIX — the same
+    deal mix that prices the revenue card (D1 of the cost-card diagnosis:
+    revenue used the measured deal mix while commissions silently fell to a
+    100%-Kalin-Growth-Pro default under a different input key). An explicit
+    `package_mix` override still works, but it raises a warning the card
+    shows — the two cards must never silently disagree. If the rulebook
+    cannot be read the payload says so; nothing falls back to a rate."""
     try:
+        import comp_rulebook as RB
         import sales_cost
-        mix = {"closer_mix": inp.get("closer_mix") or {"kalin": 1.0},
-               "package_mix": inp.get("package_mix") or None,
-               "pif_share": inp.get("pif_share", 0.5)}
-        return sales_cost.modelled_commission(mix)
+        pkgs = inp.get("packages") or {}
+        deal_mix = _norm_mix(inp.get("deal_mix") or {"growth pro": 1.0}, pkgs)
+        pkg_mix: dict[str, float] = {}
+        other_cash: dict[str, float] = {}
+        ruled = (RB.PKG_GROWTH_PRO, RB.PKG_SCALE_ENGINE, RB.PKG_SCALE_SPLIT)
+        for name, share in deal_mix.items():
+            key = RB.normalise_package(name) or f"unruled ({name})"
+            pkg_mix[key] = round(pkg_mix.get(key, 0.0) + share, 6)
+            pk = pkgs.get(name) or {}
+            sched = pk.get("cash_schedule") or []
+            if key not in ruled and sched and pk.get("contract"):
+                # initial-month cash from the SAME package schedule that
+                # prices the revenue card (already ex-GST — book MRR basis)
+                other_cash[key] = round(float(pk["contract"]) * float(sched[0]), 2)
+        mix_warning = None
+        explicit = inp.get("package_mix")
+        if explicit:
+            tot = sum(explicit.values()) or 1.0
+            expl = {k: round(v / tot, 3) for k, v in explicit.items()}
+            if expl != {k: round(v, 3) for k, v in pkg_mix.items()}:
+                mix_warning = ("the commission mix was overridden and no "
+                               "longer matches the deal mix pricing the "
+                               "revenue card — the two cards are describing "
+                               "different businesses")
+            pkg_mix = explicit
+        out = sales_cost.modelled_commission(
+            {"closer_mix": inp.get("closer_mix") or {"kalin": 1.0},
+             "package_mix": pkg_mix,
+             "pif_share": inp.get("pif_share", 0.5)},
+            other_event_cash=other_cash)
+        out["mix_used"] = pkg_mix
+        out["mix_warning"] = mix_warning
+        from config import FY26_COMMISSIONS_PCT_OF_SALES as _fy
+        out["fy26_reference"] = {
+            "pct_of_sales": _fy,
+            "use": ("sanity reference shown beside the rulebook figure — "
+                    "never the source")}
+        return out
     except Exception as e:  # noqa: BLE001
-        logger.warning("rulebook commission unavailable, using the rate: %s", e)
-        rate = float(inp.get("commission_pct_of_cash") or 0.063)
+        logger.warning("rulebook commission unavailable: %s", e)
         return {"commission_per_close": 0.0, "bounty_per_set": 0.0,
                 "monthly_fixed": {"total": 0.0}, "rule_version": None,
-                "fallback_rate": rate,
-                "degraded": f"rulebook unavailable ({str(e)[:70]})"}
+                "mix_used": None, "mix_warning": None,
+                "degraded": f"rulebook unavailable ({str(e)[:70]}) — "
+                            "commissions read $0 and say so, never a guess"}
 
 
 def confidence_word(n) -> str:

@@ -118,8 +118,8 @@
    "name": "Booked calls, next 7 days",
    "kind": "metric",
    "screen": "landing",
-   "meaning": "How many sales calls are on the calendar for the coming week.",
-   "computed": "Counts upcoming appointments in the booking system; cancelled ones never count.",
+   "meaning": "Consults booked ahead, read from every calendar in the CRM — the tile says its own date window in words.",
+   "computed": "Every calendar is read directly, all owners, in Sydney time. Booked means scheduled and not cancelled; cancelled and test bookings are counted beside the number, never inside it.",
    "default_from": "the GHL calendar — read-only, nothing is ever changed there.",
    "selector": "#tile-pulse_booked_calls",
    "drawer": "booked_calls"
@@ -1699,13 +1699,22 @@
    "selector": "[data-def='owner_only_chip']"
   },
   "confirm_payer": {
-   "name": "This is…",
+   "name": "Attach to client…",
    "kind": "control",
    "screen": "today",
    "meaning": "Tells the system which client a payment belongs to.",
-   "changing": "Records the payer name against that client, notes who said so and which payment proved it, re-runs the match, and rebuilds the figures — so the close, the cash and the ratios move straight away. Future payments from the same payer attach on their own.",
+   "changing": "Opens a searchable list of every client so you can say whose money this is. One click records it with who said so and which payment proved it, re-runs the match, and rebuilds the figures — so the cash, the ratios and what's owed move straight away. Future payments from the same payer attach on their own.",
    "computed": "Owner-only: attaching money to a client changes what the numbers say.",
    "selector": ".up-confirm"
+  },
+  "status_stale_finding": {
+   "name": "Paying client marked stale",
+   "kind": "chip",
+   "screen": "system",
+   "meaning": "A client whose money is arriving while the roster says they are gone.",
+   "computed": "Any client with payments in the last sixty days whose roster row says non-active, term-expired or zero monthly revenue. Each finding carries the payments that prove it.",
+   "default_from": "The roster is fixed at source — this finding retires itself when the next scan sees the row corrected.",
+   "selector": "[data-def='status_stale_finding']"
   }
  }
 }

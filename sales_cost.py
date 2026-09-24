@@ -497,13 +497,26 @@ DEFAULT_MIX = {
 def modelled_commission(mix: dict | None = None,
                         first_month_cash_ex_gst: float = 3050.0,
                         scale_cash_ex_gst: float = 14500.0,
-                        on=None) -> dict:
+                        on=None,
+                        other_event_cash: dict | None = None) -> dict:
     """Commission per close for a MODELLED mix, straight from the rulebook.
 
     This is what replaces `commission_pct_of_cash` in the compass. A flat
     percentage of cash could not answer "what happens if Coby closes more of
     them", because the whole point of the junior rate is that the company's
     total changes with WHO closes. The rate could only ever move with cash.
+
+    The event cash for Growth Pro / Scale Engine are the RULED anchors from
+    Rydel's worked examples ($3,050 ex-GST first month; $14,500 ex-GST Scale
+    Engine). `other_event_cash` maps any OTHER package key to its initial
+    ex-GST cash so the setter's 5% can be costed on packages the closer
+    tables have no ruled rate for (the closer side stays "needs your number"
+    — never invented).
+
+    A PIF share is WEIGHTED: pif_share=0.5 means half the Scale Engine
+    closes pay commission on the full prepayment and half on the first
+    collection. (It used to be read as a boolean — any non-zero share was
+    costed as 100% PIF; found in the cost-card diagnosis.)
 
     Returns per-close dollars for the closer side and the setter side, plus
     the monthly fixed costs, so the cost card can show ads + commissions +
@@ -513,7 +526,8 @@ def modelled_commission(mix: dict | None = None,
     v = RB.version_for(on)
     closer_mix = m["closer_mix"] or {"kalin": 1.0}
     pkg_mix = m["package_mix"] or {RB.PKG_GROWTH_PRO: 1.0}
-    pif = float(m.get("pif_share") or 0.0)
+    pif = min(max(float(m.get("pif_share") or 0.0), 0.0), 1.0)
+    other_cash = other_event_cash or {}
 
     closer_cost = 0.0
     setter_pct_cost = 0.0
@@ -527,9 +541,19 @@ def modelled_commission(mix: dict | None = None,
             ev_cash = first_month_cash_ex_gst
         elif pkg == RB.PKG_SCALE_SPLIT:
             ev_cash = scale_cash_ex_gst / 2.0
+        elif pkg == RB.PKG_SCALE_ENGINE:
+            # weighted: a PIF's initial month is the whole prepayment
+            ev_cash = pif * scale_cash_ex_gst + (1.0 - pif) * scale_cash_ex_gst / 2.0
+        elif pkg in other_cash:
+            ev_cash = float(other_cash[pkg])
         else:
-            ev_cash = scale_cash_ex_gst if pif else scale_cash_ex_gst / 2.0
-        setter_pct_cost += pw * ev_cash * ((v.get("setter") or {}).get("pct_of_initial_cash") or 0.0)
+            ev_cash = None
+        if ev_cash is not None:
+            setter_pct_cost += pw * ev_cash * ((v.get("setter") or {}).get("pct_of_initial_cash") or 0.0)
+        else:
+            detail.append({"package": pkg, "closer": None, "rate": None,
+                           "note": "needs your number — no initial-month cash "
+                                   "known for the setter's 5% on this package"})
         for who, cshare in closer_mix.items():
             cw = cshare / cshare_total
             junior = who.lower() in RB.JUNIOR_CLOSERS and bool(v.get("junior_closer_flat"))
@@ -549,11 +573,28 @@ def modelled_commission(mix: dict | None = None,
     mgr = v.get("manager") or {}
     extras = v.get("junior_extras") or {}
     kpi = (extras.get("monthly_kpi_bonus") or {}).get("amount") or 0.0
-    junior_in_mix = any(w.lower() in RB.JUNIOR_CLOSERS for w in closer_mix)
+    junior_share = sum(cshare / cshare_total for who, cshare in closer_mix.items()
+                       if who.lower() in RB.JUNIOR_CLOSERS)
+    junior_in_mix = junior_share > 0
+    # the fast-win bonus is ONE payment at 10 lifetime closes — modelled as
+    # $100 riding on each junior-closed deal (the $1,000 spread across the
+    # ten closes that earn it), so a mix with him carries the cost as it
+    # accrues instead of a cliff nobody budgeted
+    fw = extras.get("fast_win_bonus") or {}
+    fastwin_per_close = 0.0
+    if junior_in_mix and fw.get("amount") and fw.get("at_lifetime_closes"):
+        fastwin_per_close = round(float(fw["amount"]) / float(fw["at_lifetime_closes"])
+                                  * junior_share, 2)
     return {
         "closer_per_close": round(closer_cost, 2),
         "setter_pct_per_close": round(setter_pct_cost, 2),
-        "commission_per_close": round(closer_cost + setter_pct_cost, 2),
+        "fastwin_per_close": fastwin_per_close,
+        "fastwin_note": ((f"${fw.get('amount'):,.0f} one-time at "
+                          f"{fw.get('at_lifetime_closes')} lifetime closes, "
+                          "spread across the closes that earn it — labelled")
+                         if fastwin_per_close else None),
+        "commission_per_close": round(closer_cost + setter_pct_cost
+                                      + fastwin_per_close, 2),
         "bounty_per_set": per_set,
         "monthly_fixed": {
             "manager_retainer": mgr.get("monthly_retainer") or 0.0,

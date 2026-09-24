@@ -190,6 +190,16 @@ def _scheduled_refresh_loop() -> None:
                         res.get("count"), res.get("total_unmatched"))
         except Exception as e:  # noqa: BLE001
             logger.warning("unmatched payment scan failed: %s", e)
+        # #162: the standing rule rides the same cadence — a client with
+        # payments in the last 60 days but a zero/expired roster status is a
+        # finding, with the charge ids as evidence.
+        try:
+            import client_status_watch
+            st = client_status_watch.scan()
+            if st.get("count"):
+                logger.info("status-stale clients: %s", st["count"])
+        except Exception as e:  # noqa: BLE001
+            logger.warning("status-stale scan failed: %s", e)
         try:
             import automations
             automations.publish_feed_state()   # dead jobs → LOUD feed items

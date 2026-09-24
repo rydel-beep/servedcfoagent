@@ -160,6 +160,38 @@ def _appointments(w0: dt.date, w1: dt.date) -> dict:
     GHL leads this stage — the tracker's Set Date column has been empty
     since April (diagnosis)."""
     import consult_schedule as CS
+    # THE CALENDAR-LEVEL SOURCE (#162). The per-contact cache below is only
+    # the fallback before the first calendar sync — it holds tracker-lead
+    # contacts alone, which is how this function returned 0 booked while the
+    # calendars held 12.
+    import appointments as AP
+    if (AP.store() or {}).get("events"):
+        now = now_sydney()
+        booked, cancelled, due, upcoming = [], [], [], []
+        for e in (AP.store().get("events") or []):
+            if e.get("calendar_kind") in ("test", "onboarding"):
+                continue
+            created = AP.parse_when(e.get("booked_at"))
+            start = AP.parse_when(e.get("when"))
+            when_clock = created or start          # booked-ON clock (#128)
+            if not when_clock or not (w0 <= when_clock.date() <= w1):
+                continue
+            row = {"contact_id": e.get("contact_id"), "status": e.get("status"),
+                   "booked_at": created.isoformat() if created else None,
+                   "when": start.isoformat() if start else None,
+                   "when_text": AP.format_when(e.get("when")),
+                   "owner": e.get("owner"), "title": e.get("title")}
+            if e.get("cancelled"):
+                cancelled.append(row)
+            else:
+                booked.append(row)
+                if start and start <= now:
+                    due.append(row)
+                elif start:
+                    upcoming.append(row)
+        upcoming.sort(key=lambda r: r["when"] or "")
+        return {"booked": booked, "cancelled": cancelled, "due": due,
+                "upcoming": upcoming}
     cache = CS._cache() or {}
     now = now_sydney()
     booked, cancelled, due, upcoming = [], [], [], []

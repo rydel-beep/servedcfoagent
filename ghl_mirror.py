@@ -496,6 +496,15 @@ def _loop():
     while True:
         try:
             sync_opportunities()   # cheap, frequent
+            # #162: the calendar-level appointment source rides this loop —
+            # 7 GETs per pass (one per calendar + the list). The per-contact
+            # cache stopped being the booked-calls source the day it showed
+            # 3 of the calendars' 12.
+            try:
+                import appointments
+                appointments.sync()
+            except Exception as ae:  # noqa: BLE001
+                logger.warning("appointment sync failed: %s", ae)
             # CURRENCY AUDIT (2026-09-17): contacts/notes used to refresh
             # ONLY on a manual "resync" chat command — a month with no logins
             # froze them at 2026-07-27. Now a kv-claimed DAILY pass keeps the

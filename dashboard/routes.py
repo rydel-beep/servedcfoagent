@@ -319,6 +319,14 @@ def api_unmatched_payments():
     return jsonify(UP.panel())
 
 
+@bp.route("/api/clients/names", methods=["GET"])
+@require_auth
+def api_client_names():
+    """Names only — the picker's list. Roster venues + tracker businesses."""
+    import unmatched_payments as UP
+    return jsonify({"names": UP.client_names()})
+
+
 @bp.route("/api/unmatched/confirm", methods=["POST"])
 @require_owner
 def api_unmatched_confirm():

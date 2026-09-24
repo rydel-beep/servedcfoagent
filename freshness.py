@@ -47,9 +47,13 @@ CONTRACT: dict[str, dict] = {
         "cadence": "every 90 seconds",
         "note": "the sheet mirror; the tracker itself is written by hand"},
     "ghl_opportunities": {
-        "label": "CRM deals and appointments", "budget_min": 20,
+        "label": "CRM deals", "budget_min": 20,
         "cadence": "every 15 minutes",
         "note": "opportunities on the loop; contacts and notes incrementally"},
+    "ghl_appointments": {
+        "label": "CRM calendars (booked consults)", "budget_min": 20,
+        "cadence": "every 15 minutes",
+        "note": "every calendar read directly (#162) — the booked-calls tiles"},
     "stripe": {
         "label": "Stripe receipts", "budget_min": 20,
         "cadence": "with the snapshot",
@@ -128,6 +132,14 @@ def _source_stamps() -> dict:
                                          "ok": notes.get("ok")}
     except Exception as e:  # noqa: BLE001
         out["ghl_opportunities"] = {"at": None, "error": str(e)[:120]}
+    try:
+        import appointments
+        ap = appointments.store() or {}
+        out["ghl_appointments"] = {"at": ap.get("at"),
+                                   "events": len(ap.get("events") or []),
+                                   "ok": ap.get("ok")}
+    except Exception as e:  # noqa: BLE001
+        out["ghl_appointments"] = {"at": None, "error": str(e)[:120]}
     try:
         from snapshot import load_persisted
         snap = load_persisted() or {}
@@ -242,7 +254,7 @@ TILE_INPUTS: dict[str, tuple] = {
     "ad_spend": ("meta_today", "engine_blocks"),
     "pulse_show_rate": ("tracker_mirror", "ghl_opportunities", "engine_blocks"),
     "pulse_close_rate": ("tracker_mirror", "ghl_opportunities", "engine_blocks"),
-    "pulse_booked_calls": ("ghl_opportunities",),
+    "pulse_booked_calls": ("ghl_appointments",),
 }
 
 
@@ -447,6 +459,12 @@ def refresh_now(actor: str = "owner", what: str = "all") -> dict:
             import ghl_mirror
             return ghl_mirror.sync_opportunities()
         _step("CRM deals", _ghl)
+
+        def _appts():
+            import appointments
+            r = appointments.sync()
+            return {"ok": r.get("ok"), "events": len(r.get("events") or [])}
+        _step("CRM calendars", _appts)
 
         def _meta():
             import meta_spend

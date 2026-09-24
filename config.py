@@ -193,5 +193,10 @@ PACKAGE_TERMS = {
 # the subscriptions override: GHL ~$580 + A-Leads $1,500 + Instantly $13 +
 # ManyChat $39. Owner-tunable via env; provenance renders on the CAC drawer.
 SALES_TOOLING_MONTHLY = float(os.getenv("SALES_TOOLING_MONTHLY", "2132"))
+# Per-seat sales tooling (monthly, AUD, per sales head). The books record the
+# four subscriptions as account-level totals only — no per-seat price exists
+# in the outflow classification, so this defaults to 0 (labelled) until Rydel
+# supplies one. When set, tooling scales with sales headcount, not spend.
+SALES_TOOLING_PER_SEAT = float(os.getenv("SALES_TOOLING_PER_SEAT", "0"))
 # FY26 context: commissions ran 6.3% of sales (Rydel's figure, 2026-09-17).
 FY26_COMMISSIONS_PCT_OF_SALES = 6.3

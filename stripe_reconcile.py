@@ -134,24 +134,57 @@ def _build_identity_index(headers: list[str], rows: list[list[str]]) -> dict:
 
 
 def _roster_index() -> dict:
-    """Active-client business names (normalized) + their MRR, for active-check + amount corroboration."""
-    active, amounts = set(), {}
+    """Active-client names (normalised), their MRR, and their term state.
+
+    COLUMNS ARE FOUND BY HEADER NAME, NOT POSITION (#162). The old code read
+    `r[7]` as the client's MRR — column 7 is START DATE. Production held
+    {'pottery green bakers gordon': 12022025.0}: the date 12-02-2025 with the
+    punctuation stripped, treated as twelve million dollars of monthly
+    revenue. Every amount-corroboration the matcher ever ran compared a real
+    charge against a date-as-a-number — silently dead.
+
+    Also returns `venues` {norm → display name}: the roster's client names
+    are matcher CANDIDATES now, not just an active-check — a client with no
+    tracker lead row used to be invisible to the matcher by construction
+    (the Pottery Green case)."""
+    active, amounts, venues, terms = set(), {}, {}, {}
     try:
         import sheet_mirror
         from config import FINANCE_SHEET_CONFIG
         rows = sheet_mirror.read_by_gid(1407663952) or \
             sheet_mirror._live_fetch(FINANCE_SHEET_CONFIG["sheet_id"], "Health (roster)", gid=1407663952)
+        header = [str(h or "").strip().lower() for h in (rows[0] if rows else [])]
+
+        def col(name: str) -> int | None:
+            for i, h in enumerate(header):
+                if name in h:
+                    return i
+            return None
+
+        i_status = col("status") if col("status") != 0 else 1
+        i_mrr = col("monthly recognized")
+        i_end = col("end date")
         for r in (rows or [])[1:]:
-            if len(r) > 7 and (r[0] or "").strip():
-                nb = _norm(r[0])
-                if (r[1] or "").strip().lower() == "active":
-                    active.add(nb)
-                m = re.sub(r"[^0-9.]", "", r[7] or "")
+            if not (r and (r[0] or "").strip()):
+                continue
+            nb = _norm(r[0])
+            venues[nb] = (r[0] or "").strip()
+            status = (r[i_status] if i_status is not None and i_status < len(r) else "") or ""
+            if status.strip().lower() == "active":
+                active.add(nb)
+            if i_mrr is not None and i_mrr < len(r):
+                m = re.sub(r"[^0-9.]", "", r[i_mrr] or "")
                 if m:
-                    amounts[nb] = float(m)
+                    try:
+                        amounts[nb] = float(m)
+                    except ValueError:
+                        pass
+            terms[nb] = {"status": status.strip(),
+                         "end_date": (r[i_end] if i_end is not None and i_end < len(r) else "") or "",
+                         "mrr": amounts.get(nb)}
     except Exception as e:
         logger.info("roster_index failed: %s", e)
-    return {"active": active, "amounts": amounts}
+    return {"active": active, "amounts": amounts, "venues": venues, "terms": terms}
 
 
 def _aliases() -> dict:
@@ -257,10 +290,27 @@ def _match_payment(name: str, email: str, amount, idx: dict, roster: dict) -> di
             cands.append((biz, 58, "contact name (some words)"))
         elif ctoks <= ptoks and len(ctoks) == 1 and len(next(iter(ctoks))) >= 4:
             cands.append((biz, 50, "first name"))
-    for bnorm, label in idx["by_business"].items():
-        btoks = _tokens(label)
-        if btoks and ptoks and (btoks <= ptoks or ptoks <= btoks) and (ptoks & btoks):
-            cands.append((label, 68, "business name"))
+    # venue names from BOTH the tracker's business column AND the roster.
+    # The roster half is the Pottery Green fix (#162): a client with no
+    # tracker lead row used to produce no candidate at all, so the panel
+    # said "nothing close enough to guess" about a payer string that WAS
+    # the client's name.
+    venue_pools = (("business name", idx["by_business"]),
+                   ("venue name (roster)", roster.get("venues") or {}))
+    for basis_label, pool in venue_pools:
+        for bnorm, label in pool.items():
+            btoks = _tokens(label)
+            if not (btoks and ptoks):
+                continue
+            if btoks == ptoks:
+                # even an EXACT venue-name payer is a top-strength PROPOSAL,
+                # not an attachment: the ruled auto evidence is a confirmed
+                # alias, a Stripe customer id, an email or a phone. One
+                # confirmation writes the alias and it attaches itself from
+                # then on.
+                cands.append((label, 95, basis_label + " (exact)"))
+            elif (btoks <= ptoks or ptoks <= btoks) and (ptoks & btoks):
+                cands.append((label, 68, basis_label))
     sur_biz = idx["surname_map"].get(sur, set())
     if len(sur_biz) == 1:
         cands.append((next(iter(sur_biz)), 60, "surname (unique)"))

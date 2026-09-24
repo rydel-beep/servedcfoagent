@@ -98,9 +98,14 @@ def panel() -> dict:
     """What the home dashboard renders. Stored results only — the panel never
     calls Stripe on a page load."""
     st = latest()
+    total = float(st.get("total_unmatched") or 0.0)
     return {
         "count": st.get("count") or 0,
-        "total": st.get("total_unmatched") or 0.0,
+        "total": total,
+        # cents are shown when they exist. '{:,.0f}' rounded $19,552.50 to
+        # $19,552 on a panel whose whole job is that no money goes quietly.
+        "total_text": (f"${total:,.2f}" if abs(total - round(total)) > 1e-9
+                       else f"${total:,.0f}"),
         "rows": (st.get("rows") or [])[:8],
         "as_of": st.get("at"),
         "available": st.get("available", False),
@@ -169,3 +174,21 @@ def journal() -> list[dict]:
 def aliases() -> dict:
     import stripe_reconcile as SR
     return SR._aliases()
+
+
+def client_names() -> list[str]:
+    """Every client name a payment could attach to — the roster's venues plus
+    the tracker's business column. For the owner's picker; names only."""
+    names = {}
+    try:
+        import stripe_reconcile as SR
+        for nb, label in (SR._roster_index().get("venues") or {}).items():
+            names[nb] = label
+        headers, rows = SR._fetch_tracker_rows()
+        if headers:
+            idx = SR._build_identity_index(headers, rows)
+            for nb, label in (idx.get("by_business") or {}).items():
+                names.setdefault(nb, label)
+    except Exception as e:  # noqa: BLE001
+        logger.info("client_names failed: %s", e)
+    return sorted(names.values(), key=str.lower)

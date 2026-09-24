@@ -133,7 +133,7 @@ def coverage_inventory() -> dict:
 
     # the close pipeline (#161)
     inv["closes"] = ["unmatched_payments", "closes_detected", "confirm_payer",
-                     "owner_only_chip"]
+                     "owner_only_chip", "status_stale_finding"]
 
     # every ⓘ drawer key
     import tile_drawers

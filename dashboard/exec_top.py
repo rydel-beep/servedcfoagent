@@ -458,15 +458,22 @@ def build_pulse() -> list[dict]:
               p.get("close_rate"), "confirmed shows")
     bc = p.get("booked_calls_7d") or {}
     n = bc.get("count")
+    # the tile SAYS its window in words (#162) — "next 7 days" is a claim
+    # about dates, so the dates are on it, and cancelled sits beside the
+    # count, never inside it.
+    window = bc.get("window_words") or "next 7 days"
+    cx = bc.get("cancelled_count")
     out.append({"id": "pulse_booked_calls",
-                "label": "Booked calls · next 7 days",
+                "label": f"Booked consults · {window}",
                 "value": str(n) if n is not None else "—",
-                "sub": ("consults on the GHL calendar (kept status, "
-                        "read-only)" if n is not None else
-                        str(bc.get("error") or "appointment cache pending")),
-                "stamp": f"GHL appointment cache · computed {_fmt_age(age)}",
+                "sub": ((f"every CRM calendar, read directly"
+                         + (f" · {cx} cancelled shown separately" if cx else ""))
+                        if n is not None else
+                        str(bc.get("error") or "calendar sync pending")),
+                "stamp": f"CRM calendars · computed {_fmt_age(age)}",
                 "state": "degraded" if n is None else _state_for(age, None),
-                "drawer": "booked_calls", "raw": n})
+                "drawer": "booked_calls", "raw": n,
+                "consults": (bc.get("consults") or [])[:12]})
     return out
 
 

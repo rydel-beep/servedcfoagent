@@ -377,7 +377,40 @@ def _crm_names() -> dict:
 
 def _upcoming(leads_all: list[dict]) -> dict:
     """Consults in the next seven days, with datetime and the closer they
-    belong to."""
+    belong to. Reads the CALENDAR-LEVEL source (#162); the per-contact cache
+    showed only tracker-lead contacts — 3 of the 12 booked."""
+    import appointments
+    if (appointments.store() or {}).get("events"):
+        up = appointments.upcoming(7)
+        by_contact = {l["contact_id"]: l for l in leads_all if l.get("contact_id")}
+        crm = _crm_names()
+        rows = []
+        now_iso = now_sydney().isoformat()
+        for e in up["rows"]:
+            l = by_contact.get(e.get("contact_id")) or {}
+            rows.append({
+                "when": e["when"],
+                "when_text": appointments.format_when(e["when"]),
+                "person": (l.get("name") or l.get("business")
+                           or crm.get(e.get("contact_id"))
+                           or (e.get("title") or "").split(" Served")[0].strip()
+                           or "name not on file"),
+                "business": l.get("business") or "",
+                "closer": ((l.get("closer") or "").strip()
+                           or (e.get("owner") if not str(e.get("owner", "")).endswith("…")
+                               else "") or "unassigned"),
+                "contact_id": e.get("contact_id"),
+                "follow_up": e.get("follow_up"),
+                "in_days": round((dt.datetime.fromisoformat(e["when"])
+                                  - dt.datetime.fromisoformat(now_iso)
+                                  ).total_seconds() / 86400, 1) if e.get("when") else None})
+        return {"rows": rows, "count": len(rows),
+                "window_words": up["window_words"],
+                "cancelled_count": up["cancelled_count"],
+                "note": ("every calendar in the CRM, read directly ("
+                         + up["window_words"] + ") — cancelled bookings are "
+                         "counted beside, never inside. The closer is the "
+                         "tracker's assignment, else the calendar's owner.")}
     import consult_schedule as CS
     cache = CS._cache() or {}
     now = now_sydney()

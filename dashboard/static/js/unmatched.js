@@ -36,8 +36,25 @@
     var input = el('input', 'up-client');
     input.type = 'text';
     input.value = btn.dataset.client || '';
-    input.placeholder = 'which client is this?';
+    input.placeholder = 'type or pick the client\u2026';
     input.setAttribute('aria-label', 'client this payment belongs to');
+    /* searchable picker: one shared datalist of every client name, fetched
+       once per page. Typing filters it natively; free text still works for
+       a client the lists have not caught up with. */
+    input.setAttribute('list', 'up-client-names');
+    if (!document.getElementById('up-client-names')) {
+      var dl = el('datalist');
+      dl.id = 'up-client-names';
+      document.body.appendChild(dl);
+      fetch('/dashboard/api/clients/names')
+        .then(function (r) { return r.ok ? r.json() : {names: []}; })
+        .then(function (j) {
+          (j.names || []).forEach(function (n) {
+            var o = el('option'); o.value = n; dl.appendChild(o);
+          });
+        })
+        .catch(function () { /* free text still works */ });
+    }
     var go = el('button', 's-door', 'Confirm');
     go.type = 'button';
     var cancel = el('button', 's-door', 'Cancel');
