@@ -732,9 +732,9 @@
    "name": "What does it cost us?",
    "kind": "metric",
    "screen": "scale",
-   "meaning": "The full cost of winning those clients, and the value-for-money ratios.",
-   "computed": "Ad spend + sales commissions + sales tools, divided by the new clients — then contract profit divided by that cost.",
-   "default_from": "commissions use last year's actual 6.3% of sales.",
+   "meaning": "The full cost of winning those clients, and whether they are worth it.",
+   "computed": "Ad spend + commissions from the sales pay rules on this deal mix + the $50 bounty on each qualified set + the manager retainer and bonuses + the extra sales people this volume needs + sales tools, divided by the new clients. Then the ratios: full contract divided by that cost, contract profit divided by that cost, and the month the payments cover it.",
+   "default_from": "the sales pay rules and your measured deal, closer and setter mixes; last year's 6.3%-of-sales figure appears only as a reference beside, never as the source.",
    "selector": "#chain-cost"
   },
   "show_math": {
@@ -834,15 +834,6 @@
    "changing": "Higher keeps the client base from shrinking as terms end.",
    "default_from": "measured from your last 90 days of ads and the lead tracker, unless marked as an assumption.",
    "selector": "[data-def='ctl_renewal_rate']"
-  },
-  "ctl_commission": {
-   "name": "Commission share",
-   "kind": "control",
-   "screen": "scale",
-   "meaning": "The slice of new-client cash paid as sales commissions.",
-   "changing": "Raising it increases the cost of each new client.",
-   "default_from": "measured from your last 90 days of ads and the lead tracker, unless marked as an assumption.",
-   "selector": "[data-def='ctl_commission']"
   },
   "ctl_opex": {
    "name": "Running costs per month",
@@ -1715,6 +1706,33 @@
    "computed": "Any client with payments in the last sixty days whose roster row says non-active, term-expired or zero monthly revenue. Each finding carries the payments that prove it.",
    "default_from": "The roster is fixed at source — this finding retires itself when the next scan sees the row corrected.",
    "selector": "[data-def='status_stale_finding']"
+  },
+  "ctl_qualified_rate": {
+   "name": "Qualified share of booked sets",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "How many booked calls count as qualified sets — the basis the $50 setter bounty is paid on.",
+   "changing": "Lowering it pays fewer bounties per booked call, so each client costs a little less.",
+   "default_from": "measured: sets whose lead passes the qualification rule, from your last 90 days; until there is sample, every booked set counts (the payout log paid all 194).",
+   "selector": "[data-def='ctl_qualified_rate']"
+  },
+  "ctl_closer_mix": {
+   "name": "Closer mix",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "The share of closes by each closer. A junior-closed deal costs the company his junior rate in total — the manager's cut comes out of it, never on top.",
+   "changing": "Shifting closes toward the junior closer lowers the commission cost per client.",
+   "default_from": "measured from the closer column of your won deals over the last 180 days.",
+   "selector": "[data-def='ctl_closer_mix']"
+  },
+  "ctl_tooling_seat": {
+   "name": "Sales tooling per seat",
+   "kind": "control",
+   "screen": "scale",
+   "meaning": "What each extra sales seat adds in monthly tool subscriptions, on top of the fixed base.",
+   "changing": "Setting it makes tool costs grow with the sales team instead of staying flat.",
+   "default_from": "0 until you supply a number — the books record the tools as account totals, not per seat.",
+   "selector": "[data-def='ctl_tooling_seat']"
   }
  }
 }

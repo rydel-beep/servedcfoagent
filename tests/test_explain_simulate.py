@@ -319,7 +319,13 @@ def test_client_engine_parity_200_random_sets(stub):
                                 "margin_avg", "comm_rate", "tooling",
                                 "epsilon", "spend_baseline",
                                 "comm_per_close", "bounty_per_set_agg",
-                                "monthly_fixed_agg")}
+                                "monthly_fixed_agg",
+                                # the cost card, made true: qualified-set
+                                # bounty basis, capacity cost, per-seat
+                                # tooling and the payback curve are engine
+                                # aggregates the client must be handed
+                                "qualified_rate", "capacity", "cash_curve",
+                                "tooling_per_seat")}
     sets = []
     for _ in range(200):
         sets.append({
@@ -391,7 +397,13 @@ def test_target_mode_round_trip_via_core(stub):
                                 "margin_avg", "comm_rate", "tooling",
                                 "epsilon", "spend_baseline",
                                 "comm_per_close", "bounty_per_set_agg",
-                                "monthly_fixed_agg")}
+                                "monthly_fixed_agg",
+                                # the cost card, made true: qualified-set
+                                # bounty basis, capacity cost, per-seat
+                                # tooling and the payback curve are engine
+                                # aggregates the client must be handed
+                                "qualified_rate", "capacity", "cash_curve",
+                                "tooling_per_seat")}
     core = os.path.join(ROOT, "dashboard", "static", "js", "sim_core.js")
     script = (
         "const SimCore = require(%r);"

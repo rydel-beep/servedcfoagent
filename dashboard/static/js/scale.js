@@ -38,7 +38,11 @@
     { k: 'show_rate', label: 'show rate (÷ sets, verified)', get: function (i) { return i.show_rate; }, set: function (i, v) { i.show_rate = +v; }, item: 'show_rate' },
     { k: 'close_rate', label: 'close rate (÷ shows)', get: function (i) { return i.close_rate; }, set: function (i, v) { i.close_rate = +v; }, item: 'close_rate' },
     { k: 'renewal_rate', label: 'renewal / resign rate', get: function (i) { return i.renewal_rate; }, set: function (i, v) { i.renewal_rate = +v; }, item: 'renewal_rate' },
-    { k: 'commission', label: 'commissions (% of new cash)', get: function (i) { return i.commission_pct_of_cash; }, set: function (i, v) { i.commission_pct_of_cash = +v; }, item: 'commission_pct_of_cash' },
+    // commissions come from the sales-comp rulebook on the deal mix — the
+    // old "% of new cash" control priced nothing and is retired; the FY26
+    // rate stays visible as a labelled reference on the cost card
+    { k: 'qualified_rate', label: 'qualified share of booked sets (the $50 bounty basis)', get: function (i) { return i.qualified_rate; }, set: function (i, v) { i.qualified_rate = +v; }, item: 'qualified_rate' },
+    { k: 'tooling_seat', label: 'sales tooling per seat $/mo', get: function (i) { return i.sales_tooling_per_seat; }, set: function (i, v) { i.sales_tooling_per_seat = +v; }, item: 'sales_tooling_per_seat' },
     { k: 'opex', label: 'OpEx ex-tax $/mo', get: function (i) { return i.opex_monthly_ex_tax; }, set: function (i, v) { i.opex_monthly_ex_tax = +v; }, item: 'opex_monthly_ex_tax' },
     { k: 'buffer', label: 'minimum cash buffer $', get: function (i) { return i.min_cash_buffer; }, set: function (i, v) { i.min_cash_buffer = +v; } },
     { k: 'hire_lead', label: 'hire lead time (weeks)', get: function (i) { return i.hire_lead_weeks; }, set: function (i, v) { i.hire_lead_weeks = +v; } }
@@ -80,6 +84,21 @@
         '<input type="number" step="0.05" min="0" max="1" data-mix="' + esc(k) + '" value="' + mix[k] + '" style="width:80px;background:var(--bg-inset-strong);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:2px 6px"></div>';
     });
     html += provChip('deal_mix') + '</div>';
+    // closer mix — WHO closes moves the company's commission cost (the
+    // junior rate is the company's total; Kalin's 3% comes out of it)
+    var cmix = CURRENT.closer_mix || {};
+    html += '<div class="scale-ctl"><label>closer mix (share of closes — engine normalises)</label>';
+    Object.keys(cmix).forEach(function (k) {
+      html += '<div style="display:flex;gap:6px;align-items:center;margin:2px 0">' +
+        '<span class="scale-prov" style="min-width:110px">' + esc(k) + '</span>' +
+        '<input type="number" step="0.05" min="0" max="1" data-closer-mix="' + esc(k) + '" value="' + cmix[k] + '" style="width:80px;background:var(--bg-inset-strong);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:2px 6px"></div>';
+    });
+    if (!('coby' in cmix)) {
+      html += '<div style="display:flex;gap:6px;align-items:center;margin:2px 0">' +
+        '<span class="scale-prov" style="min-width:110px">coby (junior)</span>' +
+        '<input type="number" step="0.05" min="0" max="1" data-closer-mix="coby" value="0" style="width:80px;background:var(--bg-inset-strong);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:2px 6px"></div>';
+    }
+    html += provChip('closer_mix') + '</div>';
     var lag = CURRENT.lag_curve || [];
     html += '<div class="scale-ctl"><label>lag curve (t / t+1 / t+2)</label><div class="scale-prov">' +
       lag.map(function (x) { return Math.round(x * 100) + '%'; }).join(' / ') + '</div>' + provChip('lag_curve') + '</div>';
@@ -91,14 +110,83 @@
   document.addEventListener('input', function (e) {
     var mx = e.target.closest('[data-mix]');
     if (mx && CURRENT) {
-      guard('mix', function () { CURRENT.deal_mix[mx.dataset.mix] = +mx.value || 0; });
+      // the deal mix drives BOTH cards — refresh the simulator's rulebook
+      // aggregates so the cost card moves with it (one mix, one engine)
+      guard('mix', function () { CURRENT.deal_mix[mx.dataset.mix] = +mx.value || 0; refreshSimAgg(); });
+      return;
+    }
+    var cmx = e.target.closest('[data-closer-mix]');
+    if (cmx && CURRENT) {
+      guard('closermix', function () {
+        CURRENT.closer_mix = CURRENT.closer_mix || {};
+        CURRENT.closer_mix[cmx.dataset.closerMix] = +cmx.value || 0;
+        refreshSimAgg();
+      });
       return;
     }
     var t = e.target.closest('[data-ctl]');
     if (!t || !CURRENT) return;
     var c = CTLS.find(function (x) { return x.k === t.dataset.ctl; });
-    if (c) guard('ctl', function () { c.set(CURRENT, t.value); });
+    if (c) guard('ctl', function () {
+      c.set(CURRENT, t.value);
+      // these controls change the simulator's engine-side aggregates
+      if (t.dataset.ctl === 'qualified_rate' || t.dataset.ctl === 'tooling_seat') refreshSimAgg();
+    });
   });
+
+  // engine-side aggregate refresh: closer mix, deal mix, qualified rate and
+  // per-seat tooling change the rulebook cost — the browser cannot re-derive
+  // those (one engine), so it asks the engine and re-renders on the answer
+  var aggTimer = null, aggSeq = 0;
+  function extraInputs() {
+    var o = {};
+    if (CURRENT) {
+      if (CURRENT.deal_mix) o.deal_mix = CURRENT.deal_mix;
+      if (CURRENT.closer_mix) o.closer_mix = CURRENT.closer_mix;
+      if (CURRENT.qualified_rate != null) o.qualified_rate = CURRENT.qualified_rate;
+      if (CURRENT.sales_tooling_per_seat != null) o.sales_tooling_per_seat = CURRENT.sales_tooling_per_seat;
+      if (CURRENT.pif_share != null) o.pif_share = CURRENT.pif_share;
+    }
+    return o;
+  }
+  function refreshSimAgg() {
+    if (!SIM) return;
+    clearTimeout(aggTimer);
+    aggTimer = setTimeout(async function () {
+      var seq = ++aggSeq;
+      try {
+        var r = await fetch('/dashboard/api/scale/simulate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ spend: simState.spend, cpl: simState.cpl,
+            cpl_curve: simState.curve,
+            inputs: Object.assign({ set_rate: simState.set,
+              show_rate: simState.show, close_rate: simState.close },
+              extraInputs()) }) });
+        if (!r.ok || seq !== aggSeq) return;
+        var s = await r.json();
+        // replace the engine-owned aggregates; the chain re-renders from them
+        ['comm_per_close', 'bounty_per_set_agg', 'monthly_fixed_agg',
+         'qualified_rate', 'capacity', 'tooling', 'tooling_per_seat',
+         'contract_avg', 'mrr_avg', 'margin_avg', 'm0_share', 'cash_curve',
+         'mix', 'commission_detail', 'monthly_fixed_detail',
+         'commission_per_close', 'bounty_per_set', 'comm_rule_version',
+         'mix_warning'].forEach(function (k) { if (k in s) SIM[k] = s[k]; });
+        var warn = $('cost-mix-warning');
+        if (warn) warn.textContent = s.mix_warning || '';
+        var note = $('cost-card-note');
+        if (note && s.comm_rule_version != null) {
+          note.textContent = 'commissions: the sales-comp rulebook (v' + s.comm_rule_version +
+            ') on this deal mix — $' + Math.round(s.commission_per_close).toLocaleString() +
+            ' a close · bounties: $' + Math.round(s.bounty_per_set) + ' per qualified set (' +
+            Math.round((s.qualified_rate == null ? 1 : s.qualified_rate) * 100) +
+            '% of booked) · headcount: config role costs for extra hires · tooling: subscriptions (fixed base).' +
+            ' Reference beside, never the source: last year commissions ran ' +
+            ((s.fy26_reference || {}).pct_of_sales != null ? s.fy26_reference.pct_of_sales : '—') + '% of sales.';
+        }
+        simForward('agg');
+      } catch (e) { /* offline — the current aggregates stand */ }
+    }, 350);
+  }
   document.addEventListener('click', function (e) {
     var r = e.target.closest('.ctl-reset');
     if (r && CURRENT && MEASURED) {
@@ -289,12 +377,16 @@
     set$('chain-mrr-v', fmt$(c.mrr_added));
     set$('chain-cac-v', c.cac ? fmt$(c.cac) : '—');
     set$('chain-cacso-v', c.cac_spend_only ? fmt$(c.cac_spend_only) : '—');
+    set$('chain-ltv-v', c.ltv_cac ? c.ltv_cac.toFixed(2) : '—');
     set$('chain-ltgp-v', c.ltgp_cac ? c.ltgp_cac.toFixed(2) : '—');
-    // the cost card — what a client costs apart from ads (#159)
+    set$('chain-payback-v', c.payback_months == null ? '—' : c.payback_months);
+    // the cost card — every line names its source; fixed vs variable shown
     var card = $('cost-card');
     if (card && c.cost_card) {
       card.innerHTML = c.cost_card.map(function (x) {
-        return '<li><span>' + x.label + '</span><b>' + fmt$(x.amount) + '</b></li>';
+        return '<li><span>' + esc(x.label) +
+          (x.kind ? ' <em class="cost-kind">' + esc(x.kind) + '</em>' : '') +
+          '</span><b>' + fmt$(x.amount) + '</b></li>';
       }).join('');
     }
     if (CURRENT) {
@@ -320,14 +412,45 @@
     var on = $('chk-show-math') && $('chk-show-math').checked;
     out.style.display = on ? '' : 'none';
     if (!on) return;
+    // the REAL arithmetic for every line — the same numbers the card shows,
+    // including the mix weights behind the per-close commission
+    var mixLine = '';
+    if (SIM.mix) {
+      mixLine = 'deal mix (drives BOTH cards): ' + Object.keys(SIM.mix).map(function (k) {
+        return Math.round(SIM.mix[k] * 100) + '% ' + k;
+      }).join(' + ') + '\n';
+    }
+    var commBits = '';
+    if (SIM.commission_detail) {
+      commBits = SIM.commission_detail.filter(function (d) { return d.rate != null; })
+        .map(function (d) {
+          return (d.weight * 100).toFixed(0) + '% × $' + Math.round(d.rate).toLocaleString() +
+            ' (' + d.closer + (d.junior ? ', junior — the company total' : '') + ' on ' + d.package + ')';
+        }).join(' + ');
+    }
+    var qPct = ((SIM.qualified_rate == null ? 1 : SIM.qualified_rate) * 100).toFixed(0);
+    var capLine = c.headcount_extra
+      ? ('extra sales heads at this volume: +' + c.headcount_extra + ' × config role cost = ' + fmt$(c.headcount_cost) + '/mo\n')
+      : "sales headcount: today's team covers this volume — $0\n";
     out.textContent =
       '$' + Math.round(simState.spend).toLocaleString() + ' ÷ $' + c.cpl_effective.toFixed(2) + ' per lead = ' + Math.round(c.leads) + ' leads\n' +
-      Math.round(c.leads) + ' leads × ' + (simState.set * 100).toFixed(1) + '% booking rate = ' + Math.round(c.calls) + ' calls\n' +
+      Math.round(c.leads) + ' leads × ' + (simState.set * 100).toFixed(1) + '% booking rate = ' + Math.round(c.calls) + ' booked calls\n' +
+      Math.round(c.calls) + ' booked × ' + qPct + '% qualified = ' + Math.round(c.qualified_sets) + ' qualified sets (the $50 bounty basis)\n' +
       Math.round(c.calls) + ' calls × ' + (simState.show * 100).toFixed(1) + '% turn-up rate = ' + Math.round(c.shows) + ' shows\n' +
       Math.round(c.shows) + ' shows × ' + (simState.close * 100).toFixed(1) + '% close rate = ' + c.clients.toFixed(1) + ' new clients\n' +
+      mixLine +
       c.clients.toFixed(1) + ' clients × ' + Math.round(SIM.m0_share * 100) + '% first-month share × $' + Math.round(SIM.contract_avg).toLocaleString() + ' avg contract = ' + fmt$(c.cash_this_month) + ' cash this month\n' +
       c.clients.toFixed(1) + ' clients × $' + Math.round(SIM.contract_avg).toLocaleString() + ' = ' + fmt$(c.cash_over_term) + ' over the term · × $' + Math.round(SIM.mrr_avg).toLocaleString() + '/mo = ' + fmt$(c.mrr_added) + '/mo revenue added\n' +
-      '($' + Math.round(simState.spend).toLocaleString() + ' ads + ' + fmt$(c.commissions_over_term) + ' commissions + $' + Math.round(SIM.tooling).toLocaleString() + ' sales tools) ÷ ' + c.clients.toFixed(1) + ' clients = ' + (c.cac ? fmt$(c.cac) : '—') + ' per client';
+      'commissions: ' + c.clients.toFixed(1) + ' closes × $' + Number(SIM.comm_per_close || 0).toLocaleString() + ' = ' + fmt$(c.commissions_over_term) +
+      (commBits ? '\n  where $' + Number(SIM.comm_per_close || 0).toLocaleString() + ' a close = ' + commBits + ' + the setter 5% of first-month cash' : '') + '\n' +
+      'bounties: ' + Math.round(c.qualified_sets) + ' qualified sets × $' + Math.round(SIM.bounty_per_set_agg || 0) + ' = ' + fmt$(c.bounties) + '\n' +
+      'fixed: ' + fmt$(c.monthly_fixed) + '/mo (manager retainer' + ((SIM.monthly_fixed_detail && SIM.monthly_fixed_detail.junior_kpi_bonus) ? ' + junior monthly bonus' : '') + ')\n' +
+      capLine +
+      'sales tools: ' + fmt$(c.tooling_total) + (SIM.tooling_per_seat ? ' (base + per-seat × seats)' : ' (fixed base)') + '\n' +
+      '(' + fmt$(simState.spend) + ' ads + ' + fmt$(c.commissions_over_term) + ' commissions + ' + fmt$(c.bounties) + ' bounties + ' + fmt$(c.monthly_fixed) + ' fixed + ' + fmt$(c.headcount_cost) + ' headcount + ' + fmt$(c.tooling_total) + ' tools) ÷ ' + c.clients.toFixed(1) + ' clients = ' + (c.cac ? fmt$(c.cac) : '—') + ' per client\n' +
+      'worth it? LTV:CAC = $' + Math.round(SIM.contract_avg).toLocaleString() + ' ÷ ' + (c.cac ? fmt$(c.cac) : '—') + ' = ' + (c.ltv_cac ? c.ltv_cac.toFixed(2) : '—') + '×' +
+      ' · LTGP:CAC = $' + Math.round(SIM.contract_avg).toLocaleString() + ' × ' + (SIM.margin_avg * 100).toFixed(1) + '% margin (last year’s figure) ÷ ' + (c.cac ? fmt$(c.cac) : '—') + ' = ' + (c.ltgp_cac ? c.ltgp_cac.toFixed(2) : '—') + '×' +
+      ' · payback ' + (c.payback_months == null ? 'beyond the schedule' : c.payback_months + ' month' + (c.payback_months === 1 ? '' : 's'));
   }
 
   // ── PARITY ON SETTLE: the engine re-checks; on real mismatch it WINS ────
@@ -349,8 +472,11 @@
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ spend: sent.spend, cpl: sent.cpl,
             cpl_curve: sent.curve,
-            inputs: { set_rate: sent.set, show_rate: sent.show,
-                      close_rate: sent.close } }) });
+            // the same mix/qualified/tooling inputs the aggregates were
+            // computed with — otherwise the engine-wins path would compare
+            // against a different scenario and clobber a correct render
+            inputs: Object.assign({ set_rate: sent.set, show_rate: sent.show,
+                      close_rate: sent.close }, extraInputs()) }) });
         if (!r.ok) return;
         var server = await r.json();
         // superseded by a newer check, or the state moved since we sent —

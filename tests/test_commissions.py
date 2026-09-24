@@ -358,14 +358,17 @@ def test_a_percentage_is_never_applied_to_inclusive_cash_anywhere():
 
 def test_bounties_are_counted_per_set_never_per_close():
     """Pass-3 hunt. The bounty is a SET event; counting it per close would
-    make it vanish for every set that never closed — 127 of 194 rows."""
+    make it vanish for every set that never closed — 127 of 194 rows.
+    Since the cost-card fix it rides on QUALIFIED sets (rulebook R-SET) —
+    still a set event, never a close event."""
     import os
     root = os.path.join(os.path.dirname(__file__), "..")
     with open(os.path.join(root, "compass_engine.py"), encoding="utf-8") as fh:
         ce = fh.read()
-    # modelled bounties ride on BOOKED CALLS (sets), not closes
-    assert 'bounty_per_set"] * calls' in ce
-    assert 'bounty_per_set"] * row["calls_booked"]' in ce
+    # modelled bounties ride on QUALIFIED SETS, not closes
+    assert 'bounty_per_set"] * qualified_sets' in ce
+    assert 'bounty_per_set"] * row["calls_booked"] * q_rate' in ce
+    assert 'bounty_per_set"] * clients' not in ce
     res = CE.accrue_close(_gp())
     assert not [e for e in res["events"] if e["kind"] == "set bounty"]
 

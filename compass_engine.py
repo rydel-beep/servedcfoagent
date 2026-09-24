@@ -687,8 +687,9 @@ def forward(inputs: dict, _book: dict | None = None) -> dict:
     lag = [x / s_lag for x in lag]
     eps = float(inp["epsilon"])
     S0 = float(inp["spend_path"].get("start") or 1.0) or 1.0
-    comm_rate = float(inp["commission_pct_of_cash"])
-    tooling = float(inp["sales_tooling_monthly"])
+    tooling_base = float(inp["sales_tooling_monthly"])
+    per_seat = float(inp.get("sales_tooling_per_seat") or 0.0)
+    q_rate = float(inp.get("qualified_rate", 1.0) or 0.0)
     team = inp["team"]
     thr = team.get("throughput") or THROUGHPUT_DEFAULTS
     buffer_ = float(inp["min_cash_buffer"])
@@ -811,15 +812,13 @@ def forward(inputs: dict, _book: dict | None = None) -> dict:
                              f"{RAMP_WEEKS.get(per,6)}w ramp; "
                              f"${ROLE_COSTS_MONTHLY.get(per,2000.0):,.0f}/mo)")})
 
-        # commissions are % of SALES (new-deal collections) — FY26 6.3% of
-        # sales, never of the standing book's recurring collections (stated;
-        # renewal commissions, if ever agreed, are not modelled)
         # the SAME rulebook cost the simulator uses — a rate applied to a
         # different cash base is how the roadmap said $313 a client while
-        # the cost card said $965 (the diagnosis).
+        # the cost card said $965 (the diagnosis). Bounties on QUALIFIED
+        # sets (rulebook R-SET), never on every booked call.
         _cm = _modelled_comm(inp)
         commissions = round(_cm["commission_per_close"] * row["closes"]
-                            + _cm["bounty_per_set"] * row["calls_booked"]
+                            + _cm["bounty_per_set"] * row["calls_booked"] * q_rate
                             + _cm["monthly_fixed"]["total"], 2)
         # hires: planned + auto (cost from start month; ramp affects capacity)
         hire_cost = 0.0
@@ -846,10 +845,14 @@ def forward(inputs: dict, _book: dict | None = None) -> dict:
         if dip is None or position < dip:
             dip = position
 
-        # CAC (period) — this month's acquisition costs ÷ realised closes.
-        # Sales labour is commission-only today (no fixed sales salaries) —
-        # stated; sales-role hires would move this.
-        acq = row["spend"] + commissions + tooling
+        # CAC (period) — this month's acquisition costs ÷ realised closes,
+        # INCLUDING the sales headcount this month's volume needs (steady-
+        # state against today's team — the cost card diagnosis, D6) and
+        # per-seat tooling. Delivery hires stay out of CAC (a delivery cost).
+        _cap = _capacity_need(row["leads"], row["calls_booked"], inp)
+        _seats = _cap["setters"] + _cap["closers"] + _cap["extra_total"]
+        _tooling_m = round(tooling_base + per_seat * _seats, 2)
+        acq = row["spend"] + commissions + _tooling_m + _cap["cost_monthly"]
         cac_period = round(acq / n_closes, 2) if n_closes >= 0.05 else None
         cac_period_spend_only = round(row["spend"] / n_closes, 2) \
             if n_closes >= 0.05 else None
@@ -907,6 +910,9 @@ def forward(inputs: dict, _book: dict | None = None) -> dict:
             "position": round(position, 2),
             "cac_period": cac_period,
             "cac_period_spend_only": cac_period_spend_only,
+            "sales_headcount_extra": _cap["extra_total"],
+            "sales_headcount_cost": _cap["cost_monthly"],
+            "tooling_month": _tooling_m,
             "ltgp_cac": ltgp_cac,
             "client_financed_check": client_financed,
             "utilisation": util,
@@ -926,9 +932,13 @@ def forward(inputs: dict, _book: dict | None = None) -> dict:
         _cmc = _modelled_comm(inp)
         _calls_ev = n_ev / max(float(inp["show_rate"]) * float(inp["close_rate"]), 1e-9)
         comm_est = (_cmc["commission_per_close"] * n_ev
-                    + _cmc["bounty_per_set"] * _calls_ev
+                    + _cmc["bounty_per_set"] * _calls_ev * q_rate
                     + _cmc["monthly_fixed"]["total"])
-        cac_cohort = round((meta["spend"] + comm_est + tooling) / n_ev, 2)
+        _capc = _capacity_need(meta["leads"], _calls_ev, inp)
+        _seatsc = _capc["setters"] + _capc["closers"] + _capc["extra_total"]
+        _tooling_c = tooling_base + per_seat * _seatsc
+        cac_cohort = round((meta["spend"] + comm_est + _tooling_c
+                            + _capc["cost_monthly"]) / n_ev, 2)
         cac_cohort_spend_only = round(meta["spend"] / n_ev, 2)
         # payback: cumulative mix-weighted cash schedule vs CAC
         cum, payback = 0.0, None
@@ -1481,49 +1491,107 @@ def simulate_month(inputs: dict | None = None, spend: float | None = None,
     cash_term = clients * contract_mix
     mrr_added = clients * mrr_mix
     comm_rate = float(inp["commission_pct_of_cash"])
-    tooling = float(inp["sales_tooling_monthly"])
-    # COMMISSIONS FROM THE RULEBOOK (#159), not a percentage of cash. A rate
-    # could only ever move with cash; it could not answer "what if Coby
-    # closes more of them", which is the whole point of the junior rate —
-    # the company's total changes with WHO closes. Bounties ride on the
-    # modelled SETS (calls booked), because that is when they are owed.
+    tooling_base = float(inp["sales_tooling_monthly"])
+    per_seat = float(inp.get("sales_tooling_per_seat") or 0.0)
+    # COMMISSIONS FROM THE RULEBOOK (#159), not a percentage of cash — and
+    # from THE ONE MIX: the same deal mix that prices the revenue card
+    # (the cost-card diagnosis, D1). Bounties ride on QUALIFIED sets
+    # (rulebook R-SET) — the qualified share is an input, never assumed.
     comm = _modelled_comm(inp)
+    q_rate = float(inp.get("qualified_rate", 1.0) or 0.0)
+    qualified_sets = calls * q_rate
     commissions_term = round(comm["commission_per_close"] * clients, 2)
-    bounties = round(comm["bounty_per_set"] * calls, 2)
+    bounties = round(comm["bounty_per_set"] * qualified_sets, 2)
     monthly_fixed = comm["monthly_fixed"]["total"]
-    acq = S + commissions_term + bounties + monthly_fixed + tooling
+    # CAPACITY: the people this volume needs, costed — CAC must rise as
+    # volume scales past today's team (the diagnosis, D6)
+    cap = _capacity_need(leads, calls, inp)
+    seats = cap["setters"] + cap["closers"] + cap["extra_total"]
+    tooling = round(tooling_base + per_seat * seats, 2)
+    acq = S + commissions_term + bounties + monthly_fixed \
+        + cap["cost_monthly"] + tooling
     cac = (acq / clients) if clients >= 0.01 else None
     cac_spend_only = (S / clients) if clients >= 0.01 else None
     ltgp_per_client = contract_mix * margin_mix
+    # payback: cumulative mix-weighted cash schedule vs the all-in cost
+    cash_curve = []
+    sched_len = max((len((pkgs.get(p) or {}).get("cash_schedule") or [])
+                     for p in mix), default=0)
+    cum = 0.0
+    for off in range(sched_len):
+        share = sum(mix[p] * (((pkgs.get(p) or {}).get("cash_schedule")
+                               or [0.0] * sched_len)[off]
+                              if off < len((pkgs.get(p) or {}).get("cash_schedule") or [])
+                              else 0.0)
+                    for p in mix)
+        cum += share
+        cash_curve.append(round(cum, 6))
+    payback = None
+    if cac:
+        for i, c in enumerate(cash_curve):
+            if c * contract_mix >= cac:
+                payback = i + 1
+                break
+    cap_label = (f"sales headcount needed at this volume: "
+                 f"+{cap['extra_total']} (from {cap['hire_from']})"
+                 if cap["extra_total"] else
+                 "sales headcount: today's team covers this volume")
+    margin_note = ("packages carry last year's 42.9% margin until this "
+                   "year's delivery costs are measured per package — labelled")
     return {"spend": round(S, 2), "cpl_effective": round(cpl_eff, 2),
             "cpl_base": round(cpl0, 2), "cpl_curve": bool(cpl_curve),
             "leads": round(leads, 1), "calls": round(calls, 1),
+            "qualified_sets": round(qualified_sets, 1),
             "shows": round(shows, 1), "clients": round(clients, 2),
             "cash_this_month": round(cash_now, 2),
             "cash_over_term": round(cash_term, 2),
             "mrr_added": round(mrr_added, 2),
             "commissions_over_term": round(commissions_term, 2),
             "commission_per_close": comm["commission_per_close"],
+            "commission_detail": comm.get("detail"),
+            "needs_your_number": comm.get("needs_your_number"),
+            "commission_mix": comm.get("mix_used"),
+            "mix_warning": comm.get("mix_warning"),
+            "fy26_reference": comm.get("fy26_reference"),
             "bounties": bounties, "bounty_per_set": comm["bounty_per_set"],
             "monthly_fixed": monthly_fixed,
+            "monthly_fixed_detail": comm.get("monthly_fixed"),
             "comm_rule_version": comm["rule_version"],
+            "capacity": cap,
             "cost_card": [
-                {"label": "ad spend", "amount": round(S, 2)},
-                {"label": "commissions on closes", "amount": commissions_term},
-                {"label": "set bounties", "amount": bounties},
-                {"label": "manager retainer + bonuses", "amount": monthly_fixed},
-                {"label": "sales tooling", "amount": round(tooling, 2)},
+                {"label": "ad spend", "amount": round(S, 2),
+                 "kind": "variable"},
+                {"label": "commissions on closes", "amount": commissions_term,
+                 "kind": "variable"},
+                {"label": "set bounties (qualified sets)", "amount": bounties,
+                 "kind": "variable"},
+                {"label": "manager retainer + bonuses", "amount": monthly_fixed,
+                 "kind": "fixed"},
+                {"label": cap_label, "amount": cap["cost_monthly"],
+                 "kind": "steps with volume"},
+                {"label": "sales tooling", "amount": tooling,
+                 "kind": ("fixed base + per-seat" if per_seat else "fixed")},
             ],
             "cac": round(cac, 2) if cac else None,
             "cac_spend_only": round(cac_spend_only, 2) if cac_spend_only else None,
+            "ltv_cac": round(contract_mix / cac, 2) if cac else None,
             "ltgp_per_client": round(ltgp_per_client, 2),
             "ltgp_cac": round(ltgp_per_client / cac, 2) if cac else None,
+            "margin_source": margin_note,
+            "payback_months": payback,
+            "cash_curve": cash_curve,
             "mix": {k: round(v, 3) for k, v in mix.items()},
+            "closer_mix": inp.get("closer_mix") or {"kalin": 1.0},
+            "setter_mix": inp.get("setter_mix") or {"unattributed": 1.0},
             "contract_avg": round(contract_mix, 2),
             "mrr_avg": round(mrr_mix, 2),
             "margin_avg": round(margin_mix, 4),
-            "tooling": tooling,
+            "tooling": tooling_base,
+            "tooling_per_seat": per_seat,
+            "tooling_total": tooling,
+            "qualified_rate": q_rate,
             "comm_rate": comm_rate,
+            "comm_rate_use": "reference beside the rulebook — never the source",
             "comm_per_close": comm["commission_per_close"],
             "bounty_per_set_agg": comm["bounty_per_set"],
             "monthly_fixed_agg": monthly_fixed,

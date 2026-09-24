@@ -208,6 +208,72 @@ def run_pass(page, name, evd, shots):
 
 
 
+def run_cost_card(page, name, evd, shots):
+    """THE COST CARD, MADE TRUE: change the closer mix toward Coby → the
+    cost per client FALLS (the junior rate is the company's total); change
+    the qualified rate → the bounty line moves; the headcount line appears
+    at scaled volume and CAC carries it."""
+    steps = {}
+    page.goto(BASE + "/dashboard/scale", wait_until="load")
+    time.sleep(3)
+    page.evaluate("document.querySelector('#defs-tour [data-t=skip]')?.click()")
+    page.evaluate("document.getElementById('level-advanced')?.setAttribute('open','')")
+    try:
+        page.wait_for_selector("[data-closer-mix]", timeout=20000)
+    except Exception:
+        fail(f"{name}: closer-mix control missing from the advanced inputs")
+        return steps
+
+    def card():
+        return page.evaluate("""() => ({
+          cac: (document.getElementById('chain-cac-v')?.innerText || ''),
+          cac_n: +((document.getElementById('chain-cac-v')?.dataset.value) || 0),
+          card: Array.from(document.querySelectorAll('#cost-card li')).map(li => li.innerText.replace(/\\n/g, ' ')),
+          note: (document.getElementById('cost-card-note')?.innerText || ''),
+          ratios: (document.getElementById('cost-ratios')?.innerText || ''),
+        })""")
+
+    s0 = card()
+    steps["initial"] = s0
+    if "rulebook" not in s0["note"]:
+        fail(f"{name}: cost-card footnote does not name the rulebook")
+    if "never the source" not in s0["note"]:
+        fail(f"{name}: the FY26 reference is not labelled reference-only")
+    if "LTV:CAC" not in s0["ratios"] or "LTGP:CAC" not in s0["ratios"]:
+        fail(f"{name}: the ratios are not named on the card")
+    if not any("headcount" in li for li in s0["card"]):
+        fail(f"{name}: no headcount line on the cost card")
+    cac0 = page.evaluate("() => +(document.getElementById('chain-cac-v')?.innerText || '').replace(/[$,]/g, '')")
+
+    # shift the closer mix toward Coby → cost per client falls
+    type_into(page, "[data-closer-mix='coby']", 0.5)
+    kalin_el = page.query_selector("[data-closer-mix='kalin']")
+    if kalin_el:
+        type_into(page, "[data-closer-mix='kalin']", 0.5)
+    time.sleep(1.5)          # debounce + engine round-trip
+    s1 = card()
+    steps["after_coby_50"] = s1
+    cac1 = page.evaluate("() => +(document.getElementById('chain-cac-v')?.innerText || '').replace(/[$,]/g, '')")
+    if not (cac1 < cac0):
+        fail(f"{name}: closer mix toward Coby did not lower CAC ({cac0} → {cac1})")
+
+    # qualified rate down → bounty line falls
+    def bounty():
+        return page.evaluate("""() => { const li = Array.from(document.querySelectorAll('#cost-card li'))
+          .find(x => x.innerText.includes('bounties'));
+          return li ? +(li.innerText.match(/\\$([\\d,]+)/) || [0,'0'])[1].replace(/,/g, '') : null; }""")
+    b0 = bounty()
+    type_into(page, "[data-ctl='qualified_rate']", 0.5)
+    time.sleep(1.5)
+    b1 = bounty()
+    steps["bounty_move"] = {"before": b0, "after": b1}
+    if b0 is None or b1 is None or not (b1 < b0):
+        fail(f"{name}: qualified rate 0.5 did not lower bounties ({b0} → {b1})")
+    if shots:
+        page.screenshot(path=os.path.join(evd, f"{name}-8-costcard.png"))
+    return steps
+
+
 def run_travelling(page, evd, shots):
     """HOW WE'RE TRAVELLING — the interaction contract: the button lands
     here with the scenario as the comparison; switching the window changes
@@ -467,6 +533,8 @@ def main():
             steps["travelling"] = run_travelling(page, evd, shots=(i == 0))
             steps["required_rate"] = run_required_rate(page, name, evd,
                                                        shots=(i == 0))
+            steps["cost_card"] = run_cost_card(page, name, evd,
+                                               shots=(i == 0))
             REPORT["passes"].append({"name": name, "steps": steps})
         REPORT["console_errors"] = console_errors
         for e in console_errors:

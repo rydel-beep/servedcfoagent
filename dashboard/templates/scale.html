@@ -153,17 +153,19 @@
     </div>
     <div class="chain-card" id="chain-cost" data-def="chain_cost">
       <h4>What does it cost us?</h4>
-      <b id="chain-cac-v">{{ '${:,.0f}'.format(sim.cac) if sim and sim.cac else '—' }}</b>
-      <span class="chain-rate">per client, all-in (ads-only <span id="chain-cacso-v">{{ '${:,.0f}'.format(sim.cac_spend_only) if sim and sim.cac_spend_only else '—' }}</span>) · profit-vs-cost <span id="chain-ltgp-v">{{ sim.ltgp_cac if sim else '—' }}</span>×</span>
-      {# THE COST CARD (#159): what a client costs, apart from ad spend.
-         Commissions come from the sales-comp rulebook, so moving closes
-         between closers moves this — a flat rate could never do that. #}
+      <b id="chain-cac-v" data-metric="sim_cac" data-window="month" data-clock="modelled month" data-basis="scenario" data-value="{{ '%.2f' % sim.cac if sim and sim.cac else '' }}">{{ '${:,.0f}'.format(sim.cac) if sim and sim.cac else '—' }}</b>
+      <span class="chain-rate">per client, all-in (ads-only <span id="chain-cacso-v">{{ '${:,.0f}'.format(sim.cac_spend_only) if sim and sim.cac_spend_only else '—' }}</span>)</span>
+      {# THE COST CARD (#159, made true by the cost-card diagnosis): every
+         line names its ONE source; commissions come from the sales-comp
+         rulebook on the SAME deal mix that prices the revenue card. #}
       <ul class="cost-card" id="cost-card" data-def="cost_card">
         {% for c in (sim.cost_card if sim else []) %}
-        <li><span>{{ c.label }}</span><b>{{ '${:,.0f}'.format(c.amount) }}</b></li>
+        <li><span>{{ c.label }} <em class="cost-kind">{{ c.kind }}</em></span><b>{{ '${:,.0f}'.format(c.amount) }}</b></li>
         {% endfor %}
       </ul>
-      <span class="chain-rate" id="cost-card-note">{% if sim %}commissions on the sales-comp rulebook (v{{ sim.comm_rule_version }}) — ${{ '{:,.0f}'.format(sim.commission_per_close) }} a close, plus ${{ '{:,.0f}'.format(sim.bounty_per_set) }} on every set booked{% endif %}</span>
+      <span class="chain-rate" id="cost-ratios">{% if sim %}worth it? LTV:CAC <span id="chain-ltv-v" data-metric="sim_ltv_cac" data-window="month" data-clock="modelled month" data-basis="scenario" data-value="{{ sim.ltv_cac or '' }}">{{ sim.ltv_cac or '—' }}</span>× (full contract) · LTGP:CAC <span id="chain-ltgp-v" data-metric="sim_ltgp_cac" data-window="month" data-clock="modelled month" data-basis="scenario" data-value="{{ sim.ltgp_cac or '' }}">{{ sim.ltgp_cac or '—' }}</span>× (contract × {{ '%.1f' % (sim.margin_avg * 100) }}% margin — last year's figure, labelled) · pays itself back in <span id="chain-payback-v">{{ sim.payback_months or '—' }}</span> month{{ '' if sim.payback_months == 1 else 's' }}{% endif %}</span>
+      <span class="chain-rate" id="cost-card-note">{% if sim %}commissions: the sales-comp rulebook (v{{ sim.comm_rule_version }}) on this deal mix — ${{ '{:,.0f}'.format(sim.commission_per_close) }} a close · bounties: ${{ '{:,.0f}'.format(sim.bounty_per_set) }} per qualified set ({{ '%.0f' % (sim.qualified_rate * 100) }}% of booked) · headcount: config role costs for extra hires · tooling: subscriptions (fixed base). Reference beside, never the source: last year commissions ran {{ sim.fy26_reference.pct_of_sales if sim.fy26_reference else '—' }}% of sales.{% endif %}</span>
+      <span class="chain-rate" id="cost-mix-warning" style="color:var(--warn, #c47f00)">{{ sim.mix_warning if sim and sim.mix_warning else '' }}</span>
     </div>
   </div>
 

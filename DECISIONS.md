@@ -2954,3 +2954,63 @@ subject.
   ($1,650.00) — but R-CASH says Stripe/Xero, and that is a ruling-level
   question, not something to change quietly.
 
+
+## #163 — THE COST CARD, MADE TRUE: one mix, one rulebook, capacity that scales (2026-09-24)
+
+(#162 belongs to the matcher/consults wave running in parallel today — its
+code already carries the number.)
+
+**THE WITNESSED STATE (Rydel, 24 Sep)**: at $22,500 spend / $55 CPL the
+revenue card said $85,033 this month ($4,533 a client) while the commission
+line said $902 a close — every deal a Kalin-closed Growth Pro. The footnote
+cited the rulebook AND "last year's actual 6.3% of sales" for the same
+figure. Diagnosis: `COST_CARD_DIAGNOSIS.md`.
+
+**THE ROOT (D1)**: the revenue card ran on `deal_mix` (measured, editable);
+the commission engine read a DIFFERENT KEY (`package_mix`) that nothing ever
+set — it silently fell to `{growth_pro: 1.0}`, `{kalin: 1.0}` and a
+hardcoded $3,050. Two cards, two businesses.
+
+**RULED/BUILT**:
+1. **ONE MIX** — commissions are costed from the SAME deal mix that prices
+   the revenue card, mapped onto the rulebook's package keys. An explicit
+   override still works but raises a visible warning; the invariant
+   (revenue mix == commission mix) is tested.
+2. **NEW MEASURED DEFAULTS** with provenance and sample size: `closer_mix`
+   and `setter_mix` (tracker columns on 180d won rows; the GHL opportunity
+   owner id is mirrored but unmapped — cross-check pending), `pif_share`
+   (payment-type on Scale Engine won rows), `qualified_rate` (sets whose
+   lead passes the ONE qualification rule ÷ all sets, 90d; until there is
+   sample, 100% with the payout-log evidence — 194/194 sets were paid).
+3. **BOUNTIES ON QUALIFIED SETS** (rulebook R-SET) — the qualified share is
+   an input on the advanced panel, never an assumption.
+4. **PIF WEIGHTED** — `pif_share=0.5` used to be read as a boolean (any
+   non-zero → 100% PIF). Now weighted: half full-prepayment, half first
+   collection.
+5. **COBY'S BONUSES** — the $350 monthly KPI bonus lands in fixed costs
+   when he is in the closer mix; the $1,000 fast-win at 10 lifetime closes
+   rides as $100 on each junior-closed deal (amortised, labelled).
+6. **CAPACITY IN CAC** — the card now shows "sales headcount needed at this
+   volume: +N (from month) — $x/mo" (whole people, throughput config,
+   config role costs, dated by hire lead time) and CAC carries it; same in
+   forward()'s period CAC and cohort CAC. At the witnessed volume: +1
+   setter +1 closer = $3,900/mo → CAC $2,444 → $2,652. Delivery hires stay
+   out of CAC (delivery cost).
+7. **TOOLING** = fixed base $2,132 + per-seat × sales seats; per-seat is 0
+   labelled "needs your number" — the books hold no per-seat price.
+8. **RATIOS NAMED** — LTV:CAC (full contract), LTGP:CAC (contract × 42.9%
+   FY26 margin, labelled), payback months; scan identities
+   (`sim_cac`, `sim_ltv_cac`, `sim_ltgp_cac`, basis scenario) on the card.
+   "Show the math" prints every line's real arithmetic including the mix
+   weights and the ratio derivations.
+9. **6.3% DEMOTED** — the FY26 rate appears ONLY as a labelled sanity
+   reference ("never the source"); the registry's stale "commissions use
+   last year's actual 6.3% of sales" copy is gone; the dead "% of new cash"
+   control is retired in favour of closer-mix and qualified-rate controls.
+
+**NEEDS RYDEL** (surfaced, not invented): the qualified-set gate for the
+$350 KPI bonus ("a production floor — needs your number") · a per-seat
+tooling price if he wants tooling to scale · rates for content scale /
+DWY / custom / multi-venue (still "needs your number") · role costs for new
+sales hires are the config Manila-lane figures ($1,400 setter / $2,500
+closer) — labelled assumptions until ruled.
