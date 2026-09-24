@@ -59,3 +59,4 @@ Verified 2026-09-21 against commit `acf0172`; **five rows re-verified against
 Xero scope only Rydel can grant) · 0 NOT RUN · 1 SUPERSEDED · 1
 SHIPPED-but-stale (brief 17, blocked on the missing skill) · 0
 unverifiable — row 23 is now verified ABSENT rather than unknown.**
+| 46 | ONE-CLOSE-REGISTER (#164) | DECISIONS #164; `close_register.py` (the one population; matched-Stripe cash; both clocks; confirmed vs proposed); `/dashboard/closes` ledger + owner-only record-a-close; single-call-site guard `tests/test_one_close_population.py`; scan-2 closes keys + daily reconciliation; the four Sept closes identical on every surface (evidence: `dashboard/evidence/close-register-164/`, `scan-fe5990930b7e/`) |

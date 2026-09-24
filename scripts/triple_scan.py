@@ -107,6 +107,9 @@ def login(page):
 # ── SCAN 1 — it works ───────────────────────────────────────────────────────
 
 def scan_works(page, log, evd, shots=False):
+    # scan 1 checks what a human SEES, so [hidden] scan-2 stamps (#164's
+    # closes_count/closes_cash shared keys) are not tiles here — scan 2
+    # still reads them, hidden or not.
     out = {"pages": {}, "ok": True}
     for name, path in PAGES:
         log.clear()
@@ -122,7 +125,7 @@ def scan_works(page, log, evd, shots=False):
         probe = page.evaluate("""() => ({
           title: document.title,
           boundaries: Array.from(document.querySelectorAll('.panel-boundary-fail:not(.empty-state)')).map(e => e.innerText.slice(0,90)),
-          tiles: Array.from(document.querySelectorAll('[data-metric][data-value]')).map(el => ({
+          tiles: Array.from(document.querySelectorAll('[data-metric][data-value]:not([hidden])')).map(el => ({
             metric: el.dataset.metric,
             value: (() => {
               const inner = el.querySelector('.exec-tile-value,.pulse-value,.tv-actual,.s-card-value');
