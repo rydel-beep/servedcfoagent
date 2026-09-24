@@ -1,5 +1,125 @@
 # STATUS — served-cfo-agent session log
 
+## 2026-09-24 (2) — ONE CLOSE REGISTER: EVERY SURFACE TELLS THE SAME TRUTH (#164)
+
+Deploys → 72c95bd7, fe599093 SUCCESS (fe599093 serving). Suite **1452/1452** green on the final tree
+(the one fpdf test needed fpdf2 installed into the LOCAL venv; it was
+always in requirements.txt). Zero writes to the tracker, GHL or Xero;
+no token minted; GHL_EMAIL_TOKEN untouched; the timeline repo untouched.
+
+**THE FOUR, ON EVERY SURFACE, IDENTICAL** (evidence:
+scripts/close_register_evidence.py run on the box 14:07 AEST):
+30d activity — /ads **4** (engine alone said 2) · SALES **4** · travelling
+MTD **4** · tiles **4** · _closes_union **4** · EDITH "what have we closed
+this month" names all four. Cash **$8,882.50** identical on /ads and SALES
+(matched Stripe, R-CASH); contract **$72,900**. 30d cohort — **3**, and the
+page SAYS why (Orlando's lead arrived 2024-11-02: id-exact to "Nov Ad
+Video v1", closed 22 months later). Tiers: activity 2 from ads (Orlando,
+Koji id-exact) · 2 not attributable (Harman, William — leads carry no ad
+stamp). Register: **81 entries · 55 confirmed · 26 proposed-needs-evidence**
+(proposed are counted SEPARATELY, never inside a headline).
+
+**THE CAUSES OF "1"** (CLOSE_REGISTER_DIAGNOSIS.md, all measured): three
+surfaces said 1 for three DIFFERENT reasons — /ads' cohort default on a
+tracker-only engine (Harman + William had NO tracker lead row: no window,
+no clock, no toggle could ever show them — the all-time grid held 61 deals
+without them); SALES' inline tracker filter beside a cash line built from
+four; EDITH's third private tracker reader, which also threw away "this
+month" and answered all-time. Hypothesis (c) KILLED — the headline never
+hid tiers; the POPULATION was the subset. (d) overtaken — Koji was typed
+into the tracker on 23 Sep; the "1" Rydel saw WAS Koji.
+
+**WHAT SHIPPED**: close_register.py (detection = #161's four sources
+all-time; enrichment with provenance; cash = matched Stripe ONLY, tracker
+cell beside; both clocks on every record; confirmed needs authority or two
+sources) · every consumer rewired with a single-call-site guard
+(tests/test_one_close_population.py) · /dashboard/closes ledger (evidence
+chips, attribution WHY per row, Piolo lines, owner-only RECORD A CLOSE:
+real evidence picked from a list, verified, journaled; free text refused) ·
+scan-2 shared keys closes_count/closes_cash per (window × clock) + register
+engine-pair + EDITH drill · daily reconciliation riding the freshness tick
++ ground-truth Scan 3 (drills: scripts/close_register_drills.py — remove a
+close → S1 names deal+source; force a divergence → both values named).
+
+**KOJI/POMPOKO ALIAS**: production held alias "sanatani rombola" →
+**'Pompoko Ramen'** (the venue) — the "recorded as Koji" premise was stale.
+Journaled as a correction/confirmation (register journal + payments
+journal, charge ch_3UIj5R…) with Rydel's wording. OPEN NAMING QUESTION for
+Rydel: every system calls the venue "Pompoko Ramen"; the brief says
+"POMPOKO BAR" — renaming is a tracker/Health-tab edit at source, not the
+agent's.
+
+**FOUND LIVE, FIXED IN DEPLOY 2**: a matched charge moved a close's CASH
+but not its EVIDENCE — Koji showed $1,650 collected beside "missing: a
+matched payment" and a ✗ Stripe chip. Matched charges now join
+evidence.charge_ids. Plus R-PIOLO: register entries carry the tracker's
+commission cells — /dashboard/api/register now scrubs per-person pay for
+non-owner roles (tested).
+
+**WHAT THE GATES CAUGHT IN MY OWN WORK BEFORE DEPLOY**: funnel arithmetic
+in the ads blueprint (I13 — moved into close_register.scoreboard_overlay);
+a badge that wasn't a door (I14); a route classified by omission
+(evidence-options → money-truth, owner-only).
+
+**RECONCILIATION, FIRST RUN**: ok — no source knows a close the register
+lacks. 26 aged single-source entries flagged S2 by name (Michael
+Pulvirenti 28d, Kristeen Hammond 55d, … krish 128d): each needs evidence
+or a human ruling — they sit as proposed, never counted.
+
+**FLAGGED FOR RYDEL, NOT DECIDED**: the POMPOKO BAR / Pompoko Ramen naming
+· Harman's and William's tracker CLOSER cells read "Showed" (a column
+shifted at source — their closes credit "unassigned" until fixed) · the
+26 proposed entries want a sweep (some look like stage-noise, e.g.
+GHL-stage-only rows >100 days old) · the closed-deal form is still not in
+the mirrored custom fields (#161), so its chip reads ✗ on every close.
+
+**SCANS ON fe599093**: scan 2 — 91 keys, 0 divergences, 10 engine checks (register pairs included); scan 3 clean including the new register-vs-raw-sources check; scan 1 clean once taught that a hidden scan stamp is not a tile. Live access probe PASS: coo reads the ledger and the register API with every pay key scrubbed; declare/rebuild/evidence-options 403; the owner's empty declare 400s with the evidence refusal. Drills (local, in-memory stores): remove-a-close → the reconciliation names the deal and the source; forced divergence → both values named. The accepted-declaration path is unit-proven only — recording a fabricated close on production would violate the law this wave enforces.
+
+## 2026-09-24 (2) — ALIASES APPLIED · CONSULTS COUNTED · THE ESTATE SWEPT (#162)
+
+Deploys → d28a8617 (this wave), then #163/#164 landed on top from a parallel
+session; my late close-candidate fix shipped inside their fe599093 after an
+isolated-worktree verification (1,425 green). Health ok. Suite green at every
+push. Zero writes to the tracker, GHL or Xero.
+
+**THE MATCHER**: candidates were tracker-only — the roster's venues were
+never names, which is why "Pottery Green Bakers Gordon" (the client's own
+name) drew "nothing close enough to guess". Worse, found while proving it:
+the roster index read column 7 (START DATE) as MRR — production held Pottery
+at $12,022,025/mo, so amount corroboration had been comparing charges
+against dates-as-dollars forever. Header-named columns now; venues are
+ranked evidence-tagged candidates; auto stays alias/id/email/phone.
+
+**THE RULINGS**: three payer aliases journaled with charge ids. Panel
+7 rows / $19,552.50 → **0 / $0** (2+2+3, both Nirosha casings under one
+alias). Walkway $6,100/47d overdue → **$1,067.50/16d** with receipts
+itemised; 62Thirty → **$0**; AR $70,248.83 → $62,716.33. Future charges
+from all three payers auto-attach. The panel shows cents now — '{:,.0f}'
+had rounded the fifty cents away.
+
+**THE CONSULTS**: `appointments.py` reads every calendar directly (6 found;
+events carry +10:00 offsets). 12 booked today → 1 Oct with cancelled (3),
+test (2) and onboarding (1) beside, follow-ups flagged; the tile says
+"Booked consults · now → Oct 1" and read exactly Rydel's **10** at
+verification (two of today's had passed). Pulse, SALES and travelling on
+the one source — travelling's booked-on month went 0 → **27**. Sync on the
+15-min CRM loop + Refresh now + a freshness contract row.
+
+**THE STANDING RULE**: paid-in-60d + zero/expired roster = status-stale
+finding with charge ids. First run: Pottery Green AND Texas Charcoal
+Chicken ($3,300 while 'Finished') — the second one unprompted.
+
+**THE SWEEP** (`GHL_TRACKER_SWEEP_2026-09-24.md`): counts, named
+mismatches and cause classes across contacts, leads, qualified,
+appointments, shows, closes, cash, contracts, status. It also caught my
+own #161 defect: 23 recurring payments from long-standing clients reading
+as brand-new closes once their real close aged past the scan window —
+fixed and pinned.
+
+Artefacts: ALIAS_APPOINTMENT_DIAGNOSIS.md · GHL_TRACKER_SWEEP_2026-09-24.md ·
+dashboard/evidence/zero-writes-162.json · DECISIONS #162.
+
+
 ## 2026-09-24 — THE COST CARD, MADE TRUE (#163)
 
 Commit c8ee107 (completing the half that rode into d28a861 while two waves

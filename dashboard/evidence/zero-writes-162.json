@@ -1,0 +1,17 @@
+{
+ "files": [
+  "appointments.py",
+  "client_status_watch.py",
+  "stripe_reconcile.py",
+  "unmatched_payments.py",
+  "close_detect.py",
+  "compass_engine.py",
+  "sales_scoreboard.py",
+  "travelling.py",
+  "ghl_mirror.py",
+  "freshness.py",
+  "dashboard/exec_top.py",
+  "scripts/ghl_tracker_sweep.py"
+ ],
+ "findings": []
+}

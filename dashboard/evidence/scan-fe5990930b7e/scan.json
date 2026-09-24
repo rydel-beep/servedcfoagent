@@ -1,0 +1,224 @@
+{
+ "commit": "fe5990930b7e",
+ "base": "https://web-production-16b16.up.railway.app",
+ "utc": "2026-09-24T04:19:33Z",
+ "scans": {
+  "works": {
+   "pages": {
+    "today": {
+     "status": 200,
+     "tiles": 14,
+     "panels": 5,
+     "ok": true
+    },
+    "sales-board": {
+     "status": 200,
+     "tiles": 25,
+     "panels": 9,
+     "ok": true
+    },
+    "landing": {
+     "status": 200,
+     "tiles": 11,
+     "panels": 2,
+     "ok": true
+    },
+    "brief": {
+     "status": 200,
+     "tiles": 2,
+     "panels": 5,
+     "ok": true
+    },
+    "cash": {
+     "status": 200,
+     "tiles": 1,
+     "panels": 4,
+     "ok": true
+    },
+    "sales": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 10,
+     "ok": true
+    },
+    "unit-econ": {
+     "status": 200,
+     "tiles": 6,
+     "panels": 6,
+     "ok": true
+    },
+    "projection": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 6,
+     "ok": true
+    },
+    "renewals": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 4,
+     "ok": true
+    },
+    "outflows": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 3,
+     "ok": true
+    },
+    "receivables": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 1,
+     "ok": true
+    },
+    "team": {
+     "status": 200,
+     "tiles": 1,
+     "panels": 2,
+     "ok": true
+    },
+    "decisions": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 1,
+     "ok": true
+    },
+    "system": {
+     "status": 200,
+     "tiles": 9,
+     "panels": 5,
+     "ok": true
+    },
+    "scale": {
+     "status": 200,
+     "tiles": 8,
+     "panels": 9,
+     "ok": true
+    },
+    "travelling": {
+     "status": 200,
+     "tiles": 10,
+     "panels": 8,
+     "ok": true
+    },
+    "definitions": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 11,
+     "ok": true
+    },
+    "worklog": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 2,
+     "ok": true
+    },
+    "bookkeeping": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 1,
+     "ok": true
+    },
+    "csm": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 2,
+     "ok": true
+    },
+    "ads": {
+     "status": 200,
+     "tiles": 2,
+     "panels": 5,
+     "ok": true
+    },
+    "closes-ledger": {
+     "status": 200,
+     "tiles": 7,
+     "panels": 4,
+     "ok": true
+    }
+   },
+   "ok": true
+  },
+  "agrees_with_itself": {
+   "keys": 91,
+   "divergences": 0,
+   "engine_checks": 10,
+   "drills": [
+    {
+     "q": "how are we travelling this month",
+     "numbers": [
+      "5.4",
+      ",",
+      "3.0",
+      "18,225",
+      "3,373",
+      "12,594",
+      "900",
+      "4"
+     ],
+     "len": 739
+    },
+    {
+     "q": "what's my LTV to CAC",
+     "numbers": [
+      ",",
+      "6.88",
+      "2.95",
+      "4",
+      "4,902,",
+      "2,627",
+      "90",
+      "6.32"
+     ],
+     "len": 498
+    },
+    {
+     "q": "what's committed",
+     "numbers": [
+      ",",
+      "72,887.52",
+      "38",
+      "9"
+     ],
+     "len": 311
+    },
+    {
+     "q": "what closed today",
+     "numbers": [
+      ",",
+      ",",
+      ","
+     ],
+     "len": 164
+    },
+    {
+     "q": "what have we closed this month",
+     "numbers": [
+      "4",
+      "2026",
+      "2026",
+      "09",
+      "09,",
+      "18,000",
+      ",",
+      "2026"
+     ],
+     "len": 416
+    }
+   ],
+   "ok": true
+  }
+ },
+ "findings": [],
+ "health_row": {
+  "commit": "fe5990930b7e",
+  "runtime_s": 191.5,
+  "scan1_ok": true,
+  "scan2_ok": true,
+  "scan3_ok": null,
+  "findings": 0,
+  "top": null,
+  "pages": 22
+ }
+}
