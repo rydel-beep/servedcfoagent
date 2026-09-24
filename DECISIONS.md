@@ -3344,3 +3344,52 @@ both panels — only collection differs." In Scan 2's drill battery.
 netted by the one charge reader and fully-refunded charges dropped;
 transfers never appear in a Stripe charge list at all — the provenance
 sentence says so on the panel.
+
+---
+
+## #167 — R-PIOLO-PARITY: FINANCE INHERITS THE OWNER
+**2026-09-24 · Rydel's ruling, supersedes the #161 carve-outs**
+
+**THE RULING**: Piolo (CFO/bookkeeper) sees and can do EVERYTHING the owner
+sees and does on the finance dashboard — every tab (CSM included), every
+page, drawer and export, and every action: declarations, date cards,
+PROPOSED confirmations, alias confirmations, Record a close, comp-rule and
+P&L-mapping confirmations, scenario save/compare/commit, Refresh now, Run
+checks now. EDITH on his channel answers with the same facts, chat AND
+voice. The safeguards that replace the carve-outs: every action is
+ATTRIBUTED and JOURNALED, the owner can REVERSE any action, and discreet
+mode remains the owner's own screen-share toggle.
+
+**THE MECHANISM: INHERITANCE, NOT AN ALLOWLIST.** The per-route grant list
+is gone. `require_owner` became the finance-grade gate at its sixty-plus
+call sites, so anything granted to the owner is granted to finance at the
+same moment — proved live on `/dashboard/pl`, `/dashboard/closes` and the
+register API, none of which existed when #161's allowlist was written, all
+identical for both roles with zero grants. Denials live in exactly one
+place: the PARITY EXCEPTION LIST (kv, **ships empty**), edited only by the
+owner. The shipped toggle is the CSM section — **"Withdraw from Piolo"** on
+the CSM page, journaled both ways, no deploy — shipped ON (included) per
+the ruling, ready for the Miguel-first sequencing if Rydel flips it.
+
+**EXACTLY THREE THINGS remain truly owner-only** (`require_owner_strict`):
+the discreet-mode toggle, credential/env management (no dashboard route
+exists for it — recorded as a standing rule, not an endpoint), and the
+exception list itself. Every other role is untouched: ad_domain, sales and
+anonymous exactly as fail-closed as before, spot-check-pinned.
+
+**VERIFIED LIVE** (evidence in `role-matrix-live.json` + the drill
+transcript): 24/24 granted surfaces 200 for piolo including the old
+carve-outs; the three strict items 403; the old money-truth POSTs open (the
+handler validates, the door does not refuse); inheritance identical on
+three post-allowlist surfaces; the toggle round-trip journaled
+(`csm withdrawn by rydel` → piolo 302/403 while owner stays 200 →
+restored); the reversal drill (piolo confirms an alias → the journal names
+**piolo** → the owner re-rules → the journal names **rydel**); EDITH
+returned byte-identical margin numbers on both channels, answered
+per-person commission figures to Piolo, and spoke to him (TTS 200,
+audio/mpeg, same fallback rules). Triple scan 0 findings; the leak hunt now
+polices ad_domain (finance seeing pay is the ruling, not a leak) and runs
+clean.
+
+**Twenty-seven tests** that encoded the old ruling were rewritten to this
+one — each carries the supersession in its docstring; none was deleted.

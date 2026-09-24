@@ -18,31 +18,46 @@
   "/dashboard/api/finance-analysis": 200,
   "/dashboard/api/ground-truth": 200,
   "/dashboard/api/renewal/clients": 200,
-  "/dashboard/api/snapshot": 200
+  "/dashboard/api/snapshot": 200,
+  "/dashboard/csm": 200,
+  "/dashboard/api/csm/config": 200,
+  "/dashboard/api/comp/rules": 200,
+  "/dashboard/api/comp/cost": 200,
+  "/dashboard/api/voice-status": 200,
+  "/dashboard/memory/api/facts": 200
  },
  "refused_get": {
-  "/dashboard/api/csm/model": 403,
-  "/dashboard/api/comp/rules": 403,
-  "/dashboard/api/comp/cost": 403,
-  "/dashboard/api/tts": 403,
-  "/dashboard/memory/api/facts": 403,
-  "/dashboard/api/voice-status": 403
+  "/dashboard/api/parity/exceptions": 403
  },
  "refused_post": {
-  "/dashboard/api/unmatched/confirm": 403,
-  "/dashboard/api/closes/confirm": 403,
-  "/dashboard/api/renewal/declare": 403,
-  "/dashboard/api/targets/set": 403,
-  "/dashboard/api/scale/commit-plan": 403,
-  "/dashboard/api/gap/rebuild": 403,
-  "/dashboard/api/refresh-now": 403,
-  "/dashboard/api/comp/rules": 403
+  "/dashboard/api/csm/discreet": 403,
+  "/dashboard/api/parity/exceptions": 403
  },
  "unknown_route": {
   "GET": 404,
   "POST": 404
  },
  "fails": [],
+ "parity_posts": {
+  "/dashboard/api/renewal/scan": 200,
+  "/dashboard/api/targets/set": 400,
+  "/dashboard/api/scale/commit-plan": 400,
+  "/dashboard/api/register/rebuild": 200
+ },
+ "inheritance": {
+  "/dashboard/pl": {
+   "owner": 200,
+   "piolo": 200
+  },
+  "/dashboard/closes": {
+   "owner": 200,
+   "piolo": 200
+  },
+  "/dashboard/api/register": {
+   "owner": 200,
+   "piolo": 200
+  }
+ },
  "anon": {
   "/dashboard/today": 302,
   "/dashboard/api/snapshot": 401
@@ -50,6 +65,7 @@
  "owner_still_has_it": {
   "/dashboard/api/comp/rules": 200,
   "/dashboard/csm": 200,
-  "/dashboard/api/tts?text=hello": 200
+  "/dashboard/api/tts?text=hello": 200,
+  "/dashboard/api/parity/exceptions": 200
  }
 }

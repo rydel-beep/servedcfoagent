@@ -51,6 +51,9 @@ ACCEPTED = (
      "a data-quality note about a blank cell — no person, no amount"),
     ("/dashboard/api/snapshot", "setter_commission",
      "the same degraded note, carried on the snapshot's degraded list"),
+    ("/health", "setter_commission",
+     "the public liveness endpoint lists degraded METRIC NAMES — "
+     "'setter_commission' is a data-quality flag's name, no person, no amount"),
     ("/dashboard/api/snapshot", "miguel (as a person)",
      "the roster's names and roles; every salary figure is scrubbed"),
 )

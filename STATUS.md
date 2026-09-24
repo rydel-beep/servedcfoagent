@@ -1,5 +1,21 @@
 # STATUS — served-cfo-agent session log
 
+## 2026-09-24 (5) — R-PIOLO-PARITY: FINANCE INHERITS THE OWNER (#167)
+
+Deploy → b25750f8 SUCCESS. Suite **1490**. Triple scan **0 findings**; leak
+hunt (now policing ad_domain) clean. Zero writes.
+
+Piolo == owner on the finance dashboard, by INHERITANCE: the allowlist is
+gone, require_owner is the finance-grade gate, and a new owner surface is
+his the moment it exists (proved on three post-#161 pages). Exceptions live
+in one owner-edited list (ships EMPTY); the "Withdraw from Piolo" CSM
+toggle is on the CSM page, journaled, no deploy. Exactly three strict
+owner-only items: the discreet toggle, credential/env, the exception list.
+Drilled live: toggle round-trip · alias confirmed BY piolo, re-ruled BY
+rydel, both journaled · EDITH byte-identical on both channels, commissions
+answered, voice 200. 27 superseded tests rewritten with reasons.
+
+
 ## 2026-09-24 (4) — IF EVERYONE PAYS vs WHAT ACTUALLY LANDED (#166)
 
 Deploy → 27491325 SUCCESS. Suite **1490**. Zero writes.
