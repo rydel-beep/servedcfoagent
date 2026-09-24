@@ -1,5 +1,45 @@
 # STATUS — served-cfo-agent session log
 
+## 2026-09-24 — THE COST CARD, MADE TRUE (#163)
+
+Commit c8ee107 (completing the half that rode into d28a861 while two waves
+shared the tree). Suite on the exact committed tree (isolated worktree): 1424 passed,
+0 failed. Diagnosis: `COST_CARD_DIAGNOSIS.md`. Zero external writes — the
+simulator remains a labelled what-if that writes nothing.
+
+**THE ROOT (D1)**: revenue priced by the measured `deal_mix`; commissions
+read a DIFFERENT KEY (`package_mix`) nobody ever set → every deal costed as
+a Kalin Growth Pro ($902.50 = $750 + 5% × $3,050) while the revenue card
+implied $4,533 a client. One mix now drives BOTH cards (invariant tested);
+an override raises a visible warning.
+
+**ALSO FIXED**: bounties on QUALIFIED sets (measured input; payout-log
+evidence until sample) · pif_share weighted (was a boolean — any non-zero
+read as 100% PIF) · Coby's $350 KPI bonus + $1,000 fast-win (amortised
+$100/close, labelled) when he is in the mix · capacity cost in CAC on every
+surface (card line "+N from month — $x/mo"; simulate == forward month 1 ==
+cohort) · tooling = fixed base + per-seat (per-seat needs Rydel's number) ·
+ratios named with the margin source (LTV:CAC · LTGP:CAC at FY26 42.9%
+labelled · payback) · "show the math" prints the real arithmetic incl. mix
+weights · the 6.3% footnote demoted to labelled reference everywhere; the
+dead "% of new cash" control replaced by closer-mix + qualified-rate
+controls · behaviour gate gained a cost-card pass (Coby shift lowers CAC;
+qualified rate moves bounties).
+
+**WITNESSED SCENARIO, corrected** (cost mix pinned to the witnessed 100%
+Kalin GP so every delta is named): CAC $2,443.70 → $2,651.84 — the +$208.13
+is entirely the +1 setter +1 closer ($3,900/mo) the 409-lead/75-call volume
+needs against today's 2-setter/1-closer team. LTGP:CAC 2.71× → 2.50×. On
+live measured defaults the commission line will re-price to the measured
+deal/closer mix — RYDEL-VERIFY on /scale.
+
+**PARALLEL-WAVE NOTE**: a second session committed and pushed d28a861 at
+12:49 carrying my mid-flight files (diagnosis, config, sales_cost, most of
+compass_engine) with the OLD sim_core.js — production briefly served that
+half-state; c8ee107 completes it. Its 5 WIP test failures
+(closes_view/close_register/scoreboard) are theirs and green at their
+committed tip.
+
 ## 2026-09-23 — R-PIOLO · EVIDENCE-FIRST CLOSES · MONEY UNDER ANOTHER NAME (#161)
 
 Deploys → 15d9527d, 957139c3, 881dce08, 76445b5b SUCCESS. Suite **1388**.
