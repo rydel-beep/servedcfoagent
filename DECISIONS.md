@@ -3393,3 +3393,60 @@ clean.
 
 **Twenty-seven tests** that encoded the old ruling were rewritten to this
 one — each carries the supersession in its docstring; none was deleted.
+
+## #168 — EDITH ANSWERS THE QUESTION: THE RESOLVER, ONE MTD WINDOW, VALIDATOR v2
+
+**The witnessed thread (24 Sep, the dock)**: asked "are we at negative net
+profit from Sept 1 to 24?", EDITH returned the three-basis wall and never
+said yes or no; asked again plainly, the repetition guard suppressed the
+identical wall, the model fell through and computed $79,755 − $22,739 =
+$57,016 in its head, the #165 guard rightly blocked the number — and she
+REFUSED a question whose answer was already rendered on the tile. Both the
+wall and the refusal copy were ours. Both are retired.
+
+**THE DEFECT UNDERNEATH — one label, two windows.** The contracted panel's
+window dict claimed 1–30 Sep under a "month to date" label while the
+collected panel said 1–24; and undated monthly costs (the $500 manager
+retainer; any configured normalisation) sat at full-month value inside the
+24-day window. RULED: **month to date = the 1st through today for revenue
+AND costs on every basis** — contracted revenue pro-rata to the day,
+undated costs pro-rata by the same day count, dated costs by their actual
+dates; full-month figures live ONLY in the labelled projections; every
+window says its day count in words ("24 of 30 days"), and BOTH panels
+carry the SAME window words. Before → after for 1–24 Sep: acquisition
+$17,917.50 → $17,817.50 (retainer ×24/30), net $22,738.59 → $22,813.59
+(28.5% → 28.6%), collected panel net −$12,209.51 → −$12,109.51 (−32.8% →
+−32.5%); the window dict now tells the truth.
+
+**THE RESOLVER (answer_engine.py)**: a deterministic map question →
+{metric, basis, window, shape} BEFORE composition. "right now / landed /
+in the bank" → collected; "if everyone pays / on contract" → management;
+"the books / Xero" → recognised; ambiguous → collected AND management, one
+line each — never three bases. Explicit dates win; "this month" → MTD; no
+window → MTD, stated; follow-ups keep their window. Every answer logs its
+resolution and shows it ("Answered as: …") so a wrong read is visible and
+correctable in plain words.
+
+**ANSWER-SHAPED OUTPUTS**: total_costs is an engine rung now (net revenue
+− net profit — the exact figure once blocked as head arithmetic), plus
+per-day pacing, same-basis deltas vs last month and FY26, cached
+last-month reads on both panels' bases, and POST /api/calc (pro-rata /
+ratio / difference / sum / per-day, logged) so any derivation is a tool
+call.
+
+**THE ANSWER CONTRACT**: sentence 1 answers the literal question — yes/no
+questions get the word first, "net profit" leads with dollars, "margin"
+leads with % — then ≤2 sentences of context (the other panel, the gap);
+financial numbers capped (ANSWER_NUMBER_CAP, default 6) unless a breakdown
+is asked; doctrine recitals ("bases are never blended") banned from
+answers.
+
+**VALIDATOR v2**: a blocked figure still cannot pass — and the block is no
+longer a refusal. The reply is re-composed from the resolver's engine
+values; outside the resolver's reach, one honest sentence plus the
+engine's nearest computed figure. Every block is logged with the offending
+figures and what was answered instead (kv answer:guard_blocks).
+
+The replay of the witnessed thread is a shipped test
+(tests/test_answer_engine.py); the #165/#166 drill tests were rewritten to
+this ruling with the supersession named — none deleted.

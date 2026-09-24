@@ -1,0 +1,36 @@
+{
+ "base": "https://web-production-16b16.up.railway.app",
+ "transcript": [
+  {
+   "q": "are you meaning we are at negative net profit right now? From Sept 1 to 24?",
+   "a": "Yes — what actually landed — September 2026 (month to date — 1–24 Sep, 24 of 30 days): net −$12,110 (−32.5% on $37,227 collected). If everyone pays: net $22,814 (28.6%). The gap is $42,528 still owed.\n\nAnswered as: yes/no on net profit · collected + management · September 2026 (month to date — 1–24 Sep, 24 of 30 days) · as of 2026-09-24T20:30.",
+   "intent": "command"
+  },
+  {
+   "q": "No I just want the Sept 1 to 24 figures — what's our net profit?",
+   "a": "What actually landed — September 2026 (month to date — 1–24 Sep, 24 of 30 days): net −$12,110 (−32.5% on $37,227 collected). If everyone pays: net $22,814 (28.6%). The gap is $42,528 still owed.\n\nAnswered as: net profit · collected + management (asked without a basis) · September 2026 (month to date — 1–24 Sep, 24 of 30 days) · as of 2026-09-24T20:30.",
+   "intent": "command"
+  },
+  {
+   "q": "what's our net profit?",
+   "a": "What actually landed — September 2026 (month to date — 1–24 Sep, 24 of 30 days): net −$12,110 (−32.5% on $37,227 collected). If everyone pays: net $22,814 (28.6%). The gap is $42,528 still owed.\n\nAnswered as: net profit · collected + management (asked without a basis) · September 2026 (month to date — 1–24 Sep, 24 of 30 days) · as of 2026-09-24T20:30. · window kept from your last question",
+   "intent": "command"
+  },
+  {
+   "q": "are we profitable this month?",
+   "a": "No — what actually landed — September 2026 (month to date — 1–24 Sep, 24 of 30 days): net −$12,110 (−32.5% on $37,227 collected). If everyone pays: net $22,814 (28.6%). The gap is $42,528 still owed.\n\nAnswered as: yes/no on net profit · collected + management (asked without a basis) · September 2026 (month to date — 1–24 Sep, 24 of 30 days) · as of 2026-09-24T20:30.",
+   "intent": "command"
+  },
+  {
+   "q": "why is it negative?",
+   "a": "Negative because collected so far this month: $37,227 of $79,755 contracted (46.7%) — the window's costs don't shrink while you wait. Top unpaid: Panini CO $6,258 (78d overdue); The Raama Indian Restaurant $6,200 (78d overdue). Collect those and the landed margin follows — say 'show receivables' for the full list.\n\nAnswered as: why negative · collected + management (asked without a basis) · September 2026 (month to date — 1–24 Sep, 24 of 30 days) · as of 2026-09-24T20:30. · window kept from your last question",
+   "intent": "command"
+  },
+  {
+   "q": "what's our EBITDA by state?",
+   "a": "EBITDA by state isn't a metric the engine computes — I won't improvise it. Nearest computed figure: If everyone pays — September 2026 (month to date — 1–24 Sep, 24 of 30 days): operating $30,418 (38.1% on $79,755 contracted).\n\nAnswered as: not computed (EBITDA by state) · management · September 2026 (month to date — 1–24 Sep, 24 of 30 days) · as of 2026-09-24T20:41.",
+   "intent": "command"
+  }
+ ],
+ "fails": []
+}

@@ -1,0 +1,23 @@
+{
+ "files": [
+  "pl_engine.py",
+  "answer_engine.py",
+  "dashboard/answer_guard.py",
+  "dashboard/chat.py",
+  "dashboard/routes.py",
+  "dashboard/definitions.py",
+  "dashboard/definitions.json",
+  "tests/test_answer_engine.py",
+  "tests/test_pl_truth.py",
+  "tests/test_margin_gap.py"
+ ],
+ "findings": [],
+ "accepted": [
+  {
+   "file": "dashboard/routes.py",
+   "line": 2593,
+   "match": "\"/api/ghl-backfill\", methods=[\"POST\"]",
+   "reason": "pre-existing route name matched the verb pattern; the handler GETs from GHL into the local mirror (kv) \u2014 it writes nothing to GHL, the tracker or Xero, and this wave did not touch it"
+  }
+ ]
+}

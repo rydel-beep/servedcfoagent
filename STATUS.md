@@ -714,3 +714,18 @@ dashboard/evidence/phase0/.
   3 partial, 1 not run (DASHBOARD-UX-OVERHAUL), 1 superseded, 1 stale doc.
 - F: stage_history.py — the recorder remembers what the CRM forgets, in
   this repo's store, on the existing poll. Pitched is measured from today.
+
+## 2026-09-24 (5) — EDITH ANSWERS THE QUESTION (#168)
+
+- The witnessed thread closed: the three-basis wall and the guard's
+  refusal copy are retired; the replay is a shipped test.
+- MONTH TO DATE = the 1st through today for revenue AND costs on every
+  basis and panel; day counts in the window words everywhere ("24 of 30
+  days"); the retainer and normalisations pro-rate inside MTD; both
+  net-margin panels carry identical window words and one cost figure.
+- answer_engine.py: resolver (question → metric/basis/window/shape,
+  logged + shown as "Answered as: …"), answer-shaped outputs
+  (total_costs, per-day pacing, deltas), POST /api/calc.
+- Validator v2: a blocked number still answers the question from the
+  engine; blocks logged with what was answered instead.
+- Suite 1,492 green; registry +5 entries (jargon clean).
