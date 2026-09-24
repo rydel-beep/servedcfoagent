@@ -77,70 +77,35 @@ def _receipts_in_window(w0: dt.date, w1: dt.date) -> dict:
 
 
 def _closes_union(w0: str, w1: str, basis: str) -> list[dict]:
-    """Engine closes (tracker authority) ∪ gap-ledger AUTO closes not yet in
-    the engine — provenance labelled, deduped by person (ONE event)."""
-    import attribution_engine as AE
-    res = AE.compute(start=str(w0), end=str(w1), basis=basis)
-    ledger_by_person = {}
-    try:
-        import gap_reconcile
-        for e in (gap_reconcile.close_ledger().get("ledger") or []):
-            if e.get("state") == "AUTO":
-                ledger_by_person[_norm(e["person"])] = e
-    except Exception as ex:
-        logger.info("gap ledger read failed: %s", ex)
-    out, seen = [], set()
-    for c in res.get("creatives", []):
-        for d in (c.get("deals") or []):
-            cd = str(d.get("close_date") or "")
-            if not (str(w0) <= cd <= str(w1)):
-                continue
-            k = (_norm(d.get("name")), cd)
-            if k in seen:
-                continue
-            seen.add(k)
-            row = {"person": d.get("name"), "close_date": cd,
-                   "contract": d.get("contract"), "cash": d.get("cash"),
-                   "creative": c.get("label"),
-                   "provenance": ("derived: " + json.dumps(d.get("derived"))
-                                  if d.get("derived") else "tracker row"),
-                   "source": "engine"}
-            # ENRICH from the gap ledger — blank ≠ zero: an engine row whose
-            # tracker cells are empty gains the ledger's evidenced values
-            # (never overwriting a filled tracker cell).
-            le = ledger_by_person.get(_norm(d.get("name")))
-            if le:
-                if not row["contract"] and le.get("contract_value"):
-                    row["contract"] = le["contract_value"]
-                    row["contract_provenance"] = le.get("contract_provenance")
-                if not row["cash"] and (le.get("stripe") or {}).get("cash_to_date"):
-                    row["cash"] = le["stripe"]["cash_to_date"]
-                    row["cash_provenance"] = "Stripe " + ",".join(
-                        (le.get("evidence") or {}).get("charge_ids", [])[:3])
-                row["evidence"] = le.get("evidence")
-                hr = le.get("health_row") or {}
-                if hr.get("name"):
-                    row["client_row"] = hr["name"]
-                    row["mrr"] = hr.get("current_mrr")
-                row["source"] = "engine + gap-ledger enrichment"
-            out.append(row)
-    for nn, e in ledger_by_person.items():
-        cd = str(e.get("close_date") or "")
-        if not (str(w0) <= cd <= str(w1)):
-            continue
-        if any(nn == _norm(o["person"]) for o in out):
-            continue              # already in the engine — ONE event
-        hr = e.get("health_row") or {}
-        out.append({"person": e["person"], "close_date": cd,
-                    "contract": e.get("contract_value"),
-                    "contract_provenance": e.get("contract_provenance"),
-                    "cash": (e.get("stripe") or {}).get("cash_to_date"),
-                    "creative": None,
-                    "client_row": hr.get("name"), "mrr": hr.get("current_mrr"),
-                    "provenance": e.get("provenance"),
-                    "evidence": e.get("evidence"),
-                    "source": "gap-ledger (ghl-primary, "
-                              "payment-corroborated)"})
+    """THE ONE CLOSE POPULATION, in this module's legacy row shape.
+
+    The union logic that used to live here (engine ∪ gap-ledger AUTO, with
+    enrichment) moved into close_register.build() — this is now a thin read
+    of the register, so travelling, the tiles, compass, SALES cash and the
+    sales-cost engine all see the SAME closes as every other surface.
+    `basis` maps to the register's clock; every current caller passes
+    "activity"."""
+    import close_register as CR
+    clock = "cohort" if basis == "cohort" else "activity"
+    out = []
+    for e in CR.closes(str(w0), str(w1), clock):
+        att = e.get("attribution") or {}
+        cash = e.get("cash") or {}
+        contract = e.get("contract") or {}
+        out.append({
+            "person": e.get("person"), "close_date": e.get("close_date"),
+            "contract": contract.get("value"),
+            "contract_provenance": contract.get("source"),
+            "cash": cash.get("amount"),
+            "cash_provenance": (cash.get("source") if cash.get("amount") is not None
+                                else None),
+            "creative": att.get("creative"),
+            "client_row": e.get("client"),
+            "provenance": (f"register · dated by {e.get('dated_by')} · "
+                           f"{e.get('status')}"),
+            "evidence": e.get("evidence"),
+            "source": f"close register ({e.get('status')})",
+        })
     out.sort(key=lambda o: o["close_date"])
     return out
 

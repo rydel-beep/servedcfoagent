@@ -1,13 +1,18 @@
 """
 closes_view.py
 --------------
-Deterministic factual recall for CLOSES — the verbatim recent won deals and the biggest
-deal, read from the mirrored Lead-to-Cash Tracker. Built after a verify run caught the
-model FABRICATING a close ("Bondi Beach Restaurant — biggest deal of the quarter"): factual
-recall about real deals must come from the data, never the model's imagination.
+Deterministic factual recall for CLOSES — EDITH's voice/text path. Built
+after a verify run caught the model FABRICATING a close; rebuilt for the ONE
+CLOSE REGISTER: this module used to be a third private tracker reader (own
+column map, no test-lead exclusion, no dedupe), which is why "what have we
+closed this month" answered "the 5 most recent won rows ALL-TIME" — the
+phrase "this month" was discarded and the population was the tracker's,
+where three of September's four closes did not exist.
 
-A CLOSE = a row with Call Outcome == "won" + a Close Date. Returns name, business, close
-date, contract value, offer — VERBATIM. Mirrors the leads_view pattern. Reads by tab NAME.
+Now every answer reads `close_register` — the same population as /ads, the
+SALES board, travelling, the tiles and compass — and a window in the
+question is honoured. `_money`/`_date` stay exported (tracker_read imports
+them).
 """
 from __future__ import annotations
 
@@ -16,8 +21,6 @@ import logging
 import re
 
 logger = logging.getLogger(__name__)
-
-_TAB = "Lead-to-Cash Tracker"
 
 
 def _money(s) -> float | None:
@@ -44,58 +47,26 @@ def _date(s) -> dt.date | None:
     return None
 
 
-def _col_map(header: list[str]) -> dict:
-    idx, outs = {}, []
-    for k, c in enumerate(header):
-        cl = (c or "").lower()
-        if "close date" in cl and "close" not in idx:
-            idx["close"] = k
-        elif "contract value" in cl and "contract" not in idx:
-            idx["contract"] = k
-        elif "lead name" in cl and "name" not in idx:
-            idx["name"] = k
-        elif "business name" in cl and "business" not in idx:
-            idx["business"] = k
-        elif "offer sold" in cl and "offer" not in idx:
-            idx["offer"] = k
-        elif "call outcome" in cl:
-            outs.append(k)
-    if outs:  # CLOSER outcome = the one at/before Close Date (not the setter's earlier col)
-        cd = idx.get("close")
-        before = [k for k in outs if cd is None or k < cd]
-        idx["outcome"] = max(before) if before else max(outs)
-    return idx
-
-
 def _won_deals() -> list[dict]:
-    """All won deals (Call Outcome == won) with a Close Date, newest first. From the mirror."""
-    try:
-        import sheet_mirror
-        rows = sheet_mirror.read_by_name(_TAB)
-    except Exception:
-        rows = None
-    if rows is None:
-        from sales_analytics_pull import _fetch_tab
-        rows = _fetch_tab(_TAB)
-    if not rows:
-        return []
-    hi = next((i for i, r in enumerate(rows[:6]) if any("close date" in (c or "").lower() for c in r)), 0)
-    cm = _col_map(rows[hi])
-    if "close" not in cm or "outcome" not in cm:
-        return []
+    """All CONFIRMED register closes, newest first — the one population."""
+    import close_register as CR
     out = []
-    for r in rows[hi + 1:]:
-        if cm["outcome"] >= len(r) or r[cm["outcome"]].strip().lower() != "won":
+    for e in CR.latest().get("entries") or []:
+        if e.get("status") != "confirmed":
             continue
-        cd = _date(r[cm["close"]]) if cm["close"] < len(r) else None
-        if cd is None:
+        try:
+            cd = dt.date.fromisoformat(e["close_date"])
+        except (ValueError, TypeError):
             continue
         out.append({
-            "name": (r[cm["name"]].strip() if cm.get("name", 99) < len(r) else ""),
-            "business": (r[cm["business"]].strip() if cm.get("business", 99) < len(r) else ""),
+            "name": e.get("person") or "",
+            "business": e.get("client") or "",
             "close_date": cd,
-            "contract": _money(r[cm["contract"]]) if cm.get("contract", 99) < len(r) else None,
-            "offer": (r[cm["offer"]].strip() if cm.get("offer", 99) < len(r) else ""),
+            "contract": (e.get("contract") or {}).get("value"),
+            "cash": (e.get("cash") or {}).get("amount"),
+            "offer": e.get("offer") or "",
+            "missing": e.get("missing") or [],
+            "tier": (e.get("attribution") or {}).get("tier"),
         })
     out.sort(key=lambda x: x["close_date"], reverse=True)
     return out
@@ -104,12 +75,16 @@ def _won_deals() -> list[dict]:
 def recent_closes(limit: int = 5) -> dict:
     deals = _won_deals()
     if not deals:
-        return {"closes": [], "total": 0, "degraded": [{"metric": "closes", "reason": "tracker unavailable"}]}
-    return {"closes": [{**d, "close_date": str(d["close_date"])} for d in deals[:limit]], "total": len(deals)}
+        return {"closes": [], "total": 0,
+                "degraded": [{"metric": "closes",
+                              "reason": "close register unavailable"}]}
+    return {"closes": [{**d, "close_date": str(d["close_date"])}
+                       for d in deals[:limit]], "total": len(deals)}
 
 
 def biggest_deal(within_days: int | None = None) -> dict | None:
-    """The largest won deal by contract value (optionally within the last N days). Real data only."""
+    """The largest close by contract value (optionally within the last N
+    days). Register data only — never a superlative from imagination."""
     deals = [d for d in _won_deals() if d.get("contract")]
     if within_days is not None:
         from helpers import today_sydney
@@ -142,7 +117,8 @@ _CLOSE_COUNT_RE = re.compile(
 
 
 def count_closes(w0: dt.date | None, w1: dt.date | None) -> int:
-    """Won deals with a Close Date in [w0,w1] (None,None = all-time). Raw rows, not scorecard."""
+    """Confirmed register closes with a close date in [w0,w1]
+    (None,None = all-time). Activity clock."""
     n = 0
     for d in _won_deals():
         cd = d["close_date"]
@@ -151,42 +127,85 @@ def count_closes(w0: dt.date | None, w1: dt.date | None) -> int:
     return n
 
 
-def handle_close_count_command(text: str) -> tuple[str | None, bool]:
-    """'How many closes in June / this month' → raw count by Close Date (won deals)."""
-    if not text or not _CLOSE_COUNT_RE.search(text):
-        return None, False
+def _parse_window(text: str):
+    """(w0, w1, label) or None — the same range parser the rest of the
+    estate uses, so 'this month' means the same thing everywhere."""
     from helpers import today_sydney
     today = today_sydney()
     try:
         from range_unit_economics import parse_range
         rng = parse_range(text, today)
-    except Exception:
-        rng = None
+        if rng:
+            return rng
+    except Exception:  # noqa: BLE001
+        pass
+    if re.search(r"\bthis month\b", text, re.I):
+        return (today.replace(day=1), today,
+                f"{today.strftime('%B')} (month to date)")
+    return None
+
+
+def handle_close_count_command(text: str) -> tuple[str | None, bool]:
+    """'How many closes in June / this month' → the register's count."""
+    if not text or not _CLOSE_COUNT_RE.search(text):
+        return None, False
+    from helpers import today_sydney
+    today = today_sydney()
+    rng = _parse_window(text)
     if not rng:
         if re.search(r"\b(total|all|ever|do we have)\b", text, re.I):
-            return f"{count_closes(None, None)} closes total in the tracker (won deals, by Close Date).", True
+            return (f"{count_closes(None, None)} closes total on the register "
+                    f"(confirmed, activity clock)."), True
         rng = (today.replace(day=1), today, f"{today.strftime('%B')} (month to date)")
-    return (f"{count_closes(rng[0], rng[1])} closes in {rng[2]} — won deals counted from the raw "
-            f"tracker by Close Date."), True
+    import close_register as CR
+    t = CR.totals(str(rng[0]), str(rng[1]), "activity")
+    extra = (f" Plus {t['proposed']} proposed close(s) still needing evidence "
+             f"({', '.join(t['proposed_people'])})." if t.get("proposed") else "")
+    return (f"{t['count']} closes in {rng[2]} — the close register, activity "
+            f"clock (closed in the window).{extra}"), True
 
 
 def handle_closes_command(text: str) -> tuple[str | None, bool]:
-    """Deterministic recent-closes / biggest-deal — verbatim from the mirror, no model embroidery."""
+    """Recent closes / biggest deal / 'what have we closed this month' —
+    the register, with the window in the question honoured."""
     if not text:
         return None, False
     if _BIGGEST_RE.search(text):
-        # "biggest deal" — only answer from real contract values; never invent a superlative.
         within = 90 if re.search(r"\b(quarter|90|recent|lately)\b", text, re.I) else None
         b = biggest_deal(within_days=within)
         if not b:
-            return ("I don't have contract values I can rank right now — I'd need to check the "
-                    "tracker."), True
+            return ("I don't have contract values I can rank right now — the "
+                    "close register may be empty or rebuilding."), True
         scope = " in the last 90 days" if within else " on record"
         return f"Biggest deal{scope}: {_fmt(b)}.", True
     if _CLOSES_RE.search(text):
+        rng = _parse_window(text)
+        if rng:
+            import close_register as CR
+            rows = CR.closes(str(rng[0]), str(rng[1]), "activity")
+            t = CR.totals(str(rng[0]), str(rng[1]), "activity")
+            if not rows:
+                base = f"Nothing on the close register for {rng[2]}."
+            else:
+                lines = []
+                for e in rows:
+                    who = e.get("client") or e.get("person")
+                    cv = (e.get("contract") or {}).get("value")
+                    miss = e.get("missing") or []
+                    lines.append(f"{who} ({e['close_date']}"
+                                 + (f", ${cv:,.0f}" if cv else "")
+                                 + (f" — missing: {', '.join(miss)}" if miss else "")
+                                 + ")")
+                base = (f"{t['count']} close{'s' if t['count'] != 1 else ''} in "
+                        f"{rng[2]} (activity clock): " + "; ".join(lines) + ".")
+            if t.get("proposed"):
+                base += (f" Plus {t['proposed']} proposed close(s) needing "
+                         f"evidence: {', '.join(t['proposed_people'])}.")
+            return base, True
         r = recent_closes(limit=5)
         cl = r.get("closes") or []
         if not cl:
-            return "I can't see the closed deals in the tracker right now — the data layer may be offline.", True
+            return ("I can't see the close register right now — it may be "
+                    "rebuilding."), True
         return "Last few closes: " + "; ".join(_fmt(d) for d in cl) + ".", True
     return None, False

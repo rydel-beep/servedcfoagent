@@ -131,9 +131,11 @@ def coverage_inventory() -> dict:
     # EDITH on the page
     inv["edith"] = ["edith_dock", "edith_mic", "explain_this"]
 
-    # the close pipeline (#161)
+    # the close pipeline (#161) + the close register and its ledger (#164)
     inv["closes"] = ["unmatched_payments", "closes_detected", "confirm_payer",
-                     "owner_only_chip", "status_stale_finding"]
+                     "owner_only_chip", "status_stale_finding",
+                     "closes_count", "closes_cash", "closes_contract",
+                     "record_a_close", "register_reconciliation"]
 
     # every ⓘ drawer key
     import tile_drawers

@@ -479,10 +479,39 @@
       return Object.keys(t || {}).filter(function (k) { return t[k]; })
         .map(function (k) { return (names[k] || k) + ' ' + t[k]; }).join(' · ') || '—';
     }
+    // THE CLOSES TILE READS THE REGISTER (one population): the ACTIVITY
+    // figure leads — what happened in the window — with the cohort figure
+    // beside it, both in words. The toggle governs the grid, not this tile.
+    var reg = state.board.register;
+    var closesTile;
+    if (reg && reg.activity) {
+      var act = reg.activity, coh = reg.cohort || {};
+      var tierNames = { ad: 'from ads', ambiguous: 'ambiguous', ig_dm: 'IG-DM', unattributed: 'not attributable' };
+      var tierLine = Object.keys(act.tiers || {}).filter(function (k) { return act.tiers[k]; })
+        .map(function (k) { return act.tiers[k] + ' ' + (tierNames[k] || k); }).join(' · ') || '—';
+      closesTile =
+        '<div class="adx-head-tile" data-metric="closes_count" data-window="' + esc(windowStamp()) +
+        '" data-clock="activity" data-basis="register" data-value="' + act.count + '">' +
+        '<div class="adx-head-num">' + num(act.count) + '</div>' +
+        '<div class="adx-head-label">CLOSES · ' + windowStamp() + ' · closed in this window (activity clock)</div>' +
+        '<div class="adx-head-tiers">' + esc(act.count + ' close' + (act.count === 1 ? '' : 's')) +
+        (act.count ? ' · ' + esc(tierLine) : '') + '</div>' +
+        '<div class="adx-head-tiers adx-clock-note">cohort clock: ' + num(coh.count) +
+        ' — counts a close in the window its LEAD arrived' +
+        (coh.cohort_unplaceable ? ' · ' + coh.cohort_unplaceable +
+          ' close(s) have no lead row and cannot sit on this clock' : '') + '</div>' +
+        (act.proposed ? '<div class="adx-head-tiers adx-clock-note">+' + act.proposed +
+          ' proposed close(s) — needs evidence (' + esc((act.proposed_people || []).join(', ')) + ')</div>' : '') +
+        '</div>';
+    } else {
+      closesTile =
+        '<div class="adx-head-tile"><div class="adx-head-num">' + num(h.closes_total) + '</div>' +
+        '<div class="adx-head-label">CLOSES · ' + windowStamp() + ' · ' + esc(h.basis) + ' clock</div>' +
+        '<div class="adx-head-tiers">' + tiers(h.closes_tiers) +
+        ' · <em>register unavailable — engine population shown</em></div></div>';
+    }
     el.innerHTML =
-      '<div class="adx-head-tile"><div class="adx-head-num">' + num(h.closes_total) + '</div>' +
-      '<div class="adx-head-label">CLOSES · ' + windowStamp() + ' · ' + esc(h.basis) + ' clock</div>' +
-      '<div class="adx-head-tiers">' + tiers(h.closes_tiers) + '</div></div>' +
+      closesTile +
       '<div class="adx-head-tile"><div class="adx-head-num">' + num(h.leads_total) + '</div>' +
       '<div class="adx-head-label">LEADS</div>' +
       '<div class="adx-head-tiers">' + tiers(h.leads_tiers) + '</div></div>' +
@@ -490,9 +519,10 @@
       // trust levels — cash = reconciled (Stripe/Xero), contract = tracker
       // (owner-entered). Never swapped; each provenance-chipped; the gap is the
       // signal. Both drill to the closes behind them (every number is a door).
-      '<div class="adx-head-tile adx-head-money">' +
+      '<div class="adx-head-tile adx-head-money" data-metric="closes_cash" data-window="' + esc(windowStamp()) +
+      '" data-clock="' + esc(state.basis) + '" data-basis="register" data-value="' + (h.cash_total != null ? h.cash_total : '') + '">' +
       '<div class="adx-money-line"><span class="adx-head-num adx-door" data-headdrill="closes">' + money(h.cash_total) + '</span>' +
-      ' <span class="adx-money-prov" title="banked + Stripe/Xero-reconciled">cash · reconciled</span></div>' +
+      ' <span class="adx-money-prov" title="matched Stripe charges per close — the register (R-CASH), same numbers as finance">cash · matched Stripe</span></div>' +
       '<div class="adx-money-line"><span class="adx-head-num2 adx-door" data-headdrill="closes">' +
       (h.contract_total != null ? money(h.contract_total) : '—') +
       '</span> <span class="adx-money-prov adx-money-prov-tracker" title="signed value from the Lead-to-Cash tracker — owner-entered, NOT reconciled">contract · tracker</span></div>' +
@@ -1187,6 +1217,16 @@
             ' class="adx-cell-drill" data-stage="' + c.k + '"' : '';
           var extra = (c.k === 'closes' && r.earlier_closes) ?
             ' <span class="adx-earlier adx-door" data-anom="earlier_closes" data-key="' + esc(r.creative_key) + '" title="' + r.earlier_closes + ' close(s) from leads that entered before this window (activity clock) — click for the deals">↤' + r.earlier_closes + '</span>' : '';
+          // register closes with NO tracker lead row land on their tier's
+          // channel row — named inline with their WHY, never a silent bump.
+          // The cell itself is already a door; opening it lists them.
+          if (c.k === 'closes' && r.register_added && r.register_added.length) {
+            extra += ' <span class="adx-prov" title="' +
+              esc(r.register_added.map(function (a) {
+                return (a.client || a.person) + ' (' + a.close_date + '): ' + a.why +
+                  (a.missing && a.missing.length ? ' — missing: ' + a.missing.join(', ') : '');
+              }).join(' · ')) + '">⊕' + r.register_added.length + ' register</span>';
+          }
           // funnel-lag annotations (Case B): sets/shows that happened before this
           // window get the same ↤ treatment closes already had — never a bare
           // "0 sets, 1 close" row on the activity clock.
@@ -1822,17 +1862,29 @@
             ') — a fresh build is warming</div>' : '') +
           '<div class="adx-roster-note">' + esc(d.clock_note || '') + '</div>';
         var i17 = d.i17 || {};
+        var regAdd = d.register_added || [];
         if (i17.ok === false) {
           head += '<div class="adx-roster-count">I17 DRIFT: the cell reads ' + i17.cell +
             ' but the roster carries ' + i17.roster + ' — flagged loudly in the truth sweep; do not trust this cell until it clears</div>';
-        } else if (expected != null && !isNaN(expected) && +expected !== d.count) {
+        } else if (expected != null && !isNaN(expected) && +expected !== d.count + regAdd.length) {
           head += '<div class="adx-roster-count">' + metric + ': grid ' + expected +
-            ' vs engine ' + d.count + ' — a render/engine skew (stale board?); reload the window</div>';
+            ' vs engine ' + d.count + (regAdd.length ? ' + ' + regAdd.length + ' register' : '') +
+            ' — a render/engine skew (stale board?); reload the window</div>';
         } else {
-          head += '<div class="adx-roster-count">' + d.count + ' ' + metric +
+          head += '<div class="adx-roster-count">' + (d.count + regAdd.length) + ' ' + metric +
+            (regAdd.length ? ' (' + d.count + ' engine + ' + regAdd.length + ' register)' : '') +
             ' <span class="adx-match">— matches the cell ✓ (' + esc(d.basis || state.basis) + ' clock)</span></div>';
         }
-        if (d.empty_reason) head += '<div class="adx-roster-note">' + esc(d.empty_reason) + '</div>';
+        if (regAdd.length) {
+          head += '<div class="adx-roster-note">Register closes with no tracker lead row — real deals the sheet never logged:</div>' +
+            regAdd.map(function (a) {
+              return '<div class="adx-roster-note">· <strong>' + esc(a.client || a.person) + '</strong> — closed ' +
+                esc(a.close_date) + ' · ' + esc(a.why || '') +
+                (a.cash != null ? ' · $' + Math.round(a.cash).toLocaleString() + ' matched Stripe' : '') +
+                (a.missing && a.missing.length ? ' · missing: ' + esc(a.missing.join(', ')) : '') + '</div>';
+            }).join('');
+        }
+        if (d.empty_reason && !regAdd.length) head += '<div class="adx-roster-note">' + esc(d.empty_reason) + '</div>';
         rosterState.people = d.people || [];
         rosterState.head = head;
         renderRosterPeople();

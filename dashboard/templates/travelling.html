@@ -105,6 +105,17 @@
         {% if s.plan_text %}<span class="tv-plan">{{ s.plan_text }}</span>{% endif %}
         {% if s.sub %}<span class="tv-stage-sub">{{ s.sub }}</span>{% endif %}
       </div>
+      {# scan-2 shared keys: the register's closes count/cash — the same
+         (metric, window, clock) key every surface stamps #}
+      {% if s.id == 'closed' %}
+      <span hidden data-metric="closes_count" data-window="{{ data.window.key }}"
+            data-clock="activity" data-basis="register"
+            data-value="{{ s.actual if s.actual is not none else '' }}"></span>
+      {% elif s.id == 'cash' %}
+      <span hidden data-metric="closes_cash" data-window="{{ data.window.key }}"
+            data-clock="activity" data-basis="register"
+            data-value="{{ s.actual if s.actual is not none else '' }}"></span>
+      {% endif %}
       <div class="tv-stage-proj">{% if s.projection_text %}month end {{ s.projection_text }}{% endif %}</div>
       <div class="tv-stage-status">
         <span class="tv-status-word">{{ s.status.word }}</span>

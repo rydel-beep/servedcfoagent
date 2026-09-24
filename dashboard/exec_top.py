@@ -296,7 +296,9 @@ def build_tiles(snap: dict | None) -> list[dict]:
                 if tid == "ltgp_cac":
                     sub = f"margin: {margin_prov} · 3:1 = benchmark, not target"
                 else:
-                    sub = (f"Sep cohort · {coh.get('closes', '?')} closes · "
+                    from helpers import today_sydney as _ts
+                    sub = (f"{_ts().strftime('%b')} MTD · {coh.get('closes', '?')} closes "
+                           f"(register, activity clock) · "
                            f"CAC loaded {_fmt_money(coh.get('cac_fully_loaded'), cents=False)}"
                            f" · spend-only {_fmt_money(coh.get('cac_spend_only'), cents=False)}")
                 state = _state_for(unit_age, unit_err)
@@ -309,29 +311,38 @@ def build_tiles(snap: dict | None) -> list[dict]:
                 state = "degraded" if (unit_err or unit is None) else "ok"
             tiles.append(_tile(
                 tid, label, val, sub,
-                f"honest unit-econ engine · cohort clock · computed {_fmt_age(unit_age)}",
+                # the window was NAMED cohort_month but has always been
+                # computed month-to-date on the ACTIVITY clock — the label
+                # now says what the number is (ONE CLOSE REGISTER, Phase 0
+                # finding: the tiles wore the wrong clock's name)
+                f"honest unit-econ engine · activity clock (MTD) · computed {_fmt_age(unit_age)}",
                 state, drawer=tid, raw=v,
                 sr_note=(unit_err or "")))
     except Exception as e:  # noqa: BLE001
         for tid, label in (("ltv_cac", "LTV : CAC"), ("ltgp_cac", "LTGP : CAC")):
             tiles.append(_tile(tid, label, "—", str(e)[:80], "", "degraded"))
 
-    # 8 · Cohort cash ROAS (September MTD, cohort clock — never blended)
+    # 8 · Cash ROAS (month to date, ACTIVITY clock — never blended). The tile
+    # used to SAY "cohort" while the engine computed activity (Phase 0,
+    # ONE CLOSE REGISTER); the id stays for the registry, the words are fixed.
     roas, roas_age, roas_err = _cache(K_ROAS)
+    from helpers import today_sydney as _ts2
+    _roas_label = f"Cash ROAS ({_ts2().strftime('%b')} MTD)"
     try:
         v = (roas or {}).get("cash_roas_cohort")
         val = f"{v:.2f}×" if v is not None else "—"
-        sub = ("cohort clock — cash from this window's closes ÷ this window's ad spend"
+        sub = ("activity clock — cash from closes dated in this window ÷ this "
+               "window's ad spend (the register's closes)"
                if v is not None else
                (roas_err or "not yet computed — first refresh pending"))
         tiles.append(_tile(
-            "cohort_cash_roas", "Cohort cash ROAS (Sep MTD)",
+            "cohort_cash_roas", _roas_label,
             val, sub,
             f"finance-analysis engine · computed {_fmt_age(roas_age)}",
             "degraded" if (roas_err or v is None and roas is None) else _state_for(roas_age, roas_err),
             drawer=None, raw=v, sr_note=roas_err or ""))
     except Exception as e:  # noqa: BLE001
-        tiles.append(_tile("cohort_cash_roas", "Cohort cash ROAS (Sep MTD)",
+        tiles.append(_tile("cohort_cash_roas", _roas_label,
                            "—", str(e)[:80], "", "degraded"))
 
     return tiles[:8]
@@ -375,8 +386,10 @@ def build_cards(snap: dict | None, owner: bool,
     unit, _, _ = _cache(K_UNIT)
     coh = ((unit or {}).get("windows") or {}).get("cohort_month") or {}
 
+    from helpers import today_sydney as _ts3
     card("sales", "Ads & sales", "/dashboard/view/sales",
-         (f"{(roas or {}).get('closes', '—')} closes Sep MTD · Meta spend "
+         (f"{(roas or {}).get('closes', '—')} closes {_ts3().strftime('%b')} MTD "
+          f"(register, activity clock) · Meta spend "
           f"{_fmt_money((roas or {}).get('spend'), cents=False)}"))
     card("receivables", "Receivables", "/dashboard/view/receivables",
          (f"{_fmt_money(ar.get('total_outstanding'))} outstanding"

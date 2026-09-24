@@ -251,3 +251,28 @@ def test_a_healthy_paying_client_is_not_a_finding(monkeypatch):
                                     "mrr": 3050.0}},
         "active": set(), "amounts": {}, "venues": {}})
     assert CSW.scan()["count"] == 0
+
+
+def test_an_existing_clients_recurring_payment_is_never_a_new_close(monkeypatch):
+    """The sweep's catch: 'no close on file' meant 'not in this scan's
+    window', so a long-standing client's monthly charge read as a brand-new
+    close the moment their real close aged out. Twenty-three of them."""
+    kv_store._MEM.clear()
+    import close_detect as C
+    monkeypatch.setattr(C, "_client_to_person", lambda: {})
+    monkeypatch.setattr(C, "_from_tracker", lambda: [{
+        "person": "Tony Thai", "close_date": "2026-07-19", "source": "tracker",
+        "provenance": "tracker close row",
+        "evidence": {"business": "At Thai"}, "email": None}])
+    monkeypatch.setattr("stripe_reconcile._roster_index", lambda: {
+        "venues": {"walkway to ceylon": "Walkway to Ceylon"},
+        "active": set(), "amounts": {}, "terms": {}})
+    monkeypatch.setattr("unmatched_payments.matched_without_close", lambda: [
+        {"client": "Tony Thai", "payer": "Tony", "charge_id": "ch_1",
+         "amount": 1650.0, "date": "2026-09-20"},           # tracker close, aged out
+        {"client": "Walkway to Ceylon", "payer": "Nirosha", "charge_id": "ch_2",
+         "amount": 1677.5, "date": "2026-09-08"},           # roster client
+        {"client": "Brand New Venue", "payer": "Someone", "charge_id": "ch_3",
+         "amount": 3050.0, "date": "2026-09-20"}])          # a real candidate
+    rows = C._from_payments()
+    assert [r["person"] for r in rows] == ["Brand New Venue"]

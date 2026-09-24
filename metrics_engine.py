@@ -147,7 +147,10 @@ def build_canonical_metrics(snapshot: dict) -> dict:
         "funnel_closes": m(
             funnel.get("closes"), "FLOW", "sales.funnel.closes",
             window=funnel.get("window_label") or "scorecard window",
-            definition="Team Scorecard closes (primary funnel source).",
+            definition=("The Team Scorecard SHEET's own closes cell — an "
+                        "external reference for reconciliation, NEVER a close "
+                        "count (the close population is the register: "
+                        "close_register / /dashboard/closes)."),
         ),
         "avg_monthly_per_client": m(
             fwd.get("avg_monthly_per_client"), "FLOW", "forward_mrr.avg_monthly_per_client",

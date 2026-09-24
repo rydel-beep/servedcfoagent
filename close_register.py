@@ -338,6 +338,8 @@ def build(days: int = ALL_TIME_DAYS) -> dict:
             "closer": (lead or {}).get("closer") or None,
             "closer_ghl_owner_id": det.get("owner_id"),
             "setter": (lead or {}).get("setter") or None,
+            "closer_commission_cell": (lead or {}).get("closer_commission"),
+            "setter_commission_cell": (lead or {}).get("setter_commission"),
             "offer": (lead or {}).get("offer") or None,
             "lead": ({"input_date": input_date,
                       "lead_source": (lead or {}).get("lead_source"),
@@ -399,7 +401,12 @@ def _money_like(v) -> float | None:
         return None
 
 
-def latest(build_if_empty: bool = True) -> dict:
+def latest(build_if_empty: bool = False) -> dict:
+    """The persisted register. READS NEVER BUILD: a build runs the all-time
+    attribution pass and the four source readers — minutes on a cold box —
+    so it belongs to the 5-minute tick, the invalidation path and the owner
+    button, never to a page load or a voice answer. A cold register is an
+    honest empty state that the next tick fills."""
     reg = kv_store.get(K_REGISTER)
     if reg is None and build_if_empty:
         try:
@@ -408,7 +415,9 @@ def latest(build_if_empty: bool = True) -> dict:
             logger.warning("register build-on-demand failed: %s", e)
             reg = {"entries": [], "degraded": [{"input": "register",
                                                 "reason": str(e)[:160]}]}
-    return reg or {"entries": []}
+    return reg or {"entries": [],
+                   "note": "register not built yet — the next freshness "
+                           "tick builds it"}
 
 
 # ── THE READ — the single call site every surface uses ─────────────────────
@@ -462,6 +471,88 @@ def totals(w0, w1, clock: str = "activity") -> dict:
         "proposed_people": [e["person"] for e in proposed],
         "cohort_unplaceable": len(unplaceable),
         "cohort_unplaceable_people": [e["person"] for e in unplaceable],
+    }
+
+
+# tier → the channel row that carries a close with no creative row on the grid
+TIER_CHANNEL = {"ig_dm": "__ig_dm__", "ambiguous": "__ambiguous__",
+                "unattributed": "__unattributed__"}
+
+
+def scoreboard_overlay(w0, w1, clock: str, engine_keys: set,
+                       rows_meta: dict) -> dict:
+    """THE GRID'S CLOSE COLUMNS, COMPUTED HERE (I13: the ads blueprint
+    assigns, it never does funnel arithmetic). For the /ads window on the
+    grid's clock: per-row closes / cash (matched Stripe — R-CASH) / contract
+    / recomputed spend ratios, with register closes that have no engine deal
+    landed on their tier's channel row carrying their WHY.
+
+    rows_meta: {creative_key: {"tier","spend","cost_basis"}} for the rows the
+    scoreboard is about to render; engine_keys: name_norms of the engine's
+    own deals in window."""
+    reg_rows = closes(str(w0), str(w1), clock)
+    per_row: dict = {}
+    tiers_count: dict = {}
+    tiers_cash: dict = {}
+    tiers_contract: dict = {}
+    contract_missing = 0
+    added_total = 0
+    for e in reg_rows:
+        att = e.get("attribution") or {}
+        tier = att.get("tier") or "unattributed"
+        ck = att.get("creative_key")
+        key = (ck if tier == "ad" and ck in rows_meta
+               else TIER_CHANNEL.get(tier, "__unattributed__"))
+        d = per_row.setdefault(key, {"closes": 0, "cash": 0.0, "contract": 0.0,
+                                     "added": [], "whys": []})
+        cash_amt = float((e.get("cash") or {}).get("amount") or 0)
+        contract_val = (e.get("contract") or {}).get("value")
+        d["closes"] += 1
+        d["cash"] = round(d["cash"] + cash_amt, 2)
+        d["contract"] = round(d["contract"] + float(contract_val or 0), 2)
+        d["whys"].append({"person": e.get("person"), "why": att.get("why")})
+        row_tier = (rows_meta.get(key) or {}).get("tier") or tier
+        tiers_count[row_tier] = tiers_count.get(row_tier, 0) + 1
+        tiers_cash[row_tier] = round(tiers_cash.get(row_tier, 0) + cash_amt, 2)
+        tiers_contract[row_tier] = round(
+            tiers_contract.get(row_tier, 0) + float(contract_val or 0), 2)
+        if contract_val is None:
+            contract_missing += 1
+        if e["key"] not in engine_keys:
+            added_total += 1
+            d["added"].append({"person": e.get("person"), "client": e.get("client"),
+                               "close_date": e.get("close_date"),
+                               "cash": (e.get("cash") or {}).get("amount"),
+                               "contract": contract_val,
+                               "why": att.get("why"), "status": e.get("status"),
+                               "missing": e.get("missing") or []})
+    # spend ratios recomputed for real creative rows (channel rows carry none)
+    for key, d in per_row.items():
+        meta = rows_meta.get(key) or {}
+        spend = float(meta.get("spend") or 0)
+        if meta.get("cost_basis"):
+            d["cost_per_close"] = (round(spend / d["closes"], 2)
+                                   if d["closes"] else None)
+            d["roas_cash"] = round(d["cash"] / spend, 2) if spend else None
+            d["roas_contracted"] = (round(d["contract"] / spend, 2)
+                                    if spend else None)
+    return {
+        "per_row": per_row,
+        "headline": {
+            "closes_total": len(reg_rows),
+            "closes_tiers": tiers_count,
+            "cash_total": round(sum(float((e.get("cash") or {}).get("amount") or 0)
+                                    for e in reg_rows), 2),
+            "cash_tiers": tiers_cash,
+            "contract_total": round(sum(float((e.get("contract") or {}).get("value") or 0)
+                                        for e in reg_rows), 2),
+            "contract_tiers": tiers_contract,
+            "contract_missing": contract_missing,
+            "population": "close register",
+        },
+        "register_closes": len(reg_rows),
+        "added_outside_engine": added_total,
+        "clock": clock,
     }
 
 
@@ -560,13 +651,15 @@ def declare_close(person: str, close_date: str, evidence_kind: str,
     journal("owner_declaration",
             f"close recorded for {person} ({close_date}) on {evidence_kind} "
             f"{evidence_id}", actor, ev)
-    out = build()
+    # ONE invalidation path: it rebuilds the register first, then the blocks
     try:
         import close_detect
         close_detect.invalidate_now(f"owner recorded a close: {person}")
     except Exception as e:  # noqa: BLE001
         logger.warning("register: invalidation after declaration failed: %s", e)
-    return {"ok": True, "entry": record(key), "register_entries": len(out["entries"])}
+        build()
+    return {"ok": True, "entry": record(key),
+            "register_entries": len(latest().get("entries") or [])}
 
 
 def _verify_evidence(kind: str, eid: str) -> dict:
@@ -742,10 +835,12 @@ K_DAILY = "register:daily_tick"
 
 
 def daily_tick() -> bool:
-    """Once a day: rebuild, reconcile. Rides an existing loop."""
+    """Once a day — or immediately when the register is COLD (fresh deploy,
+    new store): rebuild + reconcile. Rides the 5-minute freshness loop;
+    reads never build, so this is the path that fills a cold register."""
     stamp = kv_store.get(K_DAILY)
     today = str(today_sydney())
-    if stamp == today:
+    if stamp == today and kv_store.get(K_REGISTER) is not None:
         return False
     try:
         build()

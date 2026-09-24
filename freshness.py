@@ -372,6 +372,18 @@ def tick() -> dict:
     except Exception as e:  # noqa: BLE001
         logger.warning("freshness tick: close detection failed: %s", e)
 
+    # THE CLOSE REGISTER's daily rebuild + reconciliation rides the same
+    # loop (event-driven rebuilds happen via close_detect.invalidate_now;
+    # this is the nightly floor so drift is caught even on a quiet day).
+    # A COLD register (fresh deploy / new store) builds on the FIRST tick —
+    # reads never build, so this is the path that fills it.
+    try:
+        import close_register
+        if close_register.daily_tick():
+            out["close_register"] = "register rebuilt + reconciled"
+    except Exception as e:  # noqa: BLE001
+        logger.warning("freshness tick: close register daily tick failed: %s", e)
+
     decision = blocks_need_rebuild()
     out.update(decision)
     if not decision["rebuild"] and not (out.get("meta_today") or {}).get("changed"):

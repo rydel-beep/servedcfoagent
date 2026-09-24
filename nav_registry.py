@@ -41,6 +41,7 @@ PAGES: dict[str, tuple[str, str]] = {
     "leads_page": ("/dashboard/leads", "the leads page"),
     "targets_page": ("/dashboard/targets", "the targets page"),
     "data_sources": ("/dashboard/data-sources", "the data-sources page"),
+    "closes_ledger": ("/dashboard/closes", "the closes ledger"),
 }
 
 GLOBAL_WINDOW_DAYS = (7, 14, 30, 60, 90)      # the global window bar

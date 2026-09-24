@@ -1681,6 +1681,51 @@
    "default_from": "A close is never invented — each one names the evidence that produced it.",
    "selector": "[data-metric='closes_detected']"
   },
+  "closes_count": {
+   "name": "Closes",
+   "kind": "metric",
+   "screen": "closes",
+   "meaning": "How many deals closed, counted from the one close register.",
+   "computed": "Every surface — the ad dashboard, sales, travelling, the home tiles, the compass and EDITH — counts closes from the same register, for the same window, and each page says which day it counts by: the day the deal closed, or the window its lead first arrived.",
+   "default_from": "A close needs evidence to exist here: a tracker row, a CRM stage, a recorded stage move or a matched payment. Nothing is invented.",
+   "good": "The same number on every page for the same window and the same counting day.",
+   "selector": "[data-metric='closes_count']"
+  },
+  "closes_cash": {
+   "name": "Cash from these closes",
+   "kind": "metric",
+   "screen": "closes",
+   "meaning": "Money actually received from this window's closes.",
+   "computed": "Only payments matched in Stripe count — the amount is the sum of each close's matched charges, with the charge references kept on the record. A figure typed in a sheet is shown beside it as a cross-check, never as the number.",
+   "default_from": "Cash is never estimated. A close with no matched payment shows that plainly instead of a guess.",
+   "selector": "[data-metric='closes_cash']"
+  },
+  "closes_contract": {
+   "name": "Contract value",
+   "kind": "metric",
+   "screen": "closes",
+   "meaning": "The signed value of this window's closes.",
+   "computed": "The tracker's contract cell where it is filled (chipped 'signed'); otherwise a value worked out from the package and its term, chipped 'derived' so it is never mistaken for a signature. A blank adds nothing — an unknown is not a zero.",
+   "selector": "[data-metric='closes_contract']"
+  },
+  "record_a_close": {
+   "name": "Record a close",
+   "kind": "control",
+   "screen": "closes",
+   "meaning": "Lets Rydel record a deal the systems have not caught up with.",
+   "changing": "You pick real evidence — a CRM opportunity, a scanned Stripe payment or a closed-deal form entry — from a list, name the person and the date, and the close flows through the register like any other. The record keeps who said so and which evidence proved it.",
+   "computed": "Owner-only. Typed words alone are refused: a close cannot exist without evidence.",
+   "selector": "#cl-record"
+  },
+  "register_reconciliation": {
+   "name": "Daily reconciliation",
+   "kind": "panel",
+   "screen": "closes",
+   "meaning": "A nightly check that every system still agrees on what closed.",
+   "computed": "The tracker, the CRM's closed deals and matched payments are each compared with the register in both directions. A deal a source can see that the register lacks is named loudly, and a register entry that stays on one source too long is flagged for evidence.",
+   "good": "Clean — every source agrees with the register.",
+   "selector": "[data-metric^='close_row_']"
+  },
   "owner_only_chip": {
    "name": "Owner-only",
    "kind": "chip",

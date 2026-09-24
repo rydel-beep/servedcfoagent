@@ -107,9 +107,11 @@ def build(window: str = "mtd", start: str | None = None,
 
     in_window = [l for l in leads_all
                  if l.get("input_date") and w0 <= l["input_date"] <= w1]
-    closes_in = [l for l in leads_all
-                 if l.get("won") and l.get("close_date")
-                 and w0 <= l["close_date"] <= w1]
+    # THE CLOSE POPULATION IS THE REGISTER'S (one engine — the board used to
+    # filter tracker rows inline here, which is how this page said "1 close"
+    # while its own cash figure was built from four).
+    closes_in = _guard("closes",
+                       lambda: _register_closes(w0, w1, leads_all), [])
 
     # ── the one show-basis rule, for the window as a whole ──
     shows = _guard("shows", lambda: travelling.show_basis(w0, w1),
@@ -131,12 +133,16 @@ def build(window: str = "mtd", start: str | None = None,
     out["totals"] = {
         "leads": len(in_window),
         "closes": len(closes_in),
+        "closes_proposed": _guard("closes_proposed",
+                                  lambda: _proposed_count(w0, w1), 0),
         "shows_confirmed": shows.get("confirmed"),
         "shows_unconfirmed": shows.get("unconfirmed"),
         "shows_due": shows.get("due"),
         "show_rate": shows.get("rate"),
         "show_rate_upper": shows.get("rate_upper"),
         "show_range_note": shows.get("range_note"),
+        # kept under its legacy key for the drawers; the VALUE is the
+        # register's matched-Stripe cash per close (R-CASH), not the cell
         "tracker_cash": round(sum(float(l.get("cash") or 0) for l in closes_in), 2),
         "contract": round(sum(float(l.get("contract") or 0) for l in closes_in), 2),
     }
@@ -172,7 +178,16 @@ def build(window: str = "mtd", start: str | None = None,
 
 def _setters(in_window: list[dict]) -> list[dict]:
     """A setter's week: leads worked, sets made, and how many of those sets
-    turned into a confirmed show and a close."""
+    turned into a confirmed show and a close. Close credit reads the
+    REGISTER (one population): a gap-window close whose tracker outcome
+    cell was never filled still credits its setter."""
+    reg_keys: set = set()
+    try:
+        import close_register as CR
+        reg_keys = {e["key"] for e in CR.latest().get("entries") or []
+                    if e.get("status") == "confirmed"}
+    except Exception as e:  # noqa: BLE001
+        logger.info("setters: register unavailable, tracker won-flags only: %s", e)
     by: dict = {}
     for l in in_window:
         name = (l.get("setter") or "").strip()
@@ -186,7 +201,7 @@ def _setters(in_window: list[dict]) -> list[dict]:
             r["sets"] += 1
         if l.get("show"):
             r["shows_marked"] += 1
-        if l.get("won"):
+        if l.get("won") or l.get("name_norm") in reg_keys:
             r["closes"] += 1
         r["commission"] += float(l.get("setter_commission") or 0)
     import attribution_engine as AE
@@ -209,6 +224,43 @@ def _setters(in_window: list[dict]) -> list[dict]:
         rows.append(r)
     rows.sort(key=lambda x: -x["leads"])
     return rows
+
+
+def _register_closes(w0: dt.date, w1: dt.date,
+                     leads_all: list[dict]) -> list[dict]:
+    """The window's closes FROM THE REGISTER, joined back to their tracker
+    lead row where one exists (the closer/setter credit and commission cells
+    live there). A register close with no lead row still appears — under
+    'unassigned' if nobody is named — because the deal is real whether or
+    not the sheet was filled."""
+    import close_register as CR
+    by_norm = {l.get("name_norm"): l for l in leads_all if l.get("name_norm")}
+    rows = []
+    for e in CR.closes(str(w0), str(w1), "activity"):
+        l = by_norm.get(e["key"]) or {}
+        rows.append({
+            "name": e.get("person"), "name_norm": e["key"],
+            "business": e.get("client") or l.get("business"),
+            "won": True,
+            "close_date": dt.date.fromisoformat(e["close_date"]),
+            "closer": l.get("closer") or e.get("closer"),
+            "closer_outcome": l.get("closer_outcome"),
+            "setter": l.get("setter") or e.get("setter"),
+            "closer_commission": l.get("closer_commission"),
+            "setter_commission": l.get("setter_commission"),
+            "cash": (e.get("cash") or {}).get("amount"),
+            "contract": (e.get("contract") or {}).get("value"),
+            "contact_id": l.get("contact_id") or e.get("contact_id"),
+            "register_status": e.get("status"),
+            "register_missing": e.get("missing"),
+        })
+    return rows
+
+
+def _proposed_count(w0: dt.date, w1: dt.date) -> int:
+    import close_register as CR
+    t = CR.totals(str(w0), str(w1), "activity")
+    return int(t.get("proposed") or 0)
 
 
 def _closers(leads_all: list[dict], closes_in: list[dict],
@@ -529,13 +581,15 @@ def _cash(closes_in: list[dict], w0: dt.date, w1: dt.date) -> dict:
         if _is_person(nm):
             tracker_by_name[(l.get("name") or "").strip().lower()] = nm
     for c in cohort:
-        nm = tracker_by_name.get((c.get("person") or c.get("name") or "").strip().lower())
-        if not nm:
-            continue
+        nm = (tracker_by_name.get((c.get("person") or c.get("name") or "")
+                                  .strip().lower()) or "unassigned")
         by_closer[nm] = round(by_closer.get(nm, 0.0) + float(c.get("cash") or 0), 2)
+    # the TOTAL is every register close's matched cash — a deal whose closer
+    # column is empty still collected its money (it sits under "unassigned",
+    # never outside the total)
     return {"by_closer": by_closer,
-            "total": round(sum(by_closer.values()), 2),
-            "source": "Stripe receipts, receipt-dated (R-CASH)",
+            "total": round(sum(float(c.get("cash") or 0) for c in cohort), 2),
+            "source": "matched Stripe charges per close (the register, R-CASH)",
             "note": ("cash from THIS window's closes. A close that collects "
                      "next month shows there, not here.")}
 

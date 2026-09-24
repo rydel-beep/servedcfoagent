@@ -517,10 +517,11 @@ def test_the_simulator_is_published_as_a_model_not_as_actuals():
     for key in ("sim_leads", "sim_calls", "sim_shows", "sim_clients",
                 "sim_cash_this_month"):
         assert f'data-metric="{key}"' in html, key
-    # the scan keys on (metric, window, basis), so a scenario row can never
-    # land in the same bucket as an engine row
+    # the scan keys on (metric, window, basis, clock) — #164 joined the clock
+    # so the closes keys compare like with like; a scenario row still can
+    # never land in the same bucket as an engine row
     scan = _read("scripts", "triple_scan.py")
-    assert 'key = (r["metric"], r["window"], r["basis"])' in scan
+    assert 'key = (r["metric"], r["window"], r["basis"], r.get("clock") or "")' in scan
 
 
 def test_shared_renderers_never_write_into_a_missing_node():

@@ -50,6 +50,25 @@ def handle_scoreboard_command(text: str) -> tuple[str | None, bool]:
            f"leads ad-attributed ({t.get('attribution_rate_pct')}%). Top by spend: "
            + "; ".join(lines) + f". Unattributed: {un.get('leads', 0)} leads, "
            f"{un.get('closes', 0)} closes.")
+    # THE TOTAL comes from the register (#164) — the per-creative lines are
+    # the engine's attribution; the population's headline is the register's,
+    # clock named, so this answer can never quietly narrow to a subset.
+    try:
+        import datetime as _dt
+        import close_register as CR
+        from helpers import today_sydney as _ts
+        _t1 = _ts()
+        reg = CR.totals(str(_t1 - _dt.timedelta(days=29)), str(_t1), "activity")
+        names = {"ad": "from ads", "ambiguous": "ambiguous",
+                 "ig_dm": "IG-DM", "unattributed": "not attributable"}
+        tiers = " · ".join(f"{v} {names.get(k, k)}"
+                           for k, v in (reg.get("tiers") or {}).items() if v) or "none"
+        msg += (f" Total closes in the window (register, activity clock — "
+                f"closed in the last 30 days): {reg['count']} ({tiers})"
+                + (f"; plus {reg['proposed']} proposed needing evidence"
+                   if reg.get("proposed") else "") + ".")
+    except Exception:  # noqa: BLE001 — the engine lines above still stand
+        pass
     cc = (vl.get("constraint_check") or {}).get("read")
     if cc:
         msg += f" Constraint read: {cc}"

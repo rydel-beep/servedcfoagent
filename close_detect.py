@@ -206,17 +206,40 @@ def _client_to_person() -> dict:
 
 
 def _from_payments() -> list[dict]:
-    """Money matched to a client that has no close on file. Cash cannot
-    create a close on its own — it is a candidate with the charge as its
-    evidence, and it says what is missing."""
+    """Money matched to a client that has no close on file ANYWHERE. Cash
+    cannot create a close on its own — it is a candidate with the charge as
+    its evidence, and it says what is missing.
+
+    THE SWEEP'S CATCH (#162): "no close on file" used to mean "not in this
+    scan's window" — so a long-standing client's recurring charge read as a
+    brand-new close the moment their real close aged out of the window.
+    Twenty-three of them, Tony Thai and Terry Yu among the names. An existing
+    client is now recognised by EITHER a tracker close row on any date OR a
+    roster row, and their payments are never close candidates."""
     out = []
     bridge = _client_to_person()
+    known = set()
+    try:
+        for row in _from_tracker():                     # any close date, ever
+            known.add(_norm(row.get("person")))
+            known.add(_norm((row.get("evidence") or {}).get("business")))
+    except Exception as e:  # noqa: BLE001
+        logger.info("close_detect: tracker close set unavailable: %s", e)
+    try:
+        import stripe_reconcile as SR
+        known |= set((SR._roster_index().get("venues") or {}).keys())
+    except Exception as e:  # noqa: BLE001
+        logger.info("close_detect: roster unavailable: %s", e)
+    known.discard("")
     try:
         import unmatched_payments as UP
         for m in UP.matched_without_close():
             client = m.get("client") or m.get("payer")
+            person = bridge.get(_norm(client)) or client
+            if _norm(client) in known or _norm(person) in known:
+                continue          # an existing client paying again is not a close
             out.append({
-                "person": bridge.get(_norm(client)) or client,
+                "person": person,
                 "close_date": m.get("date"),
                 "source": "payment",
                 "provenance": (f"payment matched to {m.get('client')} with no "
@@ -471,6 +494,14 @@ def invalidate_now(reason: str) -> dict:
         out["epoch"] = resolution.bump_derived_epoch(reason)
     except Exception as e:  # noqa: BLE001
         out["epoch_error"] = str(e)[:120]
+    # THE REGISTER REBUILDS FIRST — the engine blocks below read their closes
+    # from it (one population), so it must be current before they recompute.
+    try:
+        import close_register
+        close_register.build()
+        out["register"] = "rebuilt"
+    except Exception as e:  # noqa: BLE001
+        out["register_error"] = str(e)[:120]
     try:
         import freshness
         for name, fn in freshness._block_builders():

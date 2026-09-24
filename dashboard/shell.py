@@ -145,6 +145,8 @@ def palette_targets(owner: bool, ad_only: bool = False) -> list[dict]:
     add("page", "Ads", "/ads", "creatives, spend, verdicts")
     if owner:
         add("page", "Sales", "/dashboard/sales", "the team scoreboard")
+        add("page", "Closes ledger", "/dashboard/closes",
+            "every close, its evidence, and what's missing — the one population")
         add("page", "Money", "/dashboard/view/cash", "cash & capital")
         add("page", "Plan", "/dashboard/scale", "the scaling compass")
         add("page", "How we're travelling", "/dashboard/scale/travelling",

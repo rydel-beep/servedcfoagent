@@ -144,25 +144,41 @@ def measured_defaults(force: bool = False) -> dict:
                             sets_qualified += 1
                     except Exception:
                         sets_seen -= 1     # can't judge → don't count either side
-            if l.get("won") and l.get("close_date"):
-                cd = l["close_date"]
-                if lag_window0 <= cd <= w1:
-                    offer = (l.get("offer") or "unknown").strip().lower() or "unknown"
-                    mix[offer] = mix.get(offer, 0) + 1
-                    who = (l.get("closer") or "").strip().lower() or "unattributed"
-                    closer_counts[who] = closer_counts.get(who, 0) + 1
-                    swho = (l.get("setter") or "").strip().lower() or "unattributed"
-                    setter_counts[swho] = setter_counts.get(swho, 0) + 1
-                    if "scale" in offer and "content" not in offer:
-                        se_rows += 1
-                        pt = (l.get("payment_type") or "").lower()
-                        if "pif" in pt or "full" in pt or "upfront" in pt:
-                            se_pif_rows += 1
-                    if idate:
-                        off = (cd.year - idate.year) * 12 + cd.month - idate.month
-                        lag_pairs.append(max(0, min(off, 5)))
         except Exception:
             continue
+
+    # THE MIX/LAG DISTRIBUTIONS READ THE REGISTER (one close population).
+    # This loop used to filter won tracker rows itself — a register close
+    # with no lead row (a real deal the sheet never logged) now lands in the
+    # mix as offer "unknown" instead of not existing at all.
+    try:
+        import close_register as CR
+        _lead_by_key = {l.get("name_norm"): l for l in leads_all or []
+                        if l.get("name_norm")}
+        for _e in CR.closes(str(lag_window0), str(w1), "activity"):
+            _l = _lead_by_key.get(_e["key"]) or {}
+            offer = ((_e.get("offer") or _l.get("offer") or "unknown")
+                     .strip().lower() or "unknown")
+            mix[offer] = mix.get(offer, 0) + 1
+            who = ((_e.get("closer") or _l.get("closer") or "")
+                   .strip().lower() or "unattributed")
+            closer_counts[who] = closer_counts.get(who, 0) + 1
+            swho = ((_e.get("setter") or _l.get("setter") or "")
+                    .strip().lower() or "unattributed")
+            setter_counts[swho] = setter_counts.get(swho, 0) + 1
+            if "scale" in offer and "content" not in offer:
+                se_rows += 1
+                pt = (_l.get("payment_type") or "").lower()
+                if "pif" in pt or "full" in pt or "upfront" in pt:
+                    se_pif_rows += 1
+            _in = (_e.get("lead") or {}).get("input_date")
+            if _in:
+                _i = dt.date.fromisoformat(str(_in))
+                _c = dt.date.fromisoformat(_e["close_date"])
+                off = (_c.year - _i.year) * 12 + _c.month - _i.month
+                lag_pairs.append(max(0, min(off, 5)))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("compass register mix read failed: %s", e)
 
     # spend + CPL
     spend90 = None

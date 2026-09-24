@@ -125,7 +125,9 @@ def test_js_shows_contract_beside_cash_not_swapped_and_gap():
                            "dashboard", "static", "js", "adsapp.js")).read()
     seg = js.split("function renderHeadline")[1].split("function renderBanner")[0]
     assert "h.cash_total" in seg and "h.contract_total" in seg   # BOTH shown
-    assert "cash · reconciled" in seg and "contract · tracker" in seg  # distinct provenance
+    # distinct provenance: cash is the register's matched-Stripe figure
+    # (ONE CLOSE REGISTER — same numbers as finance), contract stays tracker
+    assert "cash · matched Stripe" in seg and "contract · tracker" in seg
     assert "contractGap(h)" in seg                    # the gap is rendered
     assert "missing contract value" in seg            # blank note
     assert "data-headdrill" in seg                    # drillable

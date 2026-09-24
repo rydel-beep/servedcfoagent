@@ -60,6 +60,51 @@ _PL = [["SETTER PAYOUT LOG"]] + [
 ]
 
 
+def _iso(us_date):
+    m, d, y = us_date.split("/")
+    return f"{y}-{int(m):02d}-{int(d):02d}"
+
+
+def _register_from_ltc(ltc):
+    """Seed the close register (#164 — the one population _ltc_in_window and
+    cohort_funnel now read) with the same deals the sheet rows describe."""
+    import close_register as CR
+    import kv_store
+    entries = []
+    for i, r in enumerate(ltc[1:]):
+        if (r[23] or "").lower() != "won" or not r[27]:
+            continue
+        close, inp = _iso(r[27]), _iso(r[1])
+        entries.append({
+            "id": f"cr:lead {i}", "key": f"lead {i}", "person": f"Lead {i}",
+            "client": f"Venue {i}", "email": None, "contact_id": None,
+            "opp_id": f"opp{i}", "close_date": close, "dated_by": "tracker",
+            "sources": [{"source": "tracker", "provenance": "tracker close row",
+                         "close_date": close}],
+            "corroboration_pending": [], "status": "confirmed",
+            "contract": {"value": float(r[28]), "source": "tracker contract cell",
+                         "signed": True},
+            "cash": {"amount": float(r[32]), "charge_ids": [f"ch_{i}"],
+                     "source": "matched Stripe charges",
+                     "tracker_cell": float(r[32])},
+            "closer": "Kalin", "closer_ghl_owner_id": None, "setter": "Coby",
+            "closer_commission_cell": float(r[40] or 0),
+            "setter_commission_cell": None, "offer": r[26],
+            "lead": {"input_date": inp, "lead_source": None, "tracker_row": True},
+            "attribution": {"tier": "unattributed",
+                            "why": "lead is on the tracker but carries no ad stamp",
+                            "creative_key": None, "creative": None},
+            "clocks": {"activity": close, "cohort": inp, "cohort_why": None},
+            "evidence": {"opp_id": f"opp{i}", "charge_ids": [f"ch_{i}"]},
+            "chips": {"tracker_row": True, "ghl_opp": True, "stripe": True,
+                      "form": False},
+            "missing": [],
+        })
+    kv_store.put(CR.K_REGISTER, {"at": "seeded", "window_days": 3650,
+                                 "entries": entries,
+                                 "confirmed": len(entries), "proposed": 0})
+
+
 def _mock(monkeypatch, ltc=_LTC, pl=_PL, spend=4000.0, margin=70.0):
     import sheet_mirror, meta_spend
     monkeypatch.setattr(sheet_mirror, "read_by_name",
@@ -67,6 +112,7 @@ def _mock(monkeypatch, ltc=_LTC, pl=_PL, spend=4000.0, margin=70.0):
     monkeypatch.setattr(meta_spend, "spend_in_range",
                         lambda s, e: {"spend": spend, "source": "meta_daily_store", "degraded": []})
     monkeypatch.setattr(rue, "_gross_margin", lambda: margin)
+    _register_from_ltc(ltc)
 
 
 def test_window_consistent_may(monkeypatch):

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Closes — Served CFO</title>
+{% include "partials/telemetry.html" %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/dashboard/static/css/served.css?v={{ asset_v }}">
+<style>
+  .cl-chip { display:inline-block; padding:0 6px; border-radius:8px; font-size:11px; margin-right:4px; }
+  .cl-yes { background:var(--ok-bg, #163f2b); color:var(--ok-fg, #7fd8a8); }
+  .cl-no  { background:var(--warn-bg, #3f2b16); color:var(--warn-fg, #d8b27f); }
+  .cl-missing { font-size:12px; color:var(--muted, #9aa); }
+  .cl-proposed td { opacity:.75; }
+  .cl-dialog { border:1px solid var(--line,#333); border-radius:12px; padding:var(--sp-4); margin-top:var(--sp-4); }
+  .cl-dialog[hidden] { display:none; }
+  .cl-ev-list { max-height:220px; overflow:auto; border:1px solid var(--line,#333); border-radius:8px; margin-top:6px; }
+  .cl-ev-list button { display:block; width:100%; text-align:left; padding:6px 10px; background:none; border:0; color:inherit; cursor:pointer; }
+  .cl-ev-list button:hover, .cl-ev-list button.sel { background:var(--hover, #222); }
+</style>
+</head>
+<body class="s-page" data-page="closes">
+
+{% include "partials/shell_nav.html" %}
+
+<main class="s-main" id="main">
+
+  <div class="s-panel-head" style="margin-top:var(--sp-4)">
+    <h1 class="s-panel-title">Closes ledger</h1>
+    <span class="s-panel-sub">
+      the ONE close population — every surface (ads, sales, travelling, the
+      tiles, compass, EDITH) counts from this register ·
+      register built {{ built_at or "not yet" }}
+      &nbsp;·&nbsp;
+      <a href="?window=mtd&clock={{ clock }}">month to date</a> ·
+      <a href="?window=30d&clock={{ clock }}">30d</a> ·
+      <a href="?window=90d&clock={{ clock }}">90d</a> ·
+      <a href="?window=all&clock={{ clock }}">all time</a>
+      &nbsp;·&nbsp; clock:
+      <a href="?window={{ window }}&clock=activity"
+         {% if clock == 'activity' %}style="font-weight:700"{% endif %}>activity
+        (closed in the window)</a> ·
+      <a href="?window={{ window }}&clock=cohort"
+         {% if clock == 'cohort' %}style="font-weight:700"{% endif %}>cohort
+        (the lead's arrival window)</a>
+    </span>
+  </div>
+
+  {% if error %}
+  <div class="s-boundary-fail" style="margin-top:var(--sp-3)">
+    <b>The register could not be read just now.</b> {{ error }}
+  </div>
+  {% endif %}
+
+  <section class="s-cards" style="margin-top:var(--sp-4)" aria-label="Totals">
+    <div class="s-card" data-metric="closes_count" data-window="{{ window }}"
+         data-clock="{{ clock }}" data-basis="register"
+         data-value="{{ totals.count }}">
+      <span class="s-card-label">Closes · {{ window_label }}</span>
+      <span class="s-card-value">{{ totals.count }}</span>
+      <span class="s-card-sub">
+        {%- set t = totals.tiers or {} -%}
+        {%- set names = {'ad': 'from ads', 'ambiguous': 'ambiguous', 'ig_dm': 'IG-DM', 'unattributed': 'not attributable'} -%}
+        {% for k, v in t.items() %}{{ v }} {{ names.get(k, k) }}{% if not loop.last %} · {% endif %}{% endfor %}
+        {%- if totals.proposed %} · +{{ totals.proposed }} proposed{% endif %}
+        {%- if clock == 'cohort' and totals.cohort_unplaceable %} ·
+          {{ totals.cohort_unplaceable }} close(s) cannot sit on this clock (no lead row){% endif %}
+      </span>
+    </div>
+    <div class="s-card" data-metric="closes_cash" data-window="{{ window }}"
+         data-clock="{{ clock }}" data-basis="register"
+         data-value="{{ totals.cash }}">
+      <span class="s-card-label">Cash to date</span>
+      <span class="s-card-value">${{ '{:,.0f}'.format(totals.cash or 0) }}</span>
+      <span class="s-card-sub">matched Stripe charges only (R-CASH)</span>
+    </div>
+    <div class="s-card" data-metric="closes_contract" data-window="{{ window }}"
+         data-clock="{{ clock }}" data-basis="register"
+         data-value="{{ totals.contract }}">
+      <span class="s-card-label">Contract value</span>
+      <span class="s-card-value">${{ '{:,.0f}'.format(totals.contract or 0) }}</span>
+      <span class="s-card-sub">signed where chipped; derived values labelled
+        {%- if totals.contract_missing %} · {{ totals.contract_missing }} missing{% endif %}</span>
+    </div>
+  </section>
+
+  <section class="s-panel" aria-labelledby="ledger-title" style="margin-top:var(--sp-4)">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="ledger-title">Every close, newest first</h2>
+      <span class="s-panel-sub">chips: the evidence each close carries — what
+        is missing is named, with the exact cells to fill (the sheet stays
+        view-only; the agent never writes it)</span>
+    </div>
+    {% if rows %}
+    <div class="s-table-wrap">
+      <table class="s-table">
+        <thead><tr>
+          <th>Date</th><th>Client / venue</th><th>Contact</th><th>Closer</th>
+          <th>Package / contract</th><th class="num">Cash to date</th>
+          <th>Attribution</th><th>Evidence</th><th>Still missing</th>
+        </tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr data-metric="close_row_{{ r.key }}" data-window="{{ window }}"
+              data-clock="{{ clock }}" data-value="{{ r.close_date }}"
+              {% if r.status != 'confirmed' %}class="cl-proposed"{% endif %}>
+            <td>{{ r.close_date }}
+              {% if r.status != 'confirmed' %}<div class="cl-missing">proposed — needs evidence</div>{% endif %}
+              {% if r.declared %}<div class="cl-missing">owner-declared</div>{% endif %}</td>
+            <td><strong>{{ r.client or '—' }}</strong></td>
+            <td>{{ r.person }}</td>
+            <td>{{ r.closer or (('GHL owner ' + r.closer_ghl_owner_id) if r.closer_ghl_owner_id else 'unassigned') }}</td>
+            <td>{{ r.offer or '—' }}
+              {% if r.contract.value is not none %}
+                · ${{ '{:,.0f}'.format(r.contract.value) }}
+                <span class="cl-chip {{ 'cl-yes' if r.contract.signed else 'cl-no' }}"
+                      title="{{ r.contract.source }}">{{ 'signed' if r.contract.signed else 'derived' }}</span>
+              {% else %}<span class="cl-missing">value unknown — blank ≠ zero</span>{% endif %}</td>
+            <td class="num">
+              {% if r.cash.amount is not none %}${{ '{:,.2f}'.format(r.cash.amount) }}
+                <div class="cl-missing">{{ r.cash.charge_ids | length }} charge(s)</div>
+              {% else %}<span class="cl-missing">{{ r.cash.source }}</span>{% endif %}</td>
+            <td>{{ r.attribution.creative or r.attribution.tier }}
+              <div class="cl-missing">{{ r.attribution.why }}</div></td>
+            <td>
+              <span class="cl-chip {{ 'cl-yes' if r.chips.ghl_opp else 'cl-no' }}">GHL {{ '✓' if r.chips.ghl_opp else '✗' }}</span>
+              <span class="cl-chip {{ 'cl-yes' if r.chips.stripe else 'cl-no' }}">Stripe {{ '✓' if r.chips.stripe else '✗' }}</span>
+              <span class="cl-chip {{ 'cl-yes' if r.chips.tracker_row else 'cl-no' }}">tracker {{ '✓' if r.chips.tracker_row else '✗' }}</span>
+              <span class="cl-chip {{ 'cl-yes' if r.chips.form else 'cl-no' }}"
+                    title="Kalin's closed-deal form is not mirrored yet (#161) — ✗ until it is">form {{ '✓' if r.chips.form else '✗' }}</span>
+            </td>
+            <td class="cl-missing">
+              {% if r.missing %}{{ r.missing | join(', ') }}
+                {% set p = piolo_lines.get(r.person) %}
+                {% if p %}<div>→ to fill at source: {{ p.edits | join('; ') }}</div>{% endif %}
+              {% else %}complete{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="s-empty">No closes on the register for {{ window_label }} on the
+      {{ clock }} clock{% if clock == 'cohort' %} — closes without a lead
+      arrival date cannot sit on this clock; switch to activity to see them
+      all{% endif %}.</div>
+    {% endif %}
+  </section>
+
+  {% if recon %}
+  <section class="s-panel" aria-labelledby="recon-title">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="recon-title">Daily reconciliation
+        {% if recon.ok %}<span class="cl-chip cl-yes">clean</span>
+        {% else %}<span class="cl-chip cl-no">{{ recon.findings | length }} finding(s)</span>{% endif %}</h2>
+      <span class="s-panel-sub">each raw source vs the register, both
+        directions · last run {{ recon.at }}</span>
+    </div>
+    {% for f in recon.findings %}
+    <div class="s-boundary-fail" style="margin-top:var(--sp-2)">
+      <b>{{ f.severity }}</b> · {{ f.detail }}</div>
+    {% endfor %}
+    {% if not recon.findings %}
+    <div class="s-empty">Every source agrees with the register.</div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if is_owner %}
+  <section class="s-panel cl-dialog" aria-labelledby="record-title">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="record-title">Record a close (owner)</h2>
+      <span class="s-panel-sub">for when you know something the system
+        doesn't. It needs REAL evidence — a GHL opportunity, a scanned Stripe
+        charge, or a closed-deal form entry — picked from the lists below.
+        Free text alone is rejected, and the record is journaled as your
+        declaration with its evidence.</span>
+    </div>
+    <div style="display:grid; gap:var(--sp-2); max-width:520px">
+      <label>Person (who signed) <input id="cl-person" class="s-input" placeholder="e.g. Jane Citizen"></label>
+      <label>Client / venue (optional) <input id="cl-client" class="s-input" placeholder="e.g. PHOENIX HOTEL"></label>
+      <label>Close date <input id="cl-date" class="s-input" type="date"></label>
+      <label>Search the evidence <input id="cl-ev-search" class="s-input" placeholder="type a name, a payer, a stage…"></label>
+      <div id="cl-ev-results" class="cl-ev-list" aria-live="polite"></div>
+      <div id="cl-ev-picked" class="cl-missing">no evidence picked yet</div>
+      <button id="cl-record" class="s-btn" disabled>Record the close</button>
+      <div id="cl-record-out" class="cl-missing" aria-live="polite"></div>
+    </div>
+  </section>
+  <script>
+  (function () {
+    var picked = null;
+    var $ = function (s) { return document.querySelector(s); };
+    function esc(s) { var d = document.createElement('i'); d.textContent = String(s == null ? '' : s); return d.innerHTML; }
+    function renderOptions(d) {
+      var groups = [['ghl_opportunity', 'GHL opportunities', d.ghl_opportunities],
+                    ['stripe_charge', 'Stripe charges (scanned window)', d.stripe_charges],
+                    ['closed_deal_form', 'Closed-deal form entries', d.closed_deal_forms]];
+      $('#cl-ev-results').innerHTML = groups.map(function (g) {
+        var rows = (g[2] || []).map(function (o) {
+          return '<button type="button" data-kind="' + g[0] + '" data-id="' + esc(o.id) + '">' + esc(o.label) + '</button>';
+        }).join('');
+        return '<div style="padding:4px 10px" class="cl-missing">' + g[1] + (rows ? '' : ' — none found') + '</div>' + rows;
+      }).join('');
+    }
+    var t = null;
+    $('#cl-ev-search').addEventListener('input', function (e) {
+      clearTimeout(t);
+      t = setTimeout(function () {
+        fetch('/dashboard/api/register/evidence-options?q=' + encodeURIComponent(e.target.value),
+              { credentials: 'same-origin' })
+          .then(function (r) { return r.json(); }).then(renderOptions)
+          .catch(function () { $('#cl-ev-results').textContent = 'evidence search failed'; });
+      }, 250);
+    });
+    $('#cl-ev-results').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-kind]');
+      if (!b) return;
+      picked = { kind: b.dataset.kind, id: b.dataset.id };
+      Array.prototype.forEach.call(document.querySelectorAll('#cl-ev-results button'),
+        function (x) { x.classList.remove('sel'); });
+      b.classList.add('sel');
+      $('#cl-ev-picked').textContent = 'evidence: ' + b.textContent;
+      $('#cl-record').disabled = false;
+    });
+    $('#cl-record').addEventListener('click', function () {
+      if (!picked) return;
+      $('#cl-record-out').textContent = 'recording…';
+      fetch('/dashboard/api/register/declare', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ person: $('#cl-person').value,
+                               client: $('#cl-client').value || null,
+                               close_date: $('#cl-date').value,
+                               evidence_kind: picked.kind, evidence_id: picked.id })
+      }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          $('#cl-record-out').textContent = res.ok
+            ? 'recorded — journaled as your declaration; reloading…'
+            : ('refused: ' + (res.d.error || 'unknown'));
+          if (res.ok) setTimeout(function () { location.reload(); }, 900);
+        })
+        .catch(function () { $('#cl-record-out').textContent = 'request failed'; });
+    });
+  })();
+  </script>
+  {% endif %}
+
+</main>
+
+{% include "partials/shell_palette.html" %}
+<script src="/dashboard/static/js/shell.js?v={{ asset_v }}"></script>
+{% include "partials/defs.html" %}
+{% include "partials/edith_dock.html" %}
+</body>
+</html>

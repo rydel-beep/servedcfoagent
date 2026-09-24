@@ -170,6 +170,28 @@ def _tracker_rows() -> dict:
         return _check("Tracker rows", "workbook", False, str(e)[:150], sev="SEV1")
 
 
+def _close_register() -> dict:
+    """#164 — the register's population vs each raw source (Scan 3 subject):
+    runs the register's own reconciliation and reports its S1 findings.
+    Anything a source knows that the register lacks fails this check by
+    name; a register that cannot be read fails it too."""
+    try:
+        import close_register as CR
+        rec = CR.reconcile()
+        s1 = [f for f in rec.get("findings") or [] if f.get("severity") == "S1"]
+        return _check(
+            "close register vs raw sources", "tracker + GHL + matched payments",
+            not s1,
+            (f"{rec.get('register_entries')} register entries · "
+             + ("; ".join(f["detail"] for f in s1[:3]) if s1
+                else "every source agrees with the register")),
+            sev="SEV1")
+    except Exception as e:  # noqa: BLE001
+        return _check("close register vs raw sources",
+                      "tracker + GHL + matched payments", None,
+                      f"reconciliation unavailable: {str(e)[:140]}")
+
+
 def run(full: bool = False) -> dict:
     """The scan. `full` widens the Meta sample; the nightly run is sampled."""
     started = now_sydney()
@@ -180,6 +202,7 @@ def run(full: bool = False) -> dict:
     checks.append(_xero_ar_anchor())
     checks += _ghl_counts()
     checks.append(_tracker_rows())
+    checks.append(_close_register())
     failed = [c for c in checks if c.get("ok") is False]
     unknown = [c for c in checks if c.get("ok") is None]
     out = {"at": started.isoformat(), "full": full, "checks": checks,

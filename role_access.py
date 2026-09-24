@@ -81,6 +81,10 @@ MONEY_TRUTH: tuple[str, ...] = (
     "/dashboard/api/travelling/save",
     "/dashboard/api/unmatched/confirm",     # confirming a payer alias (#161)
     "/dashboard/api/closes/confirm",        # confirming a proposed close (#161)
+    "/dashboard/api/register/declare",      # RECORD A CLOSE (#164) — owner declaration
+    "/dashboard/api/register/rebuild",      # rebuilding the close register (#164)
+    "/dashboard/api/register/evidence-options",  # the declare dialog's evidence
+                                            # picker — owner-only like the verb it feeds
 )
 
 # ── owner-only for a different reason: it destroys something ───────────────
@@ -143,6 +147,9 @@ COO_READ: tuple[str, ...] = (
     "/dashboard/api/unmatched",                      # #161, read
     "/dashboard/api/clients/names",                  # #162, the picker's list
     "/dashboard/api/closes/pending",                 # #161, read
+    "/dashboard/closes",                             # #164, the closes ledger page
+    "/dashboard/api/register",                       # #164, the one close population
+    "/dashboard/api/register/reconciliation",        # #164, the nightly check
     # system + plumbing
     "/dashboard/api/system", "/dashboard/api/freshness",
     "/dashboard/api/health", "/dashboard/api/ground-truth",

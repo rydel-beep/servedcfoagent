@@ -64,6 +64,7 @@ PAGES = [
     ("bookkeeping", "/dashboard/bookkeeping"),
     ("csm", "/dashboard/csm"),
     ("ads", "/ads"),
+    ("closes-ledger", "/dashboard/closes?window=mtd&clock=activity"),
 ]
 
 # EDITH drills whose numbers must equal the engine (scan 2c)
@@ -72,6 +73,7 @@ DRILLS = [
     ("what's my LTV to CAC", ["unit_econ"]),
     ("what's committed", ["committed_mrr"]),
     ("what closed today", ["closes_detected"]),
+    ("what have we closed this month", ["closes_register"]),
 ]
 
 FINDINGS: list[dict] = []
@@ -193,7 +195,10 @@ def scan_agrees_with_itself(page, evd):
         for r in rows:
             if r["value"] in ("", "None"):
                 continue
-            key = (r["metric"], r["window"], r["basis"])
+            # the CLOCK is part of the key (#164): the same metric on the
+            # same window legitimately differs across clocks — the scan
+            # compares like with like and each clock against the engine
+            key = (r["metric"], r["window"], r["basis"], r.get("clock") or "")
             seen.setdefault(key, []).append({"surface": name, "value": r["value"],
                                              "text": r["text"]})
     # (a) same key → same value on every surface
@@ -238,6 +243,43 @@ def scan_agrees_with_itself(page, evd):
                 pairs.append(("closes_detected", len([
                     e for e in (extra["closes_detected"].get("entries") or [])
                     if e.get("state") == "DETECTED"])))
+            # #164 — THE CLOSE REGISTER'S SHARED KEYS: every surface stamps
+            # closes_count/closes_cash per (window × clock); each must equal
+            # the register's own totals for that window and clock.
+            _WINMAP = {"mtd": "mtd", "30d": "30d", "90d": "90d",
+                       "all": "all", "All time": "all"}
+            reg_keys = {(k[1], k[3] or "activity") for k in seen
+                        if k[0] in ("closes_count", "closes_cash")}
+            for win, clock in sorted(reg_keys):
+                api_win = _WINMAP.get(win)
+                if not api_win or clock not in ("activity", "cohort"):
+                    continue           # a custom range box — no canonical window
+                reg = page.evaluate(
+                    """async (u) => { const r = await fetch(u);
+                         return r.ok ? await r.json() : null; }""",
+                    f"/dashboard/api/register?window={api_win}&clock={clock}")
+                if not reg:
+                    continue
+                t_ = reg.get("totals") or {}
+                for metric, engine_val in (("closes_count", t_.get("count")),
+                                           ("closes_cash", t_.get("cash"))):
+                    if engine_val is None:
+                        continue
+                    for key, hits in seen.items():
+                        if (key[0] != metric or key[1] != win
+                                or (key[3] or "activity") != clock):
+                            continue
+                        engine_checks += 1
+                        for h in hits:
+                            try:
+                                if abs(float(h["value"]) - float(engine_val)) > 0.02:
+                                    finding("scan2", "SEV1", "DISAGREES WITH ITSELF",
+                                            f"{metric} ({win}, {clock}) on "
+                                            f"{h['surface']} ≠ the register",
+                                            f"page {h['value']} vs register {engine_val}",
+                                            [h["surface"]])
+                            except (TypeError, ValueError):
+                                pass
             for metric, engine_val in pairs:
                 if engine_val is None:
                     continue

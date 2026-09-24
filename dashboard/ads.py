@@ -150,20 +150,27 @@ def _build_board(days, start, end, basis, force=False, market=None):
     except Exception as e:
         logger.info("ladder unavailable: %s", e)
     import attribution_engine as AE
+    # THE CLOSE REGISTER BLOCK — the one close population, both clocks,
+    # always labelled. The headline reads this (activity first, cohort
+    # beside); the toggle continues to govern the grid.
+    register_block = None
+    try:
+        register_block = _register_block(result, basis)
+    except Exception as e:
+        logger.warning("register block unavailable: %s", e)
     # THE ACTIVITY CASH STRIP (ADS TRUTH, within #120): the cohort view carries one
-    # LABELLED line of activity-clock finance truth — computed by the one engine,
-    # never mixed into grid math (it lives outside the grid payload's rows).
+    # LABELLED line of activity-clock finance truth — now read from the register
+    # (the same numbers as finance), never mixed into grid math.
     cash_strip = None
-    if basis == "cohort" and not (start or end):
+    if basis == "cohort" and register_block:
         try:
-            r_act = attribution_engine.compute(days, basis="activity", market=market)
-            sb_act = AE.scoreboard_view(r_act)
-            cash_strip = {"cash_total": sb_act["headline"]["cash_total"],
-                          "closes_total": sb_act["headline"]["closes_total"],
+            act = register_block["activity"]
+            cash_strip = {"cash_total": act["cash"],
+                          "closes_total": act["count"],
                           "clock": "activity",
-                          "label": (f"cash collected this window (activity clock): "
-                                    f"${sb_act['headline']['cash_total']:,.0f} across "
-                                    f"{sb_act['headline']['closes_total']} close(s)")}
+                          "label": (f"cash collected this window (activity clock, "
+                                    f"matched Stripe): ${act['cash']:,.0f} across "
+                                    f"{act['count']} close(s)")}
         except Exception as e:
             logger.info("cash strip unavailable: %s", e)
     # HEADLINE DELTAS (#140): vs the preceding EQUAL-LENGTH window on the SAME
@@ -184,7 +191,20 @@ def _build_board(days, start, end, basis, force=False, market=None):
                 start=str(_w0 - _dt.timedelta(days=_len)),
                 end=str(_w0 - _dt.timedelta(days=1)), basis=basis, market=market)
             attribution_engine.assert_same_basis(result, prev)
-            pt, ct = prev.get("totals") or {}, result.get("totals") or {}
+            pt, ct = dict(prev.get("totals") or {}), dict(result.get("totals") or {})
+            # closes/cash/contract deltas come from the REGISTER (the one
+            # population) — leads/spend stay the engine's own counts
+            try:
+                import close_register as CR
+                _pr = CR.totals(str(_w0 - _dt.timedelta(days=_len)),
+                                str(_w0 - _dt.timedelta(days=1)), basis)
+                _cr = CR.totals(str(_cw["start"]), str(_cw["end"]), basis)
+                for _src, _dst in ((_pr, pt), (_cr, ct)):
+                    _dst["closes"] = _src["count"]
+                    _dst["cash"] = _src["cash"]
+                    _dst["contract"] = _src["contract"]
+            except Exception as e:
+                logger.info("register compare unavailable: %s", e)
             _lbl = (f"vs prior {_len}d" if not (start or end)
                     else f"vs prior {_len}d (custom)")
             compare = {"label": _lbl, "length_days": _len,
@@ -242,14 +262,111 @@ def _build_board(days, start, end, basis, force=False, market=None):
         "market": result.get("market"), "market_note": result.get("market_note"),
         "compare": compare,
         "cash_strip": cash_strip,
+        "register": register_block,
         "invariants": result.get("invariants"),
-        "scoreboard": AE.scoreboard_view(result),
+        "scoreboard": _overlay_register(AE.scoreboard_view(result), result, basis),
         "scorecard": sc, "rows": result.get("rows"),
         "qualified_rule": result.get("qualified_rule"),
         "reconciliation": result.get("reconciliation"),
         "freshness": result.get("freshness"),
         "ig_non_lead_inquiries": result.get("ig_non_lead_inquiries"),
     }
+
+
+def _register_block(result: dict, basis: str) -> dict:
+    """Both clocks' register totals for the board's window, labelled in
+    words. The headline reads the ACTIVITY figure first (what happened in
+    the window) with the cohort figure beside it; the toggle governs the
+    grid only."""
+    import close_register as CR
+    w = result.get("window") or {}
+    w0, w1 = str(w.get("start")), str(w.get("end"))
+    act = CR.totals(w0, w1, "activity")
+    coh = CR.totals(w0, w1, "cohort")
+    return {
+        "activity": act, "cohort": coh, "grid_clock": basis,
+        "population": "close register — every surface reads this population",
+        "clock_words": {
+            "activity": "closed in this window (activity clock)",
+            "cohort": "counted in the window the LEAD arrived (cohort clock)"},
+    }
+
+
+def _register_added_for(key: str, days, start, end, basis: str) -> list[dict]:
+    """The register closes that sit on row `key` WITHOUT an engine deal —
+    the drill's labelled extras, matching the ⊕ chip on the cell. The
+    register computes; this route slices."""
+    import attribution_engine as AE
+    import close_register as CR
+    result = AE.compute(days=days, start=start, end=end, basis=basis)
+    w = result.get("window") or {}
+    engine_keys = {AE._norm(d.get("name"))
+                   for c in result.get("creatives") or []
+                   for d in (c.get("deals") or [])}
+    rows_meta = {c["creative_key"]: {"tier": c.get("tier"),
+                                     "spend": c.get("spend"),
+                                     "cost_basis": c.get("cost_basis")}
+                 for c in result.get("creatives") or []}
+    ov = CR.scoreboard_overlay(w.get("start"), w.get("end"), basis,
+                               engine_keys, rows_meta)
+    return ((ov.get("per_row") or {}).get(key) or {}).get("added") or []
+
+
+def _overlay_register(sb: dict, result: dict, basis: str) -> dict:
+    """THE GRID'S CLOSE COLUMNS READ THE REGISTER. The engine remains the
+    authority on leads/sets/shows and on WHICH creative a lead came from;
+    the closes, per-close cash (matched Stripe — R-CASH) and contract on
+    every row come from the one register population — computed in
+    close_register.scoreboard_overlay (I13: this blueprint only assigns).
+    A register close with no tracker lead row lands in its tier's channel
+    row with its WHY — before this, Harman and William could not appear on
+    /ads at all."""
+    try:
+        import close_register as CR
+        import attribution_engine as AE
+        w = result.get("window") or {}
+        engine_keys = {AE._norm(d.get("name"))
+                       for c in result.get("creatives") or []
+                       for d in (c.get("deals") or [])}
+        rows_meta = {r["creative_key"]: {"tier": r.get("tier"),
+                                         "spend": r.get("spend"),
+                                         "cost_basis": r.get("cost_basis")}
+                     for r in sb.get("rows") or []}
+        ov = CR.scoreboard_overlay(w.get("start"), w.get("end"), basis,
+                                   engine_keys, rows_meta)
+    except Exception as e:
+        logger.warning("register overlay unavailable — grid shows engine closes: %s", e)
+        sb["register_overlay"] = {"ok": False, "why": str(e)[:140]}
+        return sb
+    per_row = ov.get("per_row") or {}
+    for r in sb.get("rows") or []:
+        d = per_row.get(r["creative_key"])
+        if not d and not r.get("closes"):
+            continue
+        r["closes_engine"] = r.get("closes")
+        r["cash_engine"] = r.get("cash")
+        r["closes"] = (d or {}).get("closes", 0)
+        r["cash"] = (d or {}).get("cash", 0.0)
+        r["contract_register"] = (d or {}).get("contract", 0.0)
+        r["register_added"] = (d or {}).get("added") or []
+        r["close_whys"] = (d or {}).get("whys") or []
+        if r.get("cost_basis") and d:
+            r["cost_per_close"] = d.get("cost_per_close")
+            r["roas_cash"] = d.get("roas_cash")
+            r["roas_contracted"] = d.get("roas_contracted")
+        elif r.get("cost_basis"):
+            # engine had closes here but the register places none on this
+            # clock — the cost columns empty honestly rather than go stale
+            r["cost_per_close"] = None
+            r["roas_cash"] = None
+            r["roas_contracted"] = None
+    h = sb.get("headline") or {}
+    h["closes_engine_total"] = h.get("closes_total")
+    h.update(ov.get("headline") or {})
+    sb["register_overlay"] = {"ok": True, "clock": basis,
+                              "register_closes": ov.get("register_closes"),
+                              "added_outside_engine": ov.get("added_outside_engine")}
+    return sb
 
 
 def _engine_slice(result: dict) -> dict:
@@ -774,6 +891,15 @@ def roster():
     if range_note:
         payload["range_note"] = range_note
     payload["clock"] = payload.get("basis")   # the declared name — never implicit
+    # register closes with no tracker lead row belong to this cell's count
+    # (the overlay) but have no engine roster row — appended HERE, labelled,
+    # so the drill's people match the cell it opened from
+    if metric == "closes":
+        try:
+            payload["register_added"] = _register_added_for(
+                key, days, start, end, _basis_arg())
+        except Exception as e:
+            logger.info("register roster append unavailable: %s", e)
     try:
         _roster_notes_enrich(payload["people"])
     except Exception as e:

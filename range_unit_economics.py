@@ -129,33 +129,20 @@ def _read_ltc_clean():
 
 
 def _ltc_in_window(w0: dt.date, w1: dt.date) -> dict:
-    """Won deals closed in [w0,w1] from the mirror: count + contract + cash + closer comms."""
-    rows = _read_ltc_clean()
+    """Closes in [w0,w1] FROM THE REGISTER (one population — this module
+    used to run its own tracker parse, which never saw a gap-window close):
+    count + contract + cash (matched Stripe) + closer comms (tracker cell)."""
+    import close_register as CR
     out = {"closes": 0, "contract": 0.0, "cash": 0.0, "closer_comm": 0.0, "deals": []}
-    if not rows:
-        return out
-    hi = next((i for i, r in enumerate(rows[:8]) if any("close date" in (c or "").lower() for c in r)), 0)
-    cm = _ltc_col_map(rows[hi])
-    if "close_date" not in cm:
-        return out
-    for r in rows[hi + 1:]:
-        cd = _date(r[cm["close_date"]]) if cm["close_date"] < len(r) else None
-        if cd is None or not (w0 <= cd <= w1):
-            continue
-        # A close = Call Outcome == "won" (the canonical definition used across the agent),
-        # NOT merely "has a contract value". Keeps the count transparent + per-deal.
-        outcome = (r[cm["outcome"]].strip().lower() if cm.get("outcome", 99) < len(r) else "")
-        if outcome != "won":
-            continue
-        contract = _money(r[cm["contract"]]) if cm.get("contract", 99) < len(r) else None
-        cash = _money(r[cm["cash"]]) if cm.get("cash", 99) < len(r) else None
-        closer = _money(r[cm["closer"]]) if cm.get("closer", 99) < len(r) else None
-        name = (r[cm["name"]].strip() if cm.get("name", 99) < len(r) else "")
+    for e in CR.closes(str(w0), str(w1), "activity"):
+        contract = (e.get("contract") or {}).get("value")
+        cash = (e.get("cash") or {}).get("amount")
         out["closes"] += 1
         out["contract"] += contract or 0.0
         out["cash"] += cash or 0.0
-        out["closer_comm"] += closer or 0.0
-        out["deals"].append({"name": name, "close_date": str(cd),
+        out["closer_comm"] += e.get("closer_commission_cell") or 0.0
+        out["deals"].append({"name": e.get("person") or "",
+                             "close_date": e["close_date"],
                              "contract": contract or 0.0, "cash": cash or 0.0})
     out["contract"] = round(out["contract"], 2)
     out["cash"] = round(out["cash"], 2)
@@ -234,6 +221,14 @@ def cohort_funnel(w0: dt.date, w1: dt.date) -> dict:
             out["shows"] += 1
         if cm.get("outcome", 99) < len(r) and r[cm["outcome"]].strip().lower() == "won":
             out["closes"] += 1
+    # the cohort's CLOSES come from the register (one population): a close
+    # whose lead arrived in this window counts here even when the tracker
+    # row's outcome cell was never filled
+    try:
+        import close_register as CR
+        out["closes"] = len(CR.closes(str(w0), str(w1), "cohort"))
+    except Exception:  # noqa: BLE001 — the tracker loop above remains the floor
+        pass
     li, st, sh, cl = out["leads_in"], out["sets"], out["shows"], out["closes"]
     if li:
         out["lead_to_set_pct"] = round(100 * st / li, 1)

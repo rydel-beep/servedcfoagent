@@ -54,18 +54,25 @@
       <span class="s-card-sub">{{ board.totals.show_range_note }}</span>
     </div>
     <div class="s-card" data-metric="sales_closes" data-window="{{ board.window.key }}"
-         data-clock="{{ board.window.label }}" data-basis="tracker"
+         data-clock="activity" data-basis="register"
          data-value="{{ board.totals.closes }}">
       <span class="s-card-label">Closes</span>
       <span class="s-card-value">{{ board.totals.closes }}</span>
-      <span class="s-card-sub">won rows with a close date in this window</span>
+      <span class="s-card-sub"><a href="/dashboard/closes?window={{ board.window.key }}">close register</a>, activity clock (closed in this window)
+        {%- if board.totals.closes_proposed %} · +{{ board.totals.closes_proposed }} proposed, needs evidence{% endif %}</span>
+      <span hidden data-metric="closes_count" data-window="{{ board.window.key }}"
+            data-clock="activity" data-basis="register"
+            data-value="{{ board.totals.closes }}"></span>
     </div>
     <div class="s-card" data-metric="sales_cash" data-window="{{ board.window.key }}"
-         data-clock="{{ board.window.label }}" data-basis="stripe"
+         data-clock="activity" data-basis="register"
          data-value="{{ board.cash.total }}">
       <span class="s-card-label">Cash from these closes</span>
       <span class="s-card-value">${{ '{:,.0f}'.format(board.cash.total or 0) }}</span>
       <span class="s-card-sub">{{ board.cash.source }}</span>
+      <span hidden data-metric="closes_cash" data-window="{{ board.window.key }}"
+            data-clock="activity" data-basis="register"
+            data-value="{{ board.cash.total }}"></span>
     </div>
   </section>
 

@@ -352,6 +352,121 @@ def api_closes_pending():
     return jsonify(close_detect.latest())
 
 
+# ── THE CLOSE REGISTER (#164) — one population, every surface reads it ──────
+
+@bp.route("/closes")
+@require_auth   # owner + the coo role (finance access) per the allowlist
+def closes_ledger_page():
+    """THE CLOSES LEDGER — every close, newest first, with its evidence
+    chips, attribution reason and what is still missing. The 30-second
+    truth check: this page IS the population every other surface counts."""
+    import close_register as CR
+    window = request.args.get("window") or "90d"
+    clock = request.args.get("clock") or "activity"
+    if clock not in ("activity", "cohort"):
+        clock = "activity"
+    w0, w1, label = _register_window(window)
+    try:
+        rows = CR.closes(str(w0), str(w1), clock, include_proposed=True)
+        totals = CR.totals(str(w0), str(w1), clock)
+        recon = CR.reconciliation_latest()
+        built = CR.latest().get("at")
+    except Exception as e:  # noqa: BLE001 — never a blank page
+        logger.exception("closes ledger build failed")
+        rows, totals, recon, built = [], {}, None, None
+        flash_error = str(e)[:160]
+    else:
+        flash_error = None
+    rows = sorted(rows, key=lambda r: r["close_date"], reverse=True)
+    from dashboard.auth import is_owner as _is_owner
+    return render_template(
+        "closes.html", asset_v=_ASSET_VERSION, defs_json=_defs_json(),
+        rows=rows, totals=totals, window=window, window_label=label,
+        clock=clock, built_at=built, recon=recon, error=flash_error,
+        piolo_lines={p["person"]: p for p in
+                     (CR.piolo_lines() if not flash_error else [])},
+        is_owner=_is_owner())
+
+
+def _register_window(key: str):
+    import datetime as _dt
+    from helpers import today_sydney
+    t = today_sydney()
+    if key == "mtd":
+        return t.replace(day=1), t, "Month to date"
+    if key == "30d":
+        return t - _dt.timedelta(days=29), t, "Last 30 days"
+    if key == "90d":
+        return t - _dt.timedelta(days=89), t, "Last 90 days"
+    if key == "all":
+        return _dt.date(2000, 1, 1), t, "All time"
+    return t - _dt.timedelta(days=89), t, "Last 90 days"
+
+
+@bp.route("/api/register", methods=["GET"])
+@require_auth
+def api_register():
+    """The register: totals + entries for a window on ONE stated clock."""
+    import close_register as CR
+    window = request.args.get("window") or "30d"
+    clock = request.args.get("clock") or "activity"
+    if clock not in ("activity", "cohort"):
+        return jsonify({"error": "clock must be activity or cohort"}), 400
+    w0, w1, label = _register_window(window)
+    return jsonify({
+        "window": {"key": window, "label": label, "start": str(w0), "end": str(w1)},
+        "clock": clock,
+        "totals": CR.totals(str(w0), str(w1), clock),
+        "entries": CR.closes(str(w0), str(w1), clock, include_proposed=True),
+        "built_at": CR.latest().get("at"),
+    })
+
+
+@bp.route("/api/register/reconciliation", methods=["GET"])
+@require_auth
+def api_register_reconciliation():
+    import close_register as CR
+    return jsonify(CR.reconciliation_latest()
+                   or {"note": "the nightly reconciliation has not run yet"})
+
+
+@bp.route("/api/register/rebuild", methods=["POST"])
+@require_owner
+def api_register_rebuild():
+    """Owner: rebuild the register now and run the reconciliation."""
+    import close_register as CR
+    out = CR.build()
+    recon = CR.reconcile()
+    return jsonify({"ok": True, "entries": len(out.get("entries") or []),
+                    "reconciliation_findings": len(recon.get("findings") or [])})
+
+
+@bp.route("/api/register/evidence-options", methods=["GET"])
+@require_owner
+def api_register_evidence_options():
+    """RECORD A CLOSE's searchable evidence — real GHL opportunities, real
+    scanned charges, real form entries. Free text is not on offer."""
+    import close_register as CR
+    return jsonify(CR.evidence_options(request.args.get("q") or ""))
+
+
+@bp.route("/api/register/declare", methods=["POST"])
+@require_owner
+def api_register_declare():
+    """RECORD A CLOSE — owner-only, evidence-verified, journaled."""
+    import close_register as CR
+    from dashboard.auth import current_actor
+    body = request.get_json(silent=True) or {}
+    res = CR.declare_close(
+        person=str(body.get("person") or ""),
+        close_date=str(body.get("close_date") or ""),
+        evidence_kind=str(body.get("evidence_kind") or ""),
+        evidence_id=str(body.get("evidence_id") or ""),
+        actor=(current_actor() or {}).get("user") or "owner",
+        client=(str(body.get("client")) if body.get("client") else None))
+    return jsonify(res), (200 if res.get("ok") else 400)
+
+
 @bp.route("/api/closes/confirm", methods=["POST"])
 @require_owner
 def api_closes_confirm():
