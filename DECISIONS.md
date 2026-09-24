@@ -3296,3 +3296,51 @@ August contract revenue ($98.6k) runs ABOVE Xero partly because term-dated
 roster rows for since-finished clients still cover August — correct
 recognition, but it also means a stale End Date inflates the management
 basis; the status-stale rule (#162) is the police for that.
+
+---
+
+## #166 — NET MARGIN: IF EVERYONE PAYS vs WHAT ACTUALLY LANDED
+**2026-09-24 · a focused build on the #165 engine, at Rydel's ask**
+
+**THE ASK**: two scenarios side by side — the month IF EVERYTHING IS PAID,
+and the REAL-TIME REALITY on what has actually landed. "The gap between them
+is the money owed."
+
+**ONE COST BASIS, BY CONSTRUCTION.** Both panels run the management month's
+own normalised costs; the ONLY input that differs is which revenue goes in.
+The test proves it the hard way: panel B's net is recomputed by hand from
+panel A's cost lines and must match to the cent.
+
+**THE FIRST LIVE READ** (24 Sep): if everyone pays **28.5%** on $79,755
+contracted MTD · what actually landed **−32.8%** on $37,227 collected —
+only **46.7%** of the month's contracted revenue has arrived — and the
+dated last-30-days (26 Aug → 24 Sep) reads **−52.4%**. The gap:
+**$42,527.63**. Month-end: **27.8% optimistic** (every contracted dollar
+paid, and the label says so) vs **20.2% realistic** (collections continue
+at the trailing-3 pace of 86.5%, and that label says so too). A negative
+collected margin is not a crisis headline — it is a month's booked costs
+sitting against half a month's landed cash — but it is the honest reading
+Rydel asked to see, and the panel names its window so it explains itself.
+
+**THE GAP RECONCILES TO AR, RESIDUAL NAMED**: AR outstanding $62,716.33 −
+the MTD gap $42,527.63 = **$20,188.70 of residual**, which is prior-month
+AR and bank-transfer clients whose receipts never pass through Stripe. The
+top unpaid are on the drawer — Panini CO $6,258 (78d), Raama $6,200 (78d),
+At Thai $4,167 (47d) — with a door to the receivables list.
+
+**COLLECTED joined the waterfall's basis switch** — the whole ladder
+readable on what landed. **The freshness fix**: `net_margin` joined
+TILE_INPUTS (tracker_mirror · xero · stripe), ending "as of age unknown",
+and the engine stamps each panel from ITS OWN inputs (roster + Xero for
+contracted; Stripe's own pull for collected). One Stripe pull serves all
+five windows of the computation.
+
+**EDITH**: "what's our margin if everyone pays vs what's landed" answers
+template-filled — both margins, both named windows, the gap line, the top
+unpaid clients, both projections with their assumptions, and "same costs on
+both panels — only collection differs." In Scan 2's drill battery.
+
+**GST + exclusions pinned**: a $3,355 receipt counts $3,050; refunds are
+netted by the one charge reader and fully-refunded charges dropped;
+transfers never appear in a Stripe charge list at all — the provenance
+sentence says so on the panel.

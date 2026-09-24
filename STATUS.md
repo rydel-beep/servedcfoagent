@@ -1,5 +1,23 @@
 # STATUS — served-cfo-agent session log
 
+## 2026-09-24 (4) — IF EVERYONE PAYS vs WHAT ACTUALLY LANDED (#166)
+
+Deploy → 27491325 SUCCESS. Suite **1490**. Zero writes.
+
+The Today net-margin tile is TWO PANELS on one cost basis: **28.5%** if
+everyone pays ($79,755 contracted MTD) vs **−32.8%** on what landed
+($37,227 collected — 46.7% of the month) · last 30 days (26 Aug → 24 Sep)
+**−52.4%** · the gap **$42,527.63** with a door to the unpaid clients ·
+AR reconciles with the $20,189 residual NAMED (prior-month AR +
+bank-transfer clients outside Stripe) · month-end 27.8% optimistic vs
+20.2% realistic (trailing pace 86.5%), each labelled with its assumption ·
+"collected" joined the waterfall's basis switch · net_margin joined
+freshness TILE_INPUTS (no more "age unknown"); each panel stamps from its
+own inputs · EDITH drill answers both margins, both windows, the gap and
+the top unpaid, template-filled. 12 new tests incl. the one-cost-basis
+proof and the un-mocked trailing-rate maths.
+
+
 ## 2026-09-24 (3) — NET PROFIT, TRUTHFULLY (#165)
 
 Deploys → a57195ed, 1aedcca7 SUCCESS, health ok. Suite **1478**. Zero
