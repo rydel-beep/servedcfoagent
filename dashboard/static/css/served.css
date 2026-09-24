@@ -508,3 +508,18 @@ a.s-verdict:hover { background: var(--bg-card-hover); }
   border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
 tr.is-amber td { background: var(--amber-dim); }
 .s-chip-active { outline: 2px solid var(--accent); }
+
+/* ── if everyone pays vs what landed (#166) ──────────────────────────────── */
+.nm-panels { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3);
+  margin: var(--sp-2) 0; }
+.nm-panel { display: flex; flex-direction: column; gap: 2px;
+  padding: var(--sp-2); background: var(--bg-inset); border-radius: var(--radius-sm); }
+.nm-panel-label { font-size: var(--fs-caption); color: var(--text-secondary);
+  text-transform: none; }
+.nm-panel-value { font-size: 22px; font-weight: 700;
+  font-variant-numeric: tabular-nums; }
+.nm-panel-window { font-size: var(--fs-micro); color: var(--text-muted); }
+.nm-panel-sub { font-size: var(--fs-caption); color: var(--text-secondary); }
+.nm-gap { display: block; font-size: var(--fs-caption);
+  color: var(--text-secondary); margin-top: 2px; }
+.nm-gap a { color: var(--accent); }

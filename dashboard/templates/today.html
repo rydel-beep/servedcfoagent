@@ -39,7 +39,31 @@
                 aria-label="Ask EDITH about {{ t.label }}"
                 title="Ask EDITH about this">ⓘ</button>
       </span>
+      {% if t.panels %}
+      <div class="nm-panels">
+        {% for p in t.panels %}
+        <div class="nm-panel" data-metric="{{ p.id }}"
+             data-window="{{ p.window }}" data-clock="{{ p.window }}"
+             data-basis="{{ 'contracted' if loop.first else 'collected' }}"
+             data-value="{{ p.raw if p.raw is not none else '' }}">
+          <span class="nm-panel-label">{{ p.label }}</span>
+          <span class="nm-panel-value">{{ p.value }}</span>
+          <span class="nm-panel-window">{{ p.window }}</span>
+          {% if p.sub %}<span class="nm-panel-sub">{{ p.sub }}</span>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% if t.gap_line %}
+      <span class="nm-gap" data-metric="margin_gap" data-window="mtd"
+            data-clock="month to date" data-basis="contracted-minus-collected"
+            data-value="{{ t.gap_raw if t.gap_raw is not none else '' }}">
+        {{ t.gap_line }} — the gap is the money you're owed.
+        {% if t.door %}<a href="{{ t.door.href }}">{{ t.door.label }}</a>{% endif %}
+      </span>
+      {% endif %}
+      {% else %}
       <span class="s-card-value">{{ t.value }}</span>
+      {% endif %}
       {% if t.sub %}<span class="s-card-sub">{{ t.sub }}</span>{% endif %}
       {% if t.sr_note %}<span class="s-card-sub">{{ t.sr_note }}</span>{% endif %}
 

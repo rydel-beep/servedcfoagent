@@ -76,6 +76,7 @@ DRILLS = [
     ("what have we closed this month", ["closes_register"]),
     ("what's our net profit margin", ["net_margin"]),      # #165: three bases, periods, as-of
     ("why is this month below run-rate", ["pl_bridge"]),   # #165: the bridge, named items
+    ("what's our margin if everyone pays vs what's landed", ["margin_gap"]),  # #166
 ]
 
 # #165: the DECOY — a metric no engine computes. The pass condition is a

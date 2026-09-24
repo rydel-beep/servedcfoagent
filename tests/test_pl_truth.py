@@ -332,10 +332,10 @@ def test_the_pl_page_never_pulls_xero_on_load():
 
 def test_the_today_tile_reads_the_cache_only():
     src = _code_only(_read("dashboard", "today.py"))
-    i = src.index("Net margin (management basis)")
-    seg = src[max(0, i - 1600):i + 800]
-    assert "cached_summary()" in seg
-    assert "refresh_summary" not in seg
+    i = src.index("pl_engine.cached_summary()")
+    seg = src[max(0, i - 400):i + 4000]
+    assert "Net margin" in seg, "the tile must be built FROM the cache read"
+    assert "refresh_summary" not in src
 
 
 def test_the_stripe_stamp_is_no_longer_the_snapshots():

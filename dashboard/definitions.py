@@ -134,7 +134,8 @@ def coverage_inventory() -> dict:
     # the P&L ladder (#165)
     inv["pl"] = ["net_margin", "gross_margin", "contribution_margin",
                  "pl_waterfall", "pl_bridge", "pl_mapping_ctl",
-                 "cash_net_window"]
+                 "cash_net_window", "net_margin_contracted",
+                 "net_margin_collected", "margin_gap", "collected_basis"]
 
     # the close pipeline (#161) + the close register and its ledger (#164)
     inv["closes"] = ["unmatched_payments", "closes_detected", "confirm_payer",

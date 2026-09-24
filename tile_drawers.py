@@ -478,7 +478,75 @@ def _drawer_booked_calls() -> dict:
     }
 
 
+def _drawer_net_margin() -> dict:
+    """#166: both panels' math, the AR reconciliation, and the two labelled
+    projections — everything the two headline numbers rest on."""
+    import pl_engine
+    d = (pl_engine.cached_summary() or {}).get("data") or {}
+    cvc = d.get("contracted_vs_collected") or {}
+    mg = cvc.get("contracted") or {}
+    b = cvc.get("collected_mtd") or {}
+    b30 = cvc.get("collected_30d") or {}
+    gap = cvc.get("gap") or {}
+    recon = cvc.get("ar_reconciliation") or {}
+    proj = cvc.get("projections") or {}
+    costs = cvc.get("same_cost_basis") or {}
+    stamps = cvc.get("inputs_as_of") or {}
+    comps = [
+        {"label": "IF EVERYONE PAYS — contracted revenue "
+                  f"({mg.get('window_words') or 'MTD'})",
+         "value": mg.get("revenue"),
+         "source": "active clients × MRR pro-rata + PIF spread (Health tab)"},
+        {"label": "WHAT LANDED — collected revenue (same window)",
+         "value": b.get("revenue"),
+         "source": (b.get("collected") or {}).get("provenance")},
+        {"label": "collected, last 30 days "
+                  f"({(b30.get('window_words') or 'unavailable')})",
+         "value": (b30 or {}).get("revenue"),
+         "source": (b30 or {}).get("cost_note") or ""},
+        {"label": "SAME costs on both panels — delivery",
+         "value": costs.get("delivery"), "source": "management basis, normalised"},
+        {"label": "… acquisition (rulebook commissions in)",
+         "value": costs.get("acquisition"), "source": "management basis"},
+        {"label": "… overhead", "value": costs.get("overhead"),
+         "source": "management basis"},
+        {"label": "collected net margin ON THE CONTRACTED denominator",
+         "value": None,
+         "source": "so the two panels compare on one denominator — see the "
+                   "gap line for the dollars"},
+    ]
+    pa, pb = proj.get("optimistic") or {}, proj.get("realistic") or {}
+    return {
+        "tile": "net_margin",
+        "definition": ("Two margins, one cost base: what the month earns if "
+                       "every contracted dollar arrives, and what it has "
+                       "earned on the money that actually landed. The gap "
+                       "is the money you're owed."),
+        "formula": ("net = revenue − refunds − delivery − acquisition − "
+                    "overhead − 25% tax accrual; the ONLY difference between "
+                    "the panels is which revenue goes in"),
+        "clock": (f"contracted as of roster {str((stamps.get('contracted') or {}).get('roster'))[:16]} "
+                  f"· collected as of Stripe {str((stamps.get('collected') or {}).get('stripe'))[:16]}"),
+        "value": mg.get("net_margin_pct"),
+        "components": comps,
+        "gap": gap,
+        "projections": {
+            "optimistic": {**pa} if pa else None,
+            "realistic": {**pb} if pb else None,
+            "note": "every projection carries its assumption — optimistic "
+                    "assumes full payment; realistic applies the trailing "
+                    "collection pace"},
+        "reconciliation": {
+            "external": f"AR outstanding ${recon.get('ar_outstanding') or 0:,.0f}",
+            "delta_note": recon.get("residual_note"),
+            "top_unpaid": recon.get("top_unpaid"),
+            "door": recon.get("door")},
+        "baseline": f"FY26 net margin {cvc.get('fy26_baseline_net_pct')}%",
+    }
+
+
 _REGISTRY = {
+    "net_margin": _drawer_net_margin,
     "cash_on_hand": _drawer_cash_on_hand,
     "burn_ex_tax": _drawer_burn_ex_tax,
     "booked_calls": _drawer_booked_calls,

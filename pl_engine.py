@@ -487,10 +487,39 @@ def _fy_start() -> str:
     return f"{y}-07"
 
 
+def collected_month(mkey: str) -> dict:
+    """The ladder on WHAT LANDED for one calendar month — the management
+    month's own costs (same basis, only collection differs)."""
+    mg = management(mkey)
+    if not mg.get("ok"):
+        return {"ok": False, "basis": "collected", "month": mkey,
+                "reason": mg.get("reason")}
+    w0, w1 = month_bounds(mkey)
+    if mkey == _cur_month():
+        w1 = str(today_sydney())
+    coll = collected_revenue(w0, w1)
+    r = _rungs(coll["total"], mg["contra_revenue"], mg["delivery"],
+               mg["acquisition"], mg["overhead"], 0.0, "")
+    tax = round(max(r["operating_profit"], 0.0) * TAX_RATE, 2)
+    out = {"ok": True, "basis": "collected", "month": mkey,
+           "window": {"start": w0, "end": w1},
+           **_rungs(coll["total"], mg["contra_revenue"], mg["delivery"],
+                    mg["acquisition"], mg["overhead"], tax,
+                    "25% accrual on this panel's own operating profit"),
+           "collected": coll, "as_of": coll["as_of"],
+           "provenance": ("collected revenue (Stripe receipts ex-GST) over "
+                          "the management month's own costs — one cost "
+                          "basis, only collection differs")}
+    if not coll.get("reach_note", "").startswith("Stripe charges reach"):
+        out["reach_warning"] = coll.get("reach_note")
+    return out
+
+
 def window(basis: str, name: str) -> dict:
     """The ladder for a NAMED calendar window. Multi-month windows sum the
     months; every output names its months in words."""
-    fn = {"management": management, "recognised": recognised, "cash": cash}[basis]
+    fn = {"management": management, "recognised": recognised, "cash": cash,
+          "collected": collected_month}[basis]
     cur = _cur_month()
     if name == "mtd":
         r = fn(cur)
@@ -596,7 +625,13 @@ def summary() -> dict:
     mtd = window("management", "mtd")
     lm = window("recognised", "last_month")
     t3 = window("management", "t3")
+    try:
+        cvc = contracted_vs_collected()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("contracted-vs-collected failed: %s", e)
+        cvc = {"ok": False, "reason": str(e)[:120]}
     return {"management_mtd": _slim(mtd), "recognised_last_month": _slim(lm),
+            "contracted_vs_collected": cvc,
             "run_rate_t3": _slim(t3), "fy26_baseline": FY26,
             "as_of": now_sydney().isoformat(),
             "bridge_last_month": bridge(months_back(1)[0]),
@@ -714,3 +749,268 @@ def handle_bridge_query(text: str):
             f"${(nets.get('recognised') or 0):,.0f} vs cash "
             f"${(nets.get('cash') or 0):,.0f}. The differences, named: "
             + "; ".join(parts) + "."), True
+
+
+# ── IF EVERYONE PAYS vs WHAT ACTUALLY LANDED (#166) ─────────────────────────
+# Rydel: "the gap between them is the money owed." Two panels, ONE cost
+# basis — the management-basis normalised costs for the window — so the only
+# thing that differs is collection.
+
+def collected_revenue(w0: str, w1: str, charges: list | None = None) -> dict:
+    """Client cash landed in [w0, w1], ex-GST. Stripe succeeded charges net
+    of refunds (the reader nets them and drops fully-refunded charges);
+    transfers and non-client bank movements never appear in the charge list.
+    R-CASH: receipts only, never derived. Pass `charges` to share one pull
+    across several windows — the two-panel computation reads five windows
+    and one pull serves them all."""
+    if charges is None:
+        import cash_truth
+        charges = cash_truth._recent_charges(120) or []
+    ins = [c for c in charges if w0 <= str(c["date"]) <= w1]
+    gross = round(sum(c["amount"] for c in ins), 2)
+    stamp = (kv_store.get("stripe:last_pull") or {}).get("at")
+    return {"window": {"start": w0, "end": w1},
+            "window_words": f"{_dword(w0)} → {_dword(w1)}",
+            "gross": gross, "total": round(gross / 1.1, 2), "count": len(ins),
+            "as_of": stamp,
+            "provenance": ("Stripe succeeded charges net of refunds, "
+                           "receipt-dated, ÷ 1.1 to ex-GST — client payments "
+                           "only; transfers and refunds never count"),
+            "reach_note": ("Stripe charges reach back ~120 days"
+                           if w0 >= str(today_sydney() - dt.timedelta(days=120))
+                           else "window is beyond Stripe's 120-day reach — partial")}
+
+
+def _dword(iso: str) -> str:
+    return dt.date.fromisoformat(str(iso)[:10]).strftime("%-d %b")
+
+
+def _t3_avg_costs() -> dict | None:
+    t3 = window("management", "t3")
+    if not t3.get("ok") or not t3.get("months"):
+        return None
+    n = len(t3["months"])
+    return {k: round(t3[k] / n, 2) for k in
+            ("contra_revenue", "delivery", "acquisition", "overhead")}
+
+
+def contracted_vs_collected() -> dict:
+    """The two panels, the gap, the reconciliation, the two projections."""
+    cur = _cur_month()
+    start_s, _end_s = month_bounds(cur)
+    t = today_sydney()
+
+    # PANEL A — IF EVERYONE PAYS: the management MTD ladder (contracted
+    # revenue pro-rated to today; costs booked-to-date, normalised)
+    mg = management(cur)
+    if not mg.get("ok"):
+        return {"ok": False, "reason": mg.get("reason")}
+    full_contract = contract_revenue(cur)["total"]
+
+    # PANEL B — WHAT ACTUALLY LANDED, on the SAME costs (one Stripe pull
+    # serves every window below)
+    import cash_truth
+    _charges = cash_truth._recent_charges(120) or []
+    coll_mtd = collected_revenue(start_s, str(t), charges=_charges)
+    costs = {k: mg[k] for k in ("contra_revenue", "delivery", "acquisition",
+                                "overhead")}
+    b_mtd = _rungs(coll_mtd["total"], costs["contra_revenue"],
+                   costs["delivery"], costs["acquisition"], costs["overhead"],
+                   0.0, "")
+    tax_b = round(max(b_mtd["operating_profit"], 0.0) * TAX_RATE, 2)
+    b_mtd = _rungs(coll_mtd["total"], costs["contra_revenue"],
+                   costs["delivery"], costs["acquisition"], costs["overhead"],
+                   tax_b, "25% accrual on this panel's own operating profit")
+    b_mtd["window_words"] = f"{_mword(cur)} (month to date, collected)"
+    b_mtd["as_of"] = coll_mtd["as_of"]
+    b_mtd["collected"] = coll_mtd
+
+    # last 30 days, dated — run-rate costs, assumption stated
+    w30_0 = str(t - dt.timedelta(days=29))
+    coll_30 = collected_revenue(w30_0, str(t), charges=_charges)
+    avg = _t3_avg_costs()
+    b_30 = None
+    if avg:
+        r = _rungs(coll_30["total"], avg["contra_revenue"], avg["delivery"],
+                   avg["acquisition"], avg["overhead"], 0.0, "")
+        tax30 = round(max(r["operating_profit"], 0.0) * TAX_RATE, 2)
+        b_30 = _rungs(coll_30["total"], avg["contra_revenue"], avg["delivery"],
+                      avg["acquisition"], avg["overhead"], tax30,
+                      "25% accrual on this panel's own operating profit")
+        b_30["window_words"] = coll_30["window_words"]
+        b_30["as_of"] = coll_30["as_of"]
+        b_30["collected"] = coll_30
+        b_30["cost_note"] = ("costs are the trailing-3 monthly average — a "
+                             "dated 30-day window has no booked month of its "
+                             "own; the assumption is stated, not hidden")
+
+    # THE GAP — the money owed for this month so far
+    gap = round(mg["revenue"] - coll_mtd["total"], 2)
+    pct_collected = (round(coll_mtd["total"] / mg["revenue"] * 100, 1)
+                     if mg["revenue"] else None)
+
+    # reconciliation to AR
+    recon = _reconcile_gap_to_ar(gap)
+
+    # PROJECTIONS
+    proj_a = mg.get("projection") or _project_month_end(mg)
+    proj_a = {**proj_a, "label": "optimistic — assumes every contracted "
+                                 "dollar is paid by month end"}
+    proj_b = _realistic_projection(full_contract, coll_mtd["total"], cur,
+                                   charges=_charges)
+
+    # collected margin on the CONTRACTED denominator (drawer comparability)
+    on_contracted = (round(b_mtd["net_profit"] / mg["revenue"] * 100, 1)
+                     if mg["revenue"] else None)
+
+    return {"ok": True,
+            "contracted": {**_slim(mg),
+                           "window_words": f"{_mword(cur)} (month to date)",
+                           "full_month_contracted": full_contract},
+            "collected_mtd": {k: b_mtd[k] for k in
+                              ("revenue", "net_profit", "net_margin_pct",
+                               "gross_margin_pct", "operating_profit",
+                               "tax_accrual", "window_words", "as_of",
+                               "collected")},
+            "collected_30d": (None if not b_30 else
+                              {k: b_30[k] for k in
+                               ("revenue", "net_profit", "net_margin_pct",
+                                "gross_margin_pct", "operating_profit",
+                                "tax_accrual", "window_words", "as_of",
+                                "collected", "cost_note")}),
+            "same_cost_basis": costs,
+            "gap": {"amount": gap, "pct_collected": pct_collected,
+                    "line": (f"Collected so far this month: "
+                             f"${coll_mtd['total']:,.0f} of "
+                             f"${mg['revenue']:,.0f} contracted "
+                             f"({pct_collected}%)" if pct_collected is not None
+                             else "gap not computable"),
+                    "meaning": "contracted minus collected — the money owed"},
+            "ar_reconciliation": recon,
+            "projections": {"optimistic": proj_a, "realistic": proj_b},
+            "inputs_as_of": {
+                "contracted": {"roster": _roster_stamp(), "xero": mg.get("as_of")},
+                "collected": {"stripe": coll_mtd["as_of"]}},
+            "fy26_baseline_net_pct": FY26["net"]}
+
+
+def _roster_stamp():
+    try:
+        import sheet_mirror
+        rows = sheet_mirror.get_sources() or []
+        return max((r.get("last_sync_at") for r in rows
+                    if r.get("last_sync_at")), default=None)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _reconcile_gap_to_ar(gap: float) -> dict:
+    """The gap should be the AR — reconciled, with the residual NAMED."""
+    try:
+        import receivables
+        ar = receivables.build_ar()
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "note": f"AR unavailable: {str(e)[:80]}"}
+    total_ar = ar.get("total_outstanding")
+    rows = sorted((r for r in ar.get("rows") or []
+                   if (r.get("outstanding") or 0) > 0),
+                  key=lambda r: -(r.get("outstanding") or 0))
+    top = [{"client": r.get("client"), "outstanding": r.get("outstanding"),
+            "days_overdue": r.get("days_overdue")} for r in rows[:5]]
+    residual = round((total_ar or 0) - gap, 2) if total_ar is not None else None
+    return {"ok": True, "ar_outstanding": total_ar, "gap": gap,
+            "residual": residual,
+            "residual_note": ("AR includes months BEFORE this one and "
+                              "bank-transfer clients whose receipts don't "
+                              "flow through Stripe; the gap is this month's "
+                              "contracted-vs-collected only — the two agree "
+                              "when both effects are counted"),
+            "top_unpaid": top,
+            "door": "/dashboard/view/receivables"}
+
+
+def _realistic_projection(full_contract: float, collected_so_far: float,
+                          cur: str, charges: list | None = None) -> dict:
+    """Month-end margin if collections continue at the trailing pace: the
+    trailing-3 collection rate applied to the whole contracted schedule,
+    floored at what has already landed."""
+    rates = []
+    for m in months_back(3):
+        w0, w1 = month_bounds(m)
+        c = collected_revenue(w0, w1, charges=charges)
+        k = contract_revenue(m)["total"]
+        if k and c.get("reach_note", "").startswith("Stripe charges reach"):
+            rates.append(min(c["total"] / k, 1.5))
+    if not rates:
+        return {"available": False,
+                "note": "no trailing months inside Stripe's reach"}
+    rate = round(sum(rates) / len(rates), 3)
+    projected_collected = round(max(collected_so_far, rate * full_contract), 2)
+    avg = _t3_avg_costs()
+    if not avg:
+        return {"available": False, "note": "no trailing costs to project"}
+    r = _rungs(projected_collected, avg["contra_revenue"], avg["delivery"],
+               avg["acquisition"], avg["overhead"], 0.0, "")
+    tax = round(max(r["operating_profit"], 0.0) * TAX_RATE, 2)
+    r = _rungs(projected_collected, avg["contra_revenue"], avg["delivery"],
+               avg["acquisition"], avg["overhead"], tax, "25% accrual")
+    return {"available": True, "revenue": projected_collected,
+            "net_profit": r["net_profit"], "net_margin_pct": r["net_margin_pct"],
+            "collection_rate": rate,
+            "label": (f"realistic — collections continue at the trailing-3 "
+                      f"pace ({rate * 100:.0f}% of contracted), trailing-3 "
+                      f"average costs")}
+
+
+_CVC_RE = re.compile(
+    r"if everyone pays|actually landed|collected margin|margin.{0,20}"
+    r"(vs|versus).{0,20}(landed|collected|paid)|what.{0,10}landed.{0,25}margin|"
+    r"money (?:we'?re|we are|you'?re) owed", re.I)
+
+
+def handle_cvc_query(text: str):
+    """'what's our margin if everyone pays vs what's landed' → both numbers,
+    both windows, the gap, the top unpaid clients — every figure the
+    engine's own."""
+    if not _CVC_RE.search(text or ""):
+        return None, False
+    d = (cached_summary() or {}).get("data") or {}
+    cvc = d.get("contracted_vs_collected") or {}
+    if not cvc.get("ok"):
+        return ("The contracted-vs-collected read isn't computed yet"
+                + (f" ({cvc.get('reason')})" if cvc.get("reason") else "")
+                + " — ask me again after the next refresh."), True
+    mg = cvc.get("contracted") or {}
+    b = cvc.get("collected_mtd") or {}
+    b30 = cvc.get("collected_30d") or {}
+    gap = cvc.get("gap") or {}
+    recon = cvc.get("ar_reconciliation") or {}
+    proj = cvc.get("projections") or {}
+    parts = [
+        (f"If everyone pays ({mg.get('window_words')}): net margin "
+         f"{mg.get('net_margin_pct')}% on ${mg.get('revenue'):,.0f} "
+         f"contracted."),
+        (f"What actually landed ({b.get('window_words')}): "
+         f"{b.get('net_margin_pct')}% on ${b.get('revenue'):,.0f} collected"
+         + (f"; last 30 days ({b30.get('window_words')}): "
+            f"{b30.get('net_margin_pct')}%" if b30 else "") + "."),
+        gap.get("line", "") + " — the gap is the money owed.",
+    ]
+    top = recon.get("top_unpaid") or []
+    if top:
+        parts.append("Top unpaid: " + "; ".join(
+            f"{u['client']} ${u['outstanding']:,.0f}"
+            + (f" ({u['days_overdue']}d overdue)" if u.get("days_overdue") else "")
+            for u in top[:3]) + ".")
+    pa, pb = proj.get("optimistic") or {}, proj.get("realistic") or {}
+    if pa.get("available") or pb.get("available"):
+        parts.append(
+            "Month-end: "
+            + (f"{pa.get('net_margin_pct')}% optimistic (all contracted paid)"
+               if pa.get("available") else "")
+            + (" · " if pa.get("available") and pb.get("available") else "")
+            + (f"{pb.get('net_margin_pct')}% realistic (trailing collection "
+               f"pace {int((pb.get('collection_rate') or 0) * 100)}%)"
+               if pb.get("available") else "") + ".")
+    parts.append("Same costs on both panels — only collection differs.")
+    return " ".join(p for p in parts if p), True

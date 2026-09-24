@@ -12,10 +12,11 @@
 <main id="main" class="s-main">
   <div class="s-panel-head" style="margin-top:var(--sp-4)">
     <h1 class="s-panel-title">Profit &amp; loss —
-      {{ {'management':'Management','recognised':'Recognised','cash':'Cash'}[basis] }} basis</h1>
+      {{ {'management':'Management','recognised':'Recognised','cash':'Cash','collected':'Collected'}[basis] }} basis</h1>
     <span class="s-panel-sub">
       {{ ladder.window_words or ladder.month or wname }} ·
-      {% if basis == 'management' %}the run-rate truth: contract revenue, rulebook commissions, tax accrued
+      {% if basis == 'collected' %}{{ ladder.provenance or 'what actually landed: Stripe receipts ex-GST over the same management costs' }}
+      {% elif basis == 'management' %}the run-rate truth: contract revenue, rulebook commissions, tax accrued
       {% elif basis == 'recognised' %}the books: Xero, calendar months, one mapping
       {% else %}{{ ladder.label or 'bank receipts minus outflows — the runway view, not a margin' }}{% endif %}
     </span>
@@ -23,7 +24,7 @@
 
   {# basis + window switches — links, server-rendered, nothing recomputes client-side #}
   <div class="s-panel" style="padding:var(--sp-3)">
-    {% for b in ('management','recognised','cash') %}
+    {% for b in ('management','recognised','cash','collected') %}
     <a class="s-chip{% if b == basis %} s-chip-active{% endif %}"
        href="/dashboard/pl?basis={{ b }}&window={{ wname }}">{{ b }}</a>
     {% endfor %}

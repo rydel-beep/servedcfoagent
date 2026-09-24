@@ -262,6 +262,9 @@ TILE_INPUTS: dict[str, tuple] = {
     "pulse_show_rate": ("tracker_mirror", "ghl_opportunities", "engine_blocks"),
     "pulse_close_rate": ("tracker_mirror", "ghl_opportunities", "engine_blocks"),
     "pulse_booked_calls": ("ghl_appointments",),
+    # #166: the net-margin tile — contracted reads the roster + Xero costs,
+    # collected reads Stripe. This entry is what ended "as of age unknown".
+    "net_margin": ("tracker_mirror", "xero", "stripe"),
 }
 
 

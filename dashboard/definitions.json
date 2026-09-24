@@ -1781,10 +1781,10 @@
    "selector": "[data-def='ctl_tooling_seat']"
   },
   "net_margin": {
-   "name": "Net margin",
+   "name": "Net margin — if everyone pays vs landed",
    "kind": "metric",
    "screen": "today",
-   "meaning": "What's left of each revenue dollar after everything — delivery, acquisition, overhead, and the income-tax set-aside.",
+   "meaning": "Two margins side by side on the same costs: what the month earns if every contracted dollar arrives, and what it has earned on the money that actually landed. The gap between them is the money you're owed.",
    "computed": "Revenue minus refunds, minus delivery cost, minus acquisition cost, minus overhead, minus a 25% income-tax estimate on the profit — divided by revenue. Shown on the management basis: contract revenue, commissions counted when earned, lumpy costs spread.",
    "default_from": "The P&L engine, calendar windows only. The tax line is a planning estimate — the accountant does the real lodgement.",
    "good": "FY26 finished at 11.5% — a baseline to beat, not a ceiling.",
@@ -1842,6 +1842,49 @@
    "meaning": "Bank receipts minus outflows for the chosen window — the runway view.",
    "computed": "Stripe receipts with the GST taken out, minus operating outflows and tax actually paid. Lumpy by nature; it is not a margin and is never labelled as one.",
    "selector": "[data-metric='cash_net_window']"
+  },
+  "net_margin_contracted": {
+   "name": "If everyone pays",
+   "kind": "metric",
+   "screen": "today",
+   "meaning": "The month's net margin assuming every contracted dollar is collected.",
+   "computed": "Contracted revenue (each active client's monthly figure, counted for the days served so far) minus the month's costs and the tax set-aside, divided by that revenue.",
+   "default_from": "The client roster and the P&L engine — same costs as the panel beside it.",
+   "selector": "[data-metric='net_margin_contracted']"
+  },
+  "net_margin_collected": {
+   "name": "What actually landed",
+   "kind": "metric",
+   "screen": "today",
+   "meaning": "The month's net margin on the money that has actually arrived.",
+   "computed": "Payments received (with the GST taken out; refunds and transfers never count) minus the SAME costs as the panel beside it. Also shown for the last thirty days, dated.",
+   "default_from": "Stripe receipts. The only difference between the panels is collection.",
+   "selector": "[data-metric='net_margin_collected']"
+  },
+  "margin_gap": {
+   "name": "The gap",
+   "kind": "metric",
+   "screen": "today",
+   "meaning": "Contracted minus collected — the money you're owed for the month so far.",
+   "computed": "The dollars between the two panels, reconciled against what's outstanding on the receivables list; the biggest unpaid clients are named behind the ⓘ.",
+   "default_from": "A door beside it goes straight to the unpaid clients.",
+   "selector": "[data-metric='margin_gap']"
+  },
+  "collected_basis": {
+   "name": "Collected basis",
+   "kind": "chip",
+   "screen": "pl",
+   "meaning": "The whole profit ladder read on the money that landed, not the money promised.",
+   "computed": "Payments received for the window over the same management costs — one cost base across every basis, so switching bases only ever changes the revenue story.",
+   "selector": "[data-basis='collected']"
+  },
+  "drawer_net_margin": {
+   "name": "Behind the two margins",
+   "kind": "panel",
+   "screen": "today",
+   "meaning": "The maths behind both panels: the revenue each one counts, the shared costs, the reconciliation to what's owed, and the two month-end projections with their assumptions.",
+   "computed": "Everything comes from the one P&L engine — the optimistic projection assumes full payment; the realistic one applies the trailing collection pace, and each says so on its face.",
+   "selector": "[data-def='drawer_net_margin']"
   }
  }
 }

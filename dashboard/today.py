@@ -241,28 +241,57 @@ def build(snap: dict | None, owner: bool) -> dict:
         c = pl_engine.cached_summary()
         d = c.get("data") or {}
         mg = d.get("management_mtd") or {}
+        cvc = d.get("contracted_vs_collected") or {}
         if mg.get("ok"):
-            proj = mg.get("projection") or {}
             rr = d.get("run_rate_t3") or {}
             rec = d.get("recognised_last_month") or {}
             fy = d.get("fy26_baseline") or {}
-            sub = (f"projected month-end {proj.get('net_margin_pct')}%"
-                   if proj.get("available") else "projection pending")
-            sub += (f" · recognised {rec.get('net_margin_pct')}% "
-                    f"({rec.get('window_words') or rec.get('month')})"
-                    if rec.get("ok") else "")
+            sub = (f"recognised {rec.get('net_margin_pct')}% "
+                   f"({rec.get('window_words') or rec.get('month')})"
+                   if rec.get("ok") else "")
             sub += (f" · run-rate {rr.get('net_margin_pct')}%"
                     if rr.get("ok") else "")
-            _ins = next((i + 1 for i, t in enumerate(tiles)
-                         if t["id"] == "cash_net_mtd"), len(tiles))
-            tiles.insert(_ins, exec_top._tile(
-                "net_margin", "Net margin (management basis)",
+            tile = exec_top._tile(
+                "net_margin", "Net margin — if everyone pays vs landed",
                 f"{mg.get('net_margin_pct')}%",
                 sub + f" · FY26 baseline {fy.get('net')}%",
-                f"the P&L engine · {mg.get('window_words') or 'this month'} · "
-                f"computed {exec_top._fmt_age(exec_top._age_h(c.get('computed_at')))}",
+                f"the P&L engine · computed "
+                f"{exec_top._fmt_age(exec_top._age_h(c.get('computed_at')))}",
                 exec_top._state_for(exec_top._age_h(c.get("computed_at")), None),
-                drawer=None, raw=mg.get("net_margin_pct")))
+                drawer="net_margin", raw=mg.get("net_margin_pct"))
+            # THE TWO PANELS (#166): same costs, only collection differs.
+            if cvc.get("ok"):
+                b = cvc.get("collected_mtd") or {}
+                b30 = cvc.get("collected_30d") or {}
+                pa = (cvc.get("projections") or {}).get("optimistic") or {}
+                pb = (cvc.get("projections") or {}).get("realistic") or {}
+                tile["panels"] = [
+                    {"id": "net_margin_contracted",
+                     "label": "if everyone pays",
+                     "value": f"{mg.get('net_margin_pct')}%",
+                     "window": mg.get("window_words") or "this month so far",
+                     "sub": (f"month-end {pa.get('net_margin_pct')}% "
+                             f"(optimistic)" if pa.get("available") else ""),
+                     "raw": mg.get("net_margin_pct")},
+                    {"id": "net_margin_collected",
+                     "label": "what actually landed",
+                     "value": f"{b.get('net_margin_pct')}%",
+                     "window": b.get("window_words") or "month to date",
+                     "sub": (f"last 30 days "
+                             f"({(b30.get('window_words') or '')}): "
+                             f"{b30.get('net_margin_pct')}%" if b30 else "")
+                            + (f" · month-end {pb.get('net_margin_pct')}% "
+                               f"(realistic)" if pb.get("available") else ""),
+                     "raw": b.get("net_margin_pct")},
+                ]
+                gap = cvc.get("gap") or {}
+                tile["gap_line"] = gap.get("line")
+                tile["gap_raw"] = gap.get("amount")
+                tile["door"] = {"href": "/dashboard/view/receivables",
+                                "label": "the unpaid clients →"}
+            _ins = next((i + 1 for i, t in enumerate(tiles)
+                         if t["id"] == "cash_net_mtd"), len(tiles))
+            tiles.insert(_ins, tile)
         else:
             _ins = next((i + 1 for i, t in enumerate(tiles)
                          if t["id"] == "cash_net_mtd"), len(tiles))

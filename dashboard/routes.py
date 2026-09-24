@@ -315,7 +315,7 @@ def pl_page():
     engine summary and cached months — a page load never pulls Xero."""
     import pl_engine
     basis = request.args.get("basis") or "management"
-    if basis not in ("management", "recognised", "cash"):
+    if basis not in ("management", "recognised", "cash", "collected"):
         basis = "management"
     wname = request.args.get("window") or "last_month"
     if wname not in pl_engine.WINDOWS:
@@ -2050,6 +2050,7 @@ def api_chat():
             (__import__('resolution').handle_autofix_log_command, False),     # 'what did you auto-fix'
             (__import__('action_feed').handle_action_feed_command, False),  # 'what needs my attention'
             (lambda m: __import__('collab').handle_collab_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # work log / queue / digest
+            (__import__('pl_engine').handle_cvc_query, False),      # 'if everyone pays vs landed' → both margins, the gap, the unpaid
             (__import__('pl_engine').handle_margin_query, False),   # net/gross margin → three bases, engine-only, or an honest decline
             (__import__('pl_engine').handle_bridge_query, False),   # 'why is this month below run-rate' → the bridge, named
             (__import__('close_detect').handle_closed_today, False),  # 'what closed today' → the detection ledger, with provenance
@@ -2338,6 +2339,7 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             (__import__('resolution').handle_autofix_log_command, False),     # 'what did you auto-fix'
             (__import__('action_feed').handle_action_feed_command, False),
             (lambda m: __import__('collab').handle_collab_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),
+            (__import__('pl_engine').handle_cvc_query, False),      # 'if everyone pays vs landed' → both margins, the gap, the unpaid
             (__import__('pl_engine').handle_margin_query, False),   # net/gross margin → three bases, engine-only, or an honest decline
             (__import__('pl_engine').handle_bridge_query, False),   # 'why is this month below run-rate' → the bridge, named
             (__import__('close_detect').handle_closed_today, False),  # 'what closed today' → the detection ledger, with provenance
