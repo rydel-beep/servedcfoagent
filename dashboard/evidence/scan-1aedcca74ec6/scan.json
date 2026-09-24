@@ -1,0 +1,351 @@
+{
+ "commit": "1aedcca74ec6",
+ "base": "https://web-production-16b16.up.railway.app",
+ "utc": "2026-09-24T06:20:41Z",
+ "scans": {
+  "works": {
+   "pages": {
+    "today": {
+     "status": 200,
+     "tiles": 15,
+     "panels": 5,
+     "ok": true
+    },
+    "sales-board": {
+     "status": 200,
+     "tiles": 25,
+     "panels": 9,
+     "ok": true
+    },
+    "landing": {
+     "status": 200,
+     "tiles": 11,
+     "panels": 2,
+     "ok": true
+    },
+    "brief": {
+     "status": 200,
+     "tiles": 2,
+     "panels": 5,
+     "ok": true
+    },
+    "cash": {
+     "status": 200,
+     "tiles": 1,
+     "panels": 4,
+     "ok": true
+    },
+    "sales": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 10,
+     "ok": true
+    },
+    "unit-econ": {
+     "status": 200,
+     "tiles": 6,
+     "panels": 6,
+     "ok": true
+    },
+    "projection": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 6,
+     "ok": true
+    },
+    "renewals": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 4,
+     "ok": true
+    },
+    "outflows": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 3,
+     "ok": true
+    },
+    "receivables": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 1,
+     "ok": true
+    },
+    "team": {
+     "status": 200,
+     "tiles": 1,
+     "panels": 2,
+     "ok": true
+    },
+    "decisions": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 1,
+     "ok": true
+    },
+    "system": {
+     "status": 200,
+     "tiles": 9,
+     "panels": 5,
+     "ok": true
+    },
+    "scale": {
+     "status": 200,
+     "tiles": 8,
+     "panels": 9,
+     "ok": true
+    },
+    "travelling": {
+     "status": 200,
+     "tiles": 10,
+     "panels": 8,
+     "ok": true
+    },
+    "definitions": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 12,
+     "ok": true
+    },
+    "worklog": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 2,
+     "ok": true
+    },
+    "bookkeeping": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 1,
+     "ok": true
+    },
+    "csm": {
+     "status": 200,
+     "tiles": 0,
+     "panels": 2,
+     "ok": true
+    },
+    "ads": {
+     "status": 200,
+     "tiles": 2,
+     "panels": 5,
+     "ok": true
+    },
+    "closes-ledger": {
+     "status": 200,
+     "tiles": 7,
+     "panels": 4,
+     "ok": true
+    }
+   },
+   "ok": true
+  },
+  "agrees_with_itself": {
+   "keys": 92,
+   "divergences": 0,
+   "engine_checks": 10,
+   "drills": [
+    {
+     "q": "how are we travelling this month",
+     "numbers": [
+      ",",
+      "9",
+      "4",
+      "60",
+      "41",
+      "90",
+      "41",
+      "90"
+     ],
+     "len": 347
+    },
+    {
+     "q": "what's my LTV to CAC",
+     "numbers": [
+      ",",
+      "6.87",
+      "4.48",
+      "4",
+      "4,910,",
+      "2,636",
+      "90",
+      "6.32"
+     ],
+     "len": 498
+    },
+    {
+     "q": "what's committed",
+     "numbers": [
+      ",",
+      "72,887.52",
+      "38",
+      "9"
+     ],
+     "len": 311
+    },
+    {
+     "q": "what closed today",
+     "numbers": [
+      ",",
+      ",",
+      ","
+     ],
+     "len": 164
+    },
+    {
+     "q": "what have we closed this month",
+     "numbers": [
+      "4",
+      "2026",
+      "2026",
+      "09",
+      "09,",
+      "18,000",
+      ",",
+      "2026"
+     ],
+     "len": 416
+    },
+    {
+     "q": "what's our net profit margin",
+     "numbers": [
+      "2026",
+      "22,739",
+      "79,755",
+      "28.5",
+      "71.2",
+      "38.0",
+      "26,994",
+      "27.8"
+     ],
+     "len": 505
+    },
+    {
+     "q": "why is this month below run-rate",
+     "numbers": [
+      "2026",
+      "29,991",
+      "20,519",
+      "10,271.",
+      ",",
+      "17,534",
+      ",",
+      ","
+     ],
+     "len": 732
+    },
+    {
+     "q": "what's our EBITDA by state",
+     "declined": true,
+     "len": 207
+    }
+   ],
+   "ok": true
+  },
+  "agrees_with_reality": {
+   "at": "2026-09-24T16:23:07.046985+10:00",
+   "checks": [
+    {
+     "detail": "cent-exact at $551.32",
+     "fresh": 551.32,
+     "name": "Meta spend 2026-09-22",
+     "ok": true,
+     "sev": "SEV1",
+     "source": "meta",
+     "stored": 551.32
+    },
+    {
+     "detail": "cent-exact at $438.58",
+     "fresh": 438.58,
+     "name": "Meta spend 2026-09-21",
+     "ok": true,
+     "sev": "SEV1",
+     "source": "meta",
+     "stored": 438.58
+    },
+    {
+     "detail": "cent-exact at $509.13",
+     "fresh": 509.13,
+     "name": "Meta spend 2026-09-20",
+     "ok": true,
+     "sev": "SEV1",
+     "source": "meta",
+     "stored": 509.13
+    },
+    {
+     "detail": "stored $40,950.00 vs fresh $40,950.00",
+     "fresh": 40950,
+     "name": "Stripe receipts this month",
+     "ok": true,
+     "sev": "SEV1",
+     "source": "stripe",
+     "stored": 40950
+    },
+    {
+     "detail": "tile $164,540.25 vs the accounts adding to $164,540.25",
+     "fresh": 164540.25,
+     "name": "Cash on hand vs the bank lines",
+     "ok": true,
+     "sev": "SEV1",
+     "source": "xero",
+     "stored": 164540.25
+    },
+    {
+     "detail": "schedule $62,716 vs the Xero line \u2014 difference $43,983, explained by invoice timing and GST",
+     "name": "Receivables vs the Xero balance sheet",
+     "ok": true,
+     "sev": "SEV3",
+     "source": "xero",
+     "stored": 43983.33
+    },
+    {
+     "detail": "260 appointments across 171 contacts in the local copy",
+     "name": "Consults on file",
+     "ok": true,
+     "sev": "SEV2",
+     "source": "ghl",
+     "stored": 260
+    },
+    {
+     "detail": "1520 opportunities mirrored",
+     "name": "Deals on file",
+     "ok": true,
+     "sev": "SEV2",
+     "source": "ghl",
+     "stored": 1520
+    },
+    {
+     "detail": "1448 rows read",
+     "name": "Tracker rows",
+     "ok": true,
+     "sev": "SEV1",
+     "source": "workbook",
+     "stored": 1448
+    },
+    {
+     "detail": "79 register entries \u00b7 every source agrees with the register",
+     "name": "close register vs raw sources",
+     "ok": true,
+     "sev": "SEV1",
+     "source": "tracker + GHL + matched payments"
+    }
+   ],
+   "failed": 0,
+   "full": false,
+   "not_comparable": 0,
+   "note": "a check with no cheap fresh read says so \u2014 it never passes by omission",
+   "ok": true
+  }
+ },
+ "findings": [],
+ "health_row": {
+  "commit": "1aedcca74ec6",
+  "runtime_s": 148.0,
+  "scan1_ok": true,
+  "scan2_ok": true,
+  "scan3_ok": true,
+  "findings": 0,
+  "top": null,
+  "pages": 22
+ }
+}

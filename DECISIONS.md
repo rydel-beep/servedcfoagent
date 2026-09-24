@@ -3214,3 +3214,85 @@ its chip is ✗ on every close.
 card) in one checkout; d28a861 carried early snapshots of these files,
 and 72c95bd carries #162's _from_payments existing-client fix + test the
 same way.
+
+---
+
+## #165 — NET PROFIT, TRUTHFULLY: THE LADDER, THREE BASES, AND AN EDITH THAT ONLY READS THE ENGINE
+**2026-09-24 · diagnose first, prove on a full month by hand**
+
+**F1 · WHERE "6.9%" CAME FROM.** The snapshot's Xero P&L block — a ROLLING
+mid-month window (25 Aug → 24 Sep: revenue $49,395.86, net $3,399.53) — was
+injected raw into EDITH's context, and she divided the two numbers herself.
+Nothing could stop her: net profit margin had no registry entry and no
+engine. Calendar August, the same books: **net +$20,519 on $81,107 = 25.3%**.
+The window was the lie, not the arithmetic.
+
+**F2 · LTGP:CAC DOUBLE-COUNTED ACQUISITION.** The margin fell back to "FY26
+contribution 42.9%" — and it ALWAYS fell back, because Xero's gross margin
+read 100% every time (no COGS section in this chart; every cost sits in
+Operating Expenses). Contribution already subtracts advertising and
+commissions, i.e. CAC. The margin is now **GROSS** (delivery only: FY26
+$252,750 of $698,599 → **63.8%**) from the one P&L engine, in
+finance_analysis, the compass constant, and the simulator — with the change
+stated on the surfaces. **2.95× → ≈4.4×**, and the reason travels with it.
+
+**F3 · THE RECOGNITION GAP, PROVED ON AUGUST.** Xero recognised **$81,106.81**
+vs Stripe **$61,197.82 ex-GST** vs contracts **≈$98,641** (term-dated
+roster). With invoice evidence: Stripe sales ARE in Xero — as **payout
+deposits coded straight to Sales** (≈$60.5k ≈ Stripe ex-GST) plus ~$20.6k of
+invoices for bank-transfer clients, **$15,378 unpaid at month end** (the
+AR: Leopard Deli, Kin Fun Keng Wong, Bar Elvina). A hybrid basis — now
+bridged, never blended. And "STRIPE RECEIPTS IS LATE" was structural: the
+stamp was the ~2-hour snapshot's own time against a 20-minute promise. The
+freshness tick now probes Stripe itself (a 2-day page) and stamps its own
+pull.
+
+**THE ENGINE (`pl_engine.py`)**: the Hormozi ladder — revenue − refunds −
+delivery = gross · − acquisition = contribution · − overhead = operating ·
+− 25% tax accrual (labelled planning estimate; Latitude lodges) = net — on
+three bases for six NAMED calendar windows. Management revenue is the Health
+tab's own Monthly Recognized Revenue column (already contract ÷ term, so a
+PIF spreads) pro-rated by days of service — and pro-rated TO TODAY for MTD,
+after the first live read showed 37.8% MTD beside a 27.8% projection: a
+month-to-date margin earns only the days that have happened. Commissions
+accrue by the rulebook, never by Xero's paid line. One-offs are FLAGGED in
+the open (August: Consulting & Accounting $3,209 vs a $309 median), never
+smoothed silently; configured normalisations spread lumpy costs with the
+delta named in the bridge.
+
+**AUGUST BY HAND — the acceptance evidence.** The 13 raw Xero lines mapped
+and summed manually: delivery $33,577.93 · acquisition $11,961.75 · overhead
+$15,048.43 · gross 58.6% · operating/net 25.3%. The engine returned **the
+same figures to the cent**, zero unmapped accounts. Management August: net
+$29,990.75 (30.4%) with the tax accrual $9,996.92 = exactly 25% of PBT.
+Cash August: $61,197.82 − $50,927.20 = **$10,270.62**. The bridge lists
+every difference in dollars.
+
+**THE MAPPING (`pl_mapping.py`)**: every account → a ladder line, drafted
+from FY26, owner-ruled on the /pl page, journaled and versioned; an unknown
+code is NEVER silently binned — it renders as an unmapped line in plain
+sight. Wages split delivery/overhead by config. GST, PAYG and BAS never
+enter the ladder — pass-through, not expenses.
+
+**EDITH, STRUCTURALLY UNABLE TO IMPROVISE (`answer_guard.py`)**: on a
+business turn, every financial number in her reply must match an engine
+value from THIS TURN's context — the witnessed reply ("6.9% — $3,400 ÷
+$49,396") is blocked by the shipped test and the live guard; deflections
+("pull it from the finance dashboard") are rewritten to "let me pull it".
+The rolling profit block is out of her context and withheld from the raw
+dump. Margin and bridge questions answer DETERMINISTICALLY, template-filled
+from the engine with basis + window + as-of; the EBITDA-by-state decoy is
+declined in so many words. Scan 2 carries the drills.
+
+**RECONCILIATION (`pl_reconcile.py`)**, nightly: the three revenue stories
+per month with named deltas; cost side vs the outflow bands. First run
+raised two findings (Aug +$9,661, Jun −$7,645 ladder-vs-band) — Piolo-queue
+items pointing at the mapping's contra/excluded lines.
+
+**HONEST EDGES**: Xero's revenue section total includes $46.14 of interest
+income inside the ladder's revenue rung (the mapping excludes it by name
+but the section total arrives pre-summed) — immaterial, noted, on the list.
+August contract revenue ($98.6k) runs ABOVE Xero partly because term-dated
+roster rows for since-finished clients still cover August — correct
+recognition, but it also means a stale End Date inflates the management
+basis; the status-stale rule (#162) is the police for that.

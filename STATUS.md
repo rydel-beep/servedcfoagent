@@ -1,5 +1,42 @@
 # STATUS — served-cfo-agent session log
 
+## 2026-09-24 (3) — NET PROFIT, TRUTHFULLY (#165)
+
+Deploys → a57195ed, 1aedcca7 SUCCESS, health ok. Suite **1478**. Zero
+writes to Xero/tracker/GHL (the OAuth token exchange is the documented
+exception — it touches no books).
+
+**The three witnessed failures, closed with evidence**: the 6.9% was EDITH
+dividing two numbers from a ROLLING mid-month Xero block nothing owned
+(calendar August: 25.3%) · LTGP:CAC used contribution margin — acquisition
+counted twice; now GROSS 63.8% (2.95× → ≈4.4×), everywhere, with the reason
+stated · the August three-way (Xero $81,107 · Stripe $61,198 ex-GST ·
+contracts $98,641) decomposed with invoice evidence: Stripe sales enter
+Xero as payout deposits coded to Sales; ~$20.6k invoiced to bank-transfer
+clients, $15,378 unpaid (the AR). "STRIPE IS LATE" was a 2-hour snapshot
+stamping a 20-minute promise — the tick probes Stripe itself now.
+
+**Built**: pl_mapping (owner-ruled account → ladder line, journaled,
+unmapped never binned) · pl_engine (ladder × management/recognised/cash ×
+six named calendar windows, bridge, MTD pro-rata + projection, one-offs
+flagged, PIF spread via the Health tab's contract÷term column, 25% tax
+accrual labelled) · pl_reconcile nightly (first run: 2 findings) ·
+/dashboard/pl waterfall + mapping page · TODAY net-margin tile (nine tiles
+now, by #165's name) · answer_guard (every financial number engine-backed
+THIS TURN; deflection rewritten; decoy declined) · Stripe stamp decoupled.
+
+**AUGUST BY HAND**: 13 raw lines mapped and summed manually = the engine to
+the cent (delivery $33,577.93 · acquisition $11,961.75 · overhead
+$15,048.43 · net 25.3%); management $29,991 (30.4%, tax $9,996.92 = exactly
+25% of PBT); cash $10,270.62; the bridge names every difference. Sept MTD
+28.5% beside a 27.8% projection — after fixing my own MTD flattery (37.8%
+from full-month revenue vs part-month costs, caught on the first live
+read).
+
+Artefacts: PL_DIAGNOSIS.md · dashboard/evidence/zero-writes-165.json ·
+scan evidence · DECISIONS #165.
+
+
 ## 2026-09-24 (2) — ONE CLOSE REGISTER: EVERY SURFACE TELLS THE SAME TRUTH (#164)
 
 Deploys → 72c95bd7, fe599093 SUCCESS (fe599093 serving). Suite **1452/1452** green on the final tree

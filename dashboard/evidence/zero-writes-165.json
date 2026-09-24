@@ -1,0 +1,25 @@
+{
+ "files": [
+  "pl_engine.py",
+  "pl_mapping.py",
+  "pl_reconcile.py",
+  "dashboard/answer_guard.py",
+  "dashboard/chat.py",
+  "dashboard/routes.py",
+  "dashboard/today.py",
+  "finance_analysis.py",
+  "compass_engine.py",
+  "freshness.py",
+  "app.py",
+  "xero_pull.py"
+ ],
+ "findings": [
+  {
+   "file": "xero_pull.py",
+   "line": 45,
+   "kind": "Xero write",
+   "text": "resp = requests.post("
+  }
+ ],
+ "note": "the OAuth token refresh POST to identity.xero.com is the documented exception \u2014 it exchanges tokens, it touches no books"
+}
