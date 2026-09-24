@@ -290,6 +290,16 @@ def management(mkey: str) -> dict:
         return {"ok": False, "basis": "management", "month": mkey,
                 "reason": rec.get("reason")}
     rev = contract_revenue(mkey)
+    # MTD: contract revenue pro-rates to TODAY, or the month-to-date margin
+    # compares a full month of revenue against a part-month of costs and
+    # flatters itself (caught live: 37.8% MTD vs a 27.8% projection).
+    if mkey == _cur_month():
+        t = today_sydney()
+        days_in = calendar.monthrange(t.year, t.month)[1]
+        frac = t.day / days_in
+        rev = {**rev, "total": round(rev["total"] * frac, 2),
+               "provenance": rev["provenance"]
+               + f" · pro-rated to day {t.day} of {days_in}"}
     contra = rec["contra_revenue"]          # refunds recognised when issued
 
     adjustments: list[dict] = []

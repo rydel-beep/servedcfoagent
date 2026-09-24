@@ -355,3 +355,27 @@ def test_the_summary_is_computed_on_the_loop_not_the_request():
     assert "pl_engine.refresh_summary()" in app_src
     fresh = _read("freshness.py")
     assert '_step("P&L summary", _pl)' in fresh
+
+
+def test_mtd_contract_revenue_pro_rates_to_today(monkeypatch):
+    """Caught live: MTD management revenue counted the FULL month's
+    contracts against part-month costs — 37.8% where the honest projection
+    said 27.8%. A month-to-date margin earns only the days that have
+    happened."""
+    import pl_engine as PL
+    kv_store._MEM.clear()
+    kv_store.put(PL.K_XERO_MONTH.format(m="2026-09"), {
+        "ok": True, "month": "2026-09", "revenue": 40000.0,
+        "opex_line_items": [{"label": "Advertising", "amount": 5000.0}],
+        "cogs_line_items": [], "pulled_at": "x"})
+    monkeypatch.setattr(PL, "_cur_month", lambda: "2026-09")
+    monkeypatch.setattr(PL, "_roster_rows", lambda: [
+        {"name": "C1", "status": "Active", "start": dt.date(2026, 1, 1),
+         "end": dt.date(2027, 1, 1), "mrr": 60000.0}])
+    import helpers
+    monkeypatch.setattr(PL, "today_sydney",
+                        lambda: dt.date(2026, 9, 15))
+    mg = PL.management("2026-09")
+    assert mg["ok"]
+    assert mg["revenue"] == 30000.0          # 15 of 30 days
+    assert "pro-rated to day 15" in mg["contract_revenue"]["provenance"]
