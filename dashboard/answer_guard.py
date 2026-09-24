@@ -117,9 +117,33 @@ def validate(reply: str, context_text: str) -> dict:
             "whitelist_size": len(wl)}
 
 
-def apply(reply: str, context_text: str | None) -> tuple[str, dict]:
+K_BLOCK_LOG = "answer:guard_blocks"      # ring: every block + what replaced it
+
+
+def _log_block(question: str | None, nums: str, answered_instead: str) -> None:
+    try:
+        import kv_store
+        from helpers import now_sydney
+        ring = kv_store.get(K_BLOCK_LOG) or []
+        ring.append({"at": now_sydney().isoformat(),
+                     "question": (question or "")[:160],
+                     "blocked_figures": nums,
+                     "answered_instead": answered_instead[:240]})
+        kv_store.put(K_BLOCK_LOG, ring[-200:])
+    except Exception:  # noqa: BLE001 — bookkeeping never breaks a reply
+        pass
+
+
+def apply(reply: str, context_text: str | None,
+          question: str | None = None) -> tuple[str, dict]:
     """→ (final_reply, report). Context of None means a general (non-business)
-    turn — the guard stands down; coffee costs what it costs."""
+    turn — the guard stands down; coffee costs what it costs.
+
+    v2 (#168): a block is not a refusal. The bad number still cannot pass,
+    but the QUESTION gets answered — re-composed from the resolver's engine
+    values; and when the resolver doesn't own the metric, one honest
+    sentence plus the engine's nearest computed figure. The old 'ask me for
+    a metric the engine owns' copy is retired."""
     if context_text is None:
         return reply, {"ok": True, "skipped": "general turn"}
     v = validate(reply, context_text)
@@ -127,16 +151,28 @@ def apply(reply: str, context_text: str | None) -> tuple[str, dict]:
         return reply, v
     if v["unbacked"]:
         nums = ", ".join(sorted({n["text"] for n in v["unbacked"]})[:6])
-        rewritten = (
-            f"I started to give you figures I can't back with an engine value "
-            f"({nums}) — so I won't. Either that metric isn't computed on the "
-            f"dashboard yet, or the source behind it is degraded. Ask me for a "
-            f"metric the engine owns — net, gross, operating or contribution "
-            f"margin on the management, recognised or cash basis for a named "
-            f"month — and I'll give you the real number with its as-of.")
-        logger.warning("answer_guard blocked %d unbacked figure(s): %s",
+        rewritten = None
+        try:
+            import answer_engine
+            rewritten = answer_engine.recompose_for(question or "")
+            if rewritten is None:
+                near = answer_engine.nearest_figure()
+                rewritten = (
+                    f"I can't back {nums} with an engine value, so here's "
+                    f"the engine's own nearest read instead: {near}")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("guard recompose failed: %s", e)
+        if rewritten is None:
+            rewritten = (f"I can't back {nums} with an engine value — that "
+                         f"figure isn't computed this cycle; the next "
+                         f"refresh will carry it.")
+        v["recomposed"] = True
+        logger.warning("answer_guard blocked %d unbacked figure(s): %s — "
+                       "answered from the engine instead",
                        len(v["unbacked"]), nums)
+        _log_block(question, nums, rewritten)
         return rewritten, v
     rewritten = re.sub(_DEFLECT_RE, "let me pull it", reply)
     logger.warning("answer_guard rewrote a deflection")
+    _log_block(question, "(deflection)", rewritten)
     return rewritten, v

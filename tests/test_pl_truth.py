@@ -182,12 +182,22 @@ _CTX = ("PROFIT & LOSS (the P&L engine): management_mtd net_profit 15389.02 "
 
 
 def test_the_witnessed_failure_cannot_happen_again():
+    """v2 (#168): the bad number is still blocked — and the block is no
+    longer a refusal; the reply is recomposed from the engine."""
     from dashboard import answer_guard as AG
+    kv_store._MEM.clear()
     reply = "Net profit margin is 6.9% — $3,400 ÷ $49,396."
     out, v = AG.apply(reply, _CTX)
     assert not v["ok"]
     assert {n["text"] for n in v["unbacked"]} == {"6.9%", "$3,400", "$49,396"}
-    assert "can't back" in out and "6.9%" in out
+    assert "6.9%" not in out.split("can't back")[0]   # the number never passes
+    # the retired refusal copy stays retired
+    src = open(os.path.join(ROOT, "dashboard", "answer_guard.py")).read()
+    assert "Ask me for a" not in src
+    assert "so I won't" not in src
+    # and every block is logged with what was answered instead
+    log = kv_store.get(AG.K_BLOCK_LOG)
+    assert log and log[-1]["blocked_figures"] and log[-1]["answered_instead"]
 
 
 def test_engine_backed_numbers_pass_with_normal_rounding():
@@ -230,40 +240,34 @@ def test_both_chat_paths_run_the_guard():
     code = _code_only(_read("dashboard", "chat.py"))
     assert code.count("answer_guard.apply(") >= 2
     assert "system if business_intent else None" in code
+    # v2: both paths hand the guard the QUESTION so a block can re-answer it
+    assert code.count("question=_q") >= 2
 
 
 # ── 5 · HANDLERS + DECOY ────────────────────────────────────────────────────
+# #168 supersedes the #165 three-basis wall: the margin question is now
+# answered by answer_engine's resolver (its own suite, test_answer_engine),
+# the wall's copy is retired, and the decoy still declines — WITH the
+# nearest computed figure given immediately.
 
-def test_the_margin_drill_answers_three_bases_with_periods(monkeypatch):
+def test_the_three_basis_wall_is_retired():
     import pl_engine as PL
+    assert not hasattr(PL, "handle_margin_query")
+    assert not hasattr(PL, "handle_cvc_query")
+    src = _code_only(_read("pl_engine.py"))
+    assert "never blended —" not in src        # the recital is out of answers
+    routes = _read("dashboard", "routes.py")
+    assert routes.count("handle_profit_question") >= 2   # both chat paths
+    assert "handle_margin_query" not in routes
+
+
+def test_the_decoy_is_declined_with_the_nearest_figure():
+    import answer_engine as AE
     kv_store._MEM.clear()
-    kv_store.put(PL.K_SUMMARY, {"computed_at": "x", "error": None, "data": {
-        "management_mtd": {"ok": True, "window_words": "September 2026 (month to date)",
-                           "net_profit": 15389.02, "net_revenue": 81106.81,
-                           "net_margin_pct": 19.0, "gross_margin_pct": 58.6,
-                           "operating_margin_pct": 25.3,
-                           "projection": {"available": True, "net_profit": 16000,
-                                          "net_margin_pct": 19.5}},
-        "recognised_last_month": {"ok": True, "window_words": "August 2026",
-                                  "net_profit": 20518.7, "net_revenue": 81106.81,
-                                  "net_margin_pct": 25.3, "gross_margin_pct": 58.6,
-                                  "operating_margin_pct": 25.3},
-        "run_rate_t3": {"ok": False, "reason": "months pending"},
-        "fy26_baseline": PL.FY26, "as_of": "2026-09-24T20:00:00"}})
-    r, h = PL.handle_margin_query("what's our net profit margin")
-    assert h
-    assert "Management (September 2026 (month to date))" in r
-    assert "Recognised (August 2026)" in r
-    assert "19.0%" in r and "25.3%" in r
-    assert "As of 2026-09-24" in r
-    assert "never blended" in r
-
-
-def test_the_decoy_is_declined():
-    import pl_engine as PL
-    r, h = PL.handle_margin_query("what's our EBITDA by state")
+    r, h = AE.handle_profit_question("what's our EBITDA by state")
     assert h and "isn't a metric the engine computes" in r
-    assert not re.search(r"\d", r.replace("net, gross", ""))  # no invented figures
+    assert "Nearest computed" in r
+    assert "EBITDA" not in r.split("isn't")[1].split("Nearest")[0]  # no invented EBITDA figure
 
 
 def test_the_bridge_drill_names_the_items():

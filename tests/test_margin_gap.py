@@ -179,13 +179,52 @@ def test_no_panel_ever_says_age_unknown(monkeypatch):
 
 
 def test_every_window_is_named(monkeypatch):
+    """#168: ONE window under one label — both panels carry the SAME
+    month-to-date phrase WITH its day count; the panel row says which is
+    contracted and which is collected."""
     PL = _seed_engine(monkeypatch, CHARGES)
     cvc = PL.contracted_vs_collected()
-    assert "month to date" in cvc["contracted"]["window_words"]
-    assert "collected" in cvc["collected_mtd"]["window_words"]
+    ww = cvc["contracted"]["window_words"]
+    assert "month to date" in ww
+    assert "15 of 30 days" in ww                      # the day count, in words
+    assert cvc["collected_mtd"]["window_words"] == ww  # identical, both panels
     b30 = cvc["collected_30d"]
     assert b30 and re.match(r"\d+ \w+ → \d+ \w+", b30["window_words"])
     assert "trailing-3" in b30["cost_note"]
+
+
+def test_mtd_windows_end_today_on_every_basis(monkeypatch):
+    """#168: 'month to date' means the 1st through TODAY for revenue AND
+    costs — the window dict says so on every basis, and the panels share
+    one cost figure for that one window."""
+    PL = _seed_engine(monkeypatch, CHARGES)
+    mg = PL.management("2026-09")
+    assert mg["window"] == {"start": "2026-09-01", "end": "2026-09-15"}
+    assert mg["day_count"] == {"elapsed": 15, "in_month": 30}
+    ca = PL.cash("2026-09")
+    assert ca["window"]["end"] == "2026-09-15"
+    co = PL.collected_month("2026-09")
+    assert co["window"]["end"] == "2026-09-15"
+    cvc = PL.contracted_vs_collected()
+    # the same cost figure under both margins for the same window
+    costs = cvc["same_cost_basis"]
+    assert costs["delivery"] == mg["delivery"]
+    assert costs["acquisition"] == mg["acquisition"]
+    assert costs["overhead"] == mg["overhead"]
+    assert cvc["collected_mtd"]["total_costs"] is not None
+
+
+def test_an_undated_monthly_cost_pro_rates_inside_mtd(monkeypatch):
+    """The window defect underneath (#168): a monthly normalisation (or the
+    manager retainer) is an UNDATED cost — inside a 15-of-30-days window it
+    earns only half. Full-month figures live in the projection alone."""
+    PL = _seed_engine(monkeypatch, CHARGES)
+    PL.set_normalisation("Subscriptions", 600.0, "rydel", "annual spread")
+    mg = PL.management("2026-09")
+    adj = [a for a in mg["adjustments"] if "Subscriptions" in a["label"]]
+    assert adj and "15 of 30 days" in adj[0]["label"]
+    # booked 0 this month → the MTD target is 600 × 15/30 = 300, not 600
+    assert adj[0]["amount"] == 300.0
 
 
 def test_the_collected_basis_joins_the_waterfall(monkeypatch):
@@ -250,18 +289,33 @@ def test_the_drawer_shows_the_math_and_the_reconciliation():
 
 
 def test_the_drill_answers_with_both_windows_and_the_gap():
+    """#168 supersedes the #166 drill: the resolver answers 'if everyone
+    pays vs what's landed' with both margins, the same window on both, and
+    the gap — first sentence first, no recital."""
     import pl_engine as PL
+    import answer_engine as AE
     kv_store._MEM.clear()
+    ww = "September 2026 (month to date — 1–15 Sep, 15 of 30 days)"
     kv_store.put(PL.K_SUMMARY, {"computed_at": "x", "data": {
+        "management_mtd": {"ok": True, "basis": "management",
+                           "window_words": ww, "revenue": 30000.0,
+                           "net_revenue": 30000.0, "net_profit": 8550.0,
+                           "net_margin_pct": 28.5, "total_costs": 21450.0,
+                           "day_count": {"elapsed": 15, "in_month": 30},
+                           "as_of": "2026-09-15T10:00"},
+        "fy26_baseline": PL.FY26,
         "contracted_vs_collected": {
             "ok": True,
-            "contracted": {"window_words": "September 2026 (month to date)",
+            "contracted": {"window_words": ww,
                            "revenue": 30000.0, "net_margin_pct": 28.5},
-            "collected_mtd": {"window_words": "September 2026 (month to date, collected)",
-                              "revenue": 13050.0, "net_margin_pct": 5.1},
+            "collected_mtd": {"ok": True, "window_words": ww,
+                              "revenue": 13050.0, "net_profit": 665.55,
+                              "net_margin_pct": 5.1, "total_costs": 12384.45,
+                              "day_count": {"elapsed": 15, "in_month": 30},
+                              "as_of": "2026-09-15T10:00"},
             "collected_30d": {"window_words": "26 Aug → 24 Sep",
                               "net_margin_pct": 8.0},
-            "gap": {"amount": 16950.0,
+            "gap": {"amount": 16950.0, "pct_collected": 43.5,
                     "line": "Collected so far this month: $13,050 of $30,000 contracted (43.5%)"},
             "ar_reconciliation": {"top_unpaid": [
                 {"client": "Leopard Deli", "outstanding": 5500.0,
@@ -269,10 +323,13 @@ def test_the_drill_answers_with_both_windows_and_the_gap():
             "projections": {"optimistic": {"available": True, "net_margin_pct": 27.8},
                             "realistic": {"available": True, "net_margin_pct": 14.0,
                                           "collection_rate": 0.8}}}}})
-    r, h = PL.handle_cvc_query("what's our margin if everyone pays vs what's landed")
+    r, h = AE.handle_profit_question(
+        "what's our margin if everyone pays vs what's landed")
     assert h
-    for want in ("28.5%", "5.1%", "8.0%", "26 Aug → 24 Sep", "money owed",
-                 "Leopard Deli", "optimistic", "realistic", "80%",
-                 "only collection differs"):
+    for want in ("5.1%", "28.5%", "$16,950", "Answered as:"):
         assert want in r, want
-    assert PL.handle_cvc_query("how is the weather")[1] is False
+    # the same window words on both lines — never two windows under one label
+    assert "15 of 30 days" in r
+    # never a three-basis dump, never the recital
+    assert "On the books" not in r and "never blended" not in r
+    assert AE.handle_profit_question("how is the weather")[1] is False

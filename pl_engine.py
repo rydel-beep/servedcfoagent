@@ -125,6 +125,15 @@ def _age_min(iso) -> float | None:
         return None
 
 
+def _day_count(mkey: str) -> dict:
+    """MONTH TO DATE = the 1st through today (#168): the elapsed day count
+    every window states in its own words ('24 of 30 days')."""
+    days_in = calendar.monthrange(int(mkey[:4]), int(mkey[5:7]))[1]
+    t = today_sydney()
+    elapsed = t.day if mkey == _cur_month() else days_in
+    return {"elapsed": elapsed, "in_month": days_in}
+
+
 # ── the ladder arithmetic (shared by every basis) ───────────────────────────
 
 def _rungs(revenue: float, contra: float, delivery: float, acquisition: float,
@@ -148,6 +157,10 @@ def _rungs(revenue: float, contra: float, delivery: float, acquisition: float,
         "operating_margin_pct": pct(operating),
         "tax_accrual": round(tax, 2), "tax_note": tax_note,
         "net_profit": net, "net_margin_pct": pct(net),
+        # everything between net revenue and net profit, as ONE engine value
+        # — the figure EDITH once derived by head arithmetic ($57,016) and
+        # was rightly blocked for; now the engine owns it (#168)
+        "total_costs": round(net_rev - net, 2),
     }
 
 
@@ -167,7 +180,7 @@ def recognised(mkey: str) -> dict:
                 "no income tax booked in Xero this month — the accountant "
                 "lodges annually; see the management basis for the accrual")
     out = {"ok": True, "basis": "recognised", "month": mkey,
-           "window": xm.get("window"),
+           "window": xm.get("window"), "day_count": _day_count(mkey),
            **_rungs(lines["revenue"]["total"], lines["contra_revenue"]["total"],
                     lines["delivery"]["total"], lines["acquisition"]["total"],
                     lines["overhead"]["total"], tax, tax_note),
@@ -290,13 +303,18 @@ def management(mkey: str) -> dict:
         return {"ok": False, "basis": "management", "month": mkey,
                 "reason": rec.get("reason")}
     rev = contract_revenue(mkey)
-    # MTD: contract revenue pro-rates to TODAY, or the month-to-date margin
-    # compares a full month of revenue against a part-month of costs and
-    # flatters itself (caught live: 37.8% MTD vs a 27.8% projection).
-    if mkey == _cur_month():
-        t = today_sydney()
-        days_in = calendar.monthrange(t.year, t.month)[1]
-        frac = t.day / days_in
+    # MONTH TO DATE = the 1st through TODAY for revenue AND costs (#168).
+    # Revenue pro-rates to the day (caught live in #165: 37.8% MTD beside a
+    # 27.8% projection); undated monthly costs pro-rate by the same day
+    # count; dated costs (Xero bookings, dated commissions) count by their
+    # actual date, which the to-date pull already does. Full-month figures
+    # live ONLY in the labelled projection.
+    mtd = mkey == _cur_month()
+    t = today_sydney()
+    days_in = calendar.monthrange(int(mkey[:4]), int(mkey[5:7]))[1]
+    frac = (t.day / days_in) if mtd else 1.0
+    day_count = {"elapsed": t.day if mtd else days_in, "in_month": days_in}
+    if mtd:
         rev = {**rev, "total": round(rev["total"] * frac, 2),
                "provenance": rev["provenance"]
                + f" · pro-rated to day {t.day} of {days_in}"}
@@ -304,20 +322,28 @@ def management(mkey: str) -> dict:
 
     adjustments: list[dict] = []
 
-    # commissions: the rulebook's accrual for the month, never Xero's paid
+    # commissions: the rulebook's accrual for the window, never Xero's paid.
+    # MTD accrues 1st → today: dated pieces (commissions, bounties) count by
+    # close date; the undated monthly retainer pro-rates by day.
     start_s, end_s = month_bounds(mkey)
+    accrue_end = str(t) if mtd else end_s
     comm_booked = sum(i["amount"] for i in rec["lines"]["acquisition"]["items"]
                       if "commission" in i["account"].lower())
     comm_accrued, comm_note = comm_booked, "rulebook accrual unavailable — Xero's booked figure kept"
     try:
         import sales_cost
-        sc = sales_cost.build(start_s, end_s)
+        sc = sales_cost.build(start_s, accrue_end)
         c = sc.get("commissions") or {}
-        pieces = [c.get("total"), (sc.get("bounties") or {}).get("total"),
-                  (sc.get("retainer") or {}).get("amount")]
+        ret = (sc.get("retainer") or {}).get("amount")
+        if mtd and ret:
+            ret = round(ret * frac, 2)
+        pieces = [c.get("total"), (sc.get("bounties") or {}).get("total"), ret]
         if c.get("total") is not None:
             comm_accrued = round(sum(p for p in pieces if p), 2)
             comm_note = "rulebook accrual (commissions + set bounties + manager retainer)"
+            if mtd and ret:
+                comm_note += (f"; retainer pro-rated to {t.day} of "
+                              f"{days_in} days")
     except Exception as e:  # noqa: BLE001
         logger.info("pl: sales_cost unavailable for %s: %s", mkey, e)
     if round(comm_accrued - comm_booked, 2):
@@ -326,7 +352,9 @@ def management(mkey: str) -> dict:
                             "why": comm_note})
     acquisition = round(rec["acquisition"] - comm_booked + comm_accrued, 2)
 
-    # configured normalisations (annual/quarterly costs spread monthly)
+    # configured normalisations (annual/quarterly costs spread monthly).
+    # An undated monthly spread inside an MTD window earns only the days
+    # that have happened — pro-rated by the same day count as revenue.
     delivery, overhead = rec["delivery"], rec["overhead"]
     for n in normalisations():
         akey = pl_mapping._key(n["account"])
@@ -335,10 +363,13 @@ def management(mkey: str) -> dict:
             continue
         booked = sum(i["amount"] for i in rec["lines"][line]["items"]
                      if pl_mapping._key(i["account"]).startswith(akey))
-        delta = round(n["monthly"] - booked, 2)
+        target = round(n["monthly"] * frac, 2)
+        delta = round(target - booked, 2)
         if delta:
             adjustments.append({"label": f"{n['account']}: normalised to "
-                                         f"${n['monthly']:,.0f}/mo",
+                                         f"${n['monthly']:,.0f}/mo"
+                                         + (f" (× {day_count['elapsed']} of "
+                                            f"{days_in} days)" if mtd else ""),
                                 "amount": delta, "why": n.get("note") or "spread evenly"})
             if line == "delivery":
                 delivery = round(delivery + delta, 2)
@@ -356,7 +387,9 @@ def management(mkey: str) -> dict:
     pbt = rungs["operating_profit"]
     tax = round(max(pbt, 0.0) * TAX_RATE, 2)
     out = {"ok": True, "basis": "management", "month": mkey,
-           "window": {"start": start_s, "end": end_s},
+           # the window says what it holds: MTD ends TODAY, not month end
+           "window": {"start": start_s, "end": str(t) if mtd else end_s},
+           "day_count": day_count,
            **_rungs(pbt_rev, contra, delivery, acquisition, overhead, tax,
                     "25% base-rate accrual on operating profit — a planning "
                     "estimate; the accountant lodges"),
@@ -409,6 +442,8 @@ def _flag_one_offs(mkey: str, rec: dict) -> list[dict]:
 def cash(mkey: str) -> dict:
     """Bank receipts − outflows. The runway view — labelled, never a margin."""
     start_s, end_s = month_bounds(mkey)
+    if mkey == _cur_month():
+        end_s = str(today_sydney())      # MTD = the 1st through today (#168)
     receipts, n = None, 0
     try:
         import cash_truth
@@ -425,6 +460,7 @@ def cash(mkey: str) -> dict:
            if receipts is not None and opex is not None else None)
     return {"ok": receipts is not None, "basis": "cash", "month": mkey,
             "window": {"start": start_s, "end": end_s},
+            "day_count": _day_count(mkey),
             "receipts_ex_gst": receipts, "receipt_count": n,
             "outflows": {"opex": opex, "tax_statutory": taxes},
             "net_cash": net,
@@ -502,7 +538,7 @@ def collected_month(mkey: str) -> dict:
                mg["acquisition"], mg["overhead"], 0.0, "")
     tax = round(max(r["operating_profit"], 0.0) * TAX_RATE, 2)
     out = {"ok": True, "basis": "collected", "month": mkey,
-           "window": {"start": w0, "end": w1},
+           "window": {"start": w0, "end": w1}, "day_count": _day_count(mkey),
            **_rungs(coll["total"], mg["contra_revenue"], mg["delivery"],
                     mg["acquisition"], mg["overhead"], tax,
                     "25% accrual on this panel's own operating profit"),
@@ -525,7 +561,7 @@ def window(basis: str, name: str) -> dict:
         r = fn(cur)
         if r.get("ok") and basis == "management":
             r["projection"] = _project_month_end(r)
-        r["window_words"] = f"{_mword(cur)} (month to date)"
+        r["window_words"] = mtd_words()
         return r
     if name == "last_month":
         m = months_back(1)[0]
@@ -544,6 +580,16 @@ def window(basis: str, name: str) -> dict:
 
 def _mword(mkey: str) -> str:
     return dt.date.fromisoformat(mkey + "-01").strftime("%B %Y")
+
+
+def mtd_words() -> str:
+    """ONE month-to-date phrase for every surface — the tile, the Money
+    page and EDITH all say the same window with its day count (#168)."""
+    cur = _cur_month()
+    dc = _day_count(cur)
+    return (f"{_mword(cur)} (month to date — 1–{dc['elapsed']} "
+            f"{dt.date.fromisoformat(cur + '-01').strftime('%b')}, "
+            f"{dc['elapsed']} of {dc['in_month']} days)")
 
 
 def _sum_months(basis, fn, months, name) -> dict:
@@ -625,12 +671,20 @@ def summary() -> dict:
     mtd = window("management", "mtd")
     lm = window("recognised", "last_month")
     t3 = window("management", "t3")
+    # the resolver's same-basis "last month" reads + delta anchors (#168)
+    def _safe(basis, name):
+        try:
+            return _slim(window(basis, name))
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "reason": str(e)[:100]}
     try:
         cvc = contracted_vs_collected()
     except Exception as e:  # noqa: BLE001
         logger.warning("contracted-vs-collected failed: %s", e)
         cvc = {"ok": False, "reason": str(e)[:120]}
     return {"management_mtd": _slim(mtd), "recognised_last_month": _slim(lm),
+            "management_last_month": _safe("management", "last_month"),
+            "collected_last_month": _safe("collected", "last_month"),
             "contracted_vs_collected": cvc,
             "run_rate_t3": _slim(t3), "fy26_baseline": FY26,
             "as_of": now_sydney().isoformat(),
@@ -641,10 +695,13 @@ def summary() -> dict:
 
 def _slim(r: dict) -> dict:
     keys = ("ok", "basis", "month", "window", "window_words", "months",
-            "revenue", "net_revenue", "gross_profit", "gross_margin_pct",
-            "contribution", "contribution_margin_pct", "operating_profit",
+            "day_count",
+            "revenue", "net_revenue", "contra_revenue", "delivery",
+            "gross_profit", "gross_margin_pct", "acquisition",
+            "contribution", "contribution_margin_pct", "overhead",
+            "operating_profit",
             "operating_margin_pct", "tax_accrual", "net_profit",
-            "net_margin_pct", "projection", "reason", "as_of")
+            "net_margin_pct", "total_costs", "projection", "reason", "as_of")
     return {k: r[k] for k in keys if k in r}
 
 
@@ -674,63 +731,16 @@ def cached_summary() -> dict:
 
 
 # ── EDITH: deterministic answers, template-filled from the engine ───────────
+# The margin and contracted-vs-collected questions are answered by
+# answer_engine (#168): a resolver maps the question to {metric, basis,
+# window}, the composed answer's first sentence answers the literal
+# question, and the old three-basis wall is retired. The bridge drill stays
+# here — it IS a breakdown question.
 
-_MARGIN_RE = re.compile(
-    r"\bnet (?:profit )?margin\b|\bprofit margin\b|\bgross margin\b|"
-    r"\bhow profitable\b|\bnet profit\b(?!.*margin)", re.I)
 _BRIDGE_RE = re.compile(
     r"why (?:is|was) (?:this|the|last) month (?:below|above|different|off|"
     r"under|over).{0,20}(run.?rate|usual|normal)|"
     r"\bexplain the bridge\b|\bbridge for\b", re.I)
-_NOT_COMPUTED_RE = re.compile(
-    r"\bebitda\b|\bby state\b|\bby city\b|\bper region\b|"
-    r"\bebit\b|\bnpat by\b", re.I)
-
-
-def _fmt_basis(r: dict, name: str) -> str:
-    if not (r or {}).get("ok"):
-        return f"{name}: unavailable ({(r or {}).get('reason') or 'not computed'})"
-    words = r.get("window_words") or r.get("month") or ""
-    line = (f"{name} ({words}): net "
-            f"${r['net_profit']:,.0f} on ${r['net_revenue']:,.0f} = "
-            f"{r['net_margin_pct']}% · gross {r['gross_margin_pct']}% · "
-            f"operating {r['operating_margin_pct']}%")
-    proj = r.get("projection")
-    if proj and proj.get("available"):
-        line += (f" · projected month-end net ${proj['net_profit']:,.0f} "
-                 f"({proj['net_margin_pct']}%)")
-    return line
-
-
-def handle_margin_query(text: str):
-    """'what's our net profit margin' → the three-basis answer, periods and
-    as-of named, every number the engine's own. The travelling-read pattern:
-    template-filled, never model-composed."""
-    t = text or ""
-    if _NOT_COMPUTED_RE.search(t):
-        return ("That isn't a metric the engine computes — I won't improvise "
-                "it. What I can give you: net, gross, operating and "
-                "contribution margin on the management, recognised and cash "
-                "bases, for any named calendar window."), True
-    if not _MARGIN_RE.search(t):
-        return None, False
-    c = cached_summary()
-    d = c.get("data")
-    if not d:
-        return ("The P&L engine hasn't computed a summary yet"
-                + (f" ({c.get('error')})" if c.get("error") else "")
-                + " — ask me again after the next refresh."), True
-    lines = [
-        _fmt_basis(d.get("management_mtd") or {}, "Management"),
-        _fmt_basis(d.get("recognised_last_month") or {}, "Recognised"),
-        _fmt_basis(d.get("run_rate_t3") or {}, "Run-rate"),
-    ]
-    fy = d.get("fy26_baseline") or {}
-    lines.append(f"FY26 baseline: net {fy.get('net')}% · gross {fy.get('gross')}%.")
-    lines.append(f"As of {str(d.get('as_of'))[:16]}. Bases are never blended — "
-                 f"management is the run-rate truth, recognised is the books, "
-                 f"cash is the bank.")
-    return " ".join(lines), True
 
 
 def handle_bridge_query(text: str):
@@ -821,7 +831,10 @@ def contracted_vs_collected() -> dict:
     b_mtd = _rungs(coll_mtd["total"], costs["contra_revenue"],
                    costs["delivery"], costs["acquisition"], costs["overhead"],
                    tax_b, "25% accrual on this panel's own operating profit")
-    b_mtd["window_words"] = f"{_mword(cur)} (month to date, collected)"
+    # ONE window under one label (#168): both panels say the SAME month-to-
+    # date phrase with its day count — only the collection differs.
+    b_mtd["window_words"] = mtd_words()
+    b_mtd["day_count"] = _day_count(cur)
     b_mtd["as_of"] = coll_mtd["as_of"]
     b_mtd["collected"] = coll_mtd
 
@@ -865,18 +878,20 @@ def contracted_vs_collected() -> dict:
 
     return {"ok": True,
             "contracted": {**_slim(mg),
-                           "window_words": f"{_mword(cur)} (month to date)",
+                           "window_words": mtd_words(),
                            "full_month_contracted": full_contract},
             "collected_mtd": {k: b_mtd[k] for k in
                               ("revenue", "net_profit", "net_margin_pct",
                                "gross_margin_pct", "operating_profit",
-                               "tax_accrual", "window_words", "as_of",
+                               "tax_accrual", "total_costs", "day_count",
+                               "window_words", "as_of",
                                "collected")},
             "collected_30d": (None if not b_30 else
                               {k: b_30[k] for k in
                                ("revenue", "net_profit", "net_margin_pct",
                                 "gross_margin_pct", "operating_profit",
-                                "tax_accrual", "window_words", "as_of",
+                                "tax_accrual", "total_costs",
+                                "window_words", "as_of",
                                 "collected", "cost_note")}),
             "same_cost_basis": costs,
             "gap": {"amount": gap, "pct_collected": pct_collected,
@@ -960,57 +975,3 @@ def _realistic_projection(full_contract: float, collected_so_far: float,
             "label": (f"realistic — collections continue at the trailing-3 "
                       f"pace ({rate * 100:.0f}% of contracted), trailing-3 "
                       f"average costs")}
-
-
-_CVC_RE = re.compile(
-    r"if everyone pays|actually landed|collected margin|margin.{0,20}"
-    r"(vs|versus).{0,20}(landed|collected|paid)|what.{0,10}landed.{0,25}margin|"
-    r"money (?:we'?re|we are|you'?re) owed", re.I)
-
-
-def handle_cvc_query(text: str):
-    """'what's our margin if everyone pays vs what's landed' → both numbers,
-    both windows, the gap, the top unpaid clients — every figure the
-    engine's own."""
-    if not _CVC_RE.search(text or ""):
-        return None, False
-    d = (cached_summary() or {}).get("data") or {}
-    cvc = d.get("contracted_vs_collected") or {}
-    if not cvc.get("ok"):
-        return ("The contracted-vs-collected read isn't computed yet"
-                + (f" ({cvc.get('reason')})" if cvc.get("reason") else "")
-                + " — ask me again after the next refresh."), True
-    mg = cvc.get("contracted") or {}
-    b = cvc.get("collected_mtd") or {}
-    b30 = cvc.get("collected_30d") or {}
-    gap = cvc.get("gap") or {}
-    recon = cvc.get("ar_reconciliation") or {}
-    proj = cvc.get("projections") or {}
-    parts = [
-        (f"If everyone pays ({mg.get('window_words')}): net margin "
-         f"{mg.get('net_margin_pct')}% on ${mg.get('revenue'):,.0f} "
-         f"contracted."),
-        (f"What actually landed ({b.get('window_words')}): "
-         f"{b.get('net_margin_pct')}% on ${b.get('revenue'):,.0f} collected"
-         + (f"; last 30 days ({b30.get('window_words')}): "
-            f"{b30.get('net_margin_pct')}%" if b30 else "") + "."),
-        gap.get("line", "") + " — the gap is the money owed.",
-    ]
-    top = recon.get("top_unpaid") or []
-    if top:
-        parts.append("Top unpaid: " + "; ".join(
-            f"{u['client']} ${u['outstanding']:,.0f}"
-            + (f" ({u['days_overdue']}d overdue)" if u.get("days_overdue") else "")
-            for u in top[:3]) + ".")
-    pa, pb = proj.get("optimistic") or {}, proj.get("realistic") or {}
-    if pa.get("available") or pb.get("available"):
-        parts.append(
-            "Month-end: "
-            + (f"{pa.get('net_margin_pct')}% optimistic (all contracted paid)"
-               if pa.get("available") else "")
-            + (" · " if pa.get("available") and pb.get("available") else "")
-            + (f"{pb.get('net_margin_pct')}% realistic (trailing collection "
-               f"pace {int((pb.get('collection_rate') or 0) * 100)}%)"
-               if pb.get("available") else "") + ".")
-    parts.append("Same costs on both panels — only collection differs.")
-    return " ".join(p for p in parts if p), True

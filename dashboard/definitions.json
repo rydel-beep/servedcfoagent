@@ -1885,6 +1885,52 @@
    "meaning": "The maths behind both panels: the revenue each one counts, the shared costs, the reconciliation to what's owed, and the two month-end projections with their assumptions.",
    "computed": "Everything comes from the one P&L engine — the optimistic projection assumes full payment; the realistic one applies the trailing collection pace, and each says so on its face.",
    "selector": "[data-def='drawer_net_margin']"
+  },
+  "total_costs": {
+   "name": "Total costs",
+   "kind": "metric",
+   "screen": "today",
+   "meaning": "Everything the window spends between revenue and net profit — delivery, acquisition, overhead and the income-tax estimate, as one figure.",
+   "computed": "Net revenue minus net profit for the same basis and window. One engine value — EDITH quotes it, she never subtracts it herself.",
+   "default_from": "The P&L engine, same window words as the margin beside it.",
+   "selector": "[data-metric='total_costs']"
+  },
+  "per_day_pacing": {
+   "name": "Per-day pacing",
+   "kind": "metric",
+   "screen": "today",
+   "meaning": "Revenue and net profit divided by the days that have actually happened — how fast the window is earning.",
+   "computed": "The window's revenue (or net) divided by its elapsed day count, e.g. 24 of 30 days.",
+   "default_from": "The P&L engine's day count for the window.",
+   "selector": "[data-metric='per_day_pacing']"
+  },
+  "margin_delta": {
+   "name": "Margin change",
+   "kind": "metric",
+   "screen": "today",
+   "meaning": "How this window's net margin compares — percentage points against last month on the same basis, and against the FY26 baseline.",
+   "computed": "This window's net margin minus last month's on the same basis; and minus FY26's 11.5%. Bases are compared like-for-like only.",
+   "default_from": "The P&L engine's cached windows.",
+   "selector": "[data-metric='margin_delta']"
+  },
+  "answered_as": {
+   "name": "Answered as",
+   "kind": "chip",
+   "screen": "edith",
+   "meaning": "The line under an EDITH money answer showing exactly how the question was read: which figure, which view of the money, which window, and when the data was stamped.",
+   "computed": "The resolver's own record of the answer — if it read your question wrong, this line shows it, and you can restate the window or the view in plain words.",
+   "default_from": "Every profit and margin answer carries one.",
+   "selector": "edith-answered-as"
+  },
+  "calc_endpoint": {
+   "name": "Calculator",
+   "kind": "control",
+   "screen": "edith",
+   "meaning": "A small server-side calculator for derived figures — pro-rata shares, ratios, differences, per-day rates — so any worked number comes from the engine, never from head arithmetic.",
+   "computed": "POST /dashboard/api/calc with the operation and inputs; the result and its working are returned and logged.",
+   "default_from": "Used by EDITH's answers; open to the finance role.",
+   "selector": "api-calc",
+   "changing": "Calling it computes and returns a figure — it changes nothing and writes nothing; every call is just logged."
   }
  }
 }

@@ -683,8 +683,10 @@ def chat(history: list, snapshot_json: str, token: str, voice: bool = False,
             reply = response.content[0].text if response.content else ""
             note_brain(True)
             from dashboard import answer_guard
+            _q = next((m["content"] for m in reversed(messages)
+                       if m.get("role") == "user"), "")
             reply, _guard = answer_guard.apply(
-                reply, system if business_intent else None)
+                reply, system if business_intent else None, question=_q)
             return {"reply": reply, "error": None, "intent": intent,
                     "guard": ({} if _guard.get("ok", True) else _guard)}
         except Exception as e:
@@ -779,13 +781,16 @@ def chat_stream(history: list, snapshot_json: str, token: str, voice: bool = Fal
             # runs — which is why the first version of this recorded nothing.
             note_brain(True)
             full_text = "".join(full)
-            # THE ANSWER GUARD (#165): on a business turn every financial
-            # number must match an engine value from THIS TURN's context.
-            # The UI replaces streamed text with the done payload, so a
-            # blocked reply lands as the rewrite.
+            # THE ANSWER GUARD (#165, v2 #168): on a business turn every
+            # financial number must match an engine value from THIS TURN's
+            # context — and a block still ANSWERS the question from the
+            # engine. The UI replaces streamed text with the done payload,
+            # so a blocked reply lands as the recomposed answer.
             from dashboard import answer_guard
+            _q = next((m["content"] for m in reversed(messages)
+                       if m.get("role") == "user"), "")
             full_text, _guard = answer_guard.apply(
-                full_text, system if business_intent else None)
+                full_text, system if business_intent else None, question=_q)
             if not _guard.get("ok", True):
                 yield ("guard", _guard)
             yield ("done", full_text)

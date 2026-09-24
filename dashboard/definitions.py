@@ -143,6 +143,10 @@ def coverage_inventory() -> dict:
                      "closes_count", "closes_cash", "closes_contract",
                      "record_a_close", "register_reconciliation"]
 
+    # answer-shaped outputs + the resolver's visible surfaces (#168)
+    inv["answers"] = ["total_costs", "per_day_pacing", "margin_delta",
+                      "answered_as", "calc_endpoint"]
+
     # every ⓘ drawer key
     import tile_drawers
     inv["drawers"] = ["drawer_" + k for k in sorted(tile_drawers._REGISTRY)]
