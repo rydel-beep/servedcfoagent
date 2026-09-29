@@ -396,6 +396,23 @@ def rebuild_closes(apply: bool = True) -> dict:
     st = detect_gap()
     if not st.get("gap"):
         return {"ok": True, "note": "no gap window", "ledger": []}
+    # #170: the contract rungs below read the persisted client snapshot. On a
+    # fresh container it is EMPTY until the boot refresh finishes — a rebuild
+    # in that window persisted a ledger with every derived contract lost.
+    # Refuse, keep the last good ledger, and say so.
+    try:
+        from snapshot import load_persisted
+        _snap = load_persisted() or {}
+        _pool = (((_snap.get("active_clients") or {}).get("active") or [])
+                 + ((_snap.get("client_health") or {}).get("clients") or []))
+    except Exception:  # noqa: BLE001
+        _pool = []
+    if not _pool:
+        prior = kv_store.get(_KV_LEDGER) or {"ledger": []}
+        return {**prior, "ok": False, "refused": True,
+                "reason": "client snapshot not loaded yet — the last good "
+                          "ledger is kept (a rebuild now would lose every "
+                          "derived contract)"}
     w0, w1 = st["gap"]["start"], st["gap"]["end"]
     import cash_truth
     charges = cash_truth._raw_recent_charges(120) or []

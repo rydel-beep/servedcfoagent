@@ -95,3 +95,16 @@ def test_a_raw_tracker_money_cell_becomes_a_number():
     assert G._money("$27,900") == 27900.0 and G._money("18300") == 18300.0
     assert G._money(18300) == 18300.0
     assert G._money("") is None and G._money("TBC") is None and G._money(None) is None
+
+
+def test_a_rebuild_on_an_empty_snapshot_keeps_the_last_good_ledger(monkeypatch):
+    """#170 incident: a rebuild seconds after a deploy (snapshot not yet
+    loaded) persisted a ledger with Orlando/William/Harman's contracts gone."""
+    import snapshot
+    _wire(monkeypatch, ["2026-08-21"])
+    good = {"ledger": [{"person": "Harman singh", "contract_value": 18300.0}]}
+    kv_store.put(G._KV_LEDGER, good)
+    monkeypatch.setattr(snapshot, "load_persisted", lambda: {})
+    out = G.rebuild_closes(apply=True)
+    assert out["refused"] and out["ok"] is False
+    assert kv_store.get(G._KV_LEDGER) == good

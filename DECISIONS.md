@@ -3523,3 +3523,28 @@ Superseded tests rewritten with the reason named: the LTV-inputs test that
 pinned the upper bound + placeholder; three range-engine tests that
 pinned avg-contract ÷ tracker-cell CAC; the margin and commission guards
 moved to where the maths lives.
+
+**DEPLOYED 29 Sep** — ee3e834, 669454d, 3324041 (+ the rebuild guard).
+Rulings applied in production, journaled: Amoroso (Walk-In Engine, 3 mo,
+$4,799 ex-GST, Kalin $860 deal-specific, Maran 5%); Norvin Acabo → Asian
+Streat (Rydel: "Asian Street"); Kin Fun Keng Wong → Noodle Asia; Warners
+At The Bay → photography, excluded from renewal/completion.
+
+**INCIDENT (18:02–18:39)**: the first gap-ledger rebuild on the widened
+window carried two RAW tracker cells ("$18,300", "$27,900") → the
+unit-econ, ROAS, verdict and travelling tiles went DEGRADED, and the boot
+snapshot build after the next deploy crashed on the same text
+(`float += str`) → no client snapshot in the web process. A ledger rebuild
+in that window then persisted a ledger with every derived contract lost.
+Fixed: money parsed at the source (gap_reconcile._money), the register's
+read hardened, a ledger rebuild REFUSES on an empty client snapshot and
+keeps the last good ledger; one email + one date = one close
+("HOANG PHUOC PHAM" / "(Max)"). Restored by running the standard snapshot
+build + ledger rebuild. Tiles showed a labelled DEGRADED state throughout —
+never a wrong number.
+
+**LIVE (18:39)** — trailing 90 days (13 closes, all with a contract):
+LTV:CAC 3.52× expected / 3.86× floor · LTGP:CAC 2.30× / 2.52× · renewal
+band 3.15–4.59× / 2.05–2.99× · CAC $4,293.23 (commission pending on 4).
+MTD (6 closes): 4.09× / 5.00× · 2.67× / 3.26× · CAC $3,518.78 (pending
+on 3). Mature cohort (July leads): 3.33× / 2.17×.
