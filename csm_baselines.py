@@ -602,7 +602,16 @@ def measure_from_payments(charges_by_client: dict, deals: dict, today,
     import datetime as dt
     w0 = today - dt.timedelta(days=365)
     rows, excluded, comp_rows = [], [], []
+    try:
+        import client_receipts
+        ruled_out = client_receipts.excluded_clients()
+    except Exception:  # noqa: BLE001
+        ruled_out = set()
     for client, chs in sorted(charges_by_client.items()):
+        if "".join(ch for ch in client.lower() if ch.isalnum()) in ruled_out:
+            excluded.append({"client": client, "why": "ruled out of the measurement "
+                             "(not a marketing retainer — Rydel)"})
+            continue
         chs = sorted((d, float(a)) for d, a in chs if a)
         if not chs:
             continue

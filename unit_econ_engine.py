@@ -7,8 +7,10 @@ LTV, CAC, LTGP and both ratios, to the brief's definitions and nothing else:
                    set bounties + manager retainer + sales tooling). Spend-
                    only beside. Commission for an unruled package is PENDING
                    (counted nowhere, named).
-  LTV EXPECTED   = per close, from the close's own package:
-                   contract ex-GST × MEASURED in-term completion
+  LTV EXPECTED   = per close, from the close's own package (Rydel, 29 Sep):
+                   cash already COLLECTED ex-GST (in full — money in hand
+                   is not haircut) + the UNPAID contracted instalments ×
+                   MEASURED in-term completion
                    + Σ_k renewal^k × the renewal term's value (the signed
                      term, re-priced at the signed contract), for as many
                      whole renewal terms as fit inside the HORIZON CAP
@@ -224,19 +226,28 @@ def ltv_for(e: dict, inp: dict, renewal_pct: float | None = None) -> dict:
         return row
     p = (renewal_pct if renewal_pct is not None else inp["renewal_pct"]) / 100.0
     c = inp["completion_pct"] / 100.0
-    in_term = cv * c
+    # Rydel, 29 Sep: the completion haircut applies ONLY to what is still
+    # unpaid. Collected cash (R-CASH: matched charges, GST-inclusive → ÷1.1)
+    # counts in full, capped at this contract so earlier terms' money never
+    # inflates it.
+    cash_inc = (e.get("cash") or {}).get("amount")
+    collected = min(round(float(cash_inc) / 1.1, 2), cv) if cash_inc else 0.0
+    unpaid = round(max(0.0, cv - collected), 2)
+    in_term = collected + unpaid * c
+    row.update({"collected_ex_gst": collected, "unpaid_ex_gst": unpaid})
     renewals = []
     if pkg in B.RETAINER_TERMS and term:
         for k in range(1, max(0, (HORIZON_MONTHS - term) // term) + 1):
             renewals.append(round(cv * p ** k, 2))
-        basis = (f"${cv:,.0f} × {c * 100:.1f}% completion + "
+        basis = (f"${collected:,.0f} collected + ${unpaid:,.0f} unpaid × "
+                 f"{c * 100:.1f}% completion + "
                  f"{len(renewals)} renewal term(s) at {p * 100:.1f}%^k × ${cv:,.0f} "
                  f"(horizon {HORIZON_MONTHS} months)")
     else:
         why = ("not a retainer package" if (pkg or e.get("package") or e.get("term_months"))
                else "package unknown")
-        basis = (f"${cv:,.0f} × {c * 100:.1f}% completion — no renewal "
-                 f"credited ({why})")
+        basis = (f"${collected:,.0f} collected + ${unpaid:,.0f} unpaid × "
+                 f"{c * 100:.1f}% completion — no renewal credited ({why})")
     row.update({"in_term": round(in_term, 2), "renewals": renewals,
                 "expected": round(in_term + sum(renewals), 2), "working": basis})
     return row

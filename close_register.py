@@ -840,7 +840,10 @@ def _apply_terms(e: dict, t: dict) -> None:
                        "outside_business_accounts": outside,
                        "receivable": receivable}
     e["cash_events"] = events
-    ruled_cash = sum(float(r["amount"]) for r in counted
+    # the register's cash is GST-INCLUSIVE (Stripe's basis) — a ruled amount
+    # given ex-GST is converted before it joins, never mixed
+    ruled_cash = sum((float(r["amount"]) if r["gst"] == "inc" else float(r["amount"]) * 1.1)
+                     for r in counted
                      if r["evidence_id"] not in ((e.get("cash") or {}).get("charge_ids") or []))
     if ruled_cash:
         cash = e.setdefault("cash", {"amount": None, "charge_ids": []})

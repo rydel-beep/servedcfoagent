@@ -112,3 +112,34 @@ def test_edith_client_ltv_names_the_missing_number(monkeypatch):
     assert ok and "needs your number" in reply and "never read as a package" in reply
     reply, ok = R.handle_unit_econ_command("what's Amoroso's LTV")
     assert ok and "Amoroso Gelateria" in reply
+
+
+# ── collected cash is not haircut (Rydel, 29 Sep) ───────────────────────────
+
+def _paid(e, inc):
+    return {**e, "cash": {"amount": inc}}
+
+
+def test_amoroso_paid_upfront_is_its_contract():
+    r = UE.ltv_for(_paid(_e("Scott Cho", 4799.0, "Walk-In Engine", 3), 5278.90), INP)
+    assert r["collected_ex_gst"] == 4799.0 and r["unpaid_ex_gst"] == 0.0
+    assert r["expected"] == 4799.0                     # no haircut, no renewal
+
+
+def test_scale_engine_paid_in_full_keeps_its_contract_plus_renewals():
+    r = UE.ltv_for(_paid(_e("X", 14500.0, "Scale Engine"), 15950.0), INP)
+    hand = 14500 + sum(14500 * 0.222 ** k for k in range(1, 6))
+    assert abs(r["expected"] - round(hand, 2)) < 0.05
+
+
+def test_a_split_applies_completion_only_to_unpaid_instalments():
+    r = UE.ltv_for(_paid(_e("Rocky's", 14500.0, "Scale Engine"), 5500.0), INP)
+    # $5,500 inc = $5,000 collected; $9,500 unpaid × 72.7%
+    assert r["collected_ex_gst"] == 5000.0 and r["unpaid_ex_gst"] == 9500.0
+    hand = 5000 + 9500 * 0.727 + sum(14500 * 0.222 ** k for k in range(1, 6))
+    assert abs(r["expected"] - round(hand, 2)) < 0.05
+
+
+def test_older_cash_never_inflates_this_contract():
+    r = UE.ltv_for(_paid(_e("X", 10000.0, "Growth Pro"), 22000.0), INP)
+    assert r["collected_ex_gst"] == 10000.0 and r["unpaid_ex_gst"] == 0.0

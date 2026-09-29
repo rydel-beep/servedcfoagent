@@ -47,3 +47,21 @@ def test_wilson_is_bounded():
     assert B.wilson(0, 0) is None
     lo, hi = B.wilson(5, 5)
     assert hi == 100.0 and lo > 40
+
+
+def test_a_ruled_non_retainer_client_is_excluded_but_counted():
+    """Rydel, 29 Sep: Warners At The Bay is photography work — cash attached,
+    excluded from renewal and completion."""
+    import kv_store
+    import client_receipts as CRx
+    kv_store.delete(CRx.K_MAP)
+    assert CRx.confirm_contact("Warners At The Bay", "Warners At The Bay",
+                               words="photography work, not a marketing retainer",
+                               exclude_from_measurement=True, kind="photography")["ok"]
+    charges = {"Warners At The Bay": _monthly(D(2025, 10, 1), 9, 3355.0)}
+    deals = {"Warners At The Bay": {"offer": "Growth Pro", "close_date": D(2025, 10, 1),
+                                    "contract": 18300}}
+    r = B.measure_from_payments(charges, deals, TODAY, START)
+    assert r["renewal"]["n"] == 0
+    assert "not a marketing retainer" in r["renewal"]["excluded"][0]["why"]
+    kv_store.delete(CRx.K_MAP)
