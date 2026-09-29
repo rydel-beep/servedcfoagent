@@ -72,20 +72,24 @@ def _union_deals(w0: dt.date, w1: dt.date) -> list[dict]:
         return []
 
 
-def _blended_average(costed: list[dict]) -> dict:
-    """The average commission per close across deals whose facts we have."""
-    if not costed:
-        return {"available": False,
-                "note": "no deal in this window has the facts to cost exactly"}
-    closer = round(sum(d["counted"]["closer"] for d in costed) / len(costed), 2)
-    setter = round(sum(d["counted"]["setter"] for d in costed) / len(costed), 2)
-    return {"available": True, "closer": closer, "setter": setter,
-            "total": round(closer + setter, 2), "n": len(costed),
-            "note": f"the average across {len(costed)} deals that carry their facts"}
+def _pending_range(v: dict, n: int) -> dict | None:
+    """The rulebook's closer range across the packages it COVERS, times the
+    pending count — a band, never a figure inside CAC."""
+    if not n:
+        return None
+    rates = [float(x) for tbl in ("closer_flat", "junior_closer_flat")
+             for x in (v.get(tbl) or {}).values()]
+    if not rates:
+        return None
+    lo, hi = min(rates), max(rates)
+    return {"per_close_min": lo, "per_close_max": hi,
+            "min": round(lo * n, 2), "max": round(hi * n, 2), "closes": n,
+            "basis": (f"closer rates ruled in rulebook v{v['version']} "
+                      "(covered packages only); setter share needs the "
+                      "deal's cash — excluded from the band")}
 
 
-def build(window_start: str, window_end: str,
-          average_pool_days: int = 180) -> dict:
+def build(window_start: str, window_end: str) -> dict:
     """The whole sales-cost picture for a window."""
     w0, w1 = dt.date.fromisoformat(window_start), dt.date.fromisoformat(window_end)
     out: dict = {"window": {"start": str(w0), "end": str(w1),
@@ -95,18 +99,6 @@ def build(window_start: str, window_end: str,
     tracker = _tracker_deals()
     by_name = {(d.get("name") or "").strip().lower(): d for d in tracker}
 
-    # the POOL the average is drawn from: recent deals that carry their facts
-    pool_from = w1 - dt.timedelta(days=average_pool_days)
-    pool = []
-    for d in tracker:
-        if not (pool_from <= d["close_date"] <= w1):
-            continue
-        acc = CE.accrue_close(d)
-        if acc["needs_your_number"]:
-            continue
-        pool.append({**d, "counted": CE.counted_for(d)})
-    avg = _blended_average(pool)
-
     # the deals IN the window — from the one close engine
     union = _union_deals(w0, w1)
     deals: list[dict] = []
@@ -114,55 +106,60 @@ def build(window_start: str, window_end: str,
     for u in union:
         nm = str(u.get("person") or u.get("name") or "").strip()
         known = by_name.get(nm.lower())
+        if not known and u.get("ruled") and u["ruled"].get("package"):
+            # #170: the owner ruled this deal's facts — cost it exactly
+            r = u["ruled"]
+            known = {"name": nm, "close_date": dt.date.fromisoformat(str(u["close_date"])[:10]),
+                     "package": r["package"], "payment_type": r.get("payment_type") or "",
+                     "contract": u.get("contract"), "closer": r.get("closer"),
+                     "setter": r.get("setter"), "cash_events": r.get("cash_events") or [],
+                     "facts": "owner ruling"}
         if known:
             counted = CE.counted_for(known)
+            acc = counted["accrued"]
+            # #170: a rate nobody ruled is PENDING, never a silent $0
+            closer_pending = (counted["closer_source"] == "accrued"
+                              and bool(acc["needs_your_number"]))
+            closer_cost = None if closer_pending else counted["closer"]
             deals.append({
                 "name": nm, "close_date": str(known["close_date"]),
-                "package": CE.accrue_close(known)["package"],
+                "package": acc["package"],
                 "closer": known.get("closer"), "setter": known.get("setter"),
                 "contract": known.get("contract"), "cash": u.get("cash"),
-                "closer_cost": counted["closer"], "setter_cost": counted["setter"],
-                "total": counted["total"], "basis": counted["chip"],
-                "exact": True,
+                "closer_cost": closer_cost, "setter_cost": counted["setter"],
+                "total": (None if closer_pending else counted["total"]),
+                "basis": ("; ".join(acc["needs_your_number"]) if closer_pending
+                          else counted["chip"]),
+                "facts": known.get("facts") or "tracker",
+                "exact": not closer_pending, "pending": closer_pending,
             })
             continue
-        # the gap-window class: a real close with no package and no owner
+        # the gap-window class: a real close with no package and no closer.
+        # #170 (Rydel, 29 Sep): NO blended average — the commission is
+        # PENDING, uncounted, and the drawer shows the rulebook's range.
         unmapped_owner += 1
-        if avg.get("available"):
-            deals.append({
-                "name": nm, "close_date": str(u.get("close_date")),
-                "package": None, "closer": None, "setter": None,
-                "contract": u.get("contract"), "cash": u.get("cash"),
-                "closer_cost": avg["closer"], "setter_cost": avg["setter"],
-                "total": avg["total"],
-                "basis": ("average — the tracker has not recorded this deal's "
-                          "package or closer"),
-                "exact": False,
-            })
-        else:
-            deals.append({
-                "name": nm, "close_date": str(u.get("close_date")),
-                "package": None, "closer": None, "setter": None,
-                "contract": u.get("contract"), "cash": u.get("cash"),
-                "closer_cost": None, "setter_cost": None, "total": None,
-                "basis": "needs your number — no facts and no pool to average",
-                "exact": False})
+        deals.append({
+            "name": nm, "close_date": str(u.get("close_date")),
+            "package": None, "closer": None, "setter": None,
+            "contract": u.get("contract"), "cash": u.get("cash"),
+            "closer_cost": None, "setter_cost": None, "total": None,
+            "basis": "commission pending — package or closer not recorded",
+            "exact": False, "pending": True})
 
     if unmapped_owner:
         out["needs_your_number"].append({
             "what": f"{unmapped_owner} close(s) in this window have no package "
                     "and no closer recorded",
-            "why": ("the tracker has recorded no won deal since 2026-07-20, so "
-                    "these are costed at the blended average rather than "
-                    "exactly"),
-            "fix": ("record the package and closer on the tracker — or tell me "
-                    "which GHL user each owner id is and the CRM can supply it")})
+            "why": ("their commission is PENDING — not counted in CAC and not "
+                    "averaged in; the rulebook range is shown beside"),
+            "fix": ("record the package and closer on the tracker, or rule the "
+                    "deal's terms on the register")})
         CE._raise_card({
             "id": f"comp_unmapped_{w0}_{w1}",
-            "title": f"{unmapped_owner} close(s) costed at an average, not exactly",
-            "detail": ("no package or closer is recorded for them; the CRM has "
-                       "owner ids but they are not mapped to people"),
-            "action": "record the package and closer, or map the GHL user ids"})
+            "title": f"commission pending for {unmapped_owner} close(s)",
+            "detail": ("no package or closer is recorded for them, so their "
+                       "commission is not in CAC yet"),
+            "action": "record the package and closer, or rule the deal's terms"})
 
     # ── the setter bounty: per SET, not per close ──
     sets = _sets_in_window(w0, w1)
@@ -195,7 +192,6 @@ def build(window_start: str, window_end: str,
                       + retainer_share + tooling, 2)
     out["deals"] = deals
     out["closes"] = closes
-    out["average"] = avg
     out["sets"] = sets
     out["bounties"] = {"count": sets["count"], "per_set": per_set,
                        "total": bounty_total, "basis": sets["basis"]}
@@ -206,7 +202,8 @@ def build(window_start: str, window_end: str,
         "bounties": bounty_total,
         "total": round(commissions + bounty_total, 2),
         "exact_deals": sum(1 for d in deals if d["exact"]),
-        "averaged_deals": sum(1 for d in deals if not d["exact"]),
+        "pending_deals": sum(1 for d in deals if d.get("pending")),
+        "pending_range": _pending_range(v, sum(1 for d in deals if d.get("pending"))),
     }
     out["true_cac"] = {
         "ad_spend": ad_spend, "commissions": commissions,

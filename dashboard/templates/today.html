@@ -65,6 +65,7 @@
       <span class="s-card-value">{{ t.value }}</span>
       {% endif %}
       {% if t.sub %}<span class="s-card-sub">{{ t.sub }}</span>{% endif %}
+        {% if t.proposed %}<span class="s-card-sub"><a href="{{ t.proposed.href }}">{{ t.proposed.label }}</a></span>{% endif %}
       {% if t.sr_note %}<span class="s-card-sub">{{ t.sr_note }}</span>{% endif %}
 
       <div class="s-card-foot">

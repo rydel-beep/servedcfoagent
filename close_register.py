@@ -280,9 +280,11 @@ def build(days: int = ALL_TIME_DAYS) -> dict:
         if lead and lead.get("contract") is not None:
             contract_val, contract_src, signed = lead["contract"], "tracker contract cell", True
         elif form:
-            fv = next((_money_like(v) for v in form.values() if _money_like(v)), None)
+            fv, why = _form_contract(form)
             if fv:
                 contract_val, contract_src, signed = fv, "closed-deal form (GHL custom field)", True
+            elif why:
+                contract_src = f"closed-deal form: {why} — needs your number"
         if contract_val is None and le and le.get("contract_value") is not None:
             contract_val = le["contract_value"]
             contract_src = le.get("contract_provenance") or "gap-ledger evidence ladder"
@@ -376,6 +378,20 @@ def build(days: int = ALL_TIME_DAYS) -> dict:
             continue
         entries.append(decl["entry"])
 
+    # owner deal-terms rulings (#170) — the contract rung, and a close of
+    # their own when no system has recorded one yet
+    for key, t in deal_terms().items():
+        e = next((x for x in entries if x["key"] == key), None)
+        if e is None:
+            e = _ruling_entry(t)
+            entries.append(e)
+        else:
+            e["sources"].append({"source": "owner ruling",
+                                 "provenance": f"deal terms ruled by {t['by']} "
+                                               f"on {t['at'][:10]}",
+                                 "close_date": t["close_date"]})
+        _apply_terms(e, t)
+
     entries.sort(key=lambda e: e["close_date"], reverse=True)
     out = {
         "at": now_sydney().isoformat(),
@@ -395,6 +411,28 @@ def build(days: int = ALL_TIME_DAYS) -> dict:
                                 "confirmed": out["confirmed"],
                                 "proposed": out["proposed"]})
     return out
+
+
+# #170 (Rydel, 29 Sep): the form's contract value comes from its NAMED field
+# only. The first dollar-looking field could be the upfront payment, a
+# setup fee or a monthly — never read by position or by shape.
+_FORM_CONTRACT_FIELDS = ("contract value", "total contract value",
+                         "contract value ex gst", "contract_value")
+
+
+def _form_contract(form: dict) -> tuple[float | None, str | None]:
+    """(value, None) from exactly one named field; (None, why) otherwise."""
+    hits = {}
+    for k, v in (form or {}).items():
+        kn = re.sub(r"[^a-z ]", "", str(k).lower().replace("_", " ")).strip()
+        if kn in _FORM_CONTRACT_FIELDS and _money_like(v) is not None:
+            hits[k] = _money_like(v)
+    vals = set(hits.values())
+    if len(vals) == 1:
+        return vals.pop(), None
+    if len(vals) > 1:
+        return None, f"ambiguous — {len(vals)} contract fields disagree"
+    return None, "no named contract-value field"
 
 
 def _money_like(v) -> float | None:
@@ -477,6 +515,20 @@ def totals(w0, w1, clock: str = "activity") -> dict:
         "cohort_unplaceable": len(unplaceable),
         "cohort_unplaceable_people": [e["person"] for e in unplaceable],
     }
+
+
+def proposed_note(w0, w1, window_key: str) -> dict | None:
+    """#170 (Rydel, 29 Sep): every tile that counts only CONFIRMED closes says
+    how many proposed ones it left out, with a door to them. One helper, so
+    every surface uses the same words and the same link."""
+    try:
+        n = totals(w0, w1, "activity")["proposed"]
+    except Exception:  # noqa: BLE001
+        return None
+    if not n:
+        return None
+    return {"n": n, "label": f"+{n} proposed, not counted",
+            "href": f"/dashboard/closes?window={window_key}"}
 
 
 # tier → the channel row that carries a close with no creative row on the grid
@@ -665,6 +717,161 @@ def declare_close(person: str, close_date: str, evidence_kind: str,
         build()
     return {"ok": True, "entry": record(key),
             "register_entries": len(latest().get("entries") or [])}
+
+
+# ── OWNER DEAL-TERMS RULINGS (#170) ─────────────────────────────────────────
+# What a human signed that no system recorded: package, term, contract ex-GST,
+# the payment schedule, closer, setter. Rydel's word, VERBATIM, journaled —
+# it is the contract rung of the evidence ladder (above the tracker cell: the
+# owner ruled it explicitly). Cash is NEVER taken from the ruling: a payment
+# counts only when its bank-feed or Stripe evidence id is attached, and a
+# payment into a personal account is never business cash.
+
+K_TERMS = "register:deal_terms"
+_ACCOUNTS = ("business", "personal")
+
+
+def deal_terms() -> dict:
+    return kv_store.get(K_TERMS) or {}
+
+
+def rule_deal_terms(person: str, client: str, close_date: str, package: str,
+                    term_months: int, contract_ex_gst: float,
+                    schedule: list[dict], words: str, actor: str = "rydel",
+                    closer: str | None = None, setter: str | None = None,
+                    payment_type: str | None = None,
+                    contact: str | None = None) -> dict:
+    """schedule: [{"n", "amount", "gst": "inc"|"ex", "due",
+                   "received": date|None, "channel": "bank transfer"|"stripe",
+                   "account": "business"|"personal"|None,
+                   "evidence_id": bank-feed txn id | charge id | None}]"""
+    import comp_rulebook as RB
+    if not (words or "").strip():
+        return {"ok": False, "error": "the ruling's own words are required — "
+                                      "they are the evidence"}
+    if not re.match(r"\d{4}-\d{2}-\d{2}$", str(close_date or "")):
+        return {"ok": False, "error": "close_date must be YYYY-MM-DD"}
+    pkg = RB.normalise_package(package)
+    if pkg is None:
+        return {"ok": False, "error": f"package {package!r} is not one the "
+                                      "rulebook recognises — name it exactly"}
+    if not (contract_ex_gst and float(contract_ex_gst) > 0):
+        return {"ok": False, "error": "contract value ex-GST is required"}
+    for p in schedule or []:
+        if p.get("gst") not in ("inc", "ex"):
+            return {"ok": False, "error": f"payment {p.get('n')}: say whether "
+                                          "the amount is inc or ex GST"}
+        if p.get("received") and p.get("account") not in _ACCOUNTS:
+            return {"ok": False, "error": f"payment {p.get('n')}: a received "
+                                          "payment needs its account "
+                                          "(business or personal)"}
+    key = _norm(person)
+    rec = {"key": key, "person": person, "client": client, "contact": contact,
+           "close_date": close_date, "package": pkg, "package_words": package,
+           "term_months": int(term_months), "payment_type": payment_type,
+           "contract_ex_gst": round(float(contract_ex_gst), 2),
+           "schedule": schedule or [], "closer": closer, "setter": setter,
+           "words": words, "by": actor, "at": now_sydney().isoformat()}
+    terms = deal_terms()
+    prior = terms.get(key)
+    terms[key] = rec
+    kv_store.put(K_TERMS, terms)
+    journal("owner_ruling",
+            f"deal terms ruled for {person} ({client}): {package}, "
+            f"{term_months} months, ${float(contract_ex_gst):,.2f} ex-GST"
+            + (" — supersedes an earlier ruling" if prior else ""),
+            actor, {"words": words, "prior": prior})
+    try:
+        import close_detect
+        close_detect.invalidate_now(f"owner ruled deal terms: {person}")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("register: invalidation after ruling failed: %s", e)
+        build()
+    return {"ok": True, "ruling": rec}
+
+
+def _ex(amount, gst: str) -> float:
+    return round(float(amount) / 1.1, 2) if gst == "inc" else round(float(amount), 2)
+
+
+def _apply_terms(e: dict, t: dict) -> None:
+    """The ruling onto a register entry: contract, package, schedule, and the
+    cash states — counted / pending bank feed / outside business accounts /
+    receivable. Never invents a received payment."""
+    src = f"owner ruling — {t['by']}, {t['at'][:10]}, journaled"
+    tracker_cv = (e.get("contract") or {}).get("value")
+    e["contract"] = {"value": t["contract_ex_gst"], "source": src, "signed": True,
+                     "gst": "ex"}
+    if tracker_cv is not None and abs(float(tracker_cv) - t["contract_ex_gst"]) > 0.5:
+        e["contract"]["conflict"] = (f"the tracker says ${float(tracker_cv):,.2f} "
+                                     "— the ruling is used; fix one of them")
+    e["package"], e["term_months"] = t["package"], t["term_months"]
+    e["payment_type"] = t.get("payment_type")
+    e["client"] = e.get("client") or t.get("client")
+    if t.get("closer"):
+        e["closer"] = t["closer"]
+    if t.get("setter"):
+        e["setter"] = t["setter"]
+    counted, pending, outside, receivable, events = [], [], [], [], []
+    for p in t.get("schedule") or []:
+        row = {"n": p.get("n"), "amount": p.get("amount"), "gst": p.get("gst"),
+               "ex_gst": _ex(p["amount"], p["gst"]), "due": p.get("due"),
+               "received": p.get("received"), "channel": p.get("channel"),
+               "evidence_id": p.get("evidence_id")}
+        events.append({"when": p.get("received") or p.get("due") or t["close_date"],
+                       "amount": p["amount"], "inclusive": p["gst"] == "inc"})
+        if not p.get("received"):
+            receivable.append(row)
+        elif p.get("account") == "personal":
+            outside.append({**row, "state": "cash received outside business "
+                                             "accounts — not business cash"})
+        elif p.get("evidence_id"):
+            counted.append({**row, "state": "counted — evidence on file"})
+        else:
+            pending.append({**row, "state": "cash pending bank feed"})
+    e["ruled_cash"] = {"counted": counted, "pending_bank_feed": pending,
+                       "outside_business_accounts": outside,
+                       "receivable": receivable}
+    e["cash_events"] = events
+    ruled_cash = sum(float(r["amount"]) for r in counted
+                     if r["evidence_id"] not in ((e.get("cash") or {}).get("charge_ids") or []))
+    if ruled_cash:
+        cash = e.setdefault("cash", {"amount": None, "charge_ids": []})
+        cash["amount"] = round(float(cash.get("amount") or 0) + ruled_cash, 2)
+        cash["source"] = "matched Stripe charges + owner-matched bank-feed deposits"
+    e["ruling"] = {"words": t["words"], "by": t["by"], "at": t["at"]}
+    e["missing"] = [m for m in (e.get("missing") or []) if m != "contract value"]
+
+
+def _ruling_entry(t: dict) -> dict:
+    """A close that exists ONLY as the owner's word — labelled as such."""
+    return {
+        "id": f"cr:{t['key']}", "key": t["key"], "person": t["person"],
+        "client": t.get("client"), "email": None, "contact_id": None,
+        "opp_id": None, "close_date": t["close_date"],
+        "dated_by": "owner ruling",
+        "sources": [{"source": "owner ruling",
+                     "provenance": f"ruled by {t['by']} on {t['at'][:10]} — "
+                                   "no system record yet",
+                     "close_date": t["close_date"]}],
+        "corroboration_pending": ["tracker", "ghl stage", "payment"],
+        "status": "confirmed",
+        "contract": {}, "cash": {"amount": None, "charge_ids": [],
+                                 "source": "no matched Stripe/Xero payment on file",
+                                 "tracker_cell": None},
+        "closer": None, "setter": None, "offer": t.get("package_words"),
+        "lead": {"tracker_row": False},
+        "attribution": {"tier": "unattributed",
+                        "why": "owner-ruled close — no lead row to read an ad stamp from",
+                        "creative_key": None, "creative": None},
+        "clocks": {"activity": t["close_date"], "cohort": None,
+                   "cohort_why": "owner-ruled — no lead arrival date"},
+        "evidence": {"owner_ruling": t["at"]},
+        "chips": {"tracker_row": False, "ghl_opp": False, "stripe": False,
+                  "form": False, "ruling": True},
+        "missing": ["tracker close row", "the CRM record"],
+        "declared": True,
+    }
 
 
 def _verify_evidence(kind: str, eid: str) -> dict:

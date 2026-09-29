@@ -105,6 +105,13 @@ def _closes_union(w0: str, w1: str, basis: str) -> list[dict]:
                            f"{e.get('status')}"),
             "evidence": e.get("evidence"),
             "source": f"close register ({e.get('status')})",
+            # #170: owner-ruled deal facts ride with the close so the
+            # commission engine can cost it exactly
+            "ruled": ({"package": e.get("package"),
+                       "payment_type": e.get("payment_type"),
+                       "closer": e.get("closer"), "setter": e.get("setter"),
+                       "cash_events": e.get("cash_events") or []}
+                      if e.get("ruling") else None),
         })
     out.sort(key=lambda o: o["close_date"])
     return out
@@ -672,9 +679,9 @@ def unit_econ_view() -> dict:
                     f"closes. Commissions from the rulebook (v"
                     f"{sc['rule_version']['version']}); "
                     f"{sc['commissions']['exact_deals']} deal(s) costed "
-                    f"exactly, {sc['commissions']['averaged_deals']} at the "
-                    f"blended average because the tracker has not recorded "
-                    f"their package or closer.")
+                    f"exactly; commission pending for "
+                    f"{sc['commissions']['pending_deals']} close(s) — "
+                    f"package or closer not recorded, not counted.")
         except Exception as e:  # noqa: BLE001
             logger.warning("true CAC unavailable, falling back: %s", e)
         if cac_full is None and n:

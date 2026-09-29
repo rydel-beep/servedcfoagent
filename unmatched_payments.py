@@ -68,23 +68,59 @@ def scan(days: int = LOOKBACK_DAYS) -> dict:
         kv_store.put(K_STATE, out)
         return out
     for ch in _charges(days):
-        m = SR._match_payment(ch.get("customer_name") or "", (ch.get("_email") or "").lower(),
-                              ch.get("amount"), idx, roster)
-        row = {"payer": ch.get("customer_name") or "(unnamed Stripe customer)",
-               "amount": ch.get("amount"), "date": str(ch.get("date")),
-               "charge_id": ch.get("id")}
-        if m.get("business"):
-            out["matched"].append({**row, "client": m["business"],
-                                   "basis": m.get("basis")})
-            continue
-        row["category"] = m.get("category")
-        row["suggested"] = m.get("suggested") or []
-        row["why"] = m.get("why") or ("no client matched this payer on an "
-                                      "alias, an email or an exact name")
-        out["rows"].append(row)
-        out["total_unmatched"] += float(ch.get("amount") or 0)
+        _classify_into(out, ch, idx, roster)
     out["total_unmatched"] = round(out["total_unmatched"], 2)
     out["count"] = len(out["rows"])
+    return _store_and_invalidate(out)
+
+
+def _classify_into(out: dict, ch: dict, idx, roster) -> None:
+    """One charge through the ONE matcher, into matched or unmatched."""
+    import stripe_reconcile as SR
+    m = SR._match_payment(ch.get("customer_name") or "", (ch.get("_email") or "").lower(),
+                          ch.get("amount"), idx, roster)
+    row = {"payer": ch.get("customer_name") or "(unnamed Stripe customer)",
+           "amount": ch.get("amount"), "date": str(ch.get("date")),
+           "charge_id": ch.get("id")}
+    if m.get("business"):
+        out["matched"].append({**row, "client": m["business"],
+                               "basis": m.get("basis")})
+        return
+    row["category"] = m.get("category")
+    row["suggested"] = m.get("suggested") or []
+    row["why"] = m.get("why") or ("no client matched this payer on an "
+                                  "alias, an email or an exact name")
+    out["rows"].append(row)
+    out["total_unmatched"] = float(out.get("total_unmatched") or 0) + float(ch.get("amount") or 0)
+
+
+def scan_new(charges: list[dict]) -> dict:
+    """THE 15-MINUTE CURSOR (#170, Rydel 29 Sep — the ≤20-minute contract):
+    only charges this state has never seen go through the matcher and join
+    the standing state. The full scan (slow loop) stays the floor."""
+    st = latest()
+    if not st.get("available"):
+        return {"new": 0, "note": "no standing scan yet — the full scan fills it"}
+    seen = ({r.get("charge_id") for r in st.get("rows") or []}
+            | {m.get("charge_id") for m in st.get("matched") or []})
+    fresh = [c for c in charges or [] if c.get("id") and c["id"] not in seen]
+    if not fresh:
+        return {"new": 0}
+    idx, roster = _index()
+    if idx is None:
+        return {"new": len(fresh), "note": "tracker mirror unreadable — left for the full scan"}
+    out = {**st, "rows": list(st.get("rows") or []),
+           "matched": list(st.get("matched") or []),
+           "at": now_sydney().isoformat(), "incremental": len(fresh)}
+    for ch in fresh:
+        _classify_into(out, ch, idx, roster)
+    out["total_unmatched"] = round(out["total_unmatched"], 2)
+    out["count"] = len(out["rows"])
+    res = _store_and_invalidate(out)
+    return {"new": len(fresh), "newly_matched": res.get("newly_matched") or []}
+
+
+def _store_and_invalidate(out: dict) -> dict:
     # A charge that matched THIS scan and not the last one changes what the
     # register knows (its cash, and a proposed close with a GHL stage becomes
     # confirmed once payment corroborates it). close_detect.tick only

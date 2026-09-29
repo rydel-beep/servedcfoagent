@@ -117,6 +117,14 @@ def detect_gap(force: bool = False) -> dict:
 
     ghl_after = sorted(d for d in ghl_closed_days
                        if last_tracker_close and d > last_tracker_close)
+    # #170 — ONE LATE ROW MUST NOT CLOSE THE GAP BEHIND IT. The start is "the
+    # day after the last tracker close", so Koji's row (23 Sep) snapped it to
+    # 24 Sep and Orlando/Harman/William — still unrecorded in the tracker —
+    # fell out of the ledger with their contracts and charges. The episode's
+    # start now holds at the earliest GHL close the tracker still lacks.
+    held = _held_open_by(rows, cols, last_tracker_close)
+    if held:
+        ghl_after = sorted(set(ghl_after) | {h["close_date"] for h in held})
     if not ghl_after:
         state = {"ok": True, "gap": None, "detected_on": today,
                  "note": "no GHL closed-stage activity after the last "
@@ -126,6 +134,8 @@ def detect_gap(force: bool = False) -> dict:
 
     import datetime as dt
     start = str(dt.date.fromisoformat(last_tracker_close) + dt.timedelta(days=1))
+    if held:
+        start = min(start, min(h["close_date"] for h in held))
     # mirror-vs-human verdict
     mirror_ok = False
     try:
@@ -159,10 +169,56 @@ def detect_gap(force: bool = False) -> dict:
                          "nothing either), an upstream outage, NOT part of "
                          "this tracker gap",
     }
+    if held:
+        state["held_open_by"] = [{"person": h["person"], "close_date": h["close_date"]}
+                                 for h in held]
     kv_store.put(_KV_STATE, state)
     journal("gap detected", f"{start} → {today} (last tracker close "
                             f"{last_tracker_close}); verdict: {state['verdict'][:80]}")
     return state
+
+
+_JOURNAL_START_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}) →")
+
+
+def _episode_start(lookback_days: int = 120) -> str | None:
+    """The earliest start this gap episode has had — from the journal, so a
+    window that already moved forward (production, 29 Sep) is recovered."""
+    import datetime as dt
+    floor = str(today_sydney() - dt.timedelta(days=lookback_days))
+    starts = []
+    for j in kv_store.get(_KV_JOURNAL) or []:
+        if j.get("event") != "gap detected" or str(j.get("at")) < floor:
+            continue
+        m = _JOURNAL_START_RE.match(str(j.get("detail") or ""))
+        if m:
+            starts.append(m.group(1))
+    return min(starts) if starts else None
+
+
+def _held_open_by(rows: list, cols: dict, last_tracker_close: str | None) -> list[dict]:
+    """GHL closed-stage closes inside this episode (from its earliest start to
+    the last tracker close) whose person has NO tracker close row. Each one
+    holds the gap's start open — evidence, not memory: the list empties the
+    moment the tracker records them."""
+    ep = _episode_start()
+    if not (ep and last_tracker_close and ep <= last_tracker_close):
+        return []
+    ci, cc, cb = cols.get("name"), cols.get("close_date"), cols.get("business")
+    recorded = set()
+    for r in rows[1:]:
+        if cc is None or cc >= len(r) or not _parse_date(r[cc]):
+            continue
+        for k in (ci, cb):
+            if k is not None and k < len(r) and _norm(r[k]):
+                recorded.add(_norm(r[k]))
+    held = []
+    for o in _ghl_closed_in_window(ep, last_tracker_close):
+        names = {_norm(o.get("contact_name")), _norm(o.get("opp_name"))} - {""}
+        if names and not (names & recorded):
+            held.append({"person": o.get("contact_name") or o.get("opp_name"),
+                         "close_date": o["close_date"]})
+    return sorted(held, key=lambda h: h["close_date"])
 
 
 def gap_window() -> tuple[str, str] | None:

@@ -17,7 +17,7 @@ THE CURRENT RULES (Rydel, 2026-09-22 — DECISIONS #159)
                COMMISSION, never an extra company cost.
   R-COBY       Coby as junior closer: the COMPANY'S TOTAL on a Coby-closed
                deal is his junior rate ($550 GP · $1,000 SE PIF · $1,000 SE
-               split, $500 per collection). Kalin's 3% is DEDUCTED from that
+               split, pro-rata per collection — $333.33 on a three-payment split). Kalin's 3% is DEDUCTED from that
                total; Coby nets the remainder.
   R-GST        every % basis is EX-GST. Cash from Stripe/Xero is GST-
                inclusive and is divided by 1.1 before any rate is applied.

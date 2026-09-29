@@ -165,12 +165,24 @@ def _fmt_age(h: float | None) -> str:
 
 
 def _tile(tid, label, value, sub="", stamp="", state="ok", drawer=None,
-          sr_note="", raw=None):
+          sr_note="", raw=None, proposed=None):
     """raw = the unformatted number, published as data-value so the
-    consistency scan compares numbers rather than parsing prose."""
+    consistency scan compares numbers rather than parsing prose.
+    proposed = close_register.proposed_note(...) for tiles that count only
+    confirmed closes (#170)."""
     return {"id": tid, "label": label, "value": value, "sub": sub,
             "stamp": stamp, "state": state, "drawer": drawer,
-            "sr_note": sr_note, "raw": raw}
+            "sr_note": sr_note, "raw": raw, "proposed": proposed}
+
+
+def _proposed_mtd():
+    try:
+        import close_register as CR
+        from helpers import today_sydney as _t
+        t = _t()
+        return CR.proposed_note(str(t.replace(day=1)), str(t), "mtd")
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _cache(key) -> tuple[dict | None, float | None, str | None]:
@@ -317,7 +329,7 @@ def build_tiles(snap: dict | None) -> list[dict]:
                 # finding: the tiles wore the wrong clock's name)
                 f"honest unit-econ engine · activity clock (MTD) · computed {_fmt_age(unit_age)}",
                 state, drawer=tid, raw=v,
-                sr_note=(unit_err or "")))
+                sr_note=(unit_err or ""), proposed=_proposed_mtd()))
     except Exception as e:  # noqa: BLE001
         for tid, label in (("ltv_cac", "LTV : CAC"), ("ltgp_cac", "LTGP : CAC")):
             tiles.append(_tile(tid, label, "—", str(e)[:80], "", "degraded"))
@@ -340,7 +352,7 @@ def build_tiles(snap: dict | None) -> list[dict]:
             val, sub,
             f"finance-analysis engine · computed {_fmt_age(roas_age)}",
             "degraded" if (roas_err or v is None and roas is None) else _state_for(roas_age, roas_err),
-            drawer=None, raw=v, sr_note=roas_err or ""))
+            drawer=None, raw=v, sr_note=roas_err or "", proposed=_proposed_mtd()))
     except Exception as e:  # noqa: BLE001
         tiles.append(_tile("cohort_cash_roas", _roas_label,
                            "—", str(e)[:80], "", "degraded"))

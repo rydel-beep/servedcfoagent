@@ -405,6 +405,10 @@ def tick() -> dict:
                 kv_store.put("stripe:last_pull",
                              {"at": now_sydney().isoformat(), "n": len(ch)})
                 out["stripe_probe"] = len(ch)
+                # #170: the probe's charges are no longer thrown away — any
+                # this system hasn't seen are matched now, not in two hours
+                import unmatched_payments
+                out["stripe_new"] = unmatched_payments.scan_new(ch)
     except Exception as e:  # noqa: BLE001
         logger.info("freshness tick: stripe probe failed: %s", e)
 

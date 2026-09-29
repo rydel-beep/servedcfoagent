@@ -60,6 +60,7 @@
         </div>
         <div class="exec-tile-value">{{ t.value }}</div>
         {% if t.sub %}<div class="exec-tile-sub">{{ t.sub }}</div>{% endif %}
+        {% if t.proposed %}<div class="exec-tile-sub"><a href="{{ t.proposed.href }}">{{ t.proposed.label }}</a></div>{% endif %}
         {% if t.sr_note %}<div class="exec-tile-note">⚠ {{ t.sr_note }}</div>{% endif %}
         <div class="exec-tile-stamp">
           {% if t.state == 'amber' %}<span class="stamp-flag stamp-amber">stale</span>{% endif %}
