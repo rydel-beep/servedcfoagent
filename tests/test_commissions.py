@@ -340,8 +340,10 @@ def test_no_surviving_second_commission_path():
     assert "comm_est = comm_rate *" not in ce
     assert "_modelled_comm(" in ce
 
-    fa = _read("finance_analysis.py")
-    assert "import sales_cost" in fa, "the CAC tiles must read the one engine"
+    # #170: the CAC tiles read unit_econ_engine, which reads sales_cost
+    ue = _read("unit_econ_engine.py")
+    assert "import sales_cost" in ue, "the CAC tiles must read the one engine"
+    assert "unit_econ_engine" in _read("finance_analysis.py")
 
     js = _read(os.path.join("dashboard", "static", "js", "sim_core.js"))
     assert "comm_per_close" in js, "the client must use the rulebook cost too"

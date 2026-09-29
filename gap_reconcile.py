@@ -75,6 +75,11 @@ def _parse_date(v) -> str | None:
     return None
 
 
+# bumped when the detection rule changes, so a same-day cache from the old
+# rule is recomputed on the first read after a deploy (#170: held-open start)
+_GAP_RULE = 2
+
+
 def detect_gap(force: bool = False) -> dict:
     """Evidence-based window: tracker close-column daily cadence vs GHL
     closed-stage daily cadence. The gap starts the day after the LAST
@@ -83,7 +88,8 @@ def detect_gap(force: bool = False) -> dict:
     from sheet_sync_state (a healthy mirror + missing cells = HUMAN gap)."""
     today = str(today_sydney())
     cached = kv_store.get(_KV_STATE)
-    if cached and not force and cached.get("detected_on") == today:
+    if (cached and not force and cached.get("detected_on") == today
+            and cached.get("rule") == _GAP_RULE):
         return cached
     import attribution_engine as AE
     rows = _tracker_rows()
@@ -126,7 +132,7 @@ def detect_gap(force: bool = False) -> dict:
     if held:
         ghl_after = sorted(set(ghl_after) | {h["close_date"] for h in held})
     if not ghl_after:
-        state = {"ok": True, "gap": None, "detected_on": today,
+        state = {"ok": True, "gap": None, "detected_on": today, "rule": _GAP_RULE,
                  "note": "no GHL closed-stage activity after the last "
                          "tracker close — no gap"}
         kv_store.put(_KV_STATE, state)
@@ -146,7 +152,7 @@ def detect_gap(force: bool = False) -> dict:
     except Exception:
         pass
     state = {
-        "ok": True, "detected_on": today,
+        "ok": True, "detected_on": today, "rule": _GAP_RULE,
         "gap": {"start": start, "end": today,
                 "open": True,
                 "scope": "close/contract/cash columns (downstream); lead "

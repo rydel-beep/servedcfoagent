@@ -20,8 +20,8 @@
      tooling         = fixed base + per-seat × sales seats
      cac      = (spend + commissions + bounties + fixed + headcount
                  + tooling) ÷ clients
-     ltv:cac  = avg contract ÷ cac
-     ltgp:cac = (avg contract × margin) ÷ cac                            */
+     ltv:cac  = engine lifetime value per client (ltv_avg) ÷ cac
+     ltgp:cac = engine lifetime gross profit per client (ltgp_avg) ÷ cac                            */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.SimCore = factory();
@@ -84,7 +84,13 @@
     var acq = spend + comm + bounties + monthlyFixed + capCost + tooling;
     var cac = clients >= 0.01 ? acq / clients : null;
     var cacSpendOnly = clients >= 0.01 ? spend / clients : null;
-    var ltgpPerClient = agg.contract_avg * agg.margin_avg;
+    /* #170: lifetime value per client comes from the ONE engine (server
+       ltv_avg / ltgp_avg); the bare contract is only a fallback for an old
+       payload. */
+    var ltvPerClient = (agg.ltv_avg !== undefined && agg.ltv_avg !== null)
+      ? agg.ltv_avg : agg.contract_avg;
+    var ltgpPerClient = (agg.ltgp_avg !== undefined && agg.ltgp_avg !== null)
+      ? agg.ltgp_avg : agg.contract_avg * agg.margin_avg;
     var capExtra = gapS + gapC;
     var capLabel = capExtra
       ? ('sales headcount needed at this volume: +' + capExtra +
@@ -117,7 +123,7 @@
          kind: (agg.tooling_per_seat ? 'fixed base + per-seat' : 'fixed')}
       ],
       cac: cac, cac_spend_only: cacSpendOnly,
-      ltv_cac: cac ? agg.contract_avg / cac : null,
+      ltv_cac: cac ? ltvPerClient / cac : null,
       ltgp_per_client: ltgpPerClient,
       ltgp_cac: cac ? ltgpPerClient / cac : null,
       payback_months: payback

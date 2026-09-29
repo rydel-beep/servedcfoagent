@@ -318,15 +318,32 @@ def unit_economics(range_start: str, range_end: str) -> dict:
                                 "SALES_TOOLING_MONTHLY config) + $0 fixed "
                                 "sales labour (commission-only team)",
             "cac_spend_only": "Meta spend only — never confuse with loaded"}
-        # SCRUTINY FIX (#150): LTV:CAC needs no margin — it was gated behind
-        # the Xero gross-margin read for no reason (Xero down nulled it).
-        if cac > 0 and comp["avg_contract"]:
-            ltv_cac = round(comp["avg_contract"] / cac, 2)
-        if margin is not None and comp["avg_contract"]:
-            ltgp = comp["avg_contract"] * (margin / 100)
-            comp["ltgp"] = round(ltgp, 2)
-            if cac > 0:
-                ltgp_cac = round(ltgp / cac, 2)
+    # #170 — ONE ENGINE: LTV:CAC, LTGP:CAC and loaded CAC for ANY range come
+    # from unit_econ_engine.window (register closes, rulebook commissions,
+    # measured renewal/completion, expected + floor). This module keeps the
+    # funnel, ROAS and the tracker cross-reference; it no longer does its
+    # own unit-economics maths (avg contract ÷ tracker-cell CAC).
+    try:
+        import unit_econ_engine as UE
+        w = UE.window(range_start, range_end, "range")
+        cac = w["cac_loaded"]
+        comp["cac_loaded"] = cac
+        comp["cac_fully_loaded"] = cac
+        comp["cac_spend_only"] = w["cac_spend_only"]
+        comp["closes_register"] = w["closes"]
+        comp["ltv_expected"] = w["ltv_expected"]
+        comp["ltv_floor"] = w["ltv_floor"]
+        comp["ltgp"] = w["ltgp_expected"]
+        comp["ltv_cac_floor"] = w["ltv_cac_floor"]
+        comp["ltgp_cac_floor"] = w["ltgp_cac_floor"]
+        comp["ltv_pending"] = w["ltv_pending"]
+        comp["engine"] = "unit_econ_engine.window"
+        ltv_cac, ltgp_cac = w["ltv_cac_expected"], w["ltgp_cac_expected"]
+        if w["closes"] and not closes:
+            caveats = [c for c in caveats if not c.startswith("No closes")]
+    except Exception as e:  # noqa: BLE001
+        caveats.append(f"unit-economics engine unavailable: {str(e)[:80]}")
+    if closes:
         if ad_spend and ad_spend > 0:
             # ROAS = CONTRACTED revenue ÷ Meta spend (Rydel-locked 2026-07-03).
             # #149 renamed the family: THIS figure is CONTRACT ROAS; cash ROAS
@@ -466,20 +483,32 @@ def _one_line(metric: str, res: dict, label: str) -> str:
                 f"${c['ad_spend'] or 0:,.0f} Meta spend (contracted basis).")
     if metric.startswith("ltv"):
         v = res["ltv_cac"]
+        if v is None and c.get("ltv_cac_floor") is not None:
+            return (f"LTV:CAC for {label}: expected not yet measured — signed floor "
+                    f"{c['ltv_cac_floor']}× (contracts in hand ÷ CAC "
+                    f"${c.get('cac_loaded') or 0:,.0f}, {c.get('closes_register')} closes).")
         if v is None:
             return f"LTV:CAC for {label}: n/a ({'; '.join(res['caveats']) or 'no closes'})."
-        return (f"LTV:CAC for {label}: {v}× — avg contract ${c['avg_contract']:,.0f} ÷ "
-                f"CAC ${c['cac_loaded']:,.0f}.")
+        return (f"LTV:CAC for {label}: {v}× — expected lifetime value "
+                f"${c.get('ltv_expected') or 0:,.0f} ÷ CAC ${c.get('cac_loaded') or 0:,.0f} "
+                f"({c.get('closes_register')} closes); signed floor {c.get('ltv_cac_floor')}×.")
     if metric == "cac":
         v = res["cac_loaded"]
-        return (f"Loaded CAC for {label}: ${v:,.0f} — {c.get('cac_breakdown', 'n/a')}." if v is not None
+        return (f"Loaded CAC for {label}: ${v:,.0f} — ad spend + rulebook commissions + "
+                f"set bounties + manager retainer + sales tooling, over "
+                f"{c.get('closes_register')} closes." if v is not None
                 else f"CAC for {label}: n/a ({'; '.join(res['caveats'])}).")
     # default LTGP:CAC (or 'economics' → lead with it)
     v = res["ltgp_cac"]
+    if v is None and c.get("ltgp_cac_floor") is not None:
+        return (f"LTGP:CAC for {label}: expected not yet measured — signed floor "
+                f"{c['ltgp_cac_floor']}× (gross profit on contracts in hand ÷ CAC "
+                f"${c.get('cac_loaded') or 0:,.0f}, {c.get('closes_register')} closes).")
     if v is None:
         return f"LTGP:CAC for {label}: n/a ({'; '.join(res['caveats']) or 'no closes'})."
-    return (f"LTGP:CAC for {label}: {v}× — LTGP ${c['ltgp']:,.0f} ÷ CAC ${c['cac_loaded']:,.0f} "
-            f"({c['cac_breakdown']}).")
+    return (f"LTGP:CAC for {label}: {v}× — expected LTGP ${c.get('ltgp') or 0:,.0f} ÷ CAC "
+            f"${c.get('cac_loaded') or 0:,.0f} ({c.get('closes_register')} closes); "
+            f"signed floor {c.get('ltgp_cac_floor')}×.")
 
 
 def _which_metric(t: str) -> str:
@@ -500,6 +529,9 @@ def handle_unit_econ_command(text: str) -> tuple[str | None, bool]:
 
     Returns (reply, handled). handled=False → not a unit-economics question.
     """
+    rep, ok = handle_client_ltv(text or "")
+    if ok:
+        return rep, True
     is_cohort = bool(text and _COHORT_RE.search(text))
     if not text or not (_METRIC_RE.search(text) or is_cohort):
         return None, False
@@ -526,6 +558,10 @@ def handle_unit_econ_command(text: str) -> tuple[str | None, bool]:
             return _compare_reply(metric, left[2], rl, right[2], rr), True
 
     rng = parse_range(text, today)
+    if not rng and metric in ("ltv", "ltgp", "cac"):
+        # #170: no range named → THE HEADLINE, read from the same cached
+        # engine view the Today tile renders (Scan 2: equal by construction)
+        return headline_reply(metric), True
     if not rng:
         # default to trailing 30d (the dashboard window) and say so
         rng = (today - dt.timedelta(days=29), today, "the last 30 days (default)")
@@ -537,6 +573,99 @@ def handle_unit_econ_command(text: str) -> tuple[str | None, bool]:
     if extra:
         reply += " " + " ".join(extra)
     return reply, True
+
+
+def _engine_view() -> dict:
+    """The tile's own cached engine view; computed only if the cache is cold."""
+    import kv_store
+    cached = ((kv_store.get("exec:cache:unit_econ") or {}).get("data") or {}).get("engine")
+    if cached:
+        return cached
+    import unit_econ_engine as UE
+    return UE.view()
+
+
+def headline_reply(metric: str) -> str:
+    """The answer contract (#170): sentence 1 = the trailing-90-day expected
+    ratio with its window and as-of; then the floor, the renewal assumption
+    with its n, and one line on month to date."""
+    v = _engine_view()
+    h, mtd, inp = v["headline"], v["mtd"], v["inputs"]
+    asof = str(v.get("as_of") or "")[:16].replace("T", " ")
+    w = f"{h['window']['start']} → {h['window']['end']}"
+    if metric == "cac":
+        if h["cac_loaded"] is None:
+            return f"No closes in the last 90 days ({w}) — CAC is undefined."
+        return (f"Loaded CAC over the last 90 days ({w}, as of {asof}) is "
+                f"${h['cac_loaded']:,.0f} per close across {h['closes']} closes; "
+                f"spend-only ${h['cac_spend_only']:,.0f}. Month to date: "
+                f"${(mtd['cac_loaded'] or 0):,.0f} on {mtd['closes']} closes — "
+                f"few closes, moves a lot.")
+    key = "ltgp_cac" if metric == "ltgp" else "ltv_cac"
+    name = "LTGP:CAC" if metric == "ltgp" else "LTV:CAC"
+    exp, fl = h[f"{key}_expected"], h[f"{key}_floor"]
+    if exp is None and fl is None:
+        return (f"{name} over the last 90 days ({w}) is undefined — no close in "
+                "the window carries a contract value yet.")
+    first = (f"{name} over the last 90 days ({w}, as of {asof}) is {exp:.2f}× expected."
+             if exp is not None else
+             f"{name} over the last 90 days ({w}, as of {asof}): expected is not yet "
+             f"measured; the signed floor is {fl:.2f}×.")
+    parts = [first]
+    if exp is not None and fl is not None:
+        parts.append(f"On signed contracts alone it is {fl:.2f}×.")
+    if inp.get("measured"):
+        parts.append(f"That assumes {inp['renewal_pct']}% of clients renew "
+                     f"(measured on {inp['renewal_n']} ended terms, 95% range "
+                     f"{inp['renewal_ci95'][0]}–{inp['renewal_ci95'][1]}%) and "
+                     f"{inp['completion_pct']}% of each contract is collected.")
+    if mtd.get(f"{key}_expected") is not None:
+        parts.append(f"Month to date it reads {mtd[f'{key}_expected']:.2f}× on "
+                     f"{mtd['closes']} closes — few closes, moves a lot.")
+    if h.get("ltv_pending"):
+        parts.append(f"{len(h['ltv_pending'])} close(s) have no contract value yet "
+                     f"and aren't in the lifetime value: {', '.join(h['ltv_pending'][:4])}.")
+    return " ".join(parts)
+
+
+_CLIENT_LTV_RE = re.compile(
+    r"what did (?P<a>.+?) buy|(?P<b>[\w' &-]+?)(?:'s)? (?:ltv|lifetime value)\b", re.I)
+
+
+def handle_client_ltv(text: str) -> tuple[str | None, bool]:
+    """'What did Amoroso buy / what's their LTV?' — from the register; a
+    missing input is named, never guessed."""
+    m = _CLIENT_LTV_RE.search(text or "")
+    if not m:
+        return None, False
+    who = (m.group("a") or m.group("b") or "").strip().lower()
+    who = re.sub(r"^(what(?:'s| is)|and|our)\s+", "", who).strip()
+    if not who or who in ("our", "the", "average", "expected", "client", "a client"):
+        return None, False
+    import close_register as CR
+    import unit_econ_engine as UE
+    tok = re.sub(r"[^a-z0-9]", "", who)
+    hits = [e for e in CR.latest().get("entries") or []
+            if tok and (tok in re.sub(r"[^a-z0-9]", "", str(e.get("client") or "").lower())
+                        or tok in re.sub(r"[^a-z0-9]", "", str(e.get("person") or "").lower()))]
+    if not hits:
+        return None, False
+    e = hits[0]
+    r = UE.ltv_for(e, UE.inputs())
+    pkg = e.get("package") or e.get("offer")
+    head = (f"{e.get('client') or e.get('person')} closed {e.get('close_date')} "
+            f"({e.get('status')}).")
+    if r["floor"] is None:
+        return (head + " Package and contract value: needs your number — no "
+                "tracker row, closed-deal form or ruling records them"
+                + (f" (the payment says {e['cash']['amount']:,.2f} landed — an "
+                   "amount is never read as a package)" if (e.get("cash") or {}).get("amount") else "")
+                + "."), True
+    bits = [head, f"Package: {pkg or 'needs your number'}; contract "
+                  f"${r['floor']:,.2f} ex-GST ({r.get('contract_source')})."]
+    if r.get("expected") is not None:
+        bits.append(f"Expected lifetime value ${r['expected']:,.2f} — {r['working']}.")
+    return " ".join(bits), True
 
 
 def _compare_reply(metric: str, la: str, ra: dict, lb: str, rb: dict) -> str:

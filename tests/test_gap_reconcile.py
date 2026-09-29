@@ -133,7 +133,7 @@ def test_close_ledger_auto_requires_payment(monkeypatch):
     missing. The dedupe skip: a person already derived/tracker-dated is ONE
     event (never re-placed)."""
     store = _kv(monkeypatch)
-    store["gap:state"] = {"detected_on": str(__import__("helpers").today_sydney()),
+    store["gap:state"] = {"detected_on": str(__import__("helpers").today_sydney()), "rule": 2,
                           "gap": {"start": "2026-07-21", "end": "2026-09-17"},
                           "evidence": {}, "verdict": "test"}
     monkeypatch.setattr(G, "_ghl_closed_in_window", lambda w0, w1: [
@@ -178,7 +178,7 @@ def test_close_ledger_auto_requires_payment(monkeypatch):
 
 def test_conflict_surfaced_never_merged(monkeypatch):
     store = _kv(monkeypatch)
-    store["gap:state"] = {"detected_on": str(__import__("helpers").today_sydney()),
+    store["gap:state"] = {"detected_on": str(__import__("helpers").today_sydney()), "rule": 2,
                           "gap": {"start": "2026-07-21", "end": "2026-09-17"}}
     monkeypatch.setattr(G, "_ghl_closed_in_window", lambda w0, w1: [
         {"opp_id": "o", "contact_id": "c", "opp_name": "P: x",
@@ -258,19 +258,25 @@ def test_verdict_decided_by_contract_roas_and_payback(monkeypatch):
     assert v2["healthy"] is False and "NOT just timing" in v2["verdict"]
 
 
-def test_ltv_inputs_carry_provenance(monkeypatch):
-    import csm_baselines
-    monkeypatch.setattr(csm_baselines, "measure_renewal_rate", lambda: {
-        "value": 100.0, "lower_bound": 29.2,
-        "label": "measured 2026-09-17 (bounded — survivorship-limited)"})
-    monkeypatch.setattr(csm_baselines, "measure_in_term_completion",
-                        lambda: {"value": None, "label": "placeholder"})
+def test_ltv_inputs_are_measured_never_a_bound_or_placeholder(monkeypatch):
+    """SUPERSEDED by #170: this test used to PIN the defect — renewal at the
+    B1 upper bound (100%) and completion at the 85% placeholder. The inputs
+    now come only from the payment-history measurement; unmeasured is None
+    with its reason, never a stand-in number."""
+    import kv_store
+    import unit_econ_engine as UE
+    kv_store.delete(UE.K_MEASURED)
     inputs = F._ltv_inputs()
-    assert "measured" in inputs["renewal_provenance"]
-    assert "lower bound 29.2" in inputs["renewal_provenance"]
-    assert inputs["in_term_completion_pct"] == 85.0        # placeholder kept
-    assert "placeholder" in inputs["completion_provenance"]
-    assert F._ltv_of(18300, inputs) == round(18300 * 0.85 + 18300 * 1.0, 2)
+    assert inputs["renewal_rate_pct"] is None
+    assert inputs["in_term_completion_pct"] is None
+    assert "not yet measured" in inputs["renewal_provenance"]
+    kv_store.put(UE.K_MEASURED, {"measured": "2026-09-29", "month": "2026-09",
+                                 "renewal": {"value": 22.2, "n": 18, "ci95": [9.0, 45.2]},
+                                 "completion": {"value": 72.7, "n": 18}})
+    inputs = F._ltv_inputs()
+    assert inputs["renewal_rate_pct"] == 22.2 and inputs["in_term_completion_pct"] == 72.7
+    assert "n=18" in inputs["renewal_provenance"]
+    kv_store.delete(UE.K_MEASURED)
 
 
 def test_gap_drills_registered_on_both_lists():

@@ -394,6 +394,16 @@ def tick() -> dict:
     except Exception as e:  # noqa: BLE001
         logger.warning("freshness tick: close register daily tick failed: %s", e)
 
+    # #170: the sentinel re-measures renewal + completion from payment history
+    # once a calendar month (and on a cold store) — n and the 95% interval
+    # stored with it, journaled with the prior value.
+    try:
+        import unit_econ_engine
+        if unit_econ_engine.monthly_tick():
+            out["unit_econ_measured"] = True
+    except Exception as e:  # noqa: BLE001
+        logger.warning("freshness tick: unit-econ re-measure failed: %s", e)
+
     # #165: keep the Stripe stamp honest — a tiny 2-day charge probe when
     # the last pull is older than 15 minutes. Read-only, one page.
     try:

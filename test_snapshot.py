@@ -611,7 +611,7 @@ def test_hormozi_metrics():
                           "cac_breakdown": "ad + closer + setter ÷ 4 closes", "window": {"days": 30}}}
     m1 = m1_ltgp_cac(mock, {}, eng)
     assert m1["value"] == 1.93 and m1["status"] == "critical"   # 1.93 < 2 → critical
-    assert m1["inputs_used"]["engine"] == "unit_economics(trailing 30d)"
+    assert m1["inputs_used"]["engine"] == "unit_economics(trailing 90d)"   # #170: the headline window
     print(f"  M1 LTGP:CAC = {m1['value']}× (status={m1['status']})")
 
     # M2: CAC breakdown (delegated)

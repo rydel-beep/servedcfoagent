@@ -118,35 +118,22 @@ def _closes_union(w0: str, w1: str, basis: str) -> list[dict]:
 
 
 def _ltv_inputs() -> dict:
-    """Measured-where-measured LTV inputs, provenance on each."""
-    try:
-        import csm_baselines
-        b1 = csm_baselines.measure_renewal_rate()
-        itc = csm_baselines.measure_in_term_completion()
-    except Exception:
-        b1, itc = {}, {}
-    renewal = (b1.get("value") if b1.get("value") is not None else 40.0)
-    renewal_low = b1.get("lower_bound")
-    completion = (itc.get("value") if itc.get("value") is not None else 85.0)
+    """The engine's MEASURED inputs in this module's legacy keys (#170). No
+    placeholder, no bound: unmeasured reads as None with the reason."""
+    import unit_econ_engine as UE
+    i = UE.inputs()
     return {
-        "renewal_rate_pct": renewal,
-        "renewal_provenance": (b1.get("label") or "placeholder 40% (source model)")
-                              + (f"; lower bound {renewal_low}%"
-                                 if renewal_low is not None else ""),
-        "renewal_lower_bound_pct": renewal_low,
-        "in_term_completion_pct": completion,
-        "completion_provenance": itc.get("label") or "placeholder 85% (source model)",
-        "formula": "LTV = contract value × in-term completion + renewal "
-                   "rate × contract value (one renewal expectation — "
-                   "conservative; renewal term valued at the same contract)",
+        "renewal_rate_pct": i["renewal_pct"],
+        "renewal_provenance": (f"measured {i['measured_on']} from payment history, "
+                               f"n={i['renewal_n']}, 95% {i['renewal_ci95']}"
+                               if i["measured"] else i["note"]),
+        "in_term_completion_pct": i["completion_pct"],
+        "completion_provenance": (f"measured {i['measured_on']}, n={i['completion_n']}"
+                                  if i["measured"] else i["note"]),
+        "horizon_months": i["horizon_months"],
+        "formula": "unit_econ_engine — expected (measured completion + renewals "
+                   "inside the horizon) and floor (signed contract)",
     }
-
-
-def _ltv_of(contract: float | None, inputs: dict) -> float | None:
-    if not contract:
-        return None
-    return round(contract * inputs["in_term_completion_pct"] / 100.0
-                 + contract * inputs["renewal_rate_pct"] / 100.0, 2)
 
 
 def payback_schedule(close: dict) -> dict:
@@ -224,8 +211,12 @@ def window_report(name: str, basis: str = "activity") -> dict:
     cohort_cash = sum(float(c.get("cash") or 0) for c in closes)
     receipts = _receipts_in_window(w0, w1)
     inputs = _ltv_inputs()
-    ltv_total = sum(v for v in (_ltv_of(c.get("contract"), inputs)
-                                for c in closes) if v)
+    import close_register as CR
+    import unit_econ_engine as UE
+    _ui = UE.inputs()
+    ltv_total = sum(r["expected"] or 0 for r in (
+        UE.ltv_for(e, _ui) for e in CR.closes(
+            str(w0), str(w1), "cohort" if basis == "cohort" else "activity")))
     sp = float(spend.get("spend") or 0)
 
     def _r(x):
@@ -596,187 +587,113 @@ def handle_finance_command(text: str) -> tuple[str | None, bool]:
     return None, False
 
 
-# ── unit economics view (#150 — D3): ratios per cohort / trailing / package ─
+# ── unit economics view — a READ of the one engine (#170) ──────────────────
+# The maths that lived here (LTV = contract × (completion + renewal), with the
+# renewal at its UPPER BOUND, an 85% placeholder, an MTD headline and no
+# floor) moved to unit_econ_engine. This keeps the legacy shape the landing,
+# cards and briefing read, and nothing else.
+
+def _legacy_window(w: dict) -> dict:
+    return {
+        "window": w["window"], "closes": w["closes"],
+        "cac_fully_loaded": w["cac_loaded"], "true_cac": None,
+        "cac_spend_only": w["cac_spend_only"],
+        "avg_ltv_per_close": w["ltv_expected"],
+        "avg_ltv_floor": w["ltv_floor"],
+        "ltv_to_cac": w["ltv_cac_expected"], "ltgp_to_cac": w["ltgp_cac_expected"],
+        "ltv_to_cac_floor": w["ltv_cac_floor"], "ltgp_to_cac_floor": w["ltgp_cac_floor"],
+        "ltv_known": w["ltv_known"], "ltv_pending": w["ltv_pending"],
+        "commission_pending": w.get("commission_pending"),
+        "sensitivity": w.get("sensitivity"),
+    }
+
 
 def unit_econ_view() -> dict:
-    """LTV:CAC + LTGP:CAC with honest inputs: fully-loaded vs spend-only CAC
-    both present; LTV per package from the config term authority; LTGP via
-    GROSS margin from the P&L engine (FY26 63.8% as the labelled fallback —
-    contribution is never used: it already subtracts acquisition, #165).
-    Benchmark 3:1 labelled 'benchmark, not target'."""
-    import range_unit_economics as RUE
-    from config import PACKAGE_TERMS
-    inputs = _ltv_inputs()
-    # #165 — F2 CLOSED: this used to fall back to "FY26 contribution margin
-    # 42.9%", and contribution already subtracts advertising and commissions
-    # — the acquisition costs that ARE CAC. LTGP:CAC was dividing by
-    # acquisition twice (2.95× where the honest figure is ≈4.4×). Hormozi's
-    # LTGP is revenue − DELIVERY cost only, so the margin is GROSS, from the
-    # one P&L engine, with FY26's 63.8% as the labelled fallback.
-    try:
-        import pl_engine
-        gm = pl_engine.gross_margin_for_ltgp()
-        margin_val, margin_prov = gm["pct"], gm["provenance"]
-    except Exception as e:
-        margin_val = 63.8
-        margin_prov = (f"FY26 gross margin 63.8% (labelled fallback; the P&L "
-                       f"engine was unavailable: {str(e)[:60]})")
-    margin_prov += (" — basis changed from contribution to GROSS: "
-                    "contribution double-counted acquisition")
-    out = {"benchmark": {"value": 3.0,
-                         "label": "3:1 — benchmark, not target"},
-           "ltv_inputs": inputs, "margin_provenance": margin_prov,
-           "windows": {}}
-    t = today_sydney()
-    for name, (w0, w1) in (("cohort_month", (t.replace(day=1), t)),
-                           ("trailing_90d", (t - dt.timedelta(days=89), t))):
-        ue = RUE.unit_economics(str(w0), str(w1))   # ISO strings — the contract
-        comp = {} if ue.get("error") else (ue.get("components") or {})
-        closes = _closes_union(str(w0), str(w1), "activity")
-        # per-close LTV from the close's own package where known
-        ltv_total, by_pkg = 0.0, {}
-        for c in closes:
-            cv = c.get("contract")
-            pkg = None
-            try:
-                from snapshot import load_persisted
-                pool = ((load_persisted() or {}).get("active_clients") or {}).get("active") or []
-                row = next((x for x in pool
-                            if c.get("client_row") and x.get("name") == c["client_row"]), None)
-                pkg = (row or {}).get("package")
-            except Exception:
-                pass
-            ltv = _ltv_of(cv, inputs)
-            if ltv:
-                ltv_total += ltv
-                key = (pkg or "unknown").lower()
-                agg = by_pkg.setdefault(key, {"closes": 0, "ltv": 0.0,
-                                              "term_months": PACKAGE_TERMS.get(key)})
-                agg["closes"] += 1
-                agg["ltv"] = round(agg["ltv"] + ltv, 2)
-        n = len(closes)
-        cac_full = comp.get("cac_fully_loaded")
-        cac_spend = comp.get("cac_spend_only")
-        cac_note = None
-        true_cac = None
-        # TRUE CAC — ONE COMMISSION ENGINE (#159). The standing components
-        # summed the tracker's commission cells, which have been empty since
-        # 2026-07-20, so every loaded CAC on the estate was ad spend plus
-        # tooling and not a cent of commission. sales_cost applies the
-        # rulebook in force on each deal's own close date, counts a blank
-        # cell as ACCRUED rather than zero, and adds the set bounties and the
-        # manager retainer that no previous path carried at all.
-        try:
-            import sales_cost
-            sc = sales_cost.build(str(w0), str(w1))
-            if sc.get("closes"):
-                true_cac = sc["true_cac"]
-                cac_full = true_cac["per_close"]
-                cac_spend = sc["cac_spend_only"]
-                cac_note = (
-                    f"TRUE CAC — ad spend + commissions + set bounties + the "
-                    f"manager retainer + sales tooling, over {sc['closes']} "
-                    f"closes. Commissions from the rulebook (v"
-                    f"{sc['rule_version']['version']}); "
-                    f"{sc['commissions']['exact_deals']} deal(s) costed "
-                    f"exactly; commission pending for "
-                    f"{sc['commissions']['pending_deals']} close(s) — "
-                    f"package or closer not recorded, not counted.")
-        except Exception as e:  # noqa: BLE001
-            logger.warning("true CAC unavailable, falling back: %s", e)
-        if cac_full is None and n:
-            # prod-caught: the standing engine counts closes from tracker
-            # won-marks, which the gap left empty — compute the pair from
-            # the SAME components ÷ the union close count, labelled.
-            try:
-                from config import SALES_TOOLING_MONTHLY
-                days = (comp.get("window") or {}).get("days") or ((w1 - w0).days + 1)
-                tooling = SALES_TOOLING_MONTHLY * days / 30.44
-                spend = comp.get("ad_spend")
-                if spend is None:
-                    import meta_spend
-                    spend = (meta_spend.spend_in_range(str(w0), str(w1)) or {}).get("spend")
-                acq = ((spend or 0)
-                       + (comp.get("closer_comm") or 0)
-                       + (comp.get("setter_comm") or 0))
-                cac_full = round((acq + tooling) / n, 2)
-                cac_spend = round((spend or 0) / n, 2)
-                cac_note = (f"closes from the union engine (n={n}; tracker "
-                            f"won-marks lag — the gap-window class); "
-                            f"components from the standing engine")
-            except Exception:
-                pass
-        avg_ltv = round(ltv_total / n, 2) if n and ltv_total else None
-        out["windows"][name] = {
-            "window": {"start": str(w0), "end": str(w1), "clock": "activity"},
-            "closes": n,
-            "cac_note": cac_note,
-            "cac_fully_loaded": cac_full,
-            "true_cac": true_cac,
-            "cac_spend_only": cac_spend,
-            "cac_loaded_standing": comp.get("cac_loaded"),
-            "cac_labels": comp.get("cac_labels"),
-            "avg_ltv_per_close": avg_ltv,
-            "ltv_to_cac": (round(avg_ltv / cac_full, 2)
-                           if avg_ltv and cac_full else None),
-            "ltgp_to_cac": (round(avg_ltv * margin_val / 100 / cac_full, 2)
-                            if avg_ltv and cac_full else None),
-            "by_package": by_pkg,
-            "engine_30d_reference": {"ltgp_cac": ue.get("ltgp_cac"),
-                                     "ltv_cac": ue.get("ltv_cac"),
-                                     "note": "the standing engine's contract-"
-                                             "based ratios, beside — never "
-                                             "blended with the LTV-projected "
-                                             "pair"},
-        }
-    return out
+    import unit_econ_engine as UE
+    v = UE.view()
+    inp = v["inputs"]
+    return {
+        "engine": v,
+        "benchmark": v["benchmark"],
+        "ltv_inputs": {
+            "renewal_rate_pct": inp["renewal_pct"], "renewal_n": inp["renewal_n"],
+            "renewal_ci95": inp["renewal_ci95"],
+            "in_term_completion_pct": inp["completion_pct"],
+            "completion_n": inp["completion_n"],
+            "horizon_months": inp["horizon_months"],
+            "measured_on": inp["measured_on"],
+            "renewal_provenance": (f"measured {inp['measured_on']} from payment "
+                                   f"history, n={inp['renewal_n']}"
+                                   if inp["measured"] else inp["note"]),
+            "completion_provenance": (f"measured {inp['measured_on']}, "
+                                      f"n={inp['completion_n']}"
+                                      if inp["measured"] else inp["note"]),
+            "formula": "see unit_econ_engine — expected and floor"},
+        "margin_provenance": v["margin"]["provenance"],
+        "windows": {"trailing_90d": _legacy_window(v["headline"]),
+                    "cohort_month": _legacy_window(v["mtd"]),
+                    "mature_cohort": _legacy_window(v["mature_cohort"])},
+        "headline_window": "trailing_90d",
+    }
+
+
+def _math(v: dict, ratio: str) -> dict:
+    """Show-the-math for the LTV:CAC / LTGP:CAC drawers — every component
+    with its source, the closes behind it, the inputs and the band."""
+    h, inp = v["headline"], v["inputs"]
+    ltgp = ratio == "ltgp"
+    comps = [
+        {"label": "expected lifetime value per close", "value": h["ltv_expected"],
+         "source": (f"renewal {inp['renewal_pct']}% (n={inp['renewal_n']}, 95% "
+                    f"{inp['renewal_ci95']}) · completion {inp['completion_pct']}% "
+                    f"(n={inp['completion_n']}) · horizon {inp['horizon_months']} "
+                    f"months · measured {inp['measured_on']}" if inp["measured"]
+                    else inp["note"])},
+        {"label": "signed floor per close", "value": h["ltv_floor"],
+         "source": "the signed contracts ex-GST — no renewals, no expansion"},
+        {"label": "CAC loaded per close", "value": h["cac_loaded"],
+         "source": " + ".join(f"{c['label']} ${c['amount']:,.2f}"
+                              for c in (h.get("cac_components") or []))
+                   + f" ÷ {h['closes']} closes"},
+        {"label": "CAC spend-only (beside, never confused)",
+         "value": h["cac_spend_only"], "source": "Meta spend ÷ closes"}]
+    if ltgp:
+        comps.insert(2, {"label": "gross margin", "value": v["margin"]["pct"],
+                         "source": v["margin"]["provenance"]})
+    key = "ltgp_cac" if ltgp else "ltv_cac"
+    return {
+        "tile": key, "clock": "trailing 90 days · activity",
+        "value": h[f"{key}_expected"], "floor": h[f"{key}_floor"],
+        "mtd": {"value": v["mtd"][f"{key}_expected"], "floor": v["mtd"][f"{key}_floor"],
+                "label": v["mtd"]["label"]},
+        "mature_cohort": {"value": v["mature_cohort"][f"{key}_expected"],
+                          "label": v["mature_cohort"]["label"]},
+        "sensitivity": h.get("sensitivity"),
+        "components": comps,
+        "closes": [{k: r.get(k) for k in ("person", "client", "package", "term_months",
+                                            "contract_ex_gst", "contract_source",
+                                            "floor", "expected", "working", "why")}
+                   for r in h["rows"]],
+        "ltv_pending": h["ltv_pending"],
+        "commission_pending": h.get("commission_pending"),
+        "commission_pending_range": h.get("commission_pending_range"),
+        "door": {"label": "the closes behind it", "href": "/dashboard/closes?window=90d"},
+        "benchmark": v["benchmark"]["label"],
+    }
 
 
 def drawer_ltv_cac() -> dict:
-    ue = unit_econ_view()
-    w = ue["windows"]["cohort_month"]
-    return {
-        "tile": "ltv_cac",
-        "definition": "LTV:CAC — projected lifetime value per close ÷ fully-"
-                      "loaded acquisition cost. Inputs' provenance below; "
-                      "3:1 is a benchmark, not a target.",
-        "formula": ue["ltv_inputs"]["formula"] + " ÷ (spend + commissions + "
-                   "sales tooling)",
-        "clock": "cohort month · activity",
-        "value": w["ltv_to_cac"],
-        "components": [
-            {"label": "avg LTV per close", "value": w["avg_ltv_per_close"],
-             "source": f"renewal {ue['ltv_inputs']['renewal_rate_pct']}% "
-                       f"({ue['ltv_inputs']['renewal_provenance'][:70]}); "
-                       f"completion {ue['ltv_inputs']['in_term_completion_pct']}% "
-                       f"({ue['ltv_inputs']['completion_provenance'][:40]})"},
-            {"label": "CAC fully loaded", "value": w["cac_fully_loaded"],
-             "source": (w.get("cac_labels") or {}).get("cac_fully_loaded")},
-            {"label": "CAC spend-only (beside, never confused)",
-             "value": w["cac_spend_only"],
-             "source": (w.get("cac_labels") or {}).get("cac_spend_only")}],
-        "reconciliation": {"external": "the standing 30d engine ratios",
-                           "reference": w["engine_30d_reference"]},
-    }
+    import unit_econ_engine as UE
+    d = _math(UE.view(), "ltv")
+    d["definition"] = ("LTV:CAC — what a client is likely to pay us over their "
+                       "whole time with us, for every dollar it cost to win them.")
+    return d
 
 
 def drawer_ltgp_cac() -> dict:
-    ue = unit_econ_view()
-    w = ue["windows"]["cohort_month"]
-    return {
-        "tile": "ltgp_cac",
-        "definition": "LTGP:CAC — lifetime GROSS PROFIT (LTV × gross margin) "
-                      "÷ fully-loaded CAC.",
-        "formula": "LTV × margin ÷ CAC(fully loaded)",
-        "clock": "cohort month · activity",
-        "value": w["ltgp_to_cac"],
-        "components": [
-            {"label": "margin", "value": None,
-             "source": ue["margin_provenance"]},
-            {"label": "avg LTV per close", "value": w["avg_ltv_per_close"],
-             "source": "see LTV:CAC drawer"},
-            {"label": "CAC fully loaded", "value": w["cac_fully_loaded"],
-             "source": (w.get("cac_labels") or {}).get("cac_fully_loaded")}],
-        "reconciliation": {"external": "the standing 30d engine ratios",
-                           "reference": w["engine_30d_reference"]},
-    }
+    import unit_econ_engine as UE
+    d = _math(UE.view(), "ltgp")
+    d["definition"] = ("LTGP:CAC — the gross profit a client is likely to leave "
+                       "us over their whole time with us, for every dollar it "
+                       "cost to win them.")
+    return d

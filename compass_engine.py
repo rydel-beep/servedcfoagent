@@ -71,6 +71,25 @@ RAMP_WEEKS = {"setter": 4, "closer": 6, "delivery": 6, "csm": 8}
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
+
+def _ltv_by_package(pkgs: dict) -> tuple[dict, str]:
+    """{package: lifetime value per client} from unit_econ_engine.ltv_for —
+    the SAME per-close maths the tiles use. Expected where the inputs are
+    measured; otherwise the signed floor, and the basis says which."""
+    import unit_econ_engine as UE
+    inp = UE.inputs()
+    out = {}
+    for p, row in (pkgs or {}).items():
+        cv = float((row or {}).get("contract") or 0)
+        if not cv:
+            out[p] = 0.0
+            continue
+        r = UE.ltv_for({"person": p, "package": p, "contract": {"value": cv}}, inp)
+        out[p] = float(r["expected"] if r.get("expected") is not None else r["floor"])
+    return out, ("expected lifetime value (measured renewal + collection)"
+                 if inp.get("measured") else
+                 "signed contract (renewal not yet measured)")
+
 def _month_add(ym: str, k: int) -> str:
     y, m = int(ym[:4]), int(ym[5:7])
     m += k
@@ -877,8 +896,10 @@ def forward(inputs: dict, _book: dict | None = None) -> dict:
         cac_period = round(acq / n_closes, 2) if n_closes >= 0.05 else None
         cac_period_spend_only = round(row["spend"] / n_closes, 2) \
             if n_closes >= 0.05 else None
-        # LTGP per close (mix-weighted)
-        ltgp_close = sum(mix[p] * float((pkgs.get(p) or {}).get("contract") or 0)
+        # LTGP per close (mix-weighted) — #170: from the ONE engine's
+        # lifetime value per package, never the bare contract
+        _ltv_p, _ = _ltv_by_package(pkgs)
+        ltgp_close = sum(mix[p] * _ltv_p.get(p, 0.0)
                          * float((pkgs.get(p) or {}).get("gross_margin_pct") or FY26_MARGIN_PCT) / 100
                          for p in mix)
         ltgp_cac = round(ltgp_close / cac_period, 2) if cac_period else None
@@ -1533,7 +1554,13 @@ def simulate_month(inputs: dict | None = None, spend: float | None = None,
         + cap["cost_monthly"] + tooling
     cac = (acq / clients) if clients >= 0.01 else None
     cac_spend_only = (S / clients) if clients >= 0.01 else None
-    ltgp_per_client = contract_mix * margin_mix
+    # #170: lifetime value per client from the ONE engine (expected where
+    # measured, else the signed floor — labelled), mix-weighted per package
+    ltv_p, ltv_basis = _ltv_by_package(pkgs)
+    ltv_mix = sum(mix[p] * ltv_p.get(p, 0.0) for p in mix)
+    ltgp_per_client = sum(mix[p] * ltv_p.get(p, 0.0)
+                          * float((pkgs.get(p) or {}).get("gross_margin_pct")
+                                  or FY26_MARGIN_PCT) / 100 for p in mix)
     # payback: cumulative mix-weighted cash schedule vs the all-in cost
     cash_curve = []
     sched_len = max((len((pkgs.get(p) or {}).get("cash_schedule") or [])
@@ -1597,7 +1624,9 @@ def simulate_month(inputs: dict | None = None, spend: float | None = None,
             ],
             "cac": round(cac, 2) if cac else None,
             "cac_spend_only": round(cac_spend_only, 2) if cac_spend_only else None,
-            "ltv_cac": round(contract_mix / cac, 2) if cac else None,
+            "ltv_cac": round(ltv_mix / cac, 2) if cac else None,
+            "ltv_avg": round(ltv_mix, 2), "ltgp_avg": round(ltgp_per_client, 2),
+            "ltv_basis": ltv_basis,
             "ltgp_per_client": round(ltgp_per_client, 2),
             "ltgp_cac": round(ltgp_per_client / cac, 2) if cac else None,
             "margin_source": margin_note,

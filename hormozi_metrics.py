@@ -61,14 +61,14 @@ def _metric(
 
 # ── THE ONE ENGINE (2026-07-03) ──────────────────────────────────────────────
 # LTGP:CAC, LTV:CAC, loaded CAC and ROAS are computed by ONE engine — the range-aware
-# unit_economics(trailing 30d) — so the snapshot, chat, voice, tiles and brief can never
+# unit_economics(trailing 90d) — so the snapshot, chat, voice, tiles and brief can never
 # disagree. These m1/m2/m7/m8 wrappers DELEGATE to it (no independent formula survives).
 def _engine_30d() -> dict:
     from range_unit_economics import unit_economics
     from helpers import today_sydney
     import datetime as _dt
     t = today_sydney()
-    return unit_economics(str(t - _dt.timedelta(days=29)), str(t))
+    return unit_economics(str(t - _dt.timedelta(days=89)), str(t))   # #170: the headline window is trailing 90
 
 
 def _band(v, good: float, watch: float) -> str:
@@ -82,7 +82,7 @@ def _band(v, good: float, watch: float) -> str:
 
 
 def _eng_inputs(c: dict, basis: str) -> dict:
-    return {"engine": "unit_economics(trailing 30d)", "basis": basis,
+    return {"engine": "unit_economics(trailing 90d)", "basis": basis,
             "closes": c.get("closes"), "avg_contract": c.get("avg_contract"),
             "gross_margin_pct": c.get("gross_margin_pct"), "cac_loaded": c.get("cac_loaded"),
             "ltgp": c.get("ltgp"), "ad_spend": c.get("ad_spend"),
@@ -96,12 +96,13 @@ def m1_ltgp_cac(snap: dict, targets: dict | None = None, eng: dict | None = None
     c = e.get("components") or {}
     v = e.get("ltgp_cac")
     target = (targets or {}).get("ltgp_cac_target", 3.0)
-    inp = _eng_inputs(c, "avg contract × gross margin ÷ loaded CAC (tracker-won closes)")
+    inp = _eng_inputs(c, "expected LTGP (measured renewal + completion) ÷ loaded CAC (register closes) — unit_econ_engine")
     if v is None:
         return _metric(None, target, "unknown", None,
-                       "; ".join(e.get("caveats") or ["no closes in the 30d window"]), "medium", inp)
-    read = (f"LTGP:CAC {v}× — LTGP ${c.get('ltgp', 0):,.0f} ÷ loaded CAC ${c.get('cac_loaded', 0):,.0f} "
-            f"({c.get('closes')} closes, {inp['window_days']}d)")
+                       "; ".join(e.get("caveats") or ["no closes in the trailing 90 days"]), "medium", inp)
+    read = (f"LTGP:CAC {v}× — expected LTGP ${c.get('ltgp') or 0:,.0f} ÷ loaded CAC "
+            f"${c.get('cac_loaded') or 0:,.0f} (trailing 90 days, {c.get('closes_register')} "
+            f"closes; signed floor {c.get('ltgp_cac_floor')}×)")
     return _metric(v, target, _band(v, target, target * 2 / 3), None, read, "high", inp)
 
 
@@ -112,14 +113,14 @@ def m2_cac_breakdown(snap: dict, eng: dict | None = None) -> dict:
     e = eng if eng is not None else _engine_30d()
     c = e.get("components") or {}
     v = e.get("cac_loaded")
-    avg_gp = round(c["avg_contract"] * (c["gross_margin_pct"] / 100), 2) \
-        if c.get("avg_contract") and c.get("gross_margin_pct") is not None else None
-    inp = _eng_inputs(c, "ad + closer + setter comms ÷ tracker-won closes (Meta-only ad spend)")
+    avg_gp = c.get("ltgp")          # expected LTGP per close, from the one engine
+    inp = _eng_inputs(c, "TRUE CAC — ad spend + rulebook commissions + set bounties + "
+                         "manager retainer + sales tooling ÷ register closes")
     inp["avg_gp_per_close"] = avg_gp
     inp["breakdown"] = c.get("cac_breakdown")
     if v is None:
         return _metric(None, None, "unknown", None,
-                       "; ".join(e.get("caveats") or ["no closes in the 30d window"]), "medium", inp)
+                       "; ".join(e.get("caveats") or ["no closes in the trailing 90 days"]), "medium", inp)
     if avg_gp is not None and v > avg_gp:
         status, read = "critical", (f"CAC ${v:,.0f} exceeds gross profit/close ${avg_gp:,.0f}. "
                                     f"{c.get('cac_breakdown', '')}")
@@ -370,12 +371,13 @@ def m7_ltv_to_cac(snap: dict, eng: dict | None = None) -> dict:
     e = eng if eng is not None else _engine_30d()
     c = e.get("components") or {}
     v = e.get("ltv_cac")
-    inp = _eng_inputs(c, "avg contract value (no margin) ÷ loaded CAC (tracker-won closes)")
+    inp = _eng_inputs(c, "expected LTV (measured renewal + completion) ÷ loaded CAC (register closes) — unit_econ_engine")
     if v is None:
         return _metric(None, None, "unknown", None,
-                       "; ".join(e.get("caveats") or ["no closes in the 30d window"]), "medium", inp)
-    read = (f"LTV:CAC {v}× — avg contract ${c.get('avg_contract', 0):,.0f} ÷ loaded CAC "
-            f"${c.get('cac_loaded', 0):,.0f} (full revenue before margin, {c.get('closes')} closes)")
+                       "; ".join(e.get("caveats") or ["no closes in the trailing 90 days"]), "medium", inp)
+    read = (f"LTV:CAC {v}× — expected lifetime value ${c.get('ltv_expected') or 0:,.0f} ÷ "
+            f"loaded CAC ${c.get('cac_loaded') or 0:,.0f} (trailing 90 days, "
+            f"{c.get('closes_register')} closes; signed floor {c.get('ltv_cac_floor')}×)")
     return _metric(v, None, _band(v, 3.0, 2.0), None, read, "high", inp)
 
 
@@ -391,7 +393,7 @@ def m8_roas(snap: dict, targets: dict | None = None, eng: dict | None = None) ->
     inp["contracted_revenue"] = c.get("contract_value_total")
     if v is None:
         return _metric(None, target, "unknown", None,
-                       "; ".join(e.get("caveats") or ["no closes / no spend in the 30d window"]),
+                       "; ".join(e.get("caveats") or ["no closes / no spend in the trailing 90 days"]),
                        "medium", inp)
     read = (f"ROAS {v}× — ${c.get('contract_value_total', 0):,.0f} contracted revenue ÷ "
             f"${c.get('ad_spend', 0):,.0f} Meta spend ({inp['window_days']}d, contracted basis)")
@@ -404,7 +406,7 @@ def compute_all(snap: dict, true_team_cost: float | None = None,
                 targets: dict | None = None) -> dict:
     """Return all Hormozi metrics keyed by name.
 
-    LTGP:CAC / LTV:CAC / loaded CAC / ROAS delegate to ONE engine (unit_economics 30d),
+    LTGP:CAC / LTV:CAC / loaded CAC / ROAS delegate to ONE engine (unit_economics trailing 90d),
     computed once here and shared — so the snapshot can never disagree with chat/tiles.
     """
     t = targets or {}

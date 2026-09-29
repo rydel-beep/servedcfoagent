@@ -295,41 +295,59 @@ def build_tiles(snap: dict | None) -> list[dict]:
         except Exception as e:  # noqa: BLE001
             tiles.append(_tile(tid, label, "—", str(e)[:80], "", "degraded"))
 
-    # 6+7 · LTV:CAC · LTGP:CAC — the honest engine, cohort window
+    # 6+7 · LTV:CAC · LTGP:CAC — THE ONE ENGINE (#170). Headline = TRAILING
+    # 90 DAYS, expected; the signed floor and month to date beside; the
+    # renewal interval as a sensitivity band. (It used to headline month to
+    # date on an upper-bound renewal and an 85% placeholder.)
     unit, unit_age, unit_err = _cache(K_UNIT)
     try:
-        coh = ((unit or {}).get("windows") or {}).get("cohort_month") or {}
-        margin_prov = (unit or {}).get("margin_provenance") or "labelled"
-        for tid, label, vk in (("ltv_cac", "LTV : CAC", "ltv_to_cac"),
-                               ("ltgp_cac", "LTGP : CAC", "ltgp_to_cac")):
-            v = coh.get(vk)
-            if v is not None:
-                val = f"{v:.2f}×"
-                if tid == "ltgp_cac":
-                    sub = f"margin: {margin_prov} · 3:1 = benchmark, not target"
-                else:
-                    from helpers import today_sydney as _ts
-                    sub = (f"{_ts().strftime('%b')} MTD · {coh.get('closes', '?')} closes "
-                           f"(register, activity clock) · "
-                           f"CAC loaded {_fmt_money(coh.get('cac_fully_loaded'), cents=False)}"
-                           f" · spend-only {_fmt_money(coh.get('cac_spend_only'), cents=False)}")
+        eng = (unit or {}).get("engine") or {}
+        h, mtd = eng.get("headline") or {}, eng.get("mtd") or {}
+        inp = eng.get("inputs") or {}
+        _p90 = None
+        try:
+            import close_register as _CR
+            _p90 = _CR.proposed_note(h["window"]["start"], h["window"]["end"], "90d")
+        except Exception:  # noqa: BLE001
+            pass
+        for tid, label, key in (("ltv_cac", "LTV : CAC", "ltv_cac"),
+                                ("ltgp_cac", "LTGP : CAC", "ltgp_cac")):
+            v, fl = h.get(f"{key}_expected"), h.get(f"{key}_floor")
+            if v is not None or fl is not None:
+                val = f"{v:.2f}×" if v is not None else f"{fl:.2f}× floor"
+                bits = ["trailing 90 days"]
+                if v is not None and fl is not None:
+                    bits.append(f"signed floor {fl:.2f}×")
+                if mtd.get(f"{key}_expected") is not None:
+                    bits.append(f"month to date {mtd[f'{key}_expected']:.2f}× "
+                                "(few closes — moves a lot)")
+                sens = h.get("sensitivity") or {}
+                if sens.get(f"{key}_low") is not None:
+                    bits.append(f"at renewal {sens['renewal_low']:.0f}–"
+                                f"{sens['renewal_high']:.0f}% this ranges "
+                                f"{sens[f'{key}_low']:.2f}×–{sens[f'{key}_high']:.2f}×")
+                if inp.get("measured"):
+                    bits.append(f"renewal {inp['renewal_pct']}% measured, "
+                                f"n={inp['renewal_n']}")
+                if h.get("ltv_pending"):
+                    bits.append(f"lifetime value pending for {len(h['ltv_pending'])} "
+                                "close(s) — no contract value")
+                if h.get("commission_pending"):
+                    bits.append(f"commission pending for {h['commission_pending']} close(s)")
+                sub = " · ".join(bits)
                 state = _state_for(unit_age, unit_err)
             else:
                 val = "—"
                 sub = unit_err or (
-                    "no closes in cohort window — ratio undefined "
-                    "(labelled, not blank)" if unit is not None else
+                    "no closes with a contract value in the last 90 days — "
+                    "ratio undefined (labelled, not blank)" if unit is not None else
                     "not yet computed — first refresh pending")
                 state = "degraded" if (unit_err or unit is None) else "ok"
             tiles.append(_tile(
                 tid, label, val, sub,
-                # the window was NAMED cohort_month but has always been
-                # computed month-to-date on the ACTIVITY clock — the label
-                # now says what the number is (ONE CLOSE REGISTER, Phase 0
-                # finding: the tiles wore the wrong clock's name)
-                f"honest unit-econ engine · activity clock (MTD) · computed {_fmt_age(unit_age)}",
+                f"unit-economics engine · trailing 90 days · computed {_fmt_age(unit_age)}",
                 state, drawer=tid, raw=v,
-                sr_note=(unit_err or ""), proposed=_proposed_mtd()))
+                sr_note=(unit_err or ""), proposed=_p90))
     except Exception as e:  # noqa: BLE001
         for tid, label in (("ltv_cac", "LTV : CAC"), ("ltgp_cac", "LTGP : CAC")):
             tiles.append(_tile(tid, label, "—", str(e)[:80], "", "degraded"))
@@ -396,7 +414,7 @@ def build_cards(snap: dict | None, owner: bool,
 
     roas, _, _ = _cache(K_ROAS)
     unit, _, _ = _cache(K_UNIT)
-    coh = ((unit or {}).get("windows") or {}).get("cohort_month") or {}
+    coh = ((unit or {}).get("windows") or {}).get("trailing_90d") or {}
 
     from helpers import today_sydney as _ts3
     card("sales", "Ads & sales", "/dashboard/view/sales",
@@ -415,7 +433,7 @@ def build_cards(snap: dict | None, owner: bool,
     card("outflows", "Outflows & BAS", "/dashboard/view/outflows",
          "OpEx vs tax/statutory — banded, never blended")
     card("unit_econ", "Unit economics (detail)", "/dashboard/view/unit-econ",
-         (f"LTV:CAC {coh.get('ltv_to_cac'):.2f}× · LTGP:CAC {coh.get('ltgp_to_cac'):.2f}× (Sep cohort)"
+         (f"LTV:CAC {coh.get('ltv_to_cac'):.2f}× · LTGP:CAC {coh.get('ltgp_to_cac'):.2f}× (trailing 90 days)"
           if coh.get("ltv_to_cac") is not None and coh.get("ltgp_to_cac") is not None
           else "three clocks, labelled — never blended"))
     card("cash", "Cash & capital", "/dashboard/view/cash",

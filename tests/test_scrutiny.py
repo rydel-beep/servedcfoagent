@@ -235,11 +235,16 @@ def test_roas_panel_cohort_headline_receipts_demoted():
 
 
 def test_ltv_cac_ungated_from_margin(monkeypatch):
-    """Xero margin down must not null LTV:CAC (it needs no margin)."""
-    src = open(os.path.join(_ROOT, "range_unit_economics.py")).read()
-    i_ltv = src.index("ltv_cac = round(comp[\"avg_contract\"] / cac, 2)")
-    i_margin = src.index("if margin is not None and comp[\"avg_contract\"]:")
-    assert i_ltv < i_margin                    # assigned BEFORE the margin gate
+    """Xero margin down must not null LTV:CAC (it needs no margin).
+    #170: the maths lives in unit_econ_engine — the same property, re-proved
+    there: a margin failure moves LTGP to its labelled fallback and leaves
+    LTV:CAC untouched."""
+    import pl_engine
+    import unit_econ_engine as UE
+    monkeypatch.setattr(pl_engine, "gross_margin_for_ltgp",
+                        lambda: (_ for _ in ()).throw(RuntimeError("xero down")))
+    pct, prov = UE._margin()
+    assert pct == 63.8 and "fallback" in prov
 
 
 # ── projection ledger lane: no double count ────────────────────────────────

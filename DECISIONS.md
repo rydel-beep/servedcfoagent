@@ -3450,3 +3450,76 @@ figures and what was answered instead (kv answer:guard_blocks).
 The replay of the witnessed thread is a shipped test
 (tests/test_answer_engine.py); the #165/#166 drill tests were rewritten to
 this ruling with the supersession named — none deleted.
+
+
+## #170 — UNIT ECONOMICS YOU CAN BET ON · THE METRICS STATEMENT · RYDEL'S NINE DECISIONS (2026-09-29)
+
+**THE WITNESSED CAUSE** ("LTGP:CAC still isn't updated after Scott's
+payment"): the tile HAD moved — to 0.97× MTD (from 4.48×) — and not
+because of Scott. Scott = Scott Cho, Amoroso Gelateria; Stripe payer
+"Eunsung Cho", ch_3UJpCOBjA5FwcLGQ03sfTb63, $5,278.90, 26 Sep; alias
+confirmed by Rydel 11:33; the close is CONFIRMED but has no contract, so
+it adds $0 of lifetime value. The collapse was the GAP WINDOW: its start
+was "the day after the last tracker close", so Koji's 23 Sep row moved it
+to 24 Sep and Orlando/Harman/William — still unrecorded in the tracker —
+dropped out of the gap ledger with their contracts and charges.
+
+**RULED (Rydel, 29 Sep)**:
+1. Read-only production probes, per-command approval, this session only.
+2. Date-rotted test fixed; F1 (a newly matched charge rebuilds the
+   register) through the gates.
+3. A 15-minute "new charges since cursor" match; the full scan unchanged.
+4. Closed-deal form: contract from the NAMED field only; ambiguous →
+   needs your number.
+5. Unknown package → commission PENDING, uncounted, rulebook min–max
+   beside; never a blended average (and a ruled-but-uncovered package is
+   pending, never a silent $0).
+6. Every tile that excludes proposed closes says "+N proposed, not
+   counted" with a door to them.
+7. Fix where Scott's payment stopped (the gap rule; the contract rung).
+8. UNIT-ECONOMICS-ACCURACY before any signed statement.
+9. Then the statement, hand checks, decomposition, change ledger, Scan 2,
+   EDITH, zero-writes.
+
+**THE GAP RULE**: an episode's start never advances past a GHL close the
+tracker still lacks (episode memory from the gap journal; the list
+empties the moment the tracker records them). The detection cache
+carries a rule version so a same-day old-rule cache recomputes on the
+first read after deploy.
+
+**OWNER DEAL-TERMS RULINGS**: package, term, contract ex-GST, schedule,
+closer, setter — Rydel's words verbatim, journaled, the top contract rung
+(a tracker conflict is shown, not merged). Cash is never taken from a
+ruling: counted only with a bank-feed or Stripe evidence id; received-
+without-feed = "cash pending bank feed"; a personal account = "cash
+received outside business accounts", never business cash; unreceived
+instalments = receivables. A ruling with no system record is a close of
+its own, labelled "owner ruling — no system record yet".
+
+**THE ONE UNIT-ECONOMICS ENGINE** (unit_econ_engine.py). Measured inputs
+only — from 18 months of Stripe history through the one matcher, tracker
+won rows for package/start/contract: RENEWAL 22.2% (4/18 retainer terms
+ended in the trailing 12 months; 95% 9.0–45.2%; 20 excluded, counted) ·
+COMPLETION 72.7% (dollar-weighted, n=18). The retired inputs: renewal
+100% (the B1 upper bound, n=5, three of them one-month web subs) and the
+85% placeholder. LTV expected = contract × completion + Σ renewal^k ×
+contract over whole terms inside a 36-month horizon (retainers only);
+floor = signed contract; LTGP = × gross margin (pl_engine). Headline =
+TRAILING 90 DAYS; MTD beside ("few closes — moves a lot"); the latest
+mature cohort (≥ 60 days); a sensitivity band from the renewal CI.
+Re-measured monthly by the freshness sentinel, journaled with the prior.
+Unmeasured → expected withheld, the floor answers — never a stand-in.
+
+**ONE MATHS**: finance_analysis (tiles, drawers, LTV ROAS),
+range_unit_economics (hormozi → snapshot, briefing/quarterly PDFs, 3×,
+scenario, EDITH ranges), compass (Plan cost card, monthly model) and the
+client simulator all read the engine; hormozi's window moved 30d → 90d
+(the headline). EDITH: "what's our LTV to CAC" → sentence 1 is the
+trailing-90 expected ratio with window + as-of, then floor, renewal with
+its n, one MTD line; "what did Amoroso buy" → the register, "needs your
+number" named.
+
+Superseded tests rewritten with the reason named: the LTV-inputs test that
+pinned the upper bound + placeholder; three range-engine tests that
+pinned avg-contract ÷ tracker-cell CAC; the margin and commission guards
+moved to where the maths lives.

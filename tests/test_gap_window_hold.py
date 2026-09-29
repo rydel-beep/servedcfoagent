@@ -79,3 +79,12 @@ def test_no_episode_memory_keeps_the_old_rule(monkeypatch):
     _wire(monkeypatch, [])
     st = G.detect_gap(force=True)
     assert st["gap"]["start"] == "2026-09-24"
+
+
+def test_a_same_day_cache_from_the_old_rule_is_recomputed(monkeypatch):
+    _wire(monkeypatch, ["2026-08-21"])
+    from helpers import today_sydney
+    kv_store.put(G._KV_STATE, {"ok": True, "detected_on": str(today_sydney()),
+                               "gap": {"start": "2026-09-24", "end": "x"}})   # no rule stamp
+    st = G.detect_gap()
+    assert st["gap"]["start"] == "2026-09-09" and st["rule"] == G._GAP_RULE

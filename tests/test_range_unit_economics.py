@@ -125,15 +125,17 @@ def test_window_consistent_may(monkeypatch):
     assert c["closer_comm"] == 3000.0             # 1500 + 1500
     assert c["setter_comm"] == 650.0              # (50+250)+(50+300), June excluded
     assert c["ad_spend"] == 4000.0
-    # CAC = (4000 + 3000 + 650) / 2 = 3825
-    assert r["cac_loaded"] == 3825.0
-    # LTGP = avg_contract 17000 × 0.70 = 11900 ; LTGP:CAC = 11900/3825
-    assert c["avg_contract"] == 17000.0
-    assert r["ltgp_cac"] == round(11900 / 3825, 2)
+    assert c["avg_contract"] == 17000.0          # the tracker cross-reference, kept
     # ROAS = CONTRACTED 34000 / spend 4000 = 8.5 (contracted basis, Rydel-locked 2026-07-03)
     assert r["roas"] == 8.5
-    # LTV:CAC = avg_contract 17000 / CAC 3825
-    assert r["ltv_cac"] == round(17000 / 3825, 2)
+    # SUPERSEDED by #170: CAC, LTV:CAC and LTGP:CAC are no longer this
+    # module's maths (avg contract ÷ tracker-cell CAC) — they are the ONE
+    # engine's window, verbatim, for the same range.
+    import unit_econ_engine as UE
+    w = UE.window("2026-05-01", "2026-05-31", "range")
+    assert r["cac_loaded"] == w["cac_loaded"]
+    assert r["ltv_cac"] == w["ltv_cac_expected"] and r["ltgp_cac"] == w["ltgp_cac_expected"]
+    assert c["ltv_cac_floor"] == w["ltv_cac_floor"] and c["engine"] == "unit_econ_engine.window"
     assert c["attribution"] == "spend-in-window" and c["roas_revenue_basis"] == "contracted"
     assert c["new_deal_cash"] == 11000.0  # cash from won deals, kept under its own name
 
@@ -155,7 +157,9 @@ def test_command_handler(monkeypatch):
     _mock(monkeypatch)
     from helpers import today_sydney  # ensure import path
     reply, handled = rue.handle_unit_econ_command("what's our LTGP:CAC in May 2026?")
+    # #170: unmeasured inputs → the floor answers, never "n/a" beside a number we have
     assert handled and "LTGP:CAC for May 2026" in reply and "×" in reply
+    assert "signed floor" in reply
     assert rue.handle_unit_econ_command("how's the coffee?")[1] is False
 
 

@@ -547,3 +547,111 @@ def all_baselines(fresh: bool = False) -> dict:
     }
     kv_store.put(_KV_BASELINE_CACHE, {"date": today, "payload": payload})
     return payload
+
+
+# ── B1 from PAYMENT HISTORY (#170) ───────────────────────────────────────────
+# The roster-based measurement above could only see survivors: its "100%" was
+# n=5 (three of them one-month web subs) and its lower bound double-counted
+# the churned list. Stripe's charge history sees every client who ever paid,
+# including the ones who stopped mid-term — so the cohort, the renewal test
+# and in-term completion are all read from money that actually moved.
+
+RETAINER_TERMS = {"growth pro": 6, "scale engine": 6, "cafe walk-ins": 3}
+
+
+def _pkg_key(offer: str | None) -> str | None:
+    s = (offer or "").lower()
+    if "content" in s or "multi" in s:
+        return None                      # no term ruled — excluded, counted
+    if "scale" in s:
+        return "scale engine"
+    if "growth" in s:
+        return "growth pro"
+    if "cafe" in s and "walk" in s:
+        return "cafe walk-ins"
+    return None
+
+
+def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float] | None:
+    if not n:
+        return None
+    p = k / n
+    den = 1 + z * z / n
+    mid = (p + z * z / (2 * n)) / den
+    half = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / den
+    return round(100 * max(0.0, mid - half), 1), round(100 * min(1.0, mid + half), 1)
+
+
+def measure_from_payments(charges_by_client: dict, deals: dict, today,
+                          data_start, grace_days: int = 30,
+                          floor_share: float = 0.5) -> dict:
+    """charges_by_client: client → [(date, amount_inc_gst)] (matched charges).
+    deals: client → {"offer", "close_date", "contract"} (tracker won row;
+    contract ex-GST). Pure — the caller supplies the evidence.
+
+    COHORT  = retainer terms that ENDED in the trailing 12 months with the
+              grace fully elapsed (end ≤ today − grace).
+    RENEWED = paid ≥ floor_share × the term's monthly ex-GST within
+              (end, end + grace + 31d] — a downgrade below the floor is NOT
+              a renewal.
+    COMPLETION = collected ex-GST during the term ÷ contract ex-GST, on the
+              same cohort (capped at 100%).
+    Excluded + counted: no retainer package, left-censored (the first charge
+    sits within 31 days of the data's start and no close date says otherwise),
+    no contract value (completion only)."""
+    import datetime as dt
+    w0 = today - dt.timedelta(days=365)
+    rows, excluded, comp_rows = [], [], []
+    for client, chs in sorted(charges_by_client.items()):
+        chs = sorted((d, float(a)) for d, a in chs if a)
+        if not chs:
+            continue
+        deal = deals.get(client) or {}
+        pkg = _pkg_key(deal.get("offer"))
+        if pkg is None:
+            excluded.append({"client": client, "why": "no retainer package on "
+                             f"the tracker row (offer: {deal.get('offer')!r})"})
+            continue
+        term = RETAINER_TERMS[pkg]
+        start = deal.get("close_date") or chs[0][0]
+        if not deal.get("close_date") and (chs[0][0] - data_start).days <= 31:
+            excluded.append({"client": client, "why": "left-censored — paying "
+                             "since before the data window; term start unknown"})
+            continue
+        import client_overrides as _co
+        end = _co._add_months(start, term)
+        if not (w0 <= end <= today - dt.timedelta(days=grace_days)):
+            continue
+        in_term = sum(a for d, a in chs if start <= d < end) / 1.1
+        monthly = in_term / term
+        after = sum(a for d, a in chs
+                    if end <= d <= end + dt.timedelta(days=grace_days + 31)) / 1.1
+        renewed = monthly > 0 and after >= floor_share * monthly
+        rows.append({"client": client, "package": pkg, "term_start": str(start),
+                     "term_end": str(end), "monthly_ex_gst": round(monthly, 2),
+                     "paid_after_ex_gst": round(after, 2), "renewed": renewed})
+        cv = deal.get("contract")
+        if cv:
+            comp_rows.append({"client": client, "contract_ex_gst": float(cv),
+                              "collected_ex_gst": round(in_term, 2),
+                              "completion_pct": round(min(100.0, 100 * in_term / float(cv)), 1)})
+    n = len(rows)
+    k = sum(1 for r in rows if r["renewed"])
+    renewal = {"value": round(100 * k / n, 1) if n else None,
+               "n": n, "renewed": k, "ci95": wilson(k, n), "rows": rows,
+               "excluded": excluded, "n_excluded": len(excluded)}
+    cn = len(comp_rows)
+    col = sum(r["collected_ex_gst"] for r in comp_rows)
+    con = sum(r["contract_ex_gst"] for r in comp_rows)
+    completion = {"value": round(min(100.0, 100 * col / con), 1) if con else None,
+                  "n": cn, "rows": comp_rows,
+                  "method": "Σ collected ex-GST ÷ Σ contract ex-GST over terms "
+                            "ended in the trailing 12 months (dollar-weighted)"}
+    return {"renewal": renewal, "completion": completion,
+            "method": {"cohort": "retainer terms ended in the trailing 12 months, "
+                                 f"grace {grace_days}d elapsed",
+                       "renewed": f"paid ≥ {int(floor_share * 100)}% of the term's "
+                                  "monthly ex-GST within the grace + one month",
+                       "source": "Stripe charges matched by the one matcher; "
+                                 "tracker won rows for package, start and contract"},
+            "measured": str(today)}

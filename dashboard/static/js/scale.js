@@ -168,6 +168,7 @@
         ['comm_per_close', 'bounty_per_set_agg', 'monthly_fixed_agg',
          'qualified_rate', 'capacity', 'tooling', 'tooling_per_seat',
          'contract_avg', 'mrr_avg', 'margin_avg', 'm0_share', 'cash_curve',
+         'ltv_avg', 'ltgp_avg', 'ltv_basis',
          'mix', 'commission_detail', 'monthly_fixed_detail',
          'commission_per_close', 'bounty_per_set', 'comm_rule_version',
          'mix_warning'].forEach(function (k) { if (k in s) SIM[k] = s[k]; });
@@ -448,8 +449,8 @@
       capLine +
       'sales tools: ' + fmt$(c.tooling_total) + (SIM.tooling_per_seat ? ' (base + per-seat × seats)' : ' (fixed base)') + '\n' +
       '(' + fmt$(simState.spend) + ' ads + ' + fmt$(c.commissions_over_term) + ' commissions + ' + fmt$(c.bounties) + ' bounties + ' + fmt$(c.monthly_fixed) + ' fixed + ' + fmt$(c.headcount_cost) + ' headcount + ' + fmt$(c.tooling_total) + ' tools) ÷ ' + c.clients.toFixed(1) + ' clients = ' + (c.cac ? fmt$(c.cac) : '—') + ' per client\n' +
-      'worth it? LTV:CAC = $' + Math.round(SIM.contract_avg).toLocaleString() + ' ÷ ' + (c.cac ? fmt$(c.cac) : '—') + ' = ' + (c.ltv_cac ? c.ltv_cac.toFixed(2) : '—') + '×' +
-      ' · LTGP:CAC = $' + Math.round(SIM.contract_avg).toLocaleString() + ' × ' + (SIM.margin_avg * 100).toFixed(1) + '% margin (last year’s figure) ÷ ' + (c.cac ? fmt$(c.cac) : '—') + ' = ' + (c.ltgp_cac ? c.ltgp_cac.toFixed(2) : '—') + '×' +
+      'worth it? LTV:CAC = $' + Math.round(SIM.ltv_avg || SIM.contract_avg).toLocaleString() + ' lifetime value per client ÷ ' + (c.cac ? fmt$(c.cac) : '—') + ' = ' + (c.ltv_cac ? c.ltv_cac.toFixed(2) : '—') + '×' +
+      ' · LTGP:CAC = $' + Math.round(SIM.ltgp_avg || SIM.contract_avg * SIM.margin_avg).toLocaleString() + ' lifetime gross profit per client ÷ ' + (c.cac ? fmt$(c.cac) : '—') + ' = ' + (c.ltgp_cac ? c.ltgp_cac.toFixed(2) : '—') + '×' +
       ' · payback ' + (c.payback_months == null ? 'beyond the schedule' : c.payback_months + ' month' + (c.payback_months === 1 ? '' : 's'));
   }
 

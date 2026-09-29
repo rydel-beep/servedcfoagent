@@ -162,7 +162,9 @@ def test_ltgp_margin_is_gross_never_contribution():
     assert CE.FY26_MARGIN_PCT == 63.8
     fa = _code_only(_read("finance_analysis.py"))
     assert "42.9" not in fa, "the contribution fallback is back"
-    assert "gross_margin_for_ltgp" in fa
+    # #170: the LTGP maths moved to the one engine — the guard moves with it
+    assert "gross_margin_for_ltgp" in _code_only(_read("unit_econ_engine.py"))
+    assert "42.9" not in _code_only(_read("unit_econ_engine.py"))
 
 
 def test_the_before_after_is_material():
