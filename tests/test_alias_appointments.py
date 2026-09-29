@@ -167,9 +167,12 @@ def test_a_near_midnight_booking_stays_on_its_sydney_day():
 def test_every_window_is_stated_in_words():
     import appointments as AP
     kv_store._MEM.clear()
-    _seed_events([_ev("2026-09-28", 8, "Dan — Follow Up")])
+    # dates relative to today: a hardcoded 28 Sep rotted into the past on
+    # 29 Sep and fell out of a window that starts today (#170)
     from helpers import today_sydney
-    r = AP.booked_between(today_sydney(), dt.date(2026, 10, 1))
+    t = today_sydney()
+    _seed_events([_ev(str(t + dt.timedelta(days=1)), 8, "Dan — Follow Up")])
+    r = AP.booked_between(t, t + dt.timedelta(days=3))
     assert r["window_words"].startswith("today →")
     assert r["follow_ups"] == 1
 

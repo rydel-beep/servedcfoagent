@@ -85,7 +85,23 @@ def scan(days: int = LOOKBACK_DAYS) -> dict:
         out["total_unmatched"] += float(ch.get("amount") or 0)
     out["total_unmatched"] = round(out["total_unmatched"], 2)
     out["count"] = len(out["rows"])
+    # A charge that matched THIS scan and not the last one changes what the
+    # register knows (its cash, and a proposed close with a GHL stage becomes
+    # confirmed once payment corroborates it). close_detect.tick only
+    # invalidates on a NEW close key, and the register rebuilds only on
+    # invalidation — so a payment matched to a client already on file sat
+    # outside every tile until some unrelated event rebuilt it (#170).
+    before = {m.get("charge_id") for m in (latest().get("matched") or [])}
+    newly = sorted({m.get("charge_id") for m in out["matched"]} - before - {None})
     kv_store.put(K_STATE, out)
+    if newly:
+        out["newly_matched"] = newly
+        try:
+            import close_detect
+            out["invalidated"] = close_detect.invalidate_now(
+                f"{len(newly)} payment(s) newly matched: {newly[:3]}")
+        except Exception as e:  # noqa: BLE001
+            out["invalidate_error"] = str(e)[:120]
     return out
 
 
