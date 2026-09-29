@@ -51,6 +51,19 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 
+def _money(v) -> float | None:
+    """'$18,300' / '18300' / 18300.0 → 18300.0; blank or junk → None."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = re.sub(r"[^0-9.\-]", "", str(v))
+    try:
+        return float(s) if s not in ("", ".", "-") else None
+    except ValueError:
+        return None
+
+
 def journal(event: str, detail: str):
     j = kv_store.get(_KV_JOURNAL) or []
     j.append({"at": str(today_sydney()), "event": event, "detail": detail[:300]})
@@ -454,8 +467,13 @@ def rebuild_closes(apply: bool = True) -> dict:
                 cv = round(float(health["current_mrr"]) * term, 2)
                 cv_src = (f"derived: package term ({term}mo) × Health-tab "
                           f"MRR — not a signed figure")
+        # #170: the tracker rung passes the RAW sheet cell ("$18,300"); every
+        # consumer does arithmetic on this — a string took down the unit-
+        # econ, ROAS, verdict and travelling tiles the first time the widened
+        # window carried one. Parsed here, at the source; unparseable → None.
+        cv = _money(cv)
         entry["contract_value"] = cv
-        entry["contract_provenance"] = cv_src or "unknown — blank ≠ zero"
+        entry["contract_provenance"] = (cv_src if cv is not None else None) or "unknown — blank ≠ zero"
         # conflict surfacing (never silently reconciled)
         if tracker_close and tracker_close != cand["close_date"]:
             entry["conflict"] = (f"tracker close {tracker_close} vs GHL "

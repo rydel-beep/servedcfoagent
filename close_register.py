@@ -114,6 +114,40 @@ def _detect(days: int) -> dict[str, dict]:
             elif (row["source"] == e["dated_by"]
                   and row["close_date"] < e["close_date"]):
                 e["close_date"] = row["close_date"]
+    return _merge_same_email(found)
+
+
+def _merge_same_email(found: dict) -> dict:
+    """#170: one person, one close. The tracker wrote "HOANG PHUOC PHAM",
+    the CRM "HOANG PHUOC PHAM (Max)" — two keys, two closes, the same email.
+    Records sharing an identical email on the SAME close date merge into
+    the one the tracker (the authority) carries; sources and evidence
+    union. Different dates stay separate (a second deal is real)."""
+    by_email: dict[tuple, list[str]] = {}
+    for key, e in found.items():
+        em = (e.get("email") or "").strip().lower()
+        if em:
+            by_email.setdefault((em, e["close_date"]), []).append(key)
+    for (_em, _d), keys in by_email.items():
+        if len(keys) < 2:
+            continue
+        keys.sort(key=lambda k: (not any(s["source"] == _AUTHORITY
+                                         for s in found[k]["sources"]), k))
+        keep = found[keys[0]]
+        for k in keys[1:]:
+            other = found.pop(k)
+            keep["sources"].extend(other["sources"])
+            for ek, ev in (other.get("evidence") or {}).items():
+                if ek == "charge_ids":
+                    for cid in ev or []:
+                        keep["evidence"].setdefault("charge_ids", [])
+                        if cid not in keep["evidence"]["charge_ids"]:
+                            keep["evidence"]["charge_ids"].append(cid)
+                elif ev not in (None, ""):
+                    keep["evidence"].setdefault(ek, ev)
+            for fk in ("client", "owner_id"):
+                keep[fk] = keep.get(fk) or other.get(fk)
+            keep.setdefault("merged_from", []).append(other["person"])
     return found
 
 
@@ -286,7 +320,8 @@ def build(days: int = ALL_TIME_DAYS) -> dict:
             elif why:
                 contract_src = f"closed-deal form: {why} — needs your number"
         if contract_val is None and le and le.get("contract_value") is not None:
-            contract_val = le["contract_value"]
+            # defensive (#170): a text cell once reached here and broke every tile
+            contract_val = _money_like(le["contract_value"])
             contract_src = le.get("contract_provenance") or "gap-ledger evidence ladder"
             signed = "derived" not in str(contract_src)
         contract = {"value": contract_val,

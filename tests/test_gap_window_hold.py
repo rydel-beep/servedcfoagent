@@ -88,3 +88,10 @@ def test_a_same_day_cache_from_the_old_rule_is_recomputed(monkeypatch):
                                "gap": {"start": "2026-09-24", "end": "x"}})   # no rule stamp
     st = G.detect_gap()
     assert st["gap"]["start"] == "2026-09-09" and st["rule"] == G._GAP_RULE
+
+
+def test_a_raw_tracker_money_cell_becomes_a_number():
+    """#170 incident: '$27,900' reached the tiles as text and broke them."""
+    assert G._money("$27,900") == 27900.0 and G._money("18300") == 18300.0
+    assert G._money(18300) == 18300.0
+    assert G._money("") is None and G._money("TBC") is None and G._money(None) is None

@@ -196,3 +196,34 @@ def test_amoroso_ruling_costs_exactly_860_plus_setter(monkeypatch):
     d = SC.build("2026-09-01", "2026-09-29")["deals"][0]
     assert d["closer_cost"] == 860.0 and d["setter_cost"] == 239.95
     assert d["total"] == 1099.95 and not d.get("pending")
+
+
+def test_same_email_same_day_is_one_close(monkeypatch):
+    """#170: the tracker's 'HOANG PHUOC PHAM' and the CRM's 'HOANG PHUOC PHAM
+    (Max)' were two closes with one email."""
+    import close_detect as CD
+    row = lambda person, src, **ev: {"person": person, "close_date": "2026-09-29",
+                                     "source": src, "provenance": src,
+                                     "email": "max@example.com", "evidence": ev}
+    monkeypatch.setattr(CD, "_from_tracker", lambda: [row("HOANG PHUOC PHAM", "tracker")])
+    monkeypatch.setattr(CD, "_from_ghl", lambda: [row("HOANG PHUOC PHAM (Max)", "ghl stage",
+                                                      opp_id="R9k", contact_id="Yhc")])
+    monkeypatch.setattr(CD, "_from_stage_recorder", lambda: [])
+    monkeypatch.setattr(CD, "_from_payments", lambda: [])
+    found = CR._detect(3650)
+    assert list(found) == ["hoang phuoc pham"]
+    e = found["hoang phuoc pham"]
+    assert {s["source"] for s in e["sources"]} == {"tracker", "ghl stage"}
+    assert e["evidence"]["opp_id"] == "R9k" and e["merged_from"] == ["HOANG PHUOC PHAM (Max)"]
+
+
+def test_same_email_different_day_stays_two_deals(monkeypatch):
+    import close_detect as CD
+    monkeypatch.setattr(CD, "_from_tracker", lambda: [
+        {"person": "A", "close_date": "2026-01-01", "source": "tracker", "provenance": "t",
+         "email": "a@x.com"},
+        {"person": "A (second venue)", "close_date": "2026-09-01", "source": "tracker",
+         "provenance": "t", "email": "a@x.com"}])
+    for f in ("_from_ghl", "_from_stage_recorder", "_from_payments"):
+        monkeypatch.setattr(CD, f, lambda: [])
+    assert len(CR._detect(3650)) == 2
