@@ -161,3 +161,38 @@ def test_tiles_say_how_many_proposed_closes_they_left_out(monkeypatch):
     assert n == {"n": 1, "label": "+1 proposed, not counted",
                  "href": "/dashboard/closes?window=mtd"}
     assert CR.proposed_note("2026-09-20", "2026-09-29", "mtd") is None
+
+
+def test_amoroso_ruling_costs_exactly_860_plus_setter(monkeypatch):
+    """Rydel, 29 Sep: Walk-In Engine, 3 months, $4,799 ex-GST upfront on
+    ch_3UJpCOBjA5FwcLGQ03sfTb63; closer Kalin at a deal-specific $860;
+    setter Maran 5% of $4,799 = $239.95 (+ $50 per qualified set)."""
+    import sales_cost as SC
+    t = _terms(key="scottcho", person="Scott Cho", client="Amoroso Gelateria",
+               close_date="2026-09-26", package=RB.normalise_package("Walk-In Engine"),
+               package_words="Walk-In Engine", term_months=3, payment_type="PIF",
+               contract_ex_gst=4799.0, closer="kalin", setter="maran",
+               closer_commission=860.0,
+               schedule=[{"n": 1, "amount": 4799.0, "gst": "ex", "due": "2026-09-26",
+                          "received": "2026-09-26", "channel": "stripe",
+                          "account": "business",
+                          "evidence_id": "ch_3UJpCOBjA5FwcLGQ03sfTb63"}])
+    e = {**CR._ruling_entry(t), "cash": {"amount": 5278.9,
+                                         "charge_ids": ["ch_3UJpCOBjA5FwcLGQ03sfTb63"]}}
+    CR._apply_terms(e, t)
+    assert e["cash"]["amount"] == 5278.9            # the Stripe charge, never doubled
+    assert e["contract"]["value"] == 4799.0
+    monkeypatch.setattr(SC, "_tracker_deals", lambda: [])
+    monkeypatch.setattr(SC, "_union_deals", lambda w0, w1: [{
+        "person": "Scott Cho", "close_date": "2026-09-26", "contract": 4799.0,
+        "cash": 5278.9, "ruled": {"package": e["package"], "payment_type": "PIF",
+                                  "closer": "kalin", "setter": "maran",
+                                  "closer_commission": 860.0,
+                                  "cash_events": e["cash_events"]}}])
+    monkeypatch.setattr(SC, "_sets_in_window", lambda w0, w1: {"count": 0, "basis": "t"})
+    monkeypatch.setattr(SC, "_sets_from_engine", lambda w0, w1: 0)
+    monkeypatch.setattr(SC, "_ad_spend", lambda w0, w1: 0.0)
+    monkeypatch.setattr(CE, "_raise_card", lambda card: None)
+    d = SC.build("2026-09-01", "2026-09-29")["deals"][0]
+    assert d["closer_cost"] == 860.0 and d["setter_cost"] == 239.95
+    assert d["total"] == 1099.95 and not d.get("pending")

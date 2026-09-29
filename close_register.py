@@ -740,7 +740,8 @@ def rule_deal_terms(person: str, client: str, close_date: str, package: str,
                     schedule: list[dict], words: str, actor: str = "rydel",
                     closer: str | None = None, setter: str | None = None,
                     payment_type: str | None = None,
-                    contact: str | None = None) -> dict:
+                    contact: str | None = None,
+                    closer_commission: float | None = None) -> dict:
     """schedule: [{"n", "amount", "gst": "inc"|"ex", "due",
                    "received": date|None, "channel": "bank transfer"|"stripe",
                    "account": "business"|"personal"|None,
@@ -771,6 +772,10 @@ def rule_deal_terms(person: str, client: str, close_date: str, package: str,
            "term_months": int(term_months), "payment_type": payment_type,
            "contract_ex_gst": round(float(contract_ex_gst), 2),
            "schedule": schedule or [], "closer": closer, "setter": setter,
+           # a DEAL-SPECIFIC closer commission (Rydel's word) — counted as
+           # recorded for this deal only; the rulebook is untouched
+           "closer_commission": (round(float(closer_commission), 2)
+                                 if closer_commission is not None else None),
            "words": words, "by": actor, "at": now_sydney().isoformat()}
     terms = deal_terms()
     prior = terms.get(key)
@@ -812,6 +817,8 @@ def _apply_terms(e: dict, t: dict) -> None:
         e["closer"] = t["closer"]
     if t.get("setter"):
         e["setter"] = t["setter"]
+    e["closer_commission_ruled"] = t.get("closer_commission")
+    e["package_words"] = t.get("package_words")
     counted, pending, outside, receivable, events = [], [], [], [], []
     for p in t.get("schedule") or []:
         row = {"n": p.get("n"), "amount": p.get("amount"), "gst": p.get("gst"),

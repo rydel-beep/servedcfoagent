@@ -233,8 +233,10 @@ def ltv_for(e: dict, inp: dict, renewal_pct: float | None = None) -> dict:
                  f"{len(renewals)} renewal term(s) at {p * 100:.1f}%^k × ${cv:,.0f} "
                  f"(horizon {HORIZON_MONTHS} months)")
     else:
+        why = ("not a retainer package" if (pkg or e.get("package") or e.get("term_months"))
+               else "package unknown")
         basis = (f"${cv:,.0f} × {c * 100:.1f}% completion — no renewal "
-                 f"credited ({'package unknown' if pkg is None else 'not a retainer package'})")
+                 f"credited ({why})")
     row.update({"in_term": round(in_term, 2), "renewals": renewals,
                 "expected": round(in_term + sum(renewals), 2), "working": basis})
     return row

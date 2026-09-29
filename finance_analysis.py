@@ -110,6 +110,7 @@ def _closes_union(w0: str, w1: str, basis: str) -> list[dict]:
             "ruled": ({"package": e.get("package"),
                        "payment_type": e.get("payment_type"),
                        "closer": e.get("closer"), "setter": e.get("setter"),
+                       "closer_commission": e.get("closer_commission_ruled"),
                        "cash_events": e.get("cash_events") or []}
                       if e.get("ruling") else None),
         })

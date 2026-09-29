@@ -113,6 +113,7 @@ def build(window_start: str, window_end: str) -> dict:
                      "package": r["package"], "payment_type": r.get("payment_type") or "",
                      "contract": u.get("contract"), "closer": r.get("closer"),
                      "setter": r.get("setter"), "cash_events": r.get("cash_events") or [],
+                     "recorded_closer_commission": r.get("closer_commission"),
                      "facts": "owner ruling"}
         if known:
             counted = CE.counted_for(known)

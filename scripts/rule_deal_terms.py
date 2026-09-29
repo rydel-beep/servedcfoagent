@@ -45,13 +45,16 @@ def main():
     ap.add_argument("--closer")
     ap.add_argument("--setter")
     ap.add_argument("--contact")
+    ap.add_argument("--closer-commission", type=float,
+                    help="a DEAL-SPECIFIC closer commission ruled by Rydel")
     a = ap.parse_args()
     import close_register as CR
     res = CR.rule_deal_terms(
         a.person, a.client, a.close_date, a.package, a.term_months,
         a.contract_ex_gst, [_payment(p) for p in a.payment], a.words,
         actor="rydel", closer=a.closer, setter=a.setter,
-        payment_type=a.payment_type, contact=a.contact)
+        payment_type=a.payment_type, contact=a.contact,
+        closer_commission=a.closer_commission)
     print(json.dumps(res, default=str, indent=1))
     if res.get("ok"):
         e = CR.record(CR._norm(a.person))
