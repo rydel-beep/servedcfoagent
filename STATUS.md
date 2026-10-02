@@ -760,3 +760,15 @@ dashboard/evidence/phase0/.
   check, tiles blank on failure); EDITH answers "sales vs acquisition cost"
   from it.
 - Registry +9 (jargon clean). Tests +52.
+
+## 2026-10-02 (2) — GROUND TRUTH FIRST, PART A (#172) — HARD STOP
+- Pulled read-only 1 Sep → 2 Oct: 7 GHL calendars / 77 events, 1,545 sales-
+  pipeline opportunities (+ USA pipeline), 54 contact records, 300 contacts
+  created, 31 Stripe charges (all matched), Xero bank feed + invoices via
+  the connector. truth_tables.py + TRUTH_TABLES_2026-10-02.md + /dashboard/truth.
+- Headline (1 Sep → today): 44 consults · showed 0 · no-show 5 · unmarked 39 ·
+  closes 7 GHL (+2 rulings, likely the same deals) · cash $67,481 ex-GST ·
+  leads 154 (= tracker 154).
+- Waiting on Rydel: confirm/correct the five tables; name 5 GHL user ids;
+  Max = Rocky's?; Rose = Ozan ($8,305 vs $8,250; $14,500 vs $15,000).
+- No tile changed. Not deployed (deploy permission refused; ship.py ready).

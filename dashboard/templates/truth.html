@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Truth tables — Served CFO</title>
+{% include "partials/telemetry.html" %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/dashboard/static/css/served.css?v={{ asset_v }}">
+<style>
+  .tt-small { font-size: 12px; color: var(--muted, #9aa); }
+  .tt-unconf { background: rgba(232,180,69,0.11); color: var(--amber); padding: 0 6px; border-radius: 8px; font-size: 11px; }
+  .tt-table-wrap { max-height: 520px; overflow: auto; }
+</style>
+</head>
+<body class="s-page" data-page="truth">
+{% include "partials/shell_nav.html" %}
+<main class="s-main" id="main">
+  <div class="s-panel-head" style="margin-top:var(--sp-4)">
+    <h1 class="s-panel-title">Truth tables
+      <span class="tt-unconf" data-def="truth_tables">{{ tables.confirmation.status if tables else 'not built' }}</span></h1>
+    <span class="s-panel-sub">raw rows counted directly from the ruled sources — GHL calendars, the GHL Closed Deal stage,
+      Stripe + the Xero bank feed, GHL opportunities created; the tracker is a cross-check only ·
+      {% if tables %}pulled {{ (tables.pulled_at or '')[:16] | replace('T', ' ') }} · built {{ (tables.built_at or '')[:16] | replace('T', ' ') }}{% endif %}
+      &nbsp;·&nbsp; window:
+      {% for k, lbl in [('month', 'this month'), ('last7', 'last 7 days'), ('last30', 'last 30 days'), ('sep', 'September'), ('since_sep', '1 Sep → today')] %}
+        <a href="?window={{ k }}" {% if window_key == k %}style="font-weight:700"{% endif %}>{{ lbl }}</a>{% if not loop.last %} · {% endif %}
+      {% endfor %}
+    </span>
+  </div>
+
+  {% if not tables %}
+    <div class="s-empty">No truth tables have been built on this instance yet.</div>
+  {% else %}
+  {% set t = tables.windows[window_key] %}
+  <section class="s-cards" style="margin-top:var(--sp-4)" aria-label="Headline">
+    {% for lbl, key, sub in [('Consults', 'appointments', 'one per GHL appointment id'), ('Showed', 'showed', 'marked showed in GHL'),
+                              ('No-show', 'no_show', 'marked no-show in GHL'), ('Unmarked', 'unmarked', 'past consult, attendance not marked'),
+                              ('Closes', 'closes', 'GHL Closed Deal + rulings'), ('Leads', 'leads', 'opportunities created')] %}
+    <div class="s-card" data-metric="truth_{{ key }}" data-window="{{ t.window.key }}" data-clock="{{ t.window.label }}"
+         data-basis="truth table" data-value="{{ t.headline[key] }}">
+      <span class="s-card-label">{{ lbl }}</span>
+      <span class="s-card-value">{{ t.headline[key] }}</span>
+      <span class="s-card-sub">{{ sub }} · {{ t.window.label }}</span>
+    </div>
+    {% endfor %}
+    <div class="s-card" data-metric="truth_cash_ex_gst" data-window="{{ t.window.key }}" data-clock="{{ t.window.label }}"
+         data-basis="truth table" data-value="{{ t.headline.cash_ex_gst }}">
+      <span class="s-card-label">Cash received</span>
+      <span class="s-card-value">${{ '{:,.0f}'.format(t.headline.cash_ex_gst or 0) }}</span>
+      <span class="s-card-sub">ex-GST · Stripe + Xero bank feed, each once · {{ t.window.label }}</span>
+    </div>
+  </section>
+
+  {% if tables.flags_for_rydel %}
+  <section class="s-panel" aria-labelledby="ttf-title">
+    <div class="s-panel-head"><h2 class="s-panel-title" id="ttf-title">For Rydel to confirm or correct</h2></div>
+    <ul class="s-list">{% for k, v in tables.flags_for_rydel.items() %}<li><b>{{ k }}</b> — {{ v }}</li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+
+  <section class="s-panel" aria-labelledby="tta-title">
+    <div class="s-panel-head"><h2 class="s-panel-title" id="tta-title">Appointments ({{ t.appointments.count }})</h2>
+      <span class="s-panel-sub">{{ t.appointments.note }}</span></div>
+    <div class="s-table-wrap tt-table-wrap"><table class="s-table"><thead><tr>
+      <th>Sydney time</th><th>Contact's own time</th><th>Contact (GHL)</th><th>Calendar</th><th>Assigned user</th><th>Status</th><th>Show</th><th class="tt-small">Appointment id</th></tr></thead>
+      <tbody>{% for r in t.appointments.rows %}<tr>
+        <td>{{ r.start_sydney }}</td><td class="tt-small">{{ r.start_local }} {{ r.contact_timezone }}</td><td><b>{{ r.contact_name }}</b></td>
+        <td class="tt-small">{{ r.calendar }}</td><td class="tt-small">{{ r.assigned_user }}</td><td>{{ r.status }}</td><td>{{ r.show }}</td><td class="tt-small">{{ r.appointment_id }}</td></tr>{% endfor %}</tbody></table></div>
+    <details><summary class="tt-small">Removed as duplicates ({{ t.appointments.removed_duplicates | length }}) · excluded ({{ t.appointments.excluded | length }}) · flags ({{ t.appointments.flags | length }})</summary>
+      <ul class="s-list">
+        {% for r in t.appointments.removed_duplicates %}<li class="tt-small"><b>removed</b> {{ r.contact_name }} · {{ r.start_sydney }} — {{ r.why }}</li>{% endfor %}
+        {% for r in t.appointments.excluded %}<li class="tt-small"><b>excluded</b> {{ r.contact_name }} · {{ r.start_sydney }} · {{ r.calendar }} · {{ r.status }} — {{ r.why }}</li>{% endfor %}
+        {% for f in t.appointments.flags %}<li class="tt-small"><b>{{ f.kind }}</b> — {{ f.detail }}</li>{% endfor %}
+      </ul></details>
+  </section>
+
+  <section class="s-panel" aria-labelledby="ttc-title">
+    <div class="s-panel-head"><h2 class="s-panel-title" id="ttc-title">Closes ({{ t.closes.count }})</h2><span class="s-panel-sub">{{ t.closes.note }}</span></div>
+    <div class="s-table-wrap"><table class="s-table"><thead><tr><th>Moved (Sydney)</th><th>Dated by</th><th>Contact (GHL)</th><th>Business</th><th>Closer</th><th>GHL $</th><th>Package</th><th>Source</th><th class="tt-small">Id</th></tr></thead>
+      <tbody>{% for r in t.closes.rows %}<tr><td>{{ r.moved_sydney }}</td><td class="tt-small">{{ r.dated_by }}</td><td><b>{{ r.contact_name }}</b></td><td>{{ r.business }}</td>
+        <td class="tt-small">{{ r.closer }}</td><td>{{ r.ghl_value if r.ghl_value is not none else '—' }}</td><td>{{ r.package }}{% if r.contract_ex_gst %} · ${{ '{:,.0f}'.format(r.contract_ex_gst) }} ex-GST{% endif %}</td>
+        <td class="tt-small">{{ r.source }}{% if r.note %} — {{ r.note }}{% endif %}</td><td class="tt-small">{{ r.opportunity_id or '—' }}</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+
+  <section class="s-panel" aria-labelledby="ttm-title">
+    <div class="s-panel-head"><h2 class="s-panel-title" id="ttm-title">Cash ({{ t.cash.count }} receipts · ${{ '{:,.2f}'.format(t.cash.total_ex) }} ex-GST)</h2><span class="s-panel-sub">{{ t.cash.note }}</span></div>
+    <div class="s-table-wrap tt-table-wrap"><table class="s-table"><thead><tr><th>Date</th><th>Source</th><th>Payer</th><th class="num">Inc GST</th><th class="num">Ex GST</th><th>Client</th><th>Basis</th><th class="tt-small">Id</th></tr></thead>
+      <tbody>{% for r in t.cash.rows %}<tr><td>{{ r.date }}</td><td class="tt-small">{{ r.source }}</td><td>{{ r.payer }}</td><td class="num">{{ '{:,.2f}'.format(r.amount_inc) }}</td><td class="num">{{ '{:,.2f}'.format(r.amount_ex) }}</td>
+        <td>{{ r.client }}{% if r.unconfirmed %} <span class="tt-unconf">unconfirmed</span>{% endif %}</td><td class="tt-small">{{ r.basis }} · {{ r.description }}</td><td class="tt-small">{{ r.id }}</td></tr>{% endfor %}</tbody></table></div>
+    <details><summary class="tt-small">By client · bank lines not counted ({{ t.cash.not_receipts | length }})</summary>
+      <ul class="s-list">{% for b in t.cash.by_client %}<li class="tt-small">{{ b.client }} — {{ b.n }} receipt(s) · ${{ '{:,.2f}'.format(b.ex) }} ex-GST · {{ b.sources | join(', ') }}</li>{% endfor %}
+        {% for x in t.cash.not_receipts %}<li class="tt-small"><b>not counted</b> {{ x.date }} {{ x.payer }} ${{ '{:,.2f}'.format(x.amount_inc) }} — {{ x.why }}</li>{% endfor %}</ul></details>
+  </section>
+
+  <section class="s-panel" aria-labelledby="ttl-title">
+    <div class="s-panel-head"><h2 class="s-panel-title" id="ttl-title">Leads ({{ t.leads.count }} opportunities created · {{ t.leads.contacts_created }} contacts · tracker {{ t.leads.tracker_rows }})</h2>
+      <span class="s-panel-sub">{{ t.leads.note }} · by source: {% for k, v in t.leads.by_source.items() %}{{ k }} {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}</span></div>
+    <div class="s-table-wrap tt-table-wrap"><table class="s-table"><thead><tr><th>Created (Sydney)</th><th>Contact (GHL)</th><th>Source</th><th>Ad tag</th><th>Stage now</th><th class="tt-small">Id</th></tr></thead>
+      <tbody>{% for r in t.leads.rows %}<tr><td>{{ r.created_sydney }}</td><td>{{ r.name }}</td><td class="tt-small">{{ r.source }}</td><td class="tt-small">{{ r.ad_tag or '' }}</td><td class="tt-small">{{ r.stage_now }}</td><td class="tt-small">{{ r.opportunity_id }}</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+  {% endif %}
+</main>
+{% include "partials/shell_palette.html" %}
+<script src="/dashboard/static/js/shell.js?v={{ asset_v }}"></script>
+{% include "partials/defs.html" %}
+{% include "partials/edith_dock.html" %}
+</body>
+</html>

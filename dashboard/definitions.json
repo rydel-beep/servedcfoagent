@@ -2058,6 +2058,16 @@
       "computed": "It sees every page exactly as the owner does and can perform no action: every save, ruling or voice request is refused with a plain 'read-only' message. Its password lives only on Railway and in a local file that is never committed.",
       "selector": "body",
       "changing": "Nobody changes it from the dashboard. Its password is set once on Railway and in the local file; rotating it means changing both. Everything else about it is fixed in code: reads yes, actions no."
+    },
+    "truth_tables": {
+      "name": "Truth tables",
+      "kind": "page",
+      "screen": "truth",
+      "meaning": "The raw rows behind the sales numbers, counted straight from the sources Rydel ruled: GHL calendars for consults, the GHL Closed Deal stage for closes, Stripe and the Xero bank feed for cash, GHL opportunities created for leads.",
+      "computed": "One consult per appointment id; cancelled never counts; a rescheduled chain counts once at its final time and is listed; shows come only from the marked status (showed, no-show, unmarked); each receipt counted once by id, ex-GST; the tracker is a cross-check, never the source.",
+      "default_from": "A saved read-only pull, marked unconfirmed until Rydel confirms each table.",
+      "good": "Every table confirmed; the dashboard then equals these tables.",
+      "selector": "body[data-page='truth']"
     }
   }
 }

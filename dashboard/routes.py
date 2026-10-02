@@ -532,6 +532,27 @@ def _register_window(key: str):
     return t - _dt.timedelta(days=89), t, "Last 90 days"
 
 
+@bp.route("/truth")
+@require_auth   # owner + finance
+def truth_tables_page():
+    """TRUTH TABLES (#172, Part A): raw rows counted directly from the ruled
+    sources, for Rydel to confirm. Stored tables only — no pull on a page load."""
+    import truth_tables as TT
+    tables = TT.latest()
+    wk = request.args.get("window") or "month"
+    if tables and wk not in (tables.get("windows") or {}):
+        wk = "month"
+    return render_template("truth.html", tables=tables, window_key=wk,
+                           asset_v=_ASSET_VERSION, **_shell("truth"))
+
+
+@bp.route("/api/truth", methods=["GET"])
+@require_auth
+def api_truth_tables():
+    import truth_tables as TT
+    return jsonify(TT.latest() or {"note": "no truth tables built yet"})
+
+
 @bp.route("/api/register", methods=["GET"])
 @require_auth
 def api_register():

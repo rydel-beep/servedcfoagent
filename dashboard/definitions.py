@@ -148,7 +148,7 @@ def coverage_inventory() -> dict:
     inv["truth_engine"] = ["deals_missing_details", "fill_in_form",
                            "match_proposals_pending", "verified_statement",
                            "coverage_line", "change_ledger", "system_crosscheck",
-                           "system_events", "gate_account"]
+                           "system_events", "gate_account", "truth_tables"]
 
     # answer-shaped outputs + the resolver's visible surfaces (#168)
     inv["answers"] = ["total_costs", "per_day_pacing", "margin_delta",

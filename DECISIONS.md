@@ -3680,3 +3680,35 @@ ruled mappings (no invoice/bank-feed read scope); the gates ran against
 production as the OWNER via the Railway env (interim) until Rydel sets
 GATE_BOT_PASSWORD + .gate_password; the Claude Code permission line could
 not be added by the agent (self-modification is refused) — Rydel pastes it.
+
+## #172 — GROUND TRUTH FIRST: RAW ROWS, RYDEL CONFIRMS, THEN THE DASHBOARD MATCHES (2026-10-02)
+
+**RULING — SOURCES OF TRUTH** (Rydel, 2 Oct; supersedes the tracker-as-close-
+authority rule and the gap-window/evidence-ladder derivations): appointments
+and shows → GHL calendars by appointment id; closes → the GHL '✅ Closed Deal'
+stage by opportunity id + Rydel's explicit rulings; cash → Stripe succeeded
+charges + Xero bank-feed client receipts, ex-GST, once by id; leads → GHL
+opportunities created, tracker beside as a cross-check; tracker never the
+source of a tile; default window THIS MONTH, with last 7 / last 30; the
+21-day window is removed.
+
+**PART A (done, read-only)**: truth_tables.py (pure build from raw rows),
+TRUTH_TABLES_2026-10-02.md, the /dashboard/truth page (owner + finance,
+stored tables only), tests. Dedupe: cancelled never counts; same-calendar
+rescheduled chain within 14 days counts once at the final time and is
+listed; test/onboarding/personal calendars excluded and listed; shows only
+from the marked status — GHL holds NO 'showed' status on any Sep consult, so
+every past confirmed consult is UNMARKED. Headline 1 Sep → 2 Oct: 44 consults
+(6 chain duplicates removed, 29 excluded), showed 0 / no-show 5 / unmarked
+39; 7 GHL closes (+2 rulings that are probably the same deals as Max and
+Ozan); cash $67,481 ex-GST (31 Stripe charges, all matched, $58,823 ex +
+Xero rows, mostly unconfirmed); 154 opportunities created = 154 tracker rows.
+**HARD STOP** — no tile changed; Part B waits on Rydel's confirmation.
+
+**FOUND**: Rose Borek's deal is contact 'Ozan Ozsoy' in GHL (Closed Deal
+2 Oct 12:28) and Stripe took $8,305 from Ozan today ('Scale Engine x2
+Split') = $7,550 ex-GST, not $7,500; the tracker row says contract $14,500,
+cash $8,305, setter Maran. 'HOANG PHUOC PHAM / Max' (GHL Closed Deal 29 Sep;
+bank 'Rockys Italian $5,500' 29 Sep; tracker Content Scale $27,900) is
+probably Rocky's Italian. The GHL token cannot list users (401): five user
+ids need names. The stage recorder has no Closed Deal move since 1 Sep.
