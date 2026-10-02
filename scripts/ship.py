@@ -92,9 +92,12 @@ def write_report(commit: str) -> str:
 
 def preflight(skip_tests: bool = False) -> bool:
     code, out = sh(["git", "status", "--porcelain"])
+    # the pipeline's and the gates' own evidence folders never count as
+    # "uncommitted work" — they are written by every run, by design
     dirty = [ln for ln in out.splitlines()
              if ln.strip() and not ln.endswith("SENTINEL_QUEUE.md")
-             and not ln.endswith(".DS_Store")]
+             and not ln.endswith(".DS_Store")
+             and "dashboard/evidence/" not in ln]
     if dirty:
         step("working tree clean", False,
              f"{len(dirty)} uncommitted change(s) would not ship — commit or stash them first",

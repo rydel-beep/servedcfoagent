@@ -100,3 +100,12 @@ def test_gates_only_mode_never_pushes(monkeypatch):
     monkeypatch.setattr(ship, "run_gates", lambda: True)
     assert ship.main() == 0
     assert "git push origin main" not in _names()
+
+
+def test_the_pipelines_own_evidence_never_dirties_the_tree(monkeypatch):
+    monkeypatch.setattr(ship, "sh", lambda cmd, timeout=0: (
+        (0, "?? dashboard/evidence/ship-abc123/\n M SENTINEL_QUEUE.md\n") if "status" in cmd
+        else (0, "ok")))
+    monkeypatch.setattr(sys, "argv", ["ship.py", "--dry-run"])
+    assert ship.main() == 0
+    assert ship.REPORT["steps"][0] == {"step": "working tree clean", "ok": True, "detail": ""}
