@@ -772,3 +772,4 @@ dashboard/evidence/phase0/.
 - Waiting on Rydel: confirm/correct the five tables; name 5 GHL user ids;
   Max = Rocky's?; Rose = Ozan ($8,305 vs $8,250; $14,500 vs $15,000).
 - No tile changed. Not deployed (deploy permission refused; ship.py ready).
+- DEPLOYED 2026-10-02 evening via scripts/ship.py: 3b1da67 live (1612 tests green; Railway served it after 126 s; render gate PASS, behaviour gate PASS on production — as the owner via the Railway env, interim until GATE_BOT_PASSWORD is set). Evidence: dashboard/evidence/{ship,gate,behaviour}-3b1da677bae3/.

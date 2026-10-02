@@ -395,3 +395,9 @@ By source: Facebook 122, facebook 27, (none) 4, Landing Page 1
 
 ---
 _Read-only throughout: nothing was written to the tracker, GHL, Stripe or Xero._
+
+## Confirmations received (2 Oct, evening)
+
+- **Max = Rocky's Italian — yes** (Rydel). Ruling applied in production: Scale Engine, $14,500 ex-GST, 3-part split, $5,500 bank receipt 29 Sep counted; 2 × $5,225 inc receivable; the tracker's "Content Scale $27,900" is wrong.
+- **Rose Borek (contact Ozan Ozsoy)** — Rydel: "8305 including gst x 2 in 30 days, full scale engine". Ruling updated in production: Scale Engine, 2 × $8,305 inc GST = **$15,100 ex-GST**; payment 1 landed 2 Oct (Stripe ch_3ULvsiBjA5FwcLGQ02g2RZ9M, $7,550 ex-GST, counted); payment 2 $8,305 due 1 Nov 2026 (receivable). The tracker's $14,500 is wrong. Closer/setter still unnamed.
+- **Still open:** the five GHL user names; the five tables themselves (consults, shows, closes, cash, leads) — unconfirmed until Rydel says so.
