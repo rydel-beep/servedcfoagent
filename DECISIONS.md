@@ -3548,3 +3548,135 @@ LTV:CAC 3.52× expected / 3.86× floor · LTGP:CAC 2.30× / 2.52× · renewal
 band 3.15–4.59× / 2.05–2.99× · CAC $4,293.23 (commission pending on 4).
 MTD (6 closes): 4.09× / 5.00× · 2.67× / 3.26× · CAC $3,518.78 (pending
 on 3). Mature cohort (July leads): 3.33× / 2.17×.
+
+## #171 — THE SALES TRUTH ENGINE: EVERGREEN, SELF-CHECKING, ALWAYS LIVE (2026-10-02)
+
+**WHY** (Rydel): "I'm sick of looking at inaccurate dashboards. I need an
+evergreen approach that updates in real time and accurately shows the truth
+of our sales performance against cost of acquisition." Three root causes to
+end permanently: fixes built but never deployed; deals and payments arriving
+incomplete and being silently excluded or estimated; per-symptom patches
+instead of a mechanism for missing information.
+
+**PREMISE CORRECTED**: the brief said production was four commits behind
+(43b41e7 → ee3e834). It was not — the 29 Sep evening pushes (ee3e834,
+669454d, 3324041, cd00feb) were live; /health reported cd00feb at session
+start. Phase 0.4 (ship the backlog) and the Amoroso ruling were already done.
+
+**PHASE 0 — DEPLOYS AUTOMATIC AND SAFE**
+- THE GATE ACCOUNT (dashboard/auth.py, role `gate`, enabled by
+  GATE_BOT_PASSWORD): owner-grade READS of every page (it is in the finance
+  role set and is never scrubbed), ZERO actions — every non-GET request and
+  the few GET paths that act (EDITH greeting/voice, scans) are refused
+  structurally in require_auth, before any route runs. Compute-only POSTs
+  the pages render with (simulate/run/solve/expiring-preview/calc) are
+  allowed and pinned as writing nothing. A refusal is HTTP 200 with
+  `{ok:false, refused:"gate", did:"nothing", error:"…read-only…"}` + an
+  X-Gate-Refused header — NOT a 403, because the browser logs every non-2xx
+  as a console error and the gates treat console errors as failures (found
+  in the local drill: the gate failed on its own refusals).
+- THE CREDENTIAL (scripts/gate_creds.py): GATE_BOT_PASSWORD env → the
+  git-ignored `.gate_password` file → GATE_OWNER_PASSWORD (pre-#171) →
+  RYDEL_PASSWORD under `railway run` (interim). Never printed; only the
+  MODE is reported. The agent created the empty file + the .gitignore line
+  and no value anywhere.
+- THE GATES as the gate account: behaviour gate asserts the REFUSAL of
+  "Save this check" (a save going through would be the failure) and skips
+  the badge post; render gate's area probe now counts `.s-panel` sections
+  (/view/system redirects to the System page, which uses them — the old
+  probe read 0 panels).
+- THE PIPELINE (scripts/ship.py): clean tree → compileall → import app →
+  FULL suite → `git push origin main` → poll /health for HEAD → render +
+  behaviour gates (local gate credential, else ONLY the gate processes
+  under `railway run`; the suite never runs under the Railway env) → on a
+  failed gate `git revert --no-edit HEAD`, push, wait, report. Evidence in
+  dashboard/evidence/ship-<commit>/. Control flow pinned in
+  tests/test_ship_pipeline.py.
+- Local drill (drill server, gate account, test-only creds): render gate
+  PASS; behaviour gate — refusal + zero console errors ✓; one local-data
+  failure (closer-mix → CAC) that needs the production run to judge.
+
+**PHASE 1 — EVERY DEAL A COMPLETE RECORD, OR VISIBLY INCOMPLETE**
+- THE COMPLETE CLOSE: every register entry now carries `gaps` — client,
+  package, term, contract ex-GST, payment schedule, a matched payment,
+  closer, setter, CRM Closed Won stage, closed-deal form, tracker close row,
+  lead row — each with who fills it (Rydel/Piolo via the form; Kalin for
+  GHL; Piolo for the tracker/Xero). `confirmed` says it happened;
+  `complete` says we know everything the unit economics need.
+- DEALS MISSING DETAILS (Today, Sales, Closes; owner + finance): every close
+  with any gap, oldest first, naming the gaps and the owners. ONE number
+  on all three pages (data-metric deals_missing_details).
+- THE FILL-IN FORM = an owner/finance ruling through rule_deal_terms:
+  package from the rate card (+ Custom, described), term, contract ex-GST,
+  schedule rows (amount, inc/ex, due, received, account BUSINESS/PERSONAL,
+  evidence id), closer, setter, payment type, notes. Journaled with
+  who/when; REVERSIBLE (revoke_deal_terms → "Undo ruling"); the register
+  recomputes at once; the matching Piolo line is emitted (Offer, Contract
+  Value, Closer, Setter — what to type). A PERSONAL-account payment is
+  "cash received outside business accounts", never business cash, and
+  raises a Piolo item. RECORD A NEW CLOSE uses the same form; such a close
+  is labelled "owner-recorded — awaiting GHL/Xero evidence".
+- MATCH CARDS (match_proposals.py): the 22 Stripe payers / 103 charges /
+  $226,928.20 and the 12 bank-transfer contacts from
+  MATCH_PROPOSALS_2026-09-29.md are cards with their evidence and Confirm ·
+  Reject · "this is someone else"; confirming can record package + start +
+  contract in the same step (→ a deal-terms ruling); every decision is
+  journaled; the three 29 Sep rulings are seeded DECIDED. A confirm
+  requests a renewal/completion RE-MEASURE (run on the next tick,
+  debounced 10 min).
+
+**PHASE 2 — UNIT ECONOMICS, FINAL FORM**
+- COVERAGE on every window: "based on {k} of {n} closes — {m} missing
+  details"; below 80% (UNIT_ECON_COVERAGE_THRESHOLD) the tile goes AMBER
+  with "incomplete — fill the queue". Sensitivity across the renewal CI,
+  expected + floor, MTD beside — unchanged from #170.
+- WALK-IN → RETAINER CONVERSION measured separately (n, converted, %, CI;
+  "too few cases" below n=5) and CREDITED NOWHERE until Rydel rules it in.
+- Collected cash takes no completion haircut (Amoroso expected = $4,799);
+  CAC loaded = ad spend + rulebook commissions (pending with range when
+  unruled) + set bounties + manager retainer + sales tooling — unchanged.
+
+**PHASE 3 — THE FOUR-SOURCE CROSS-CHECK** (nightly AND on every event):
+tracker, GHL closed stage, GHL stage recorder, matched payments, and the
+Xero leg (ruled contact map + ruled schedules; the agent's token cannot read
+invoices/bank feed — said as a finding, never faked) vs the register. A
+close any source knows that the register lacks → S1 by name; date
+disagreements (>3 days); amount disagreements (tracker cash cell vs matched
+Stripe; tracker contract vs ruling) with BOTH values; package disagreements;
+unattached payments → the matching queue; uncorroborated after 3 days (was
+7); daily-habit reminders after 24 h naming Kalin (GHL Closed Won, the form)
+or Piolo (tracker row, Xero invoice) — internal only. On the System page
+("Nightly cross-check") and the Today feed.
+
+**PHASE 4 — REAL TIME, WITH REASONS**
+- Every invalidation (matched payment, stage change, form, ruling, tracker
+  change) now runs the cross-check and LOGS ITS LAG against a 120 s budget
+  (events:recompute_log; System page "Real time, with reasons"; an
+  over-budget run is a feed item). Stated input budgets: Stripe 15 min
+  (probe), GHL 15 min, tracker 2 min, Xero 24 h.
+- THE CHANGE LEDGER (change_ledger.py): a compact state per engine refresh;
+  each ratio drawer says "Since your last look: X → Y because …" with the
+  EXACT two-part decomposition (lifetime-value side + acquisition-cost side
+  sum to the change) and the named dollar movements, or "Unchanged because
+  …" naming what is pending (e.g. a deal with no contract value yet). Today
+  keeps the previous-visit stamp for it.
+
+**PHASE 5 — THE DAILY VERIFIED STATEMENT** (metrics_statement.py): each
+morning after 06:00 (and on demand), every headline metric with value,
+window, inputs, sources, as-of, coverage, band; the ratios REPRODUCED by hand
+from the listed rows and cost lines (Σ expected LTV over closes with a
+contract ÷ k) ÷ (Σ acquisition cost ÷ n), expected and floor, headline and
+MTD; tolerance 0.01×. A failed identity check → the tiles show "check failed
+— being investigated" (no number) + an S1 finding; it clears on the next
+passing run. EDITH: "how are we doing on sales vs acquisition cost" answers
+from the statement, one direct sentence first.
+
+**REGISTRY**: 9 plain-word entries (jargon grep clean); inventory group
+`truth_engine`. **TESTS**: +52 (gate account 11, pipeline 6, truth engine
+29, +hardening) — suite green before the push (see STATUS).
+
+**NOT DONE / HONEST LIMITS**: the Xero leg of the cross-check is limited to
+ruled mappings (no invoice/bank-feed read scope); the gates ran against
+production as the OWNER via the Railway env (interim) until Rydel sets
+GATE_BOT_PASSWORD + .gate_password; the Claude Code permission line could
+not be added by the agent (self-modification is refused) — Rydel pastes it.

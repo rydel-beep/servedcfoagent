@@ -488,6 +488,8 @@ def invalidate_now(reason: str) -> dict:
     true, this bumps the derivation epoch (which drops every cached
     attribution result) and rebuilds the engine blocks the tiles read, so the
     next page load is already right rather than right in two hours."""
+    import time as _time
+    _t0 = _time.monotonic()
     out = {"reason": reason, "at": now_sydney().isoformat(), "rebuilt": []}
     try:
         import resolution
@@ -513,6 +515,31 @@ def invalidate_now(reason: str) -> dict:
                                                      "why": str(e)[:120]})
     except Exception as e:  # noqa: BLE001
         out["rebuild_error"] = str(e)[:120]
+    # #171 (Phase 3): the four-source cross-check runs on every event too
+    try:
+        import close_register
+        rec = close_register.reconcile()
+        out["reconciled"] = {"findings": len(rec.get("findings") or []), "ok": rec.get("ok")}
+    except Exception as e:  # noqa: BLE001
+        out["reconcile_error"] = str(e)[:120]
+    # #171 (Phase 4): MEASURE THE LAG — event seen → tiles rebuilt. Budget
+    # 120 s after the source update lands in our stores.
+    out["lag_seconds"] = round(_time.monotonic() - _t0, 1)
+    out["lag_budget_seconds"] = 120
+    out["within_budget"] = out["lag_seconds"] <= 120
+    try:
+        log = kv_store.get("events:recompute_log") or []
+        log.append({"at": out["at"], "reason": reason[:160], "lag_seconds": out["lag_seconds"],
+                    "within_budget": out["within_budget"], "rebuilt": out["rebuilt"],
+                    "failed": out.get("failed")})
+        kv_store.put("events:recompute_log", log[-100:])
+        if not out["within_budget"]:
+            kv_store.put("feed:extra:recompute", [{
+                "kind": "recompute_over_budget", "severity": "S2",
+                "title": f"a recompute took {out['lag_seconds']:.0f}s (budget 120s)",
+                "detail": reason[:160]}])
+    except Exception:  # noqa: BLE001
+        pass
     kv_store.put("closes:last_invalidation", out)
     return out
 

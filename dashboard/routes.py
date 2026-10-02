@@ -494,7 +494,27 @@ def closes_ledger_page():
         clock=clock, built_at=built, recon=recon, error=flash_error,
         piolo_lines={p["person"]: p for p in
                      (CR.piolo_lines() if not flash_error else [])},
+        queue=_queue_block(), matches=_matches_block(),
         is_owner=_is_owner())
+
+
+def _queue_block(limit: int | None = None) -> dict:
+    """DEALS MISSING DETAILS for a page — kv read only, guarded."""
+    try:
+        import close_register as CR
+        return CR.missing_details_queue(limit=limit)
+    except Exception as e:  # noqa: BLE001
+        logger.info("queue block unavailable: %s", e)
+        return {"rows": [], "total": 0, "error": str(e)[:120]}
+
+
+def _matches_block() -> dict:
+    try:
+        import match_proposals as MP
+        return MP.cards()
+    except Exception as e:  # noqa: BLE001
+        logger.info("match cards unavailable: %s", e)
+        return {"pending": [], "pending_count": 0, "error": str(e)[:120]}
 
 
 def _register_window(key: str):
@@ -579,6 +599,95 @@ def api_register_declare():
         actor=(current_actor() or {}).get("user") or "owner",
         client=(str(body.get("client")) if body.get("client") else None))
     return jsonify(res), (200 if res.get("ok") else 400)
+
+
+# ── #171 — THE COMPLETE CLOSE: the queue, the fill-in form, match cards ────
+
+@bp.route("/api/register/queue", methods=["GET"])
+@require_auth
+def api_register_queue():
+    """DEALS MISSING DETAILS — every close with any gap, oldest first."""
+    import close_register as CR
+    limit = request.args.get("limit")
+    return jsonify(CR.missing_details_queue(limit=int(limit) if limit else None))
+
+
+@bp.route("/api/register/rate-card", methods=["GET"])
+@require_auth
+def api_register_rate_card():
+    import close_register as CR
+    return jsonify({"packages": CR.rate_card()})
+
+
+@bp.route("/api/register/fill", methods=["POST"])
+@require_owner
+def api_register_fill():
+    """The fill-in form = an owner/finance ruling: journaled with who/when,
+    reversible, recomputed immediately; emits the Piolo line. A personal-
+    account payment is never business cash."""
+    import close_register as CR
+    from dashboard.auth import current_actor
+    body = request.get_json(silent=True) or {}
+    res = CR.fill_in(str(body.get("key") or body.get("person") or ""), body,
+                     (current_actor() or {}).get("user") or "owner")
+    return jsonify(res), (200 if res.get("ok") else 400)
+
+
+@bp.route("/api/register/fill/revoke", methods=["POST"])
+@require_owner
+def api_register_fill_revoke():
+    import close_register as CR
+    from dashboard.auth import current_actor
+    body = request.get_json(silent=True) or {}
+    res = CR.revoke_deal_terms(str(body.get("key") or ""),
+                               (current_actor() or {}).get("user") or "owner")
+    return jsonify(res), (200 if res.get("ok") else 400)
+
+
+@bp.route("/api/match-proposals", methods=["GET"])
+@require_auth
+def api_match_proposals():
+    import match_proposals as MP
+    return jsonify(MP.cards(include_decided=bool(request.args.get("all"))))
+
+
+@bp.route("/api/match-proposals/decide", methods=["POST"])
+@require_owner
+def api_match_proposals_decide():
+    """Confirm · Reject · this is someone else — a ruling on whose money it is."""
+    import match_proposals as MP
+    from dashboard.auth import current_actor
+    body = request.get_json(silent=True) or {}
+    res = MP.decide(str(body.get("id") or ""), str(body.get("decision") or ""),
+                    (current_actor() or {}).get("user") or "owner",
+                    client=body.get("client"), words=body.get("words"),
+                    terms=body.get("terms") or None)
+    return jsonify(res), (200 if res.get("ok") else 400)
+
+
+@bp.route("/api/statement", methods=["GET"])
+@require_auth
+def api_statement():
+    """Today's numbers, verified — the latest statement (stored)."""
+    import metrics_statement as MS
+    return jsonify(MS.latest() or {"note": "not generated yet today"})
+
+
+@bp.route("/api/statement/generate", methods=["POST"])
+@require_owner
+def api_statement_generate():
+    import metrics_statement as MS
+    body = request.get_json(silent=True) or {}
+    return jsonify(MS.generate(force_mismatch=bool(body.get("force_mismatch"))))
+
+
+@bp.route("/api/change-ledger", methods=["GET"])
+@require_auth
+def api_change_ledger():
+    import change_ledger as CL
+    from dashboard.auth import current_actor
+    user = (current_actor() or {}).get("user") or "rydel"
+    return jsonify(CL.since(CL.previous_visit(user)))
 
 
 @bp.route("/api/closes/confirm", methods=["POST"])
@@ -718,6 +827,7 @@ def sales_board_page():
                  "cash": {"total": 0, "source": "—"}, "notes": []}
     resp = make_response(render_template(
         "sales_board.html", board=board, asset_v=_ASSET_VERSION,
+        queue=_queue_block(limit=12), is_owner=is_finance(),
         **_shell("sales")))
     resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -2107,6 +2217,7 @@ def api_chat():
             (lambda m: __import__('quarterly_review').handle_quarterly_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # quarterly review / QoQ+YoY / 3x
             (lambda m: __import__('reactivation').handle_reactivation_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # GHL lead reactivation / where-left-off
             (lambda m: __import__('test_leads').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # test-lead exclusion / what's excluded / mark test|real
+            (__import__('metrics_statement').handle_statement_command, False),  # #171: "how are we doing on sales vs acquisition cost" → the verified statement
             (range_unit_economics.handle_unit_econ_command, False),
             (payback_reconciliation.handle_payback_command, False),
             (lambda m: __import__('attribution_queries').handle_basis_command(m), False),  # what basis / which clock
@@ -2398,6 +2509,7 @@ def chat_stream_response(history: list, voice: bool, channel: str, token: str, u
             (lambda m: __import__('quarterly_review').handle_quarterly_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # quarterly review / QoQ+YoY / 3x
             (lambda m: __import__('reactivation').handle_reactivation_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # GHL lead reactivation / where-left-off
             (lambda m: __import__('test_leads').handle_command(m, __import__('dashboard.auth', fromlist=['current_actor']).current_actor()), False),  # test-lead exclusion / what's excluded / mark test|real
+            (__import__('metrics_statement').handle_statement_command, False),  # #171: "how are we doing on sales vs acquisition cost" → the verified statement
             (range_unit_economics.handle_unit_econ_command, False),
             (payback_reconciliation.handle_payback_command, False),
             (lambda m: __import__('attribution_queries').handle_basis_command(m), False),  # what basis / which clock

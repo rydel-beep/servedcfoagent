@@ -87,6 +87,10 @@
     </div>
   </section>
 
+  {# #171 — the queue and the match cards live here in full #}
+  {% include "partials/missing_details.html" %}
+  {% include "partials/match_cards.html" %}
+
   <section class="s-panel" aria-labelledby="ledger-title" style="margin-top:var(--sp-4)">
     <div class="s-panel-head">
       <h2 class="s-panel-title" id="ledger-title">Every close, newest first</h2>
@@ -253,6 +257,7 @@
 
 {% include "partials/shell_palette.html" %}
 <script src="/dashboard/static/js/shell.js?v={{ asset_v }}"></script>
+{% if is_owner %}<script defer src="/dashboard/static/js/deal_fill.js?v={{ asset_v }}"></script>{% endif %}
 {% include "partials/defs.html" %}
 {% include "partials/edith_dock.html" %}
 </body>

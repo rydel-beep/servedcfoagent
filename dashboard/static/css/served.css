@@ -523,3 +523,15 @@ tr.is-amber td { background: var(--amber-dim); }
 .nm-gap { display: block; font-size: var(--fs-caption);
   color: var(--text-secondary); margin-top: 2px; }
 .nm-gap a { color: var(--accent); }
+
+/* ── #171 — the truth-engine panels: the queue form, match cards ─────── */
+.mc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--sp-3, 12px); }
+.mc-card .s-card-sub { display: block; margin-top: 4px; }
+.mc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.mc-form, .mc-terms { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.mdq-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 12px; margin-top: 8px; }
+.mdq-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted, #9aa); }
+.mdq-sched-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0; }
+.mdq-table td { vertical-align: top; }
+.s-chip-degraded { background: rgba(232, 69, 69, 0.14); color: #e88; }
+@media (max-width: 640px) { .mdq-grid { grid-template-columns: 1fr; } }

@@ -20,8 +20,12 @@ import urllib.request
 from playwright.sync_api import sync_playwright
 
 BASE = os.environ.get("GATE_BASE", "https://web-production-16b16.up.railway.app")
-PW = os.environ.get("GATE_OWNER_PASSWORD")
-USER = os.environ.get("GATE_OWNER_USER", "rydel")
+# #171: the read-only GATE ACCOUNT when GATE_BOT_PASSWORD / .gate_password
+# exist; GATE_OWNER_PASSWORD stays as the interim fallback. Never printed.
+sys.path.insert(0, os.path.dirname(__file__))
+import gate_creds  # noqa: E402
+USER, PW, CRED_MODE = gate_creds.resolve()
+AS_GATE = gate_creds.is_gate_mode(CRED_MODE)
 LEGACY_TOKEN = os.environ.get("GATE_LEGACY_TOKEN")
 PASSES = int(os.environ.get("BEHAVIOUR_PASSES", "3"))
 ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -407,10 +411,19 @@ def run_travelling(page, evd, shots):
         fail("travelling: re-model did not name the rates it loaded")
     clear_text(page, "tv-action-out")      # never read the last reply as this one
     page.click("#tv-save")
-    out2 = wait_for_text(page, "tv-action-out", "Saved")
-    steps["save"] = out2
-    if "Saved" not in out2:
-        fail(f"travelling: save this check did not confirm ({out2[:80]})")
+    if AS_GATE:
+        # #171: the gate account may not ACT. "Save this check" is a write,
+        # so the contract here is the REFUSAL — stated on the page, not a
+        # silent save. A save that went through would be the failure.
+        out2 = wait_for_text(page, "tv-action-out", "read-only")
+        steps["save"] = out2
+        if "read-only" not in out2.lower():
+            fail(f"travelling: the gate account's save was not refused ({out2[:80]})")
+    else:
+        out2 = wait_for_text(page, "tv-action-out", "Saved")
+        steps["save"] = out2
+        if "Saved" not in out2:
+            fail(f"travelling: save this check did not confirm ({out2[:80]})")
     if shots:
         page.screenshot(path=os.path.join(evd, "travelling-2-actions.png"), full_page=True)
     return steps
@@ -511,8 +524,10 @@ def run_required_rate(page, name, evd, shots):
 
 def main():
     if not PW and not LEGACY_TOKEN:
-        print("GATE_OWNER_PASSWORD not in env", file=sys.stderr)
+        print("no gate credential — " + gate_creds.describe(CRED_MODE), file=sys.stderr)
         sys.exit(2)
+    print("behaviour gate: logging in as " + gate_creds.describe(CRED_MODE))
+    REPORT["login_as"] = CRED_MODE
     commit = commit_of()
     evd = os.path.join(ROOT, "dashboard", "evidence", f"behaviour-{commit}")
     os.makedirs(evd, exist_ok=True)
@@ -541,15 +556,20 @@ def main():
             fail("console: " + e)
 
         ok = not FAILS
-        # post the result so the badge updates (owner session held)
-        try:
+        # post the result so the badge updates (owner session held). The
+        # gate account cannot post (read-only by design) — the result still
+        # lands in report.json, which the System page reads.
+        if AS_GATE:
+            REPORT["badge"] = "not posted — the gate account is read-only (by design)"
+        else:
+          try:
             page.evaluate(
                 """async (body) => { await fetch('/dashboard/api/scale/behaviour-verified', {
                      method: 'POST', headers: {'Content-Type': 'application/json'},
                      body: JSON.stringify(body)}); }""",
                 {"ok": ok, "commit": commit, "passes": len(names),
                  "reason": "; ".join(FAILS[:3])})
-        except Exception as e:  # noqa: BLE001
+          except Exception as e:  # noqa: BLE001
             print("badge post failed:", e, file=sys.stderr)
         browser.close()
     REPORT["ok"] = not FAILS

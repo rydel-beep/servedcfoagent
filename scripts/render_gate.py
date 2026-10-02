@@ -36,8 +36,13 @@ import urllib.request
 from playwright.sync_api import sync_playwright
 
 BASE = os.environ.get("GATE_BASE", "https://web-production-16b16.up.railway.app")
-PW = os.environ.get("GATE_OWNER_PASSWORD")
-USER = os.environ.get("GATE_OWNER_USER", "rydel")
+# #171: the gate logs in as the READ-ONLY GATE ACCOUNT when GATE_BOT_PASSWORD
+# (env) or the git-ignored .gate_password file holds a value; the pre-#171
+# GATE_OWNER_PASSWORD env path remains as the interim fallback. The value is
+# never printed or logged — only the MODE is reported.
+sys.path.insert(0, os.path.dirname(__file__))
+import gate_creds  # noqa: E402
+USER, PW, CRED_MODE = gate_creds.resolve()
 HOLD = os.environ.get("GATE_HOLD", "1") == "1"
 LEGACY_TOKEN = os.environ.get("GATE_LEGACY_TOKEN")   # local drill servers use the token path
 ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -142,8 +147,10 @@ def assert_landing(name, probe, console, expect_dcl=None, check_console=True):
 
 def main():
     if not PW and not LEGACY_TOKEN:
-        print("GATE_OWNER_PASSWORD not in env", file=sys.stderr)
+        print("no gate credential — " + gate_creds.describe(CRED_MODE), file=sys.stderr)
         sys.exit(2)
+    print("render gate: logging in as " + gate_creds.describe(CRED_MODE))
+    REPORT["login_as"] = CRED_MODE
     commit = commit_of(BASE)
     evd = os.path.join(ROOT, "dashboard", "evidence", f"gate-{commit}")
     os.makedirs(evd, exist_ok=True)
@@ -313,7 +320,7 @@ def main():
             bprobe = page.evaluate(
                 """() => ({
                      boundaries: Array.from(document.querySelectorAll('.panel-boundary-fail')).map(e => e.innerText.slice(0, 120)),
-                     sections: document.querySelectorAll('section.panel, section.kpi-strip').length,
+                     sections: document.querySelectorAll('section.panel, section.kpi-strip, section.s-panel, section.s-cards').length,
                    })""")
             REPORT["passes"]["area_" + area] = {"probe": bprobe, "console": list(log)}
             errs = [c for c in log if c["type"] in ("error", "pageerror", "http")]

@@ -1,0 +1,50 @@
+{# PAYMENTS TO CONFIRM (#171, 1.4) — the Stripe payers and Xero contacts the
+   systems don't recognise, as cards with their evidence and three buttons.
+   Confirming is a ruling (journaled); it can record the package, start date
+   and contract value in the same step. Needs `matches` (match_proposals.cards)
+   and `is_owner`. #}
+<section class="s-panel" aria-labelledby="mc-title" id="match-cards"
+         data-metric="match_proposals_pending" data-window="all"
+         data-clock="payment date" data-basis="stripe+xero"
+         data-value="{{ matches.pending_count or 0 }}">
+  <div class="s-panel-head">
+    <h2 class="s-panel-title" id="mc-title">Payments to confirm
+      ({{ matches.pending_count or 0 }}{% if matches.pending_stripe_total %},
+      ${{ '{:,.2f}'.format(matches.pending_stripe_total) }} in Stripe{% endif %})</h2>
+    <span class="s-panel-sub" data-def="match_proposals_pending">{{ matches.note or "" }}
+      {% if matches.decided_count %} · {{ matches.decided_count }} already decided{% endif %}
+      {% if matches.shown and matches.pending_count > matches.shown %} · showing the {{ matches.shown }} largest —
+        <a href="/dashboard/closes#match-cards">see all {{ matches.pending_count }}</a>{% endif %}</span>
+  </div>
+  {% if matches.error %}
+    <div class="s-boundary-fail"><b>This panel failed honestly.</b> {{ matches.error }}</div>
+  {% elif matches.pending %}
+    <div class="mc-grid">
+      {% for c in matches.pending %}
+      <div class="mc-card s-card" data-id="{{ c.id }}" data-kind="{{ c.kind }}"
+           data-who="{{ c.who }}" data-proposed="{{ c.proposed or '' }}">
+        <span class="s-card-label">{{ 'Stripe payer' if c.kind == 'stripe' else 'Xero contact (bank transfer)' }}</span>
+        <span class="s-card-value" style="font-size:1.05rem">{{ c.who }}</span>
+        <span class="s-card-sub">
+          {% if c.kind == 'stripe' %}{{ c.charges }} charge(s) · ${{ '{:,.2f}'.format(c.total or 0) }} · {{ c.span }}
+          {% else %}{{ c.invoices }}{% endif %}</span>
+        <span class="s-card-sub"><b>Evidence:</b> {{ c.evidence }}</span>
+        <span class="s-card-sub"><b>Proposed:</b>
+          {% if c.proposed %}{{ c.proposed }} <span class="s-chip">{{ c.strength }}</span>
+          {% else %}needs your name{% endif %}</span>
+        {% if is_owner %}
+        <div class="mc-actions">
+          <button class="s-door mc-act" data-decision="confirm" type="button"
+                  {% if not c.proposed %}disabled title="no proposed client — use 'someone else'"{% endif %}>Confirm</button>
+          <button class="s-door mc-act" data-decision="someone_else" type="button">This is someone else…</button>
+          <button class="s-door mc-act" data-decision="reject" type="button">Reject</button>
+        </div>
+        <div class="mc-out s-card-sub" aria-live="polite"></div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="s-empty">Nothing waiting — every proposed match has been decided.</div>
+  {% endif %}
+</section>

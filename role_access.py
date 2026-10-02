@@ -169,7 +169,7 @@ def scrubbed_for(actor_role: str, payload):
     """R-PIOLO-PARITY: owner AND finance see the payload untouched; any
     other role that ever reaches it gets per-person pay removed and is told
     so."""
-    if actor_role in ("owner", "coo"):
+    if actor_role in ("owner", "coo", "gate"):   # gate = owner's eyes (#171)
         return payload
     out = scrub_payload(payload)
     if isinstance(out, dict):

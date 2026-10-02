@@ -1,0 +1,60 @@
+{# DEALS MISSING DETAILS (#171) — every close with any gap, oldest first,
+   naming exactly what is missing and who can fill it. Each row opens the
+   FILL-IN FORM; submitting is an owner/finance ruling: journaled, reversible,
+   recomputed immediately, and it emits the Piolo line so the tracker is fixed
+   at source. Needs: `queue` (close_register.missing_details_queue) and
+   `is_owner` (finance-grade). #}
+<section class="s-panel" aria-labelledby="mdq-title" id="missing-details"
+         data-metric="deals_missing_details" data-window="all"
+         data-clock="close date" data-basis="register"
+         data-value="{{ queue.total or 0 }}">
+  <div class="s-panel-head">
+    <h2 class="s-panel-title" id="mdq-title">Deals missing details
+      ({{ queue.total or 0 }})</h2>
+    <span class="s-panel-sub" data-def="deals_missing_details">{{ queue.note or "every close with any missing field, oldest first" }}
+      {% if queue.total and queue.shown and queue.total > queue.shown %} · showing the oldest {{ queue.shown }} —
+        <a href="/dashboard/closes?queue=1">see all {{ queue.total }}</a>{% endif %}</span>
+  </div>
+  {% if queue.error %}
+    <div class="s-boundary-fail"><b>This panel failed honestly.</b> {{ queue.error }}</div>
+  {% elif queue.rows %}
+    <div class="s-table-wrap">
+      <table class="s-table mdq-table">
+        <thead><tr><th>Closed</th><th>Client / contact</th><th>What's missing</th>
+          <th>Who fills it</th>{% if is_owner %}<th></th>{% endif %}</tr></thead>
+        <tbody>
+          {% for r in queue.rows %}
+          <tr data-key="{{ r.key }}" data-person="{{ r.person }}" data-client="{{ r.client or '' }}"
+              data-close-date="{{ r.close_date }}"
+              data-known='{{ r.known | tojson | forceescape }}'>
+            <td>{{ r.close_date }}
+              {% if r.status != 'confirmed' %}<div class="s-card-sub">proposed — needs evidence</div>{% endif %}
+              {% if r.label %}<div class="s-card-sub">{{ r.label }}</div>{% endif %}</td>
+            <td><strong>{{ r.client or '—' }}</strong><div class="s-card-sub">{{ r.person }}</div></td>
+            <td class="s-card-sub">{{ r.gaps | join(' · ') }}</td>
+            <td class="s-card-sub">{{ r.owners | join('; ') }}</td>
+            {% if is_owner %}
+            <td><button class="s-door mdq-fill" type="button">Fill in…</button>
+              {% if r.ruled %}<button class="s-door mdq-revoke" type="button" title="reverse the last ruling on this close">Undo ruling</button>{% endif %}</td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="s-empty">Every close on the register is complete.</div>
+  {% endif %}
+
+  {% if is_owner %}
+  <details class="mdq-new" style="margin-top:var(--sp-3)">
+    <summary class="s-card-sub">Record a new close that exists nowhere yet (owner ruling — labelled
+      "awaiting GHL/Xero evidence" until a system corroborates it)</summary>
+    <div class="s-card-sub" style="margin:6px 0">Use the same form: give the contact's name, the client,
+      the close date and what was signed. It is journaled as your ruling and reversible.</div>
+    <button class="s-door mdq-fill mdq-fill-new" type="button">Record a new close…</button>
+  </details>
+  {% endif %}
+
+  <div id="mdq-form-host" hidden></div>
+</section>

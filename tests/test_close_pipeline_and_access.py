@@ -118,8 +118,23 @@ def test_other_roles_are_exactly_as_walled_as_before(app_client):
     assert anon.get("/dashboard/api/snapshot").status_code in (302, 401)
 
 
-def test_the_commission_column_is_rendered_for_piolo_too(app_client):
-    """#167: per-person pay is his at parity — the column renders for both."""
+def test_the_commission_column_is_rendered_for_piolo_too(app_client, monkeypatch):
+    """#167: per-person pay is his at parity — the column renders for both.
+    The board is seeded with one closer row so the pin does not depend on
+    the day of the month (on day 2 of a month, or on a box with no CRM
+    cache, the real board has no closer rows and no column to render)."""
+    import sales_scoreboard as SB
+    real = SB.build
+
+    def seeded(window="mtd", start=None, end=None, comp_visible=True):
+        b = real(window, start, end, comp_visible=comp_visible)
+        b["closers"] = b.get("closers") or [{
+            "name": "kalin", "consults": 4, "confirmed": 3, "show_range": "—",
+            "closes": 1, "close_rate": {"value": 0.25, "text": "25%", "n": 4,
+                                        "confidence": "barely a signal"},
+            "tracker_cash": 5500.0, "commission": 500.0, "pitched_note": "—"}]
+        return b
+    monkeypatch.setattr(SB, "build", seeded)
     owner = _as(app_client, "owner", "rydel").get("/dashboard/sales").data.decode()
     coo = _as(app_client, "coo", "piolo").get("/dashboard/sales").data.decode()
     assert ">Commission<" in owner

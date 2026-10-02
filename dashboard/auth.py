@@ -44,6 +44,50 @@ if not DASHBOARD_TOKEN:
 COOKIE_NAME = "dash_token"
 COOKIE_MAX_AGE = 30 * 24 * 3600
 
+# ── THE GATE ROLE (#171) — owner's eyes, nobody's hands ─────────────────────
+GATE_ROLE = "gate"
+_GATE_SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
+# GET paths that ACT (write a store, speak, spend) — refused to the gate too.
+_GATE_DENIED_GET_FRAGMENTS = (
+    "/api/greeting",        # EDITH's greeting (writes the watermark, speaks)
+    "/bridge/tts",          # EDITH voice synthesis
+    "/bridge/greeting",
+    "/api/test-lead-scan",  # a scan that writes its result
+)
+# POST endpoints that are PURE CALCULATIONS (they persist nothing, journal
+# nothing) — the page uses them to render, so the gate may call them. Every
+# other POST/PUT/DELETE is an action and is refused. Adding a path here is a
+# claim that it writes nothing; test_gate_account pins that claim.
+_GATE_ALLOWED_POST_FRAGMENTS = (
+    "/api/scale/simulate",          # the simulator's server truth
+    "/api/scale/run",
+    "/api/scale/solve",
+    "/api/scale/expiring-preview",  # "journal NOTHING; stateless compute"
+    "/api/calc",                    # the answer engine's calculator
+)
+
+
+def is_gate(role: str | None = None) -> bool:
+    r = role if role is not None else current_actor().get("role")
+    return r == GATE_ROLE
+
+
+def gate_refusal(path: str, method: str) -> str | None:
+    """Why the gate account may not make this request — or None when it is a
+    plain read. Fail-closed on method: anything that is not GET/HEAD/OPTIONS
+    is an action, except the named compute-only calculators."""
+    p = path or ""
+    if (method or "GET").upper() not in _GATE_SAFE_METHODS:
+        if (method or "").upper() == "POST" and any(
+                frag in p for frag in _GATE_ALLOWED_POST_FRAGMENTS):
+            return None
+        return ("the gate account is read-only — it sees every page as the "
+                "owner does and performs no action")
+    for frag in _GATE_DENIED_GET_FRAGMENTS:
+        if frag in p:
+            return "the gate account is read-only — EDITH voice and scans are actions"
+    return None
+
 
 # ── Per-user accounts (from env; passwords are server-side secrets) ──────────
 def _accounts() -> dict:
@@ -58,6 +102,15 @@ def _accounts() -> dict:
     # Scoped sales-team login (Kalin + setters): leads/reactivation ONLY, never financials.
     if sp:
         accts["sales"] = {"role": "sales", "pw": sp, "display": "Sales Team"}
+    # THE GATE ACCOUNT (#171, Phase 0): the deploy gates' own login. It sees
+    # every page exactly as the owner does and can perform NO action — every
+    # state-changing request is refused structurally (method + a short list
+    # of GET paths that act, e.g. the EDITH greeting/voice). The value lives
+    # only in Railway env + a git-ignored local file the gate scripts read;
+    # this code never creates, prints or logs it.
+    gp = os.environ.get("GATE_BOT_PASSWORD", "")
+    if gp:
+        accts["gate"] = {"role": GATE_ROLE, "pw": gp, "display": "Gate (read-only)"}
     # ── ad_domain role (Rydel's word GIVEN 2026-08-10 — the #113/#117 standing
     # "until his word" condition is satisfied; grant + scope in DECISIONS).
     # ONE role, config-driven assignees: AD_DOMAIN_USERS (default the three
@@ -163,11 +216,12 @@ def is_owner() -> bool:
 # reverse any action, and discreet mode stays the owner's own toggle.
 # Exactly three things remain truly owner-only: the discreet-mode toggle,
 # credential/env management, and the parity exception list itself.
-_FINANCE_ROLES = ("owner", "coo")
+_FINANCE_ROLES = ("owner", "coo", GATE_ROLE)   # gate = owner-grade READS only
 
 
 def is_finance(role: str | None = None) -> bool:
-    """Owner-grade access: the owner, or the finance role at parity."""
+    """Owner-grade access: the owner, the finance role at parity, or the gate
+    account for reads (its actions are refused before any route runs)."""
     r = role if role is not None else current_actor().get("role")
     return r in _FINANCE_ROLES
 
@@ -200,6 +254,20 @@ def require_auth(f):
         act = session.get("actor")
         if act:
             g.actor = act
+            # THE GATE ACCOUNT (#171): owner-grade reads, zero actions. The
+            # refusal is structural (method), so a new POST route can never
+            # leak an action to it by omission.
+            if act.get("role") == GATE_ROLE:
+                why = gate_refusal(request.path, request.method)
+                if why:
+                    # 200 + a body that says NOTHING HAPPENED, not a 403: the
+                    # browser logs every non-2xx as a console error, and the
+                    # gates treat console errors as failures. The page's own
+                    # JS reads `ok: false` / `error` and shows the refusal.
+                    resp = jsonify({"ok": False, "error": why, "scope": "gate",
+                                    "refused": "gate", "did": "nothing"})
+                    resp.headers["X-Gate-Refused"] = "1"
+                    return resp, 200
             # Scoped sales role: fail-closed allowlist. Anything outside it is denied here, once,
             # centrally — so no financial endpoint can leak to the sales team by being forgotten.
             if act.get("role") == "sales" and not sales_permitted(request.path):

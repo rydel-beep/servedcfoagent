@@ -44,9 +44,14 @@ from helpers import now_sydney, today_sydney
 logger = logging.getLogger(__name__)
 
 K_MEASURED = "unit_econ:measured"
+K_REMEASURE_DUE = "unit_econ:remeasure_due"     # #171: set by match confirmations
+K_IDENTITY = "statement:identity"               # #171: the statement's hand-check result
 HORIZON_MONTHS = int(os.getenv("LTV_HORIZON_MONTHS", "36"))
 MATURE_DAYS = 60
 BENCHMARK = 3.0
+# #171: a ratio built on fewer than this share of its closes carrying a
+# contract value is shown AMBER — "incomplete — fill the queue".
+COVERAGE_THRESHOLD_PCT = float(os.getenv("UNIT_ECON_COVERAGE_THRESHOLD", "80"))
 
 
 # ── the measured inputs ─────────────────────────────────────────────────────
@@ -159,6 +164,10 @@ def remeasure() -> dict:
     by_client, deals, data_start, meta = _fetch_payment_history()
     out = B.measure_from_payments(by_client, deals, today_sydney(), data_start)
     out["coverage"] = meta
+    try:
+        out["walkin_conversion"] = walkin_conversion(by_client, deals, today_sydney())
+    except Exception as e:  # noqa: BLE001
+        out["walkin_conversion"] = {"n": 0, "value": None, "error": str(e)[:120]}
     out["at"] = now_sydney().isoformat()
     out["month"] = str(today_sydney())[:7]
     prior = measured()
@@ -175,6 +184,70 @@ def remeasure() -> dict:
     except Exception as e:  # noqa: BLE001
         logger.info("unit econ: measurement journal failed: %s", e)
     return out
+
+
+def request_remeasure(reason: str) -> dict:
+    """#171: a batch of match confirmations changes the measured history.
+    Mark the re-measurement DUE; the freshness tick runs it within minutes
+    (it calls Stripe, so it rides the loop, never a request)."""
+    rec = {"at": now_sydney().isoformat(), "reason": reason}
+    kv_store.put(K_REMEASURE_DUE, rec)
+    return {"requested": True, **rec}
+
+
+def due_tick() -> bool:
+    """Run a requested re-measurement (debounced to once per 10 minutes)."""
+    due = kv_store.get(K_REMEASURE_DUE)
+    if not due:
+        return False
+    m = measured() or {}
+    try:
+        last = dt.datetime.fromisoformat(m.get("at")) if m.get("at") else None
+        if last and (now_sydney() - last).total_seconds() < 600:
+            return False
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        remeasure()
+        kv_store.delete(K_REMEASURE_DUE)
+        return True
+    except Exception as e:  # noqa: BLE001
+        logger.warning("unit econ requested re-measure failed: %s", e)
+        return False
+
+
+def walkin_conversion(by_client: dict, deals: dict, today: dt.date) -> dict:
+    """#171 (2.2): Walk-In Engine → retainer conversion, MEASURED SEPARATELY and
+    credited nowhere until it is measured on enough cases. A walk-in deal
+    'converted' if the same client later shows a retainer-sized payment run
+    (≥ 3 charges after the 3-month term ended). n < 5 → not measured."""
+    import csm_baselines as B
+    import client_overrides as _co
+    rows = []
+    for client, deal in deals.items():
+        offer = str(deal.get("offer") or "").lower()
+        if not ("walk" in offer or "dwy" in offer):
+            continue
+        start = deal.get("close_date")
+        chs = sorted((d, a) for d, a in (by_client.get(client) or []))
+        if not start or not chs:
+            continue
+        end = _co._add_months(start, 3)
+        if end > today - dt.timedelta(days=30):
+            continue                                   # term not yet over + grace
+        after = [a for d, a in chs if d > end]
+        rows.append({"client": client, "term_end": str(end),
+                     "charges_after": len(after), "converted": len(after) >= 3})
+    n = len(rows)
+    k = sum(1 for r in rows if r["converted"])
+    return {"n": n, "converted": k,
+            "value": (round(100 * k / n, 1) if n >= 5 else None),
+            "ci95": (B.wilson(k, n) if n >= 5 else None),
+            "rows": rows,
+            "credited": False,
+            "note": ("measured on too few cases to use (n < 5) — no renewal credit "
+                     "for Walk-In Engine deals" if n < 5 else
+                     "measured — still credited nowhere until Rydel rules it in")}
 
 
 def monthly_tick() -> bool:
@@ -312,6 +385,23 @@ def window(w0, w1, name: str, clock: str = "activity",
         "rows": rows,
         "few_closes": n < 8,
     }
+    # COVERAGE (#171): "based on {k} of {n} closes — {m} missing details". The
+    # ratio uses the closes that carry a contract value; the queue holds
+    # every close with ANY gap. Below the threshold the tile goes amber.
+    try:
+        gaps_n = sum(1 for e in entries if (e.get("gaps") if e.get("gaps") is not None
+                                            else CR.gaps(e)))
+    except Exception:  # noqa: BLE001
+        gaps_n = n - k
+    pct = round(100.0 * k / n, 1) if n else None
+    out["coverage"] = {
+        "with_contract": k, "closes": n, "missing_details": gaps_n, "pct": pct,
+        "threshold_pct": COVERAGE_THRESHOLD_PCT,
+        "ok": (pct is None) or pct >= COVERAGE_THRESHOLD_PCT,
+        "line": (f"based on {k} of {n} closes — {gaps_n} missing details" if n else
+                 "no closes in this window"),
+        "door": "/dashboard/closes?queue=1",
+    }
     # SENSITIVITY — the renewal interval carried through the same maths
     ci = inp.get("renewal_ci95")
     if inp.get("measured") and ci and k and cac:
@@ -350,6 +440,13 @@ def view() -> dict:
                                 inp=inp, margin=margin),
     }
     out["mtd"]["label"] = "month to date — few closes, moves a lot"
+    # #171: the daily verified statement's hand-check. A failed identity check
+    # blanks the tiles ("check failed — being investigated") until it passes.
+    ident = kv_store.get(K_IDENTITY) or {}
+    out["identity_check"] = {"ok": ident.get("ok", True) if ident else None,
+                             "at": ident.get("at"), "detail": ident.get("detail")}
+    m = measured() or {}
+    out["walkin_conversion"] = m.get("walkin_conversion")
     out["mature_cohort"]["label"] = (f"{c0:%B} leads (≥ {MATURE_DAYS} days old) — "
                                      "that month's cost ÷ the closes its leads produced")
     return out

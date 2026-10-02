@@ -729,3 +729,34 @@ dashboard/evidence/phase0/.
 - Validator v2: a blocked number still answers the question from the
   engine; blocks logged with what was answered instead.
 - Suite 1,492 green; registry +5 entries (jargon clean).
+
+## 2026-10-02 — THE SALES TRUTH ENGINE (#171)
+
+- PREMISE: production was NOT behind — cd00feb (the 29 Sep evening pushes)
+  was live at session start. The backlog and the Amoroso ruling were done.
+- PHASE 0: the read-only GATE ACCOUNT (role `gate`, GATE_BOT_PASSWORD;
+  owner-grade reads, every action refused structurally, refusals are 200 +
+  "did: nothing" so the browser logs no error); scripts/gate_creds.py
+  (env → .gate_password → interim owner env, never printed);
+  scripts/ship.py (suite → push → wait → gates → revert on fail). Local
+  drill as the gate account: render gate PASS; behaviour gate: refusal +
+  zero console errors ✓, one local-data check to judge on production.
+- PHASE 1: `gaps` on every register entry; DEALS MISSING DETAILS on Today,
+  Sales, Closes (one number); the FILL-IN FORM (= rule_deal_terms, journaled,
+  reversible, Piolo line emitted, personal account never cash); RECORD A NEW
+  CLOSE labelled "owner-recorded — awaiting GHL/Xero evidence"; MATCH CARDS
+  for the 22 payers + 12 bank-transfer contacts (3 seeded decided), confirm →
+  alias/contact map (+ optional terms) → re-measure requested.
+- PHASE 2: coverage line on every ratio, amber below 80%; walk-in → retainer
+  conversion measured separately, credited nowhere.
+- PHASE 3: the four-source cross-check (nightly + every event): missing
+  closes by name, date/amount/package disagreements with both values,
+  unattached payments, 3-day uncorroborated, 24 h habit reminders naming
+  Kalin / Piolo; System page section + feed.
+- PHASE 4: recompute lag logged vs 120 s; change ledger in the drawers
+  ("Since your last look … because …" / "Unchanged because …", exact
+  two-part decomposition).
+- PHASE 5: the daily verified statement (hand-reproduced ratios, identity
+  check, tiles blank on failure); EDITH answers "sales vs acquisition cost"
+  from it.
+- Registry +9 (jargon clean). Tests +52.

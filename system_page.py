@@ -52,6 +52,10 @@ def build() -> dict:
     out["sections"]["errors"] = _guard(
         "browser errors", _browser_errors, {"groups": [], "total": 0})
     out["sections"]["gates"] = _guard("latest gate results", _gates, {"rows": []})
+    # #171: the four-source cross-check and the event → tile lag
+    out["sections"]["crosscheck"] = _guard("the nightly cross-check", _crosscheck,
+                                           {"findings": [], "reminders": []})
+    out["sections"]["events"] = _guard("recompute events", _events, {"rows": []})
 
     out["run_state"] = run_state()
     out["poll_seconds"] = _poll_seconds()
@@ -333,3 +337,38 @@ def start_check_run(actor: str = "owner") -> dict:
 
     threading.Thread(target=_run, daemon=True, name="system-check-run").start()
     return {"ok": True, "started": True, "state": run_state()}
+
+
+# ── #171 — the cross-check and the recompute log ────────────────────────────
+
+def _crosscheck() -> dict:
+    import close_register as CR
+    r = CR.reconciliation_latest() or {}
+    f = r.get("findings") or []
+    return {"at": r.get("at"), "ok": r.get("ok"), "findings": f[:30],
+            "count": len(f), "s1": sum(1 for x in f if x.get("severity") == "S1"),
+            "reminders": (r.get("reminders") or [])[:30],
+            "sources_checked": r.get("sources_checked") or [],
+            "note": r.get("note") or "the nightly cross-check has not run yet"}
+
+
+def _events() -> dict:
+    """Event → tiles: how long each recompute took against its budget, and
+    each input's stated freshness budget."""
+    log = kv_store.get("events:recompute_log") or []
+    rows = list(reversed(log[-20:]))
+    over = [r for r in log if not r.get("within_budget")]
+    return {"rows": rows, "count": len(log), "over_budget": len(over),
+            "budget_seconds": 120,
+            "lag_p95": (sorted(r.get("lag_seconds") or 0 for r in log)[int(0.95 * (len(log) - 1))]
+                        if log else None),
+            "freshness_contract": [
+                {"input": "Stripe charges", "budget": "15 minutes (probe) — new charges matched on the tick"},
+                {"input": "CRM deals (GHL)", "budget": "15 minutes (mirror loop)"},
+                {"input": "Lead-to-Cash tracker", "budget": "2 minutes (mirror every 90 s)"},
+                {"input": "Xero bank feed", "budget": "24 hours (the bank feed itself can lag a day)"},
+                {"input": "a matched payment / stage change / form / ruling", "budget": "tiles rebuilt within 120 s of landing"},
+            ],
+            "note": ("a matched payment, a CRM stage change, a form submission, a ruling or "
+                     "a tracker change each rebuild the affected numbers at once; this is "
+                     "how long each took")}

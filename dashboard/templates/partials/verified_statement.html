@@ -1,0 +1,75 @@
+{# TODAY'S NUMBERS, VERIFIED (#171, Phase 5) — the daily statement: every
+   headline metric with its window, inputs, sources, as-of and coverage; the
+   hand check; the cross-check; the open queue. Needs `statement`
+   (metrics_statement.latest) and `is_owner`. #}
+<section class="s-panel" aria-labelledby="vs-title" id="verified-statement"
+         data-metric="verified_statement" data-window="trailing_90d"
+         data-clock="close date" data-basis="engine, hand-checked"
+         data-value="{{ (statement.identity.ok if statement and statement.identity else '') }}">
+  <div class="s-panel-head">
+    <h2 class="s-panel-title" id="vs-title">Today's numbers, verified
+      {% if statement and statement.identity %}
+        {% if statement.identity.ok %}<span class="s-chip">hand check passed</span>
+        {% else %}<span class="s-chip s-chip-degraded">check failed — being investigated</span>{% endif %}
+      {% endif %}</h2>
+    <span class="s-panel-sub" data-def="verified_statement">
+      {% if statement and statement.generated_at %}generated {{ statement.generated_at[:16] | replace('T', ' ') }} ·
+        every ratio below was re-added by hand from the listed closes and cost lines
+      {% else %}{{ statement.note if statement else 'not generated yet' }}{% endif %}
+      {% if is_owner %} · <button class="s-door" type="button" id="vs-generate">Generate now</button>
+        <span id="vs-generate-out" class="s-card-sub"></span>{% endif %}
+    </span>
+  </div>
+  {% if statement and statement.metrics %}
+    <div class="s-table-wrap">
+      <table class="s-table">
+        <thead><tr><th>Metric</th><th class="num">Value</th><th>Window</th><th>Coverage</th><th>What it means</th></tr></thead>
+        <tbody>
+          {% for m in statement.metrics %}
+          <tr>
+            <td><b>{{ m.name }}</b></td>
+            <td class="num">
+              {% if m.value is not none %}
+                {% if m.unit == '×' %}{{ '%.2f' % m.value }}×{% if m.floor is not none %} <span class="s-card-sub">floor {{ '%.2f' % m.floor }}×</span>{% endif %}
+                {% else %}${{ '{:,.0f}'.format(m.value) }}{% endif %}
+              {% else %}<span class="s-card-sub">withheld — {{ m.inputs[0] if m.inputs else 'not measured' }}</span>{% endif %}
+              {% if m.band and m.band.ratio and m.band.ratio[0] is not none %}
+                <div class="s-card-sub">renewal {{ '%.0f' % m.band.renewal[0] }}–{{ '%.0f' % m.band.renewal[1] }}% → {{ '%.2f' % m.band.ratio[0] }}×–{{ '%.2f' % m.band.ratio[1] }}×</div>{% endif %}
+            </td>
+            <td class="s-card-sub">{{ m.window }}</td>
+            <td class="s-card-sub">{{ m.coverage or '—' }}</td>
+            <td class="s-card-sub">{{ m.meaning }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <details style="margin-top:var(--sp-2)">
+      <summary class="s-card-sub">Inputs, sources and the hand check</summary>
+      <ul class="s-list">
+        {% for m in statement.metrics[:1] %}
+          <li class="s-card-sub"><b>Inputs:</b> {{ m.inputs | join(' · ') }}</li>
+          <li class="s-card-sub"><b>Sources:</b> {{ m.sources | join(' · ') }}</li>
+        {% endfor %}
+        <li class="s-card-sub"><b>Hand check:</b> {{ statement.identity.detail }}</li>
+        {% if statement.checks and statement.checks.headline %}
+          {% set rep = statement.checks.headline.reproduction %}
+          <li class="s-card-sub">Trailing 90 days: Σ expected lifetime value ${{ '{:,.0f}'.format(rep.sum_expected_ltv or 0) }}
+            over {{ rep.expected_known }} close(s) with a contract · Σ acquisition cost ${{ '{:,.0f}'.format(rep.sum_acquisition or 0) }}
+            over {{ rep.n }} close(s) → {{ rep.ltv_cac if rep.ltv_cac is not none else '—' }}× by hand vs
+            {{ statement.checks.headline.ltv_cac.engine if statement.checks.headline.ltv_cac.engine is not none else '—' }}× engine</li>
+        {% endif %}
+      </ul>
+    </details>
+    {% if statement.reconciliation %}
+    <div class="s-card-sub" style="margin-top:var(--sp-2)"><b>Nightly cross-check:</b>
+      {% if statement.reconciliation.count %}{{ statement.reconciliation.count }} finding(s) — see the System page
+      {% else %}every source agrees with the register{% endif %}
+      {% if statement.reconciliation.at %} (last run {{ statement.reconciliation.at[:16] | replace('T', ' ') }}){% endif %}</div>
+    {% endif %}
+    {% if statement.queue %}
+    <div class="s-card-sub"><b>Open queue:</b> {{ statement.queue.total or 0 }} close(s) missing details
+      {% if statement.queue.total %}— <a href="#missing-details">fill them in</a>{% endif %}</div>
+    {% endif %}
+  {% endif %}
+</section>

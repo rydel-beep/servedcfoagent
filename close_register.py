@@ -427,11 +427,18 @@ def build(days: int = ALL_TIME_DAYS) -> dict:
                                  "close_date": t["close_date"]})
         _apply_terms(e, t)
 
+    # #171: THE COMPLETE CLOSE — every entry names exactly which of its
+    # fields is still missing, with who can fill it. Confirmed or proposed.
+    for e in entries:
+        e["gaps"] = gaps(e)
+        e["complete"] = not e["gaps"]
+
     entries.sort(key=lambda e: e["close_date"], reverse=True)
     out = {
         "at": now_sydney().isoformat(),
         "window_days": days,
         "entries": entries,
+        "incomplete": sum(1 for e in entries if e["gaps"]),
         "confirmed": sum(1 for e in entries if e["status"] == "confirmed"),
         "proposed": sum(1 for e in entries
                         if e["status"] == "proposed-needs-evidence"),
@@ -897,8 +904,9 @@ def _ruling_entry(t: dict) -> dict:
         "dated_by": "owner ruling",
         "sources": [{"source": "owner ruling",
                      "provenance": f"ruled by {t['by']} on {t['at'][:10]} — "
-                                   "no system record yet",
+                                   "owner-recorded, awaiting GHL/Xero evidence",
                      "close_date": t["close_date"]}],
+        "label": "owner-recorded — awaiting GHL/Xero evidence",
         "corroboration_pending": ["tracker", "ghl stage", "payment"],
         "status": "confirmed",
         "contract": {}, "cash": {"amount": None, "charge_ids": [],
@@ -1017,6 +1025,18 @@ def piolo_lines() -> list[dict]:
         if "a matched payment" in e["missing"]:
             edits.append("Cash Collected = (once a payment is matched — check "
                          "the payer name against Stripe)")
+        # #171: a ruling's facts are what to type — the tracker gets fixed at
+        # source from the same submission that fixed the register
+        if e.get("ruling"):
+            edits.append(f"Offer = {e.get('package_words') or e.get('package')}"
+                         + (f"; Contract Value = ${float(e['contract']['value']):,.2f} ex-GST"
+                            if (e.get("contract") or {}).get("value") is not None else "")
+                         + (f"; Closer = {e['closer']}" if e.get("closer") else "")
+                         + (f"; Setter = {e['setter']}" if e.get("setter") else ""))
+        for row in ((e.get("ruled_cash") or {}).get("outside_business_accounts") or []):
+            edits.append(f"payment {row.get('n')} (${float(row.get('amount') or 0):,.2f}) "
+                         "went to a PERSONAL account — not business cash; it counts "
+                         "only once it appears in Xero on a business account")
         if edits:
             out.append({"person": e["person"], "client": e["client"],
                         "close_date": e["close_date"], "status": e["status"],
@@ -1027,18 +1047,34 @@ def piolo_lines() -> list[dict]:
 # ── the daily reconciliation (sentinel) ─────────────────────────────────────
 
 def reconcile() -> dict:
-    """Each raw source vs the register, both directions. Anything a source
-    knows that the register lacks is a LOUD finding naming the deal and the
-    source; a register entry uncorroborated after N days is flagged too."""
-    N_DAYS_UNCORROBORATED = 7
+    """THE FOUR-SOURCE CROSS-CHECK (#171, Phase 3; nightly and on every event).
+
+    GHL (closed-won stages + the stage recorder), Stripe (matched charges),
+    Xero (bank-feed receipts through the contact map, where readable) and the
+    tracker (won rows), each against the register, both directions:
+      · a close any source knows that the register doesn't → loud, by name
+      · a payment not attached to any close → the matching queue, counted
+      · amount / date / package disagreements between sources → both values
+      · a register close with no corroboration after 3 days → finding
+      · a close missing its daily-habit items after 24 h → an internal
+        reminder naming who owns the gap (Kalin / Piolo) — never client-facing
+    Results land on the System page and the Today feed in plain words."""
+    N_DAYS_UNCORROBORATED = 3
+    HABIT_HOURS = 24
     reg = latest()
-    reg_keys = {e["key"] for e in reg.get("entries") or []}
+    entries = reg.get("entries") or []
+    reg_keys = {e["key"] for e in entries}
+    by_key = {e["key"]: e for e in entries}
     findings = []
+    sources_checked = []
     import close_detect as CD
     for fn, label in ((CD._from_tracker, "tracker"), (CD._from_ghl, "GHL closed stage"),
+                      (CD._from_stage_recorder, "GHL stage recorder"),
                       (CD._from_payments, "matched payment")):
         try:
-            for row in fn() or []:
+            rows = fn() or []
+            sources_checked.append({"source": label, "rows": len(rows)})
+            for row in rows:
                 k = _norm(row.get("person"))
                 if k and k not in reg_keys and row.get("close_date"):
                     findings.append({
@@ -1049,36 +1085,146 @@ def reconcile() -> dict:
                         "detail": f"{label} shows a close for {row.get('person')} "
                                   f"({row['close_date']}) that the register does "
                                   f"not hold"})
+                elif k in by_key and row.get("close_date") and label in ("GHL closed stage",):
+                    # DATE DISAGREEMENT: the register's date vs this source's
+                    e = by_key[k]
+                    try:
+                        d_reg = dt.date.fromisoformat(str(e["close_date"])[:10])
+                        d_src = dt.date.fromisoformat(str(row["close_date"])[:10])
+                        if abs((d_reg - d_src).days) > 3 and e.get("dated_by") != label:
+                            findings.append({
+                                "kind": "date_disagreement", "severity": "S2",
+                                "person": e["person"],
+                                "detail": f"{e.get('client') or e['person']}: the register dates the "
+                                          f"close {d_reg} (by {e.get('dated_by')}) but {label} says "
+                                          f"{d_src} — {abs((d_reg - d_src).days)} days apart"})
+                    except (ValueError, TypeError):
+                        pass
         except Exception as e:  # noqa: BLE001
             findings.append({"kind": "source_unreadable", "severity": "S2",
-                             "source": label, "detail": str(e)[:160]})
-    today = today_sydney()
-    for e in reg.get("entries") or []:
-        if e["status"] != "proposed-needs-evidence":
-            continue
+                             "source": label, "detail": f"{label} could not be read: {str(e)[:120]}"})
+    # XERO — bank-feed receipts via the contact map (the agent's token has no
+    # invoice-read scope, DECISIONS #161 — said plainly, never faked)
+    try:
+        import client_receipts as CRx
+        maps = CRx.mappings()
+        sources_checked.append({"source": "Xero contact map", "rows": len(maps)})
+        xero_unreadable = True
         try:
-            age = (today - dt.date.fromisoformat(e["close_date"])).days
+            import xero_pull
+            xero_unreadable = not hasattr(xero_pull, "read_receipts")
+        except Exception:  # noqa: BLE001
+            pass
+        if xero_unreadable:
+            findings.append({"kind": "source_limited", "severity": "S3", "source": "Xero",
+                             "detail": "Xero bank-feed receipts cannot be read by the agent's "
+                                       "token (no invoice/bank scope) — the Xero leg uses the "
+                                       f"{len(maps)} ruled contact mapping(s) and the owner's "
+                                       "ruled payment schedules only"})
+    except Exception as e:  # noqa: BLE001
+        findings.append({"kind": "source_unreadable", "severity": "S2", "source": "Xero",
+                         "detail": str(e)[:120]})
+
+    # AMOUNT / PACKAGE DISAGREEMENTS inside the register (tracker vs ruling vs Stripe)
+    for e in entries:
+        c = e.get("contract") or {}
+        if c.get("conflict"):
+            findings.append({"kind": "amount_disagreement", "severity": "S2", "person": e["person"],
+                             "detail": f"{e.get('client') or e['person']}: contract — ruling "
+                                       f"${float(c.get('value') or 0):,.2f} ex-GST; {c['conflict']}"})
+        cash = e.get("cash") or {}
+        cell = cash.get("tracker_cell")
+        try:
+            cell_v = float(str(cell).replace("$", "").replace(",", "")) if cell not in (None, "") else None
         except ValueError:
+            cell_v = None
+        if cell_v is not None and cash.get("amount") is not None and abs(cell_v - float(cash["amount"])) > 1.0:
+            findings.append({"kind": "amount_disagreement", "severity": "S2", "person": e["person"],
+                             "detail": f"{e.get('client') or e['person']}: cash — the tracker cell says "
+                                       f"${cell_v:,.2f}, matched Stripe charges total "
+                                       f"${float(cash['amount']):,.2f}"})
+        if e.get("ruling") and e.get("offer") and e.get("package"):
+            try:
+                import comp_rulebook as RB
+                if RB.normalise_package(e["offer"]) not in (None, e["package"]):
+                    findings.append({"kind": "package_disagreement", "severity": "S2",
+                                     "person": e["person"],
+                                     "detail": f"{e.get('client') or e['person']}: package — the tracker "
+                                               f"says '{e['offer']}', the ruling says "
+                                               f"'{e.get('package_words') or e['package']}'"})
+            except Exception:  # noqa: BLE001
+                pass
+
+    # PAYMENTS NOT ATTACHED TO ANY CLOSE → the matching queue
+    try:
+        import unmatched_payments as UP
+        st = UP.latest()
+        n_un = len(st.get("rows") or [])
+        if n_un:
+            findings.append({"kind": "payments_unattached", "severity": "S2",
+                             "detail": f"{n_un} payment(s) totalling ${float(st.get('total_unmatched') or 0):,.2f} "
+                                       "are not attached to any close — in the matching queue"})
+        try:
+            import match_proposals as MP
+            mc = MP.cards()
+            if mc.get("pending_count"):
+                findings.append({"kind": "match_proposals_pending", "severity": "S3",
+                                 "detail": f"{mc['pending_count']} proposed payer/contact match(es) are "
+                                           "waiting for a decision on the match cards"})
+        except Exception:  # noqa: BLE001
+            pass
+    except Exception as e:  # noqa: BLE001
+        findings.append({"kind": "source_unreadable", "severity": "S3", "source": "payments scan",
+                         "detail": str(e)[:120]})
+
+    today = today_sydney()
+    now = now_sydney()
+    reminders = []
+    for e in entries:
+        try:
+            age_days = (today - dt.date.fromisoformat(str(e["close_date"])[:10])).days
+        except (ValueError, TypeError):
             continue
-        if age >= N_DAYS_UNCORROBORATED:
+        if e["status"] == "proposed-needs-evidence" and age_days >= N_DAYS_UNCORROBORATED:
             findings.append({
                 "kind": "uncorroborated_after_n_days", "severity": "S2",
                 "person": e["person"], "close_date": e["close_date"],
-                "detail": f"{e['person']} has sat on one source "
-                          f"({e['dated_by']}) for {age} days — still missing: "
-                          f"{', '.join(e['missing'])}"})
-    out = {"at": now_sydney().isoformat(), "findings": findings,
+                "detail": f"{e.get('client') or e['person']} has sat on one source "
+                          f"({e['dated_by']}) for {age_days} days — still missing: "
+                          f"{', '.join(e.get('missing') or [])}"})
+        # DAILY-HABIT ITEMS after 24 h — internal reminders naming the owner
+        if age_days * 24 >= HABIT_HOURS:
+            chips = e.get("chips") or {}
+            who = e.get("client") or e["person"]
+            if not chips.get("ghl_opp") and not e.get("opp_id"):
+                reminders.append({"owner": "Kalin", "person": e["person"],
+                                  "detail": f"{who}: move the GHL opportunity to Closed Won"})
+            if not chips.get("form"):
+                reminders.append({"owner": "Kalin", "person": e["person"],
+                                  "detail": f"{who}: submit the Closed Deal Form"})
+            if not chips.get("tracker_row"):
+                reminders.append({"owner": "Piolo", "person": e["person"],
+                                  "detail": f"{who}: add the tracker close row (date {e['close_date']})"})
+            rc = e.get("ruled_cash") or {}
+            if not ((e.get("cash") or {}).get("charge_ids") or rc.get("counted")):
+                reminders.append({"owner": "Piolo", "person": e["person"],
+                                  "detail": f"{who}: raise/confirm the Xero invoice and match the receipt "
+                                            "(the agent cannot read invoices — confirm by hand)"})
+    out = {"at": now.isoformat(), "findings": findings,
+           "reminders": reminders[:60],
+           "sources_checked": sources_checked,
            "ok": not any(f["severity"] == "S1" for f in findings),
-           "register_entries": len(reg.get("entries") or []),
-           "note": f"uncorroborated threshold: {N_DAYS_UNCORROBORATED} days"}
+           "register_entries": len(entries),
+           "note": (f"four sources vs the register, both directions · uncorroborated threshold "
+                    f"{N_DAYS_UNCORROBORATED} days · daily-habit reminders after {HABIT_HOURS} hours "
+                    "(internal — Kalin / Piolo)")}
     kv_store.put(K_RECON, out)
     try:
-        import kv_store as _kv
-        _kv.put("feed:extra:close_register", [
+        kv_store.put("feed:extra:close_register", [
             {"kind": "close_register_reconciliation", "severity": f["severity"],
-             "title": f"closes reconciliation: {f['kind'].replace('_', ' ')}",
+             "title": f"closes cross-check: {f['kind'].replace('_', ' ')}",
              "detail": f["detail"]}
-            for f in findings[:10]])
+            for f in findings if f["severity"] in ("S1", "S2")][:10])
     except Exception:  # noqa: BLE001
         pass
     return out
@@ -1107,3 +1253,237 @@ def daily_tick() -> bool:
     except Exception as e:  # noqa: BLE001
         logger.warning("register daily tick failed: %s", e)
         return False
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# #171 — THE COMPLETE CLOSE, THE QUEUE, THE FILL-IN FORM
+# ═══════════════════════════════════════════════════════════════════════════
+# A close is the atomic unit of truth. These are its fields; each gap names
+# who can close it. "Confirmed" says the close HAPPENED; "complete" says we
+# know everything about it that the unit economics need.
+
+GAP_OWNERS = {
+    "client or venue name": "Rydel / Piolo (fill-in form)",
+    "package": "Rydel / Piolo (fill-in form)",
+    "term (months)": "Rydel / Piolo (fill-in form)",
+    "contract value ex-GST": "Rydel / Piolo (fill-in form)",
+    "payment schedule": "Rydel / Piolo (fill-in form)",
+    "a matched payment (Stripe or Xero bank feed)": "Piolo (match the payment)",
+    "closer": "Rydel / Piolo (fill-in form)",
+    "setter": "Rydel / Piolo (fill-in form)",
+    "CRM Closed Won stage": "Kalin (GHL)",
+    "closed-deal form": "Kalin (GHL form)",
+    "tracker close row": "Piolo (tracker)",
+    "lead row (for ad attribution)": "Piolo (tracker)",
+}
+
+
+def gaps(e: dict) -> list[str]:
+    """Exactly which complete-close fields this entry lacks — plain words."""
+    out = []
+    if not e.get("client"):
+        out.append("client or venue name")
+    pkg = e.get("package")
+    if not pkg:
+        try:
+            import comp_rulebook as RB
+            pkg = RB.normalise_package(e.get("offer"))
+        except Exception:  # noqa: BLE001
+            pkg = None
+    if not pkg:
+        out.append("package")
+    term = e.get("term_months")
+    if not term and pkg:
+        try:
+            from config import PACKAGE_TERMS
+            import csm_baselines as B
+            k = B._pkg_key(e.get("offer") or e.get("package"))
+            term = PACKAGE_TERMS.get(k) if k else None
+        except Exception:  # noqa: BLE001
+            term = None
+    if not term:
+        out.append("term (months)")
+    if (e.get("contract") or {}).get("value") is None:
+        out.append("contract value ex-GST")
+    rc = e.get("ruled_cash") or {}
+    has_schedule = any(rc.get(k) for k in ("counted", "pending_bank_feed",
+                                            "outside_business_accounts", "receivable"))
+    if not has_schedule:
+        out.append("payment schedule")
+    if not ((e.get("cash") or {}).get("charge_ids") or rc.get("counted")):
+        out.append("a matched payment (Stripe or Xero bank feed)")
+    if not e.get("closer"):
+        out.append("closer")
+    if not e.get("setter"):
+        out.append("setter")
+    chips = e.get("chips") or {}
+    if not chips.get("ghl_opp") and not e.get("opp_id"):
+        out.append("CRM Closed Won stage")
+    if not chips.get("form"):
+        out.append("closed-deal form")
+    if not chips.get("tracker_row"):
+        out.append("tracker close row")
+    if not (e.get("lead") or {}).get("tracker_row"):
+        out.append("lead row (for ad attribution)")
+    return out
+
+
+def missing_details_queue(limit: int | None = None, days: int | None = None) -> dict:
+    """DEALS MISSING DETAILS — every close (confirmed or proposed) with any
+    gap, oldest first, naming the gaps and who fills each. Reads the
+    persisted register only (never builds)."""
+    reg = latest()
+    rows = []
+    cutoff = (str(today_sydney() - dt.timedelta(days=days)) if days else None)
+    for e in reg.get("entries") or []:
+        g = e.get("gaps")
+        if g is None:
+            g = gaps(e)
+        if not g:
+            continue
+        if cutoff and e.get("close_date", "") < cutoff:
+            continue
+        rows.append({
+            "key": e["key"], "person": e.get("person"), "client": e.get("client"),
+            "close_date": e.get("close_date"), "status": e.get("status"),
+            "label": e.get("label"),
+            "gaps": g, "owners": sorted({GAP_OWNERS.get(x, "Rydel") for x in g}),
+            "known": {
+                "package": e.get("package_words") or e.get("package") or e.get("offer"),
+                "term_months": e.get("term_months"),
+                "contract_ex_gst": (e.get("contract") or {}).get("value"),
+                "cash_inc_gst": (e.get("cash") or {}).get("amount"),
+                "closer": e.get("closer"), "setter": e.get("setter"),
+                "contact_id": e.get("contact_id"), "opp_id": e.get("opp_id"),
+            },
+            "ruled": bool(e.get("ruling")),
+        })
+    rows.sort(key=lambda r: r["close_date"] or "")
+    total = len(rows)
+    if limit:
+        rows = rows[:limit]
+    return {"rows": rows, "total": total, "shown": len(rows),
+            "register_entries": len(reg.get("entries") or []),
+            "built_at": reg.get("at"),
+            "note": ("every close with any missing field, oldest first — "
+                     "each gap names who can fill it; the form below is a ruling, "
+                     "journaled and reversible")}
+
+
+def rate_card() -> list[dict]:
+    """The packages the fill-in form offers — the rulebook's names and the
+    configured terms. 'Custom' is always offered; nothing is inferred."""
+    from config import PACKAGE_TERMS
+    return [
+        {"key": "growth_pro", "label": "Growth Pro", "term_months": PACKAGE_TERMS.get("growth pro", 6),
+         "retainer": True},
+        {"key": "scale_engine", "label": "Scale Engine", "term_months": PACKAGE_TERMS.get("scale engine", 6),
+         "retainer": True},
+        {"key": "scale_engine_split", "label": "Scale Engine (split pay)",
+         "term_months": PACKAGE_TERMS.get("se_split", 6), "retainer": True},
+        {"key": "scale_engine_multi_venue", "label": "Scale Engine (multi-venue)",
+         "term_months": None, "retainer": True},
+        {"key": "content_scale", "label": "Content Scale",
+         "term_months": PACKAGE_TERMS.get("content scale", 6), "retainer": False},
+        {"key": "dwy", "label": "Walk-In Engine (done with you)",
+         "term_months": PACKAGE_TERMS.get("walk-in", 3), "retainer": False},
+        {"key": "custom", "label": "Custom package", "term_months": None, "retainer": False},
+    ]
+
+
+def fill_in(key_or_person: str, body: dict, actor: str) -> dict:
+    """THE FILL-IN FORM's submission = an owner/finance ruling (#171). It
+    completes a register close — package, term, contract ex-GST, schedule
+    rows (each with its account: business/personal), closer, setter, notes —
+    journaled with who/when, reversible, recomputed immediately, and it
+    emits the Piolo line so the tracker is fixed at source. A PERSONAL-
+    account payment is recorded as received outside business accounts and
+    is never business cash."""
+    e = record(key_or_person) or record(_norm(key_or_person))
+    person = (e or {}).get("person") or str(body.get("person") or key_or_person)
+    client = str(body.get("client") or (e or {}).get("client") or "").strip()
+    close_date = str(body.get("close_date") or (e or {}).get("close_date") or "")
+    package = str(body.get("package") or "").strip()
+    if package.lower() in ("custom", "custom package") or body.get("package_custom"):
+        package = f"Custom — {body.get('package_custom') or 'as agreed'}".strip()
+    try:
+        term = int(body.get("term_months"))
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "the term in months is required (a whole number)"}
+    try:
+        cv = float(str(body.get("contract_ex_gst")).replace(",", "").replace("$", ""))
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "the contract value ex-GST is required"}
+    schedule = []
+    for i, row in enumerate(body.get("schedule") or [], start=1):
+        try:
+            amt = float(str(row.get("amount")).replace(",", "").replace("$", ""))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": f"payment {i}: an amount is required"}
+        acct = (row.get("account") or "").strip().lower() or None
+        if acct and acct not in _ACCOUNTS:
+            return {"ok": False, "error": f"payment {i}: account must be business or personal"}
+        schedule.append({"n": i, "amount": amt, "gst": row.get("gst") or "inc",
+                         "due": row.get("due") or None,
+                         "received": row.get("received") or None,
+                         "channel": row.get("channel") or None,
+                         "account": acct if row.get("received") else None,
+                         "evidence_id": (row.get("evidence_id") or None)})
+    notes = str(body.get("notes") or "").strip()
+    words = (f"{client or person} — {package}, {term} months, ${cv:,.2f} ex-GST"
+             + (f"; closer {body.get('closer')}" if body.get("closer") else "")
+             + (f"; setter {body.get('setter')}" if body.get("setter") else "")
+             + (f". Notes: {notes}" if notes else "")
+             + f" — filled in by {actor} on the deals-missing-details form")
+    res = rule_deal_terms(person, client, close_date, package, term, cv, schedule, words,
+                          actor=actor, closer=(body.get("closer") or None),
+                          setter=(body.get("setter") or None),
+                          payment_type=(body.get("payment_type") or None),
+                          contact=(body.get("contact") or None))
+    if not res.get("ok"):
+        return res
+    key = _norm(person)
+    after = record(key) or {}
+    personal = ((after.get("ruled_cash") or {}).get("outside_business_accounts") or [])
+    if personal:
+        # a Piolo item — the money must appear in Xero on a business account
+        _raise_feed_item("personal_account_payment", "S2",
+                         f"{client or person}: a payment went to a personal account",
+                         f"{len(personal)} payment(s) recorded as received outside business "
+                         f"accounts — not business cash until they appear in Xero (Piolo)")
+    piolo = next((p for p in piolo_lines() if p["person"] == after.get("person")), None)
+    return {"ok": True, "ruling": res["ruling"], "entry": after,
+            "gaps_left": after.get("gaps") or gaps(after),
+            "piolo_line": piolo, "personal_account_payments": len(personal)}
+
+
+def revoke_deal_terms(key_or_person: str, actor: str) -> dict:
+    """Reverse a fill-in / ruling: the register recomputes without it. The
+    ruling stays in the journal (nothing is deleted from history)."""
+    key = _norm(key_or_person.replace("cr:", ""))
+    terms = deal_terms()
+    if key not in terms:
+        return {"ok": False, "error": "no ruling on file for that close"}
+    prior = terms.pop(key)
+    kv_store.put(K_TERMS, terms)
+    journal("owner_ruling_revoked",
+            f"deal terms ruling for {prior.get('person')} ({prior.get('client')}) "
+            f"reversed by {actor}", actor, {"prior": prior})
+    try:
+        import close_detect
+        close_detect.invalidate_now(f"ruling reversed: {prior.get('person')}")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("register: invalidation after revoke failed: %s", e)
+        build()
+    return {"ok": True, "reversed": prior, "entry": record(key)}
+
+
+def _raise_feed_item(kind: str, severity: str, title: str, detail: str) -> None:
+    try:
+        items = kv_store.get("feed:extra:close_register_fill") or []
+        items = [i for i in items if i.get("title") != title]
+        items.append({"kind": kind, "severity": severity, "title": title, "detail": detail,
+                      "at": now_sydney().isoformat()})
+        kv_store.put("feed:extra:close_register_fill", items[-20:])
+    except Exception:  # noqa: BLE001
+        pass

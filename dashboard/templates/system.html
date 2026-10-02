@@ -198,6 +198,72 @@
   </section>
 
   {# ── GATES ── #}
+  {# #171 — the nightly four-source cross-check #}
+  <section class="s-panel" aria-labelledby="xc-title" id="crosscheck"
+           data-metric="register_reconciliation" data-window="all" data-clock="close date"
+           data-basis="four sources vs the register" data-value="{{ sys.sections.crosscheck.count or 0 }}">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="xc-title">Nightly cross-check
+        {% if sys.sections.crosscheck.ok %}<span class="s-chip">no source knows a close the register lacks</span>
+        {% elif sys.sections.crosscheck.ok is sameas false %}<span class="s-chip s-chip-degraded">{{ sys.sections.crosscheck.s1 }} loud finding(s)</span>{% endif %}</h2>
+      <span class="s-panel-sub" data-def="system_crosscheck">{{ sys.sections.crosscheck.note }}
+        {% if sys.sections.crosscheck.at %} · last run {{ sys.sections.crosscheck.at[:16] | replace('T', ' ') }}{% endif %}</span>
+    </div>
+    {% if sys.sections.crosscheck.error %}
+      <div class="s-boundary-fail"><b>This section failed honestly.</b> {{ sys.sections.crosscheck.error }}</div>
+    {% else %}
+      {% if sys.sections.crosscheck.findings %}
+      <ul class="s-list">
+        {% for f in sys.sections.crosscheck.findings %}
+        <li><b>{{ f.severity }}</b> · {{ f.detail }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}<div class="s-empty">Every source agrees with the register.</div>{% endif %}
+      {% if sys.sections.crosscheck.reminders %}
+      <h3 class="s-section-title">Daily-habit reminders (internal)</h3>
+      <ul class="s-list">
+        {% for r in sys.sections.crosscheck.reminders %}
+        <li class="s-card-sub"><b>{{ r.owner }}</b> — {{ r.detail }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    {% endif %}
+  </section>
+
+  {# #171 — event → tile, with reasons #}
+  <section class="s-panel" aria-labelledby="ev-title" id="recompute-events"
+           data-metric="recompute_events" data-window="recent" data-clock="event time"
+           data-basis="log" data-value="{{ sys.sections.events.count or 0 }}">
+    <div class="s-panel-head">
+      <h2 class="s-panel-title" id="ev-title">Real time, with reasons
+        {% if sys.sections.events.over_budget %}<span class="s-chip s-chip-stale">{{ sys.sections.events.over_budget }} over budget</span>{% endif %}</h2>
+      <span class="s-panel-sub" data-def="system_events">{{ sys.sections.events.note }}</span>
+    </div>
+    {% if sys.sections.events.error %}
+      <div class="s-boundary-fail"><b>This section failed honestly.</b> {{ sys.sections.events.error }}</div>
+    {% else %}
+      <ul class="s-list">
+        {% for c in sys.sections.events.freshness_contract %}
+        <li class="s-card-sub"><b>{{ c.input }}</b> — {{ c.budget }}</li>
+        {% endfor %}
+      </ul>
+      {% if sys.sections.events.rows %}
+      <div class="s-table-wrap"><table class="s-table">
+        <thead><tr><th>When</th><th>What landed</th><th class="num">Seconds to the tiles</th><th>Budget</th></tr></thead>
+        <tbody>
+          {% for r in sys.sections.events.rows %}
+          <tr{% if not r.within_budget %} class="is-amber"{% endif %}>
+            <td class="s-card-sub">{{ r.at[:16] | replace('T', ' ') }}</td>
+            <td>{{ r.reason }}</td>
+            <td class="num">{{ r.lag_seconds }}</td>
+            <td class="s-card-sub">{{ 'inside 120 s' if r.within_budget else 'OVER 120 s' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody></table></div>
+      {% else %}<div class="s-empty">No recompute has been logged yet on this instance.</div>{% endif %}
+    {% endif %}
+  </section>
+
   <section class="s-panel" aria-labelledby="gate-title">
     <div class="s-panel-head">
       <h2 class="s-panel-title" id="gate-title">Latest gate results</h2>

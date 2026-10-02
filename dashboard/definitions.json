@@ -1971,6 +1971,93 @@
       "meaning": "Sales we think happened but can't yet prove from two places, so this number leaves them out.",
       "computed": "Click through to see each one and what's missing.",
       "default_from": "the closes ledger."
+    },
+    "deals_missing_details": {
+      "name": "Deals missing details",
+      "kind": "panel",
+      "screen": "today",
+      "meaning": "Every deal that closed but is not yet a complete record — the fields the numbers need are named, oldest first.",
+      "computed": "A complete record has the client, the package and its term, the contract value ex-GST, the payment schedule with each payment's account, a matched payment, the closer, the setter, and the CRM, form and tracker evidence. Any field missing puts the deal here.",
+      "changing": "Each row names who can fill the gap. The form records what you enter as your ruling — who, when, your words — and the numbers recompute at once. It also writes the exact line for Piolo to type into the tracker so the source is fixed too.",
+      "default_from": "The one close register.",
+      "good": "An empty queue — every close complete.",
+      "selector": "#missing-details"
+    },
+    "fill_in_form": {
+      "name": "Fill in the details",
+      "kind": "control",
+      "screen": "today",
+      "meaning": "The form that completes a deal's record.",
+      "changing": "Pick the package from the rate card (or Custom), give the term, the contract value ex-GST, each payment with its due date, whether it arrived and into which account, the closer and the setter. A payment into a personal account is recorded as received outside business accounts and never counted as business cash until it shows in Xero. Submitting is reversible with one click.",
+      "computed": "Owner and finance only. Journaled.",
+      "selector": ".mdq-fill"
+    },
+    "match_proposals_pending": {
+      "name": "Payments to confirm",
+      "kind": "panel",
+      "screen": "today",
+      "meaning": "Money that landed under a name the systems do not recognise, with the evidence for whose it probably is.",
+      "computed": "Each card shows the payer or bank contact, the charges or invoices, the evidence, and the proposed client with how strong the evidence is. A resemblance alone never attaches money — only your confirmation does.",
+      "changing": "Confirm attaches the money to the proposed client; 'this is someone else' attaches it to the name you type; Reject records that it is not a client payment. Confirming can record the package, start date and contract value in the same step. Every decision is journaled, and the renewal measurement re-runs afterwards.",
+      "default_from": "The payment-matching proposals of 29 Sep 2026 and the standing Stripe scan.",
+      "selector": "#match-cards"
+    },
+    "verified_statement": {
+      "name": "Today's numbers, verified",
+      "kind": "panel",
+      "screen": "today",
+      "meaning": "The morning statement: each headline ratio with its window, inputs, sources, time and coverage — re-added by hand from the listed closes and cost lines.",
+      "computed": "Lifetime value per close is summed over the closes that carry a contract and divided by acquisition cost per close (every cost line summed, spread over every close in the window). If the hand total differs from the engine by more than a hundredth, the check fails, the tiles show 'check failed — being investigated' and a loud finding is raised.",
+      "default_from": "Generated each morning after 6am; the owner can generate it any time.",
+      "good": "Hand check passed, coverage high, no findings.",
+      "selector": "#verified-statement"
+    },
+    "coverage_line": {
+      "name": "Coverage",
+      "kind": "chip",
+      "screen": "today",
+      "meaning": "How much of the ratio rests on complete deals: 'based on 9 of 13 closes — 6 missing details'.",
+      "computed": "Closes with a contract value, out of every close in the window; and how many of them still have any gap. Below 80% the tile turns amber and says 'incomplete — fill the queue'.",
+      "default_from": "The one close register and the deals-missing-details queue.",
+      "good": "100% — every close in the window complete.",
+      "selector": "#tile-ltv_cac .s-card-sub"
+    },
+    "change_ledger": {
+      "name": "Since your last look",
+      "kind": "panel",
+      "screen": "drawer",
+      "meaning": "Why a headline ratio moved — or why it did not — since you were last here.",
+      "computed": "The change splits exactly into two parts: the lifetime-value side (deals entering or leaving the window, contract values appearing or changing) and the acquisition-cost side (each cost line that moved). The two parts always add up to the change you see. When nothing moved, it names what is still pending, such as a deal with no contract value yet.",
+      "default_from": "A compact copy of the engine's figures kept on every refresh.",
+      "selector": ".fd-since"
+    },
+    "system_crosscheck": {
+      "name": "Nightly cross-check",
+      "kind": "panel",
+      "screen": "system",
+      "meaning": "The four sources — the CRM, Stripe, Xero and the tracker — checked against the close register every night and on every event.",
+      "computed": "A close any source knows that the register lacks is a loud finding by name. A payment not attached to a close goes to the matching queue. Amount, date or package disagreements show both values. A close on one source for more than 3 days is flagged. A close missing its daily-habit items after 24 hours gets an internal reminder naming who owns the gap.",
+      "default_from": "The stored result of the last run.",
+      "good": "Every source agrees with the register.",
+      "selector": "#crosscheck"
+    },
+    "system_events": {
+      "name": "Real time, with reasons",
+      "kind": "panel",
+      "screen": "system",
+      "meaning": "How quickly a change in the world reaches the tiles, and each input's stated freshness.",
+      "computed": "Every matched payment, CRM stage change, form submission, ruling or tracker change rebuilds the affected numbers at once; the log shows how many seconds each took against a 120-second budget.",
+      "default_from": "The recompute log.",
+      "selector": "#recompute-events"
+    },
+    "gate_account": {
+      "name": "Gate account",
+      "kind": "control",
+      "screen": "system",
+      "meaning": "The read-only login the deploy checks use.",
+      "computed": "It sees every page exactly as the owner does and can perform no action: every save, ruling or voice request is refused with a plain 'read-only' message. Its password lives only on Railway and in a local file that is never committed.",
+      "selector": "body",
+      "changing": "Nobody changes it from the dashboard. Its password is set once on Railway and in the local file; rotating it means changing both. Everything else about it is fixed in code: reads yes, actions no."
     }
   }
 }

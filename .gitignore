@@ -10,3 +10,6 @@ dashboard/static/audio/entrance.mp3
 dashboard/static/audio/*.mp3
 dashboard/static/audio/*.m4a
 dashboard/verification/
+
+# the gate account password (local only — #171). Never committed.
+.gate_password

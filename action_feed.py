@@ -155,7 +155,10 @@ def build_action_feed(snap: dict | None = None, include_owner: bool = True) -> d
                        "feed:extra:status_stale",   # paying client marked stale (#162)
                        "feed:extra:pl_reconcile",   # revenue/cost reconciliation (#165)
                        "feed:extra:picklist_drift",  # a dropdown changed at source
-                       "feed:extra:close_register")  # register reconciliation (#164)
+                       "feed:extra:close_register",  # register reconciliation (#164)
+                       "feed:extra:close_register_fill",  # #171: personal-account payments
+                       "feed:extra:statement",       # #171: identity check failed
+                       "feed:extra:recompute")       # #171: event → tile lag over budget
                                                      # (self-retiring on OK)
     try:
         import kv_store

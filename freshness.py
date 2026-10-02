@@ -401,8 +401,19 @@ def tick() -> dict:
         import unit_econ_engine
         if unit_econ_engine.monthly_tick():
             out["unit_econ_measured"] = True
+        # #171: a batch of match confirmations asked for a re-measure
+        if unit_econ_engine.due_tick():
+            out["unit_econ_remeasured_on_request"] = True
     except Exception as e:  # noqa: BLE001
         logger.warning("freshness tick: unit-econ re-measure failed: %s", e)
+
+    # #171 (Phase 5): "Today's numbers, verified" — each morning, hand-checked
+    try:
+        import metrics_statement
+        if metrics_statement.daily_tick():
+            out["statement"] = "generated"
+    except Exception as e:  # noqa: BLE001
+        logger.warning("freshness tick: statement failed: %s", e)
 
     # #165: keep the Stripe stamp honest — a tiny 2-day charge probe when
     # the last pull is older than 15 minutes. Read-only, one page.

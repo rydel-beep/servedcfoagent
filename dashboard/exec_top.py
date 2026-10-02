@@ -67,6 +67,14 @@ def refresh_cache() -> dict:
 
     out["unit_econ"] = _wrap(finance_analysis.unit_econ_view, "unit_econ")
     kv_store.put(K_UNIT, out["unit_econ"])
+    # #171: the change ledger remembers each refresh so every tile can say
+    # "since your last look: X → Y, because …"
+    try:
+        if (out["unit_econ"].get("data") or {}).get("engine"):
+            import change_ledger
+            change_ledger.record(out["unit_econ"]["data"]["engine"])
+    except Exception as e:  # noqa: BLE001
+        logger.info("change ledger record skipped: %s", e)
 
     def _roas():
         rep = finance_analysis.window_report("sep_mtd") or {}
@@ -310,9 +318,22 @@ def build_tiles(snap: dict | None) -> list[dict]:
             _p90 = _CR.proposed_note(h["window"]["start"], h["window"]["end"], "90d")
         except Exception:  # noqa: BLE001
             pass
+        ident = eng.get("identity_check") or {}
+        cov = h.get("coverage") or {}
         for tid, label, key in (("ltv_cac", "LTV : CAC", "ltv_cac"),
                                 ("ltgp_cac", "LTGP : CAC", "ltgp_cac")):
             v, fl = h.get(f"{key}_expected"), h.get(f"{key}_floor")
+            if ident.get("ok") is False:
+                # #171 (Phase 5): the verified statement could not reproduce
+                # this ratio by hand — no number is shown until it can.
+                tiles.append(_tile(
+                    tid, label, "check failed — being investigated",
+                    (f"the daily verified statement's hand check did not match the "
+                     f"engine ({ident.get('detail') or 'see the statement'})"),
+                    f"unit-economics engine · checked {str(ident.get('at') or '')[:16]}",
+                    "degraded", drawer=tid, raw=None,
+                    sr_note="the number is withheld until the identity check passes"))
+                continue
             if v is not None or fl is not None:
                 val = f"{v:.2f}×" if v is not None else f"{fl:.2f}× floor"
                 bits = ["trailing 90 days"]
@@ -334,8 +355,14 @@ def build_tiles(snap: dict | None) -> list[dict]:
                                 "close(s) — no contract value")
                 if h.get("commission_pending"):
                     bits.append(f"commission pending for {h['commission_pending']} close(s)")
+                # #171: COVERAGE — never a ratio without it
+                if cov.get("line"):
+                    bits.append(cov["line"])
                 sub = " · ".join(bits)
                 state = _state_for(unit_age, unit_err)
+                if cov and cov.get("ok") is False and state == "ok":
+                    state = "amber"
+                    sub += " · incomplete — fill the queue"
             else:
                 val = "—"
                 sub = unit_err or (

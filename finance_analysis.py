@@ -683,18 +683,44 @@ def _math(v: dict, ratio: str) -> dict:
     }
 
 
+def _since_last_look(view: dict, ratio_key: str) -> dict:
+    """#171: the drawer's 'Since your last look' lines, per ratio."""
+    try:
+        import change_ledger as CL
+        from dashboard.auth import current_actor
+        user = (current_actor() or {}).get("user") or "rydel"
+        since = CL.since(CL.previous_visit(user), view)
+        if not since.get("available"):
+            return since
+        return {"available": True, "compared_to": since.get("compared_to"),
+                "headline": since["items"][f"headline:{ratio_key}"]["sentence"],
+                "mtd": since["items"][f"mtd:{ratio_key}"]["sentence"],
+                "causes": since["items"][f"headline:{ratio_key}"].get("causes"),
+                "sides": since["items"][f"headline:{ratio_key}"].get("sides")}
+    except Exception as e:  # noqa: BLE001
+        return {"available": False, "note": f"change ledger unavailable ({str(e)[:80]})"}
+
+
 def drawer_ltv_cac() -> dict:
     import unit_econ_engine as UE
-    d = _math(UE.view(), "ltv")
+    v = UE.view()
+    d = _math(v, "ltv")
     d["definition"] = ("LTV:CAC — what a client is likely to pay us over their "
                        "whole time with us, for every dollar it cost to win them.")
+    d["coverage"] = (v["headline"].get("coverage") or {})
+    d["since_last_look"] = _since_last_look(v, "ltv_cac")
+    d["identity_check"] = v.get("identity_check")
     return d
 
 
 def drawer_ltgp_cac() -> dict:
     import unit_econ_engine as UE
-    d = _math(UE.view(), "ltgp")
+    v = UE.view()
+    d = _math(v, "ltgp")
     d["definition"] = ("LTGP:CAC — the gross profit a client is likely to leave "
                        "us over their whole time with us, for every dollar it "
                        "cost to win them.")
+    d["coverage"] = (v["headline"].get("coverage") or {})
+    d["since_last_look"] = _since_last_look(v, "ltgp_cac")
+    d["identity_check"] = v.get("identity_check")
     return d

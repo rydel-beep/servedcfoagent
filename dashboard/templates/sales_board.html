@@ -78,6 +78,9 @@
 
   {# ── ATTENDANCE — the accountability surface, first because it is the one
        that changes the month's numbers ── #}
+  {# #171 — deals missing details, on SALES too (owner + finance) #}
+  {% include "partials/missing_details.html" %}
+
   <section class="s-panel" aria-labelledby="unmarked-title">
     <div class="s-panel-head">
       <h2 class="s-panel-title" id="unmarked-title">Consults nobody marked
@@ -318,6 +321,7 @@
 </main>
 
 {% include "partials/shell_palette.html" %}
+{% if is_owner %}<script defer src="/dashboard/static/js/deal_fill.js?v={{ asset_v }}"></script>{% endif %}
 <script src="/dashboard/static/js/shell.js?v={{ asset_v }}"></script>
 {% include "partials/defs.html" %}
 {% include "partials/edith_dock.html" %}

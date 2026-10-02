@@ -143,6 +143,13 @@ def coverage_inventory() -> dict:
                      "closes_count", "closes_cash", "closes_contract",
                      "record_a_close", "register_reconciliation"]
 
+    # the sales truth engine (#171): the queue, the form, the cards, the
+    # statement, coverage, the change ledger, the cross-check, the events
+    inv["truth_engine"] = ["deals_missing_details", "fill_in_form",
+                           "match_proposals_pending", "verified_statement",
+                           "coverage_line", "change_ledger", "system_crosscheck",
+                           "system_events", "gate_account"]
+
     # answer-shaped outputs + the resolver's visible surfaces (#168)
     inv["answers"] = ["total_costs", "per_day_pacing", "margin_delta",
                       "answered_as", "calc_endpoint"]

@@ -358,12 +358,40 @@ def build(snap: dict | None, owner: bool) -> dict:
         logger.warning("today: close detection unavailable: %s", e)
         new_closes, new_closes_total = [], 0
 
+    # #171 — the three truth-engine panels: kv reads only, each guarded
+    def _kv_block(fn, empty):
+        try:
+            return fn()
+        except Exception as e:  # noqa: BLE001
+            logger.info("today: %s unavailable: %s", getattr(fn, "__name__", "block"), e)
+            return {**empty, "error": str(e)[:120]}
+
+    def _queue():
+        import close_register as CR
+        return CR.missing_details_queue(limit=12)
+
+    def _matches():
+        import match_proposals as MP
+        c = MP.cards()
+        # TODAY shows the six largest; the closes page carries them all
+        c["shown"] = min(6, len(c.get("pending") or []))
+        c["pending"] = (c.get("pending") or [])[:6]
+        return c
+
+    def _statement():
+        import metrics_statement as MS
+        return MS.latest() or {"note": "not generated yet today — it runs each morning "
+                                       "after 6am; the owner can generate it now"}
+
     return {
         # nine, not eight: #165 adds the net-margin tile to TODAY by name —
         # profitability joined the ten-second question.
         "tiles": tiles[:9],
         "verdict": verdict,
         "unmatched": unmatched,
+        "queue": _kv_block(_queue, {"rows": [], "total": 0}),
+        "matches": _kv_block(_matches, {"pending": [], "pending_count": 0}),
+        "statement": _kv_block(_statement, {}),
         "new_closes": new_closes,
         "new_closes_total": new_closes_total,
         "rulings": _rulings(owner),
@@ -452,6 +480,9 @@ def _since_you_last_looked(owner: bool) -> dict:
     marks = kv_store.get(K_LASTSEEN) or {}
     last = marks.get(user)
     now = now_sydney()
+    # #171: the change ledger compares against the visit BEFORE this one
+    if last:
+        marks[f"{user}:prev"] = last
     marks[user] = now.isoformat()
     try:
         kv_store.put(K_LASTSEEN, marks)
