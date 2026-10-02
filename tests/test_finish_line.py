@@ -168,9 +168,14 @@ def test_today_carries_nothing_beyond_the_spec(client):
     # #161 added two, and both earn their place: money that has landed with
     # no client against it is an anomaly, and a close only one source can see
     # is the thing that made Koji invisible for a day.
+    # #171 (Rydel's brief) adds three on TODAY by name: the verified
+    # statement, the deals missing details (the door the coverage line opens),
+    # and the payments to confirm.
     allowed = {"Needs your ruling", "Since you last looked", "Sales pulse",
                "Money received, not yet attached to a client",
-               "New closes detected"}
+               "New closes detected",
+               "Today's numbers, verified", "Deals missing details",
+               "Payments to confirm"}
     for h in heads:
         clean = re.sub(r"\s+", " ", h.strip())
         clean = re.sub(r"\s*\([^)]*\)\s*$", "", clean)
