@@ -46,6 +46,7 @@ BASE = os.environ.get("GATE_BASE", "https://web-production-16b16.up.railway.app"
 PY = sys.executable
 DEPLOY_WAIT_S = int(os.environ.get("SHIP_DEPLOY_WAIT_S", "900"))
 POLL_S = 15
+WARM_WAIT_S = int(os.environ.get("SHIP_WARM_WAIT_S", "600"))
 
 REPORT: dict = {"base": BASE, "steps": [], "ok": False}
 
@@ -161,6 +162,30 @@ def wait_for(commit: str) -> bool:
     return False
 
 
+def wait_warm() -> None:
+    """A fresh boot rebuilds the snapshot and warms every engine cache in the
+    SAME workers that serve pages. Gating mid-warm measured that boot work,
+    not the code (both 3 Oct reverts were 30 s page timeouts with the
+    snapshot 'missing'). Wait — bounded — until /health shows a snapshot,
+    then let the 45 s exec-top warm finish. The gates are unchanged; they
+    still decide."""
+    t0 = time.time()
+    while time.time() - t0 < WARM_WAIT_S:
+        try:
+            with urllib.request.urlopen(BASE + "/health", timeout=20) as r:
+                snap = (json.loads(r.read()).get("subsystems") or {}).get("snapshot")
+        except Exception:  # noqa: BLE001
+            snap = None
+        if isinstance(snap, dict) and snap.get("present"):
+            time.sleep(60)
+            step("production warm (snapshot present)", True,
+                 f"after {round(time.time() - t0)}s")
+            return
+        time.sleep(POLL_S)
+    step("production warm (snapshot present)", True,
+         f"not warm after {WARM_WAIT_S}s — gating anyway (informational)")
+
+
 # ── 4 · gates ───────────────────────────────────────────────────────────────
 
 def _gate_prefix() -> list[str]:
@@ -253,6 +278,7 @@ def main() -> int:
                              "Railway build failed and the previous build is still serving.")
         print(write_report(commit))
         return 4
+    wait_warm()
     if run_gates():
         REPORT["ok"] = True
         REPORT["summary"] = f"Shipped and gated: production is running {commit[:12]}."

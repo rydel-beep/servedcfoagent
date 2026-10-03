@@ -784,9 +784,13 @@ def build_snapshot() -> dict:
 
 def _persist(snapshot: dict) -> None:
     """Write snapshot to disk so it survives process restarts."""
+    # write-then-rename: two workers persist, and a reader must never see a
+    # half-written file (it would load as None — the "missing" snapshot)
+    tmp = f"{SNAPSHOT_FILE}.{os.getpid()}.tmp"
     try:
-        with open(SNAPSHOT_FILE, "w") as f:
+        with open(tmp, "w") as f:
             json.dump(snapshot, f, indent=2)
+        os.replace(tmp, SNAPSHOT_FILE)
         logger.info("Snapshot persisted to %s", SNAPSHOT_FILE)
     except OSError as e:
         logger.error("Failed to persist snapshot: %s", e)

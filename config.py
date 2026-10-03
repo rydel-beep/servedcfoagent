@@ -157,7 +157,17 @@ else:
 CHAT_MODEL = os.getenv("CHAT_MODEL", "claude-sonnet-4-6")
 
 # ── Snapshot ─────────────────────────────────────────────────────────────────
-SNAPSHOT_FILE = os.getenv("SNAPSHOT_FILE", "snapshot_state.json")
+# On the Railway Volume (/data) like the Xero tokens: the container's own disk
+# is wiped on every deploy, so a relative path meant every boot started with
+# NO snapshot — degraded tiles ("age unknown") and both workers rebuilding it
+# from every source while serving the first pages (the gate timeouts, 3 Oct).
+_snapshot_env = os.getenv("SNAPSHOT_FILE", "")
+if _snapshot_env:
+    SNAPSHOT_FILE = _snapshot_env
+elif os.path.isdir("/data"):
+    SNAPSHOT_FILE = "/data/snapshot_state.json"
+else:
+    SNAPSHOT_FILE = "snapshot_state.json"
 CFO_REFRESH_KEY = os.getenv("CFO_REFRESH_KEY", "")
 # Picovoice (wake word) — client-side by design (WASM init); injected only
 # into the authed dashboard page, never into public assets.

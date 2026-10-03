@@ -15,6 +15,8 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import ship  # noqa: E402
 
+_REAL_WAIT_WARM = ship.wait_warm
+
 
 @pytest.fixture(autouse=True)
 def _quiet(monkeypatch, tmp_path):
@@ -25,6 +27,9 @@ def _quiet(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "argv", ["ship.py"])
     monkeypatch.setattr(ship, "POLL_S", 0)
     monkeypatch.setattr(ship, "DEPLOY_WAIT_S", 1)
+    # never poll the real production /health from a test
+    monkeypatch.setattr(ship, "wait_warm", lambda: ship.step(
+        "production warm (snapshot present)", True, "stubbed"))
 
 
 def _names():
@@ -59,7 +64,8 @@ def test_a_passing_run_pushes_waits_gates_and_reports_the_commit(monkeypatch):
     assert ship.main() == 0
     assert _names() == ["working tree clean", "every file compiles", "the app imports",
                         "full test suite", "git push origin main",
-                        "production serves the pushed commit", "render gate", "behaviour gate"]
+                        "production serves the pushed commit",
+                        "production warm (snapshot present)", "render gate", "behaviour gate"]
     assert ship.REPORT["ok"] and "abc123def456" in ship.REPORT["summary"]
 
 
@@ -109,3 +115,18 @@ def test_the_pipelines_own_evidence_never_dirties_the_tree(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["ship.py", "--dry-run"])
     assert ship.main() == 0
     assert ship.REPORT["steps"][0] == {"step": "working tree clean", "ok": True, "detail": ""}
+
+
+
+def test_the_gates_wait_for_a_warm_production(monkeypatch):
+    """3 Oct: both reverts were 30 s page timeouts gated mid-boot-rebuild."""
+    import io
+    import json as _j
+    seen = iter([{"snapshot": "missing"}, {"snapshot": {"present": True}}])
+    monkeypatch.setattr(ship.time, "sleep", lambda s: None)
+    monkeypatch.setattr(ship.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(
+        _j.dumps({"subsystems": next(seen)}).encode()))
+    _REAL_WAIT_WARM()
+    st = ship.REPORT["steps"][-1]
+    assert st["step"] == "production warm (snapshot present)" and st["ok"]
+    assert "not warm" not in st.get("detail", "")
