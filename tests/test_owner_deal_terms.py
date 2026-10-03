@@ -131,9 +131,13 @@ def test_a_ruled_uncovered_package_is_pending_not_zero(monkeypatch):
     by = {d["name"]: d for d in out["deals"]}
     assert by["Scott Cho"]["pending"] and by["Scott Cho"]["closer_cost"] is None
     assert by["Scott Cho"]["setter_cost"] == 239.95   # 5% of $4,799 ex-GST
-    assert by["Harman singh"]["pending"] and by["Harman singh"]["total"] is None
+    # Rydel, 3 Oct: $3,355 inc IS a Growth Pro month — costed, not pending
+    h = by["Harman singh"]
+    assert not h["pending"] and h["package"] == RB.PKG_GROWTH_PRO
+    assert h["closer_cost"] == 900.0 and h["setter_cost"] == 152.5   # v3 GP · 5% of $3,050
+    assert "package read from the price paid" in h["basis"]
     c = out["commissions"]
-    assert c["pending_deals"] == 2
+    assert c["pending_deals"] == 1
     assert c["pending_range"]["min"] < c["pending_range"]["max"]
     assert "averaged_deals" not in c
 
@@ -227,3 +231,32 @@ def test_same_email_different_day_stays_two_deals(monkeypatch):
     for f in ("_from_ghl", "_from_stage_recorder", "_from_payments"):
         monkeypatch.setattr(CD, f, lambda: [])
     assert len(CR._detect(3650)) == 2
+
+
+def test_package_is_read_from_the_price_paid():
+    """Rydel, 3 Oct: "commission you should know already based on packages"."""
+    gp = RB.package_from_price(RB.ex_gst(3355.0))
+    assert gp["package"] == RB.PKG_GROWTH_PRO and gp["initial_month_ex_gst"] == 3050.0
+    fn = RB.package_from_price(RB.ex_gst(3300.0))          # 2 × $1,650 fortnightly
+    assert fn["package"] == RB.PKG_GROWTH_PRO
+    dep = RB.package_from_price(RB.ex_gst(3905.0))         # $500 deposit + a GP month
+    assert dep["package"] == RB.PKG_GROWTH_PRO and dep["initial_month_ex_gst"] == 3550.0
+    se = RB.package_from_price(RB.ex_gst(8305.0))
+    assert se["package"] == RB.PKG_SCALE_SPLIT
+    # no price match → None, so the close stays PENDING, never guessed
+    for odd in (5278.9, 5500.0, 2805.0, 0, None):
+        assert RB.package_from_price(RB.ex_gst(odd) if odd else odd) is None
+
+
+def test_an_unpriced_close_stays_pending(monkeypatch):
+    import sales_cost as SC
+    monkeypatch.setattr(SC, "_tracker_deals", lambda: [])
+    monkeypatch.setattr(SC, "_union_deals", lambda w0, w1: [
+        {"person": "Nobody", "close_date": "2026-09-11", "contract": None,
+         "cash": 2805.0, "ruled": None}])
+    monkeypatch.setattr(SC, "_sets_in_window", lambda w0, w1: {"count": 0, "basis": "t"})
+    monkeypatch.setattr(SC, "_sets_from_engine", lambda w0, w1: 0)
+    monkeypatch.setattr(SC, "_ad_spend", lambda w0, w1: 0.0)
+    monkeypatch.setattr(CE, "_raise_card", lambda card: None)
+    d = SC.build("2026-09-01", "2026-09-29")["deals"][0]
+    assert d["pending"] and d["total"] is None
