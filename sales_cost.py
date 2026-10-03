@@ -72,30 +72,6 @@ def _union_deals(w0: dt.date, w1: dt.date) -> list[dict]:
         return []
 
 
-def _priced_deal(u: dict, nm: str) -> dict | None:
-    """A close with no tracker row and no ruling, costed from the PACKAGE ITS
-    PRICE SAYS IT IS (Rydel, 3 Oct). The register's cash is the matched
-    Stripe/Xero receipts, GST-inclusive. No price match → None (pending)."""
-    cash = u.get("cash")
-    if not cash:
-        return None
-    hit = RB.package_from_price(RB.ex_gst(cash, inclusive=True))
-    if not hit:
-        return None
-    close = dt.date.fromisoformat(str(u["close_date"])[:10])
-    words = (f"{hit['package'].replace('_', ' ')} — ${cash:,.2f} inc GST = "
-             f"{hit['instalments_paid']} × ${hit['instalment']:,.0f} ex-GST "
-             f"{hit['cadence']}"
-             + (f" + ${hit['deposit']:,.0f} deposit" if hit["deposit"] else ""))
-    return {"name": nm, "close_date": close, "package": hit["package"],
-            "payment_type": hit["cadence"].title(),
-            "contract": u.get("contract"), "closer": None, "setter": None,
-            "cash_events": [{"when": str(close),
-                             "amount": hit["initial_month_ex_gst"],
-                             "inclusive": False}],
-            "facts": f"package read from the price paid: {words}"}
-
-
 def _pending_range(v: dict, n: int) -> dict | None:
     """The rulebook's closer range across the packages it COVERS, times the
     pending count — a band, never a figure inside CAC."""
@@ -139,8 +115,6 @@ def build(window_start: str, window_end: str) -> dict:
                      "setter": r.get("setter"), "cash_events": r.get("cash_events") or [],
                      "recorded_closer_commission": r.get("closer_commission"),
                      "facts": "owner ruling"}
-        if not known:
-            known = _priced_deal(u, nm)
         if known:
             counted = CE.counted_for(known)
             acc = counted["accrued"]
@@ -156,10 +130,7 @@ def build(window_start: str, window_end: str) -> dict:
                 "closer_cost": closer_cost, "setter_cost": counted["setter"],
                 "total": (None if closer_pending else counted["total"]),
                 "basis": ("; ".join(acc["needs_your_number"]) if closer_pending
-                          else counted["chip"]
-                          + (f" · {known['facts']}"
-                             if str(known.get("facts", "")).startswith("package read")
-                             else "")),
+                          else counted["chip"]),
                 "facts": known.get("facts") or "tracker",
                 "exact": not closer_pending, "pending": closer_pending,
             })

@@ -192,49 +192,6 @@ VERSIONS: list[dict] = [
 # a deal of that kind actually exists — never silently costed.
 UNCOVERED_PACKAGES = (PKG_CONTENT_SCALE, PKG_DWY, PKG_CUSTOM, PKG_MULTI_VENUE)
 
-# What each package CHARGES, per instalment, ex-GST (Rydel, 3 Oct: "commission
-# you should know already based on packages"). A close with no tracker row and
-# no ruling still has a price on its Stripe charges — Growth Pro Monthly
-# $3,355 inc, Growth Pro Fortnightly $1,677.50 / $1,650 inc, Scale Engine x2
-# Split $8,305 inc — and the price IS the package. Evidence: the charge
-# descriptions in TRUTH_TABLES_2026-10-02 (Harman, William, Pompoko, Rose).
-# (package, cadence, instalment ex-GST, instalments in the initial month)
-PRICE_POINTS: tuple = (
-    (PKG_GROWTH_PRO, "monthly", 3050.0, 1),
-    (PKG_GROWTH_PRO, "monthly", 3000.0, 1),
-    (PKG_GROWTH_PRO, "fortnightly", 1525.0, 2),
-    (PKG_GROWTH_PRO, "fortnightly", 1500.0, 2),
-    (PKG_SCALE_SPLIT, "split", 7550.0, 1),
-    (PKG_SCALE_SPLIT, "split", 7500.0, 1),
-)
-DEPOSIT_EX_GST = 500.0     # "Lock In" deposit taken before the first instalment
-
-
-def package_from_price(cash_ex_gst: float | None, max_instalments: int = 6):
-    """The package a close's collected cash (ex-GST) is priced as, or None.
-
-    Cash = k × one package's instalment (k = 1..max), + the $500 deposit only
-    within the initial month. The smallest k wins; two packages tied at that k is AMBIGUOUS and
-    returns None — never a coin-flip."""
-    if not cash_ex_gst or cash_ex_gst <= 0:
-        return None
-    for k in range(1, max_instalments + 1):
-        hits = []
-        for pkg, cadence, inst, per_month in PRICE_POINTS:
-            # the deposit only ever sits beside the initial month's payments
-            for dep in ((0.0, DEPOSIT_EX_GST) if k <= per_month else (0.0,)):
-                if abs(cash_ex_gst - (k * inst + dep)) <= 1.0:
-                    hits.append({"package": pkg, "cadence": cadence,
-                                 "instalment": inst, "instalments_paid": k,
-                                 "deposit": dep,
-                                 "initial_month_ex_gst": round(
-                                     min(k, per_month) * inst + dep, 2)})
-        if len({h["package"] for h in hits}) == 1:
-            return hits[0]
-        if hits:
-            return None
-    return None
-
 
 def _d(s: str | None) -> dt.date | None:
     if not s:
