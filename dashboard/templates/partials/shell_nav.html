@@ -16,6 +16,10 @@
   {% endfor %}
   <span class="s-nav-spacer"></span>
   {% if nav.owner %}
+  <a class="s-nav-link" href="/scoreboard" data-nav="scoreboard"
+     title="The new Scoreboard — every number counted from GHL, Stripe, Xero and Meta. This dashboard is being replaced.">
+    Scoreboard <span class="s-nav-count" style="background:var(--accent);color:#fff">new</span></a>
+  <span class="s-nav-link" style="opacity:.6;cursor:default" title="These pages are being replaced by the Scoreboard">being replaced</span>
   <button class="s-nav-link" id="s-refresh-now" type="button"
           aria-label="Refresh the data now"
           title="Pulls what can safely be pulled, then rebuilds what the tiles read">

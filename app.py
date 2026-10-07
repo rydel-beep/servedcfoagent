@@ -59,6 +59,11 @@ boot_banner.module_ok("dashboard.bridge")
 
 # SERVED AD TRACKING — the dedicated ad dashboard (owner/coo + media_buyer-when-enabled;
 # isolation by construction: ad-domain data only, auth.py fail-closed scoping).
+boot_banner.pre_import("scoreboard.routes")
+from scoreboard.routes import bp as scoreboard_bp
+app.register_blueprint(scoreboard_bp, url_prefix="/scoreboard")
+boot_banner.module_ok("scoreboard.routes")
+
 boot_banner.pre_import("dashboard.ads")
 from dashboard.ads import bp as ads_bp
 app.register_blueprint(ads_bp, url_prefix="/ads")
@@ -933,6 +938,13 @@ def _deferred_startup():
                 _db.migrate()
         except Exception as _e:  # never let memory setup block the app
             logger.error("Memory migrate-on-boot skipped: %s", _e)
+        # THE SCOREBOARD (#173): its own raw tables + the read-only sync loop.
+        try:
+            from scoreboard import store as _sb_store, sync as _sb_sync
+            if _sb_store.migrate():
+                _sb_sync.start_loop()
+        except Exception as _e:  # never let the scoreboard block the app
+            logger.error("Scoreboard sync not started: %s", _e)
         # Sheet mirror: create tables + start the background sync loop (live-backed cache).
         try:
             import sheet_mirror
