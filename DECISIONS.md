@@ -3712,32 +3712,3 @@ cash $8,305, setter Maran. 'HOANG PHUOC PHAM / Max' (GHL Closed Deal 29 Sep;
 bank 'Rockys Italian $5,500' 29 Sep; tracker Content Scale $27,900) is
 probably Rocky's Italian. The GHL token cannot list users (401): five user
 ids need names. The stage recorder has no Closed Deal move since 1 Sep.
-
-## #173 — THE SCOREBOARD: A CLEAN REBUILD ON THE SOURCES OF TRUTH (2026-10-07)
-
-**Brief (Rydel, Oct 2026):** "I can't trust it… I need the source of truth." An
-isolated module `scoreboard/` + page `/scoreboard` (owner + Piolo), alongside the
-old dashboard (labelled "being replaced"). One number, one source; count, don't
-infer; every number opens to its rows; estimates labelled with n; Sydney windows.
-
-**Phase 0 (raw sync):** own tables sb_raw / sb_sync / sb_journal / sb_lease. GHL
-every 15 min (pipelines, calendars, appointments, opportunities, contacts — CUT DOWN
-to allowed keys + the 5 Closed Deal Form field ids before storage, because closed
-clients' contacts also hold onboarding passwords), stage recorder (first sighting of
-Closed Won entry); Stripe every 15 min; Meta hourly today + nightly final; Xero daily
-(bank feed + invoices need the reconnect at /scoreboard/xero/connect; P&L works);
-tracker hourly (cross-check only). GET-only, enforced by test.
-
-**Phase 1 (numbers):** funnel, cost (CAC ads-only and fully loaded via the comp
-rulebook + owner deal rulings), return facts (30-day cash : CAC headline), estimates
-(LTV/LTGP with measured completion/renewal, n shown), Needs a human (one-click
-journaled proposals), reconciliation (Rydel's known closes, tracker, form vs payment,
-form vs owner rulings, Meta account vs ad level).
-
-**Reused:** auth, db, config credentials, xero_pull token functions, sheet_mirror
-live fetch, comp_rulebook (the ruled commission source), owner deal rulings read as
-data from kv. **Not called:** close register, gap rules, evidence ladders, unit-econ
-engine, registries, derived closes (test-enforced).
-
-**HARD STOP after Phase 1 for Rydel's sign-off.** Leftover Isaac $7,250 price point
-parked on branch parked/isaac-price-point (not shipped).
